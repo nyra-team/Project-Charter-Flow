@@ -3,20 +3,34 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Project Hub API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: users
+    description: User management
+  - name: charters
+    description: Project charter operations
+  - name: approvals
+    description: Approval workflow operations
+  - name: projects
+    description: Project management operations
+  - name: tasks
+    description: Task operations
+  - name: milestones
+    description: Milestone operations
+  - name: dashboard
+    description: Dashboard and analytics
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +38,765 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateUserBody"
+      responses:
+        "201":
+          description: Created user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get a user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: Not found
+
+  /charters:
+    get:
+      operationId: listCharters
+      tags: [charters]
+      summary: List all project charters
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: submittedBy
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of charters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Charter"
+    post:
+      operationId: createCharter
+      tags: [charters]
+      summary: Create a project charter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCharterBody"
+      responses:
+        "201":
+          description: Created charter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charter"
+
+  /charters/{id}:
+    get:
+      operationId: getCharter
+      tags: [charters]
+      summary: Get a charter by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Charter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charter"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateCharter
+      tags: [charters]
+      summary: Update a charter
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCharterBody"
+      responses:
+        "200":
+          description: Updated charter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charter"
+
+  /charters/{id}/submit:
+    post:
+      operationId: submitCharter
+      tags: [charters]
+      summary: Submit a charter for approval
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Submitted charter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charter"
+
+  /charters/{id}/vendors:
+    get:
+      operationId: listCharterVendors
+      tags: [charters]
+      summary: Get vendors for a charter
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of vendors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Vendor"
+    post:
+      operationId: addCharterVendor
+      tags: [charters]
+      summary: Add a vendor to a charter
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVendorBody"
+      responses:
+        "201":
+          description: Added vendor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vendor"
+
+  /charters/{id}/risks:
+    get:
+      operationId: listCharterRisks
+      tags: [charters]
+      summary: Get risks for a charter
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of risks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Risk"
+    post:
+      operationId: addCharterRisk
+      tags: [charters]
+      summary: Add a risk to a charter
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRiskBody"
+      responses:
+        "201":
+          description: Added risk
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Risk"
+
+  /charters/{id}/squad:
+    get:
+      operationId: listCharterSquad
+      tags: [charters]
+      summary: Get squad members for a charter
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of squad members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SquadMember"
+    post:
+      operationId: addSquadMember
+      tags: [charters]
+      summary: Add a squad member to a charter
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSquadMemberBody"
+      responses:
+        "201":
+          description: Added squad member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SquadMember"
+
+  /approvals:
+    get:
+      operationId: listApprovals
+      tags: [approvals]
+      summary: List approvals (optionally filtered by charter or approver)
+      parameters:
+        - name: charterId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: approverId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of approvals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Approval"
+
+  /approvals/{id}:
+    get:
+      operationId: getApproval
+      tags: [approvals]
+      summary: Get an approval by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Approval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Approval"
+
+  /approvals/{id}/decide:
+    post:
+      operationId: decideApproval
+      tags: [approvals]
+      summary: Approve or reject an approval step
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalDecisionBody"
+      responses:
+        "200":
+          description: Updated approval
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Approval"
+
+  /charters/{id}/scm-negotiate:
+    post:
+      operationId: scmNegotiate
+      tags: [charters]
+      summary: SCM enters final negotiated value and approves
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScmNegotiateBody"
+      responses:
+        "200":
+          description: Updated charter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charter"
+
+  /charters/{id}/finance-order:
+    post:
+      operationId: enterFinanceOrder
+      tags: [charters]
+      summary: Finance team enters SAP internal order number
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinanceOrderBody"
+      responses:
+        "200":
+          description: Updated charter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Charter"
+
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List all projects
+      responses:
+        "200":
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a project from an approved charter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectBody"
+      responses:
+        "201":
+          description: Created project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /projects/{id}:
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get a project by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+    patch:
+      operationId: updateProject
+      tags: [projects]
+      summary: Update a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectBody"
+      responses:
+        "200":
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+
+  /projects/{id}/milestones:
+    get:
+      operationId: listMilestones
+      tags: [milestones]
+      summary: List milestones for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of milestones
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Milestone"
+    post:
+      operationId: createMilestone
+      tags: [milestones]
+      summary: Create a milestone for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMilestoneBody"
+      responses:
+        "201":
+          description: Created milestone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Milestone"
+
+  /milestones/{id}:
+    patch:
+      operationId: updateMilestone
+      tags: [milestones]
+      summary: Update a milestone
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMilestoneBody"
+      responses:
+        "200":
+          description: Updated milestone
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Milestone"
+    delete:
+      operationId: deleteMilestone
+      tags: [milestones]
+      summary: Delete a milestone
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List tasks for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Task"
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a task for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTaskBody"
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+
+  /tasks/{id}:
+    get:
+      operationId: getTask
+      tags: [tasks]
+      summary: Get a task by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+    patch:
+      operationId: updateTask
+      tags: [tasks]
+      summary: Update a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTaskBody"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Task"
+    delete:
+      operationId: deleteTask
+      tags: [tasks]
+      summary: Delete a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/critical-path:
+    get:
+      operationId: getCriticalPath
+      tags: [projects]
+      summary: Get the critical path for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Critical path analysis
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CriticalPath"
+
+  /projects/{id}/burndown:
+    get:
+      operationId: getBurndown
+      tags: [projects]
+      summary: Get burndown chart data for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Burndown data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Burndown"
+
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard summary statistics
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/pending-approvals:
+    get:
+      operationId: getPendingApprovals
+      tags: [dashboard]
+      summary: Get all pending approvals across all charters
+      parameters:
+        - name: approverId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Pending approvals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Approval"
+
+  /dashboard/activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent activity feed
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +807,721 @@ components:
       required:
         - status
 
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          description: "Role: initiator, hod, executive_director, cfo, scm, chairman, finance, pmo, pm, team_member"
+        department:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - email
+        - role
+        - department
+        - createdAt
+
+    CreateUserBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        department:
+          type: string
+      required:
+        - name
+        - email
+        - role
+        - department
+
+    Charter:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        scope:
+          type: string
+        deliverables:
+          type: string
+        solutionComparison:
+          type: string
+        tentativeBudget:
+          type: number
+        finalNegotiatedBudget:
+          type: ["number", "null"]
+        internalOrderNumber:
+          type: ["string", "null"]
+        startDate:
+          type: ["string", "null"]
+        endDate:
+          type: ["string", "null"]
+        durationDays:
+          type: ["integer", "null"]
+        status:
+          type: string
+          description: "Status: draft, submitted, hod_review, parallel_review, scm_review, chairman_review, finance_review, pmo_review, approved, rejected, active"
+        submittedById:
+          type: integer
+        projectSponsorId:
+          type: ["integer", "null"]
+        projectOwnerId:
+          type: ["integer", "null"]
+        projectManagerId:
+          type: ["integer", "null"]
+        projectId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - title
+        - description
+        - scope
+        - deliverables
+        - tentativeBudget
+        - status
+        - submittedById
+        - createdAt
+        - updatedAt
+
+    CreateCharterBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        scope:
+          type: string
+        deliverables:
+          type: string
+        solutionComparison:
+          type: string
+        tentativeBudget:
+          type: number
+        startDate:
+          type: string
+        endDate:
+          type: string
+        durationDays:
+          type: integer
+        submittedById:
+          type: integer
+        projectSponsorId:
+          type: integer
+        projectOwnerId:
+          type: integer
+      required:
+        - title
+        - description
+        - scope
+        - deliverables
+        - tentativeBudget
+        - submittedById
+
+    UpdateCharterBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        scope:
+          type: string
+        deliverables:
+          type: string
+        solutionComparison:
+          type: string
+        tentativeBudget:
+          type: number
+        startDate:
+          type: string
+        endDate:
+          type: string
+        durationDays:
+          type: integer
+        projectSponsorId:
+          type: integer
+        projectOwnerId:
+          type: integer
+
+    Vendor:
+      type: object
+      properties:
+        id:
+          type: integer
+        charterId:
+          type: integer
+        vendorName:
+          type: string
+        proposedPrice:
+          type: number
+        description:
+          type: string
+        isSelected:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - charterId
+        - vendorName
+        - proposedPrice
+        - isSelected
+        - createdAt
+
+    CreateVendorBody:
+      type: object
+      properties:
+        vendorName:
+          type: string
+        proposedPrice:
+          type: number
+        description:
+          type: string
+        isSelected:
+          type: boolean
+      required:
+        - vendorName
+        - proposedPrice
+
+    Risk:
+      type: object
+      properties:
+        id:
+          type: integer
+        charterId:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        impact:
+          type: string
+          description: "Impact: low, medium, high"
+        likelihood:
+          type: string
+          description: "Likelihood: low, medium, high"
+        mitigation:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - charterId
+        - title
+        - description
+        - impact
+        - likelihood
+        - createdAt
+
+    CreateRiskBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        impact:
+          type: string
+        likelihood:
+          type: string
+        mitigation:
+          type: string
+      required:
+        - title
+        - description
+        - impact
+        - likelihood
+
+    SquadMember:
+      type: object
+      properties:
+        id:
+          type: integer
+        charterId:
+          type: integer
+        userId:
+          type: integer
+        role:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - charterId
+        - userId
+        - role
+        - createdAt
+
+    CreateSquadMemberBody:
+      type: object
+      properties:
+        userId:
+          type: integer
+        role:
+          type: string
+      required:
+        - userId
+        - role
+
+    Approval:
+      type: object
+      properties:
+        id:
+          type: integer
+        charterId:
+          type: integer
+        approverId:
+          type: integer
+        approverRole:
+          type: string
+          description: "Role: hod, executive_director, cfo, scm, chairman, finance, pmo"
+        stage:
+          type: string
+          description: "Stage: parallel_review, scm_review, chairman_review, finance_review, pmo_review"
+        status:
+          type: string
+          description: "Status: pending, approved, rejected"
+        comments:
+          type: ["string", "null"]
+        decidedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        charterTitle:
+          type: ["string", "null"]
+        approverName:
+          type: ["string", "null"]
+      required:
+        - id
+        - charterId
+        - approverId
+        - approverRole
+        - stage
+        - status
+        - createdAt
+
+    ApprovalDecisionBody:
+      type: object
+      properties:
+        decision:
+          type: string
+          description: "Decision: approved or rejected"
+        comments:
+          type: string
+      required:
+        - decision
+
+    ScmNegotiateBody:
+      type: object
+      properties:
+        finalNegotiatedBudget:
+          type: number
+        comments:
+          type: string
+        approverId:
+          type: integer
+      required:
+        - finalNegotiatedBudget
+        - approverId
+
+    FinanceOrderBody:
+      type: object
+      properties:
+        internalOrderNumber:
+          type: string
+        comments:
+          type: string
+        approverId:
+          type: integer
+      required:
+        - internalOrderNumber
+        - approverId
+
+    Project:
+      type: object
+      properties:
+        id:
+          type: integer
+        charterId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          description: "Status: planning, active, on_hold, completed, cancelled"
+        projectManagerId:
+          type: ["integer", "null"]
+        startDate:
+          type: ["string", "null"]
+        endDate:
+          type: ["string", "null"]
+        progress:
+          type: integer
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - charterId
+        - name
+        - status
+        - progress
+        - createdAt
+        - updatedAt
+
+    CreateProjectBody:
+      type: object
+      properties:
+        charterId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        projectManagerId:
+          type: integer
+        startDate:
+          type: string
+        endDate:
+          type: string
+      required:
+        - charterId
+        - name
+
+    UpdateProjectBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        projectManagerId:
+          type: integer
+        startDate:
+          type: string
+        endDate:
+          type: string
+        progress:
+          type: integer
+
+    Milestone:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        dueDate:
+          type: ["string", "null"]
+        status:
+          type: string
+          description: "Status: pending, in_progress, completed, overdue"
+        order:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - projectId
+        - name
+        - status
+        - order
+        - createdAt
+
+    CreateMilestoneBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        dueDate:
+          type: string
+        order:
+          type: integer
+      required:
+        - name
+
+    UpdateMilestoneBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        dueDate:
+          type: string
+        status:
+          type: string
+        order:
+          type: integer
+
+    Task:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        milestoneId:
+          type: ["integer", "null"]
+        name:
+          type: string
+        description:
+          type: string
+        assigneeId:
+          type: ["integer", "null"]
+        assigneeName:
+          type: ["string", "null"]
+        status:
+          type: string
+          description: "Status: not_started, in_progress, completed, blocked"
+        priority:
+          type: string
+          description: "Priority: low, medium, high, critical"
+        startDate:
+          type: ["string", "null"]
+        endDate:
+          type: ["string", "null"]
+        estimatedHours:
+          type: ["number", "null"]
+        actualHours:
+          type: ["number", "null"]
+        predecessorIds:
+          type: array
+          items:
+            type: integer
+        successorIds:
+          type: array
+          items:
+            type: integer
+        isCritical:
+          type: boolean
+        order:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - projectId
+        - name
+        - status
+        - priority
+        - isCritical
+        - order
+        - predecessorIds
+        - successorIds
+        - createdAt
+
+    CreateTaskBody:
+      type: object
+      properties:
+        milestoneId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        assigneeId:
+          type: integer
+        priority:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        estimatedHours:
+          type: number
+        predecessorIds:
+          type: array
+          items:
+            type: integer
+        order:
+          type: integer
+      required:
+        - name
+        - priority
+
+    UpdateTaskBody:
+      type: object
+      properties:
+        milestoneId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        assigneeId:
+          type: integer
+        status:
+          type: string
+        priority:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        estimatedHours:
+          type: number
+        actualHours:
+          type: number
+        predecessorIds:
+          type: array
+          items:
+            type: integer
+        order:
+          type: integer
+
+    CriticalPath:
+      type: object
+      properties:
+        projectId:
+          type: integer
+        criticalTasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Task"
+        totalDurationDays:
+          type: number
+        criticalPathLength:
+          type: integer
+      required:
+        - projectId
+        - criticalTasks
+        - totalDurationDays
+        - criticalPathLength
+
+    Burndown:
+      type: object
+      properties:
+        projectId:
+          type: integer
+        totalTasks:
+          type: integer
+        completedTasks:
+          type: integer
+        dataPoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/BurndownDataPoint"
+      required:
+        - projectId
+        - totalTasks
+        - completedTasks
+        - dataPoints
+
+    BurndownDataPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        remaining:
+          type: integer
+        ideal:
+          type: number
+        completed:
+          type: integer
+      required:
+        - date
+        - remaining
+        - ideal
+        - completed
+
+    DashboardSummary:
+      type: object
+      properties:
+        totalCharters:
+          type: integer
+        pendingApprovals:
+          type: integer
+        activeProjects:
+          type: integer
+        completedProjects:
+          type: integer
+        chartersByStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusCount"
+        projectsByStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusCount"
+        totalBudgetApproved:
+          type: number
+      required:
+        - totalCharters
+        - pendingApprovals
+        - activeProjects
+        - completedProjects
+        - chartersByStatus
+        - projectsByStatus
+        - totalBudgetApproved
+
+    StatusCount:
+      type: object
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+      required:
+        - status
+        - count
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        message:
+          type: string
+        entityId:
+          type: integer
+        entityType:
+          type: string
+        userId:
+          type: ["integer", "null"]
+        userName:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - type
+        - message
+        - entityId
+        - entityType
+        - createdAt

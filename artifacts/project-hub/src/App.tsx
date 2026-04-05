@@ -1,0 +1,49 @@
+import { Switch, Route, Router as WouterRouter } from "wouter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Layout } from "./components/Layout";
+import Dashboard from "./pages/dashboard";
+import ChartersList from "./pages/charters";
+import NewCharter from "./pages/charter-new";
+import CharterDetail from "./pages/charter-detail";
+import ApprovalsList from "./pages/approvals";
+import ProjectsList from "./pages/projects";
+import ProjectDetail from "./pages/project-detail";
+import NewTask from "./pages/task-new";
+import NotFound from "@/pages/not-found";
+
+const queryClient = new QueryClient();
+
+function Router() {
+  return (
+    <Layout>
+      <Switch>
+        <Route path="/" component={Dashboard} />
+        <Route path="/charters" component={ChartersList} />
+        <Route path="/charters/new" component={NewCharter} />
+        <Route path="/charters/:id" component={CharterDetail} />
+        <Route path="/approvals" component={ApprovalsList} />
+        <Route path="/projects" component={ProjectsList} />
+        <Route path="/projects/:id" component={ProjectDetail} />
+        <Route path="/projects/:id/tasks/new" component={NewTask} />
+        <Route component={NotFound} />
+      </Switch>
+    </Layout>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+          <Router />
+        </WouterRouter>
+        <Toaster />
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+}
+
+export default App;
