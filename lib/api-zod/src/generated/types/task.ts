@@ -5,6 +5,7 @@
  * Project Hub API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { TaskCrossProjectPredecessorsItem } from "./taskCrossProjectPredecessorsItem";
 
 export interface Task {
   id: number;
@@ -31,6 +32,7 @@ export interface Task {
   actualHours?: number | null;
   predecessorIds: number[];
   successorIds: number[];
+  crossProjectPredecessors: TaskCrossProjectPredecessorsItem[];
   isCritical: boolean;
   order: number;
   createdAt: string;

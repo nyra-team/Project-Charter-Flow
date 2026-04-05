@@ -19,4 +19,8 @@ export interface CreateCharterBody {
   submittedById: number;
   projectSponsorId?: number;
   projectOwnerId?: number;
+  toplineImprovement?: string;
+  bottomLineOptimization?: string;
+  complianceBenefits?: string;
+  productivityImprovement?: string;
 }

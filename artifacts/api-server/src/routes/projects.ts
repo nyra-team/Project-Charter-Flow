@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 import {
   CreateProjectBody,
   GetProjectParams,
@@ -36,7 +36,6 @@ router.post("/projects", async (req, res): Promise<void> => {
   const parsed = CreateProjectBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [project] = await db.insert(projectsTable).values(parsed.data).returning();
-  // Update charter projectId
   await db.update(chartersTable).set({ projectId: project.id, status: "active" }).where(eq(chartersTable.id, parsed.data.charterId));
   await logActivity("project_created", `Project "${project.name}" created`, project.id, "project");
   res.status(201).json(project);
@@ -109,10 +108,12 @@ router.post("/projects/:id/tasks", async (req, res): Promise<void> => {
   const parsed = CreateTaskBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const predecessorIds = parsed.data.predecessorIds ?? [];
+  const crossProjectPreds = (parsed.data as Record<string, unknown>).crossProjectPredecessors ?? [];
   const [task] = await db.insert(tasksTable).values({
     projectId: params.data.id,
     ...parsed.data,
     predecessorIds: JSON.stringify(predecessorIds),
+    crossProjectPredecessors: JSON.stringify(crossProjectPreds),
     estimatedHours: parsed.data.estimatedHours != null ? String(parsed.data.estimatedHours) : null,
     order: parsed.data.order ?? 0,
   }).returning();
@@ -137,6 +138,9 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
   const updateData: Record<string, unknown> = { ...parsed.data };
   if (parsed.data.predecessorIds !== undefined) {
     updateData.predecessorIds = JSON.stringify(parsed.data.predecessorIds);
+  }
+  if ((parsed.data as Record<string, unknown>).crossProjectPredecessors !== undefined) {
+    updateData.crossProjectPredecessors = JSON.stringify((parsed.data as Record<string, unknown>).crossProjectPredecessors);
   }
   if (parsed.data.estimatedHours !== undefined) {
     updateData.estimatedHours = parsed.data.estimatedHours != null ? String(parsed.data.estimatedHours) : null;
@@ -163,8 +167,6 @@ router.get("/projects/:id/critical-path", async (req, res): Promise<void> => {
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const tasks = await db.select().from(tasksTable).where(eq(tasksTable.projectId, params.data.id)).orderBy(tasksTable.order);
 
-  // Simple critical path: tasks with no successors that have the longest chain
-  // Build dependency graph
   const taskMap = new Map(tasks.map(t => [t.id, t]));
   const predecessorMap = new Map<number, number[]>();
   for (const t of tasks) {
@@ -173,7 +175,6 @@ router.get("/projects/:id/critical-path", async (req, res): Promise<void> => {
     predecessorMap.set(t.id, preds);
   }
 
-  // Compute earliest start for each task (in days from task duration estimation)
   const earliestFinish = new Map<number, number>();
   function getEarliestFinish(taskId: number): number {
     if (earliestFinish.has(taskId)) return earliestFinish.get(taskId)!;
@@ -190,14 +191,11 @@ router.get("/projects/:id/critical-path", async (req, res): Promise<void> => {
   tasks.forEach(t => getEarliestFinish(t.id));
   const maxFinish = Math.max(...[...earliestFinish.values()], 0);
 
-  // Critical tasks: tasks on the longest path
   const criticalTasks = tasks.filter(t => {
     const ef = earliestFinish.get(t.id) ?? 0;
-    const duration = t.estimatedHours ? Number(t.estimatedHours) / 8 : 1;
-    return Math.abs(ef - maxFinish) < 0.001 || ef === maxFinish;
+    return Math.abs(ef - maxFinish) < 0.001;
   });
 
-  // Mark them
   for (const ct of criticalTasks) {
     await db.update(tasksTable).set({ isCritical: true }).where(eq(tasksTable.id, ct.id));
   }
@@ -222,7 +220,6 @@ router.get("/projects/:id/burndown", async (req, res): Promise<void> => {
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter(t => t.status === "completed").length;
 
-  // Generate burndown data points
   const startDate = project.startDate ? new Date(project.startDate) : new Date(project.createdAt);
   const endDate = project.endDate ? new Date(project.endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
   const totalDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
@@ -250,28 +247,40 @@ router.get("/projects/:id/burndown", async (req, res): Promise<void> => {
 async function enrichTasks(tasks: Array<Record<string, unknown>>) {
   if (!tasks.length) return [];
   const assigneeIds = [...new Set(tasks.filter(t => t.assigneeId).map(t => t.assigneeId as number))];
-  const { inArray } = await import("drizzle-orm");
   const users = assigneeIds.length
     ? await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable)
         .where(inArray(usersTable.id, assigneeIds))
     : [];
   const userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
 
+  // Gather cross-project predecessor task info
+  const allProjects = await db.select({ id: projectsTable.id, name: projectsTable.name }).from(projectsTable);
+  const projectNameMap = Object.fromEntries(allProjects.map(p => [p.id, p.name]));
+
   return tasks.map(t => {
     let predecessorIds: number[] = [];
     let successorIds: number[] = [];
+    let crossProjectPredecessors: Array<{projectId: number; taskId: number; projectName?: string; taskName?: string}> = [];
+
     try { predecessorIds = JSON.parse(t.predecessorIds as string || "[]"); } catch {}
-    // Build successors from all tasks' predecessors
+    try { crossProjectPredecessors = JSON.parse(t.crossProjectPredecessors as string || "[]"); } catch {}
+
     successorIds = tasks
       .filter(other => {
         try { return (JSON.parse(other.predecessorIds as string || "[]") as number[]).includes(t.id as number); } catch { return false; }
       })
       .map(other => other.id as number);
 
+    const enrichedCrossProjectPreds = crossProjectPredecessors.map(cpp => ({
+      ...cpp,
+      projectName: projectNameMap[cpp.projectId] ?? `Project ${cpp.projectId}`,
+    }));
+
     return {
       ...t,
       predecessorIds,
       successorIds,
+      crossProjectPredecessors: enrichedCrossProjectPreds,
       assigneeName: t.assigneeId ? userMap[t.assigneeId as number] ?? null : null,
       estimatedHours: t.estimatedHours != null ? Number(t.estimatedHours) : null,
       actualHours: t.actualHours != null ? Number(t.actualHours) : null,

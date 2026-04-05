@@ -1,135 +1,266 @@
 import { Link, useLocation } from "wouter";
 import { useUserStore } from "../lib/store";
 import {
+  BarChart3,
   Briefcase,
   CheckSquare,
   FileText,
   LayoutDashboard,
   LogOut,
   Settings,
-  Users,
+  ChevronDown,
+  Bell,
+  Search,
 } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
-import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
+import { useState } from "react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/charters", label: "Charters", icon: FileText },
   { href: "/approvals", label: "Approvals", icon: CheckSquare },
-  { href: "/projects", label: "Projects", icon: Briefcase },
+  { href: "/projects", label: "Projects", icon: BarChart3 },
 ];
 
 const ROLES = [
-  "initiator",
-  "hod",
-  "executive_director",
-  "cfo",
-  "scm",
-  "chairman",
-  "finance",
-  "pmo",
-  "pm",
-  "team_member",
+  { value: "initiator", label: "Initiator", initials: "IN" },
+  { value: "hod", label: "Head of Dept", initials: "HD" },
+  { value: "executive_director", label: "Exec. Director", initials: "ED" },
+  { value: "cfo", label: "CFO", initials: "CF" },
+  { value: "scm", label: "SCM", initials: "SC" },
+  { value: "chairman", label: "Chairman", initials: "CH" },
+  { value: "finance", label: "Finance", initials: "FI" },
+  { value: "pmo", label: "PMO", initials: "PM" },
+  { value: "pm", label: "Project Manager", initials: "PM" },
+  { value: "team_member", label: "Team Member", initials: "TM" },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { role, setRole } = useUserStore();
+  const [showRoleMenu, setShowRoleMenu] = useState(false);
+
+  const currentRole = ROLES.find(r => r.value === role) || ROLES[0];
+
+  const pageTitle = (() => {
+    const segment = location.split("/")[1];
+    if (!segment) return "Dashboard";
+    const item = navItems.find(n => n.href === "/" + segment);
+    return item?.label || segment.charAt(0).toUpperCase() + segment.slice(1);
+  })();
 
   return (
-    <div className="flex h-screen w-full bg-background overflow-hidden">
+    <div className="flex h-screen w-full overflow-hidden" style={{ background: "#F1F5F9" }}>
       {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 border-r border-border bg-sidebar flex flex-col text-sidebar-foreground">
-        <div className="p-4 border-b border-sidebar-border flex items-center gap-2">
-          <div className="bg-sidebar-primary text-sidebar-primary-foreground p-1.5 rounded-md">
-            <Briefcase size={20} />
+      <aside
+        className="w-64 flex-shrink-0 flex flex-col"
+        style={{
+          background: "linear-gradient(180deg, #0F172A 0%, #1E293B 100%)",
+          boxShadow: "4px 0 24px rgba(0,0,0,0.15)",
+        }}
+      >
+        {/* Logo */}
+        <div className="h-16 flex items-center gap-3 px-5 border-b" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+          <div
+            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}
+          >
+            <Briefcase size={16} className="text-white" />
           </div>
-          <span className="font-bold text-lg tracking-tight">Project Hub</span>
+          <div>
+            <div className="text-white font-bold text-sm tracking-tight">ProjectHub</div>
+            <div className="text-xs" style={{ color: "rgba(148,163,184,0.8)" }}>Enterprise PMO</div>
+          </div>
         </div>
 
-        <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
+        {/* Navigation */}
+        <nav className="flex-1 py-5 px-3 space-y-0.5 overflow-y-auto scrollbar-thin">
+          <div className="mb-3 px-2">
+            <span className="text-xs font-semibold tracking-widest uppercase" style={{ color: "rgba(148,163,184,0.5)" }}>
+              Navigation
+            </span>
+          </div>
           {navItems.map((item) => {
-            const isActive = location === item.href;
+            const isActive = item.href === "/" ? location === "/" : location.startsWith(item.href);
             const Icon = item.icon;
             return (
               <Link key={item.href} href={item.href}>
                 <div
-                  className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors cursor-pointer text-sm font-medium ${
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                      : "hover:bg-sidebar-accent/50 text-sidebar-foreground/70 hover:text-sidebar-foreground"
-                  }`}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all text-sm font-medium group"
+                  style={{
+                    background: isActive ? "rgba(99,102,241,0.25)" : "transparent",
+                    color: isActive ? "#A5B4FC" : "rgba(148,163,184,0.75)",
+                    borderLeft: isActive ? "3px solid #6366F1" : "3px solid transparent",
+                  }}
+                  onMouseEnter={e => {
+                    if (!isActive) {
+                      (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
+                      (e.currentTarget as HTMLElement).style.color = "#E2E8F0";
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (!isActive) {
+                      (e.currentTarget as HTMLElement).style.background = "transparent";
+                      (e.currentTarget as HTMLElement).style.color = "rgba(148,163,184,0.75)";
+                    }
+                  }}
                 >
-                  <Icon size={18} />
-                  {item.label}
+                  <Icon size={17} />
+                  <span>{item.label}</span>
+                  {isActive && (
+                    <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                  )}
                 </div>
               </Link>
             );
           })}
         </nav>
 
-        <div className="p-4 border-t border-sidebar-border flex flex-col gap-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
-              Simulate Role
-            </label>
-            <Select value={role} onValueChange={setRole}>
-              <SelectTrigger className="w-full bg-sidebar-accent border-sidebar-border text-sidebar-foreground h-8 text-xs">
-                <SelectValue placeholder="Select role" />
-              </SelectTrigger>
-              <SelectContent>
-                {ROLES.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {r.replace("_", " ").toUpperCase()}
-                  </SelectItem>
+        {/* Role Switcher + User */}
+        <div className="p-4 border-t space-y-3" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+          {/* Role Switcher */}
+          <div className="relative">
+            <div className="mb-1.5">
+              <span className="text-xs font-semibold tracking-widest uppercase" style={{ color: "rgba(148,163,184,0.5)" }}>
+                Simulate Role
+              </span>
+            </div>
+            <button
+              onClick={() => setShowRoleMenu(!showRoleMenu)}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all"
+              style={{
+                background: "rgba(255,255,255,0.06)",
+                color: "#E2E8F0",
+                border: "1px solid rgba(255,255,255,0.1)",
+              }}
+            >
+              <div
+                className="w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0"
+                style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)", color: "white" }}
+              >
+                {currentRole.initials}
+              </div>
+              <span className="flex-1 text-left text-xs font-medium">{currentRole.label}</span>
+              <ChevronDown size={13} className={`transition-transform ${showRoleMenu ? "rotate-180" : ""}`} />
+            </button>
+
+            {showRoleMenu && (
+              <div
+                className="absolute bottom-full left-0 right-0 mb-1 rounded-lg py-1 z-50"
+                style={{
+                  background: "#1E293B",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  boxShadow: "0 -8px 30px rgba(0,0,0,0.3)",
+                  maxHeight: "280px",
+                  overflowY: "auto",
+                }}
+              >
+                {ROLES.map(r => (
+                  <button
+                    key={r.value}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left transition-colors"
+                    style={{
+                      color: r.value === role ? "#A5B4FC" : "rgba(148,163,184,0.8)",
+                      background: r.value === role ? "rgba(99,102,241,0.15)" : "transparent",
+                    }}
+                    onClick={() => { setRole(r.value); setShowRoleMenu(false); }}
+                    onMouseEnter={e => {
+                      if (r.value !== role) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
+                    }}
+                    onMouseLeave={e => {
+                      if (r.value !== role) (e.currentTarget as HTMLElement).style.background = "transparent";
+                    }}
+                  >
+                    <div
+                      className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+                      style={{ background: r.value === role ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.1)", color: "white" }}
+                    >
+                      {r.initials}
+                    </div>
+                    {r.label}
+                    {r.value === role && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400" />}
+                  </button>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center gap-3">
-            <Avatar className="h-8 w-8 rounded border border-sidebar-border">
-              <AvatarImage src="" />
-              <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs rounded">
-                JD
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1 overflow-hidden">
-              <p className="text-sm font-medium truncate">John Doe</p>
-              <p className="text-xs text-sidebar-foreground/50 truncate capitalize">
-                {role.replace("_", " ")}
-              </p>
+          {/* User Info */}
+          <div className="flex items-center gap-3 px-1">
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+              style={{ background: "linear-gradient(135deg, #10B981, #059669)", color: "white" }}
+            >
+              JD
             </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-white truncate">John Doe</div>
+              <div className="text-xs capitalize truncate" style={{ color: "rgba(148,163,184,0.6)" }}>
+                {role.replace(/_/g, " ")}
+              </div>
+            </div>
+            <button
+              className="p-1.5 rounded-lg transition-colors"
+              style={{ color: "rgba(148,163,184,0.5)" }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#94A3B8"}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "rgba(148,163,184,0.5)"}
+            >
+              <LogOut size={14} />
+            </button>
           </div>
         </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <header className="h-14 flex-shrink-0 border-b border-border bg-card flex items-center justify-between px-6 shadow-sm z-10">
+        {/* Header */}
+        <header
+          className="h-16 flex-shrink-0 flex items-center justify-between px-6 z-10"
+          style={{
+            background: "white",
+            borderBottom: "1px solid #E2E8F0",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.05)",
+          }}
+        >
           <div className="flex items-center gap-4">
-            <h1 className="font-semibold text-foreground capitalize">
-              {location.split("/")[1] || "Dashboard"}
-            </h1>
+            <div>
+              <h1 className="font-bold text-gray-900 text-lg">{pageTitle}</h1>
+            </div>
           </div>
-          <div className="flex items-center gap-3 text-muted-foreground">
-            <button className="p-2 hover:bg-muted rounded-full transition-colors">
-              <Settings size={18} />
+
+          <div className="flex items-center gap-2">
+            <button
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
+              style={{
+                background: "#F8FAFC",
+                border: "1px solid #E2E8F0",
+                color: "#64748B",
+              }}
+            >
+              <Search size={14} />
+              <span className="hidden sm:inline">Search...</span>
+              <kbd className="hidden sm:inline text-xs px-1.5 py-0.5 rounded" style={{ background: "#E2E8F0", fontFamily: "monospace" }}>⌘K</kbd>
             </button>
-            <button className="p-2 hover:bg-muted rounded-full transition-colors">
-              <LogOut size={18} />
+            <button
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors relative"
+              style={{ color: "#64748B" }}
+            >
+              <Bell size={17} />
+              <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-indigo-500" />
+            </button>
+            <button
+              className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors"
+              style={{ color: "#64748B" }}
+            >
+              <Settings size={17} />
             </button>
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto p-6 bg-background">
-          <div className="max-w-7xl mx-auto">{children}</div>
+        {/* Page Content */}
+        <div className="flex-1 overflow-y-auto scrollbar-thin" style={{ background: "#F1F5F9" }}>
+          <div className="max-w-7xl mx-auto p-6">
+            {children}
+          </div>
         </div>
       </main>
     </div>

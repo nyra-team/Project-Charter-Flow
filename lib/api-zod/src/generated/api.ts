@@ -92,6 +92,10 @@ export const ListChartersResponseItem = zod.object({
   projectOwnerId: zod.number().nullish(),
   projectManagerId: zod.number().nullish(),
   projectId: zod.number().nullish(),
+  toplineImprovement: zod.string().nullish(),
+  bottomLineOptimization: zod.string().nullish(),
+  complianceBenefits: zod.string().nullish(),
+  productivityImprovement: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -113,6 +117,10 @@ export const CreateCharterBody = zod.object({
   submittedById: zod.number(),
   projectSponsorId: zod.number().optional(),
   projectOwnerId: zod.number().optional(),
+  toplineImprovement: zod.string().optional(),
+  bottomLineOptimization: zod.string().optional(),
+  complianceBenefits: zod.string().optional(),
+  productivityImprovement: zod.string().optional(),
 });
 
 /**
@@ -145,6 +153,10 @@ export const GetCharterResponse = zod.object({
   projectOwnerId: zod.number().nullish(),
   projectManagerId: zod.number().nullish(),
   projectId: zod.number().nullish(),
+  toplineImprovement: zod.string().nullish(),
+  bottomLineOptimization: zod.string().nullish(),
+  complianceBenefits: zod.string().nullish(),
+  productivityImprovement: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -168,6 +180,10 @@ export const UpdateCharterBody = zod.object({
   durationDays: zod.number().optional(),
   projectSponsorId: zod.number().optional(),
   projectOwnerId: zod.number().optional(),
+  toplineImprovement: zod.string().optional(),
+  bottomLineOptimization: zod.string().optional(),
+  complianceBenefits: zod.string().optional(),
+  productivityImprovement: zod.string().optional(),
 });
 
 export const UpdateCharterResponse = zod.object({
@@ -193,6 +209,10 @@ export const UpdateCharterResponse = zod.object({
   projectOwnerId: zod.number().nullish(),
   projectManagerId: zod.number().nullish(),
   projectId: zod.number().nullish(),
+  toplineImprovement: zod.string().nullish(),
+  bottomLineOptimization: zod.string().nullish(),
+  complianceBenefits: zod.string().nullish(),
+  productivityImprovement: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -227,6 +247,10 @@ export const SubmitCharterResponse = zod.object({
   projectOwnerId: zod.number().nullish(),
   projectManagerId: zod.number().nullish(),
   projectId: zod.number().nullish(),
+  toplineImprovement: zod.string().nullish(),
+  bottomLineOptimization: zod.string().nullish(),
+  complianceBenefits: zod.string().nullish(),
+  productivityImprovement: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -458,6 +482,10 @@ export const ScmNegotiateResponse = zod.object({
   projectOwnerId: zod.number().nullish(),
   projectManagerId: zod.number().nullish(),
   projectId: zod.number().nullish(),
+  toplineImprovement: zod.string().nullish(),
+  bottomLineOptimization: zod.string().nullish(),
+  complianceBenefits: zod.string().nullish(),
+  productivityImprovement: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -498,6 +526,10 @@ export const EnterFinanceOrderResponse = zod.object({
   projectOwnerId: zod.number().nullish(),
   projectManagerId: zod.number().nullish(),
   projectId: zod.number().nullish(),
+  toplineImprovement: zod.string().nullish(),
+  bottomLineOptimization: zod.string().nullish(),
+  complianceBenefits: zod.string().nullish(),
+  productivityImprovement: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -685,6 +717,14 @@ export const ListTasksResponseItem = zod.object({
   actualHours: zod.number().nullish(),
   predecessorIds: zod.array(zod.number()),
   successorIds: zod.array(zod.number()),
+  crossProjectPredecessors: zod.array(
+    zod.object({
+      projectId: zod.number().optional(),
+      taskId: zod.number().optional(),
+      projectName: zod.string().optional(),
+      taskName: zod.string().optional(),
+    }),
+  ),
   isCritical: zod.boolean(),
   order: zod.number(),
   createdAt: zod.string(),
@@ -708,6 +748,14 @@ export const CreateTaskBody = zod.object({
   endDate: zod.string().optional(),
   estimatedHours: zod.number().optional(),
   predecessorIds: zod.array(zod.number()).optional(),
+  crossProjectPredecessors: zod
+    .array(
+      zod.object({
+        projectId: zod.number().optional(),
+        taskId: zod.number().optional(),
+      }),
+    )
+    .optional(),
   order: zod.number().optional(),
 });
 
@@ -736,6 +784,14 @@ export const GetTaskResponse = zod.object({
   actualHours: zod.number().nullish(),
   predecessorIds: zod.array(zod.number()),
   successorIds: zod.array(zod.number()),
+  crossProjectPredecessors: zod.array(
+    zod.object({
+      projectId: zod.number().optional(),
+      taskId: zod.number().optional(),
+      projectName: zod.string().optional(),
+      taskName: zod.string().optional(),
+    }),
+  ),
   isCritical: zod.boolean(),
   order: zod.number(),
   createdAt: zod.string(),
@@ -760,6 +816,14 @@ export const UpdateTaskBody = zod.object({
   estimatedHours: zod.number().optional(),
   actualHours: zod.number().optional(),
   predecessorIds: zod.array(zod.number()).optional(),
+  crossProjectPredecessors: zod
+    .array(
+      zod.object({
+        projectId: zod.number().optional(),
+        taskId: zod.number().optional(),
+      }),
+    )
+    .optional(),
   order: zod.number().optional(),
 });
 
@@ -781,6 +845,14 @@ export const UpdateTaskResponse = zod.object({
   actualHours: zod.number().nullish(),
   predecessorIds: zod.array(zod.number()),
   successorIds: zod.array(zod.number()),
+  crossProjectPredecessors: zod.array(
+    zod.object({
+      projectId: zod.number().optional(),
+      taskId: zod.number().optional(),
+      projectName: zod.string().optional(),
+      taskName: zod.string().optional(),
+    }),
+  ),
   isCritical: zod.boolean(),
   order: zod.number(),
   createdAt: zod.string(),
@@ -821,6 +893,14 @@ export const GetCriticalPathResponse = zod.object({
       actualHours: zod.number().nullish(),
       predecessorIds: zod.array(zod.number()),
       successorIds: zod.array(zod.number()),
+      crossProjectPredecessors: zod.array(
+        zod.object({
+          projectId: zod.number().optional(),
+          taskId: zod.number().optional(),
+          projectName: zod.string().optional(),
+          taskName: zod.string().optional(),
+        }),
+      ),
       isCritical: zod.boolean(),
       order: zod.number(),
       createdAt: zod.string(),

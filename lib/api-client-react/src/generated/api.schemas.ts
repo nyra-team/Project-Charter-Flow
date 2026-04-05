@@ -55,6 +55,14 @@ export interface Charter {
   projectManagerId?: number | null;
   /** @nullable */
   projectId?: number | null;
+  /** @nullable */
+  toplineImprovement?: string | null;
+  /** @nullable */
+  bottomLineOptimization?: string | null;
+  /** @nullable */
+  complianceBenefits?: string | null;
+  /** @nullable */
+  productivityImprovement?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,6 +80,10 @@ export interface CreateCharterBody {
   submittedById: number;
   projectSponsorId?: number;
   projectOwnerId?: number;
+  toplineImprovement?: string;
+  bottomLineOptimization?: string;
+  complianceBenefits?: string;
+  productivityImprovement?: string;
 }
 
 export interface UpdateCharterBody {
@@ -86,6 +98,10 @@ export interface UpdateCharterBody {
   durationDays?: number;
   projectSponsorId?: number;
   projectOwnerId?: number;
+  toplineImprovement?: string;
+  bottomLineOptimization?: string;
+  complianceBenefits?: string;
+  productivityImprovement?: string;
 }
 
 export interface Vendor {
@@ -243,6 +259,13 @@ export interface UpdateMilestoneBody {
   order?: number;
 }
 
+export type TaskCrossProjectPredecessorsItem = {
+  projectId?: number;
+  taskId?: number;
+  projectName?: string;
+  taskName?: string;
+};
+
 export interface Task {
   id: number;
   projectId: number;
@@ -268,10 +291,16 @@ export interface Task {
   actualHours?: number | null;
   predecessorIds: number[];
   successorIds: number[];
+  crossProjectPredecessors: TaskCrossProjectPredecessorsItem[];
   isCritical: boolean;
   order: number;
   createdAt: string;
 }
+
+export type CreateTaskBodyCrossProjectPredecessorsItem = {
+  projectId?: number;
+  taskId?: number;
+};
 
 export interface CreateTaskBody {
   milestoneId?: number;
@@ -283,8 +312,14 @@ export interface CreateTaskBody {
   endDate?: string;
   estimatedHours?: number;
   predecessorIds?: number[];
+  crossProjectPredecessors?: CreateTaskBodyCrossProjectPredecessorsItem[];
   order?: number;
 }
+
+export type UpdateTaskBodyCrossProjectPredecessorsItem = {
+  projectId?: number;
+  taskId?: number;
+};
 
 export interface UpdateTaskBody {
   milestoneId?: number;
@@ -298,6 +333,7 @@ export interface UpdateTaskBody {
   estimatedHours?: number;
   actualHours?: number;
   predecessorIds?: number[];
+  crossProjectPredecessors?: UpdateTaskBodyCrossProjectPredecessorsItem[];
   order?: number;
 }
 

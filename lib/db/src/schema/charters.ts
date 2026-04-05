@@ -21,6 +21,11 @@ export const chartersTable = pgTable("charters", {
   projectOwnerId: integer("project_owner_id"),
   projectManagerId: integer("project_manager_id"),
   projectId: integer("project_id"),
+  // Business Benefits
+  toplineImprovement: text("topline_improvement").default(""),
+  bottomLineOptimization: text("bottom_line_optimization").default(""),
+  complianceBenefits: text("compliance_benefits").default(""),
+  productivityImprovement: text("productivity_improvement").default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

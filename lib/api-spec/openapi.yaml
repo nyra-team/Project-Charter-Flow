@@ -888,6 +888,14 @@ components:
           type: ["integer", "null"]
         projectId:
           type: ["integer", "null"]
+        toplineImprovement:
+          type: ["string", "null"]
+        bottomLineOptimization:
+          type: ["string", "null"]
+        complianceBenefits:
+          type: ["string", "null"]
+        productivityImprovement:
+          type: ["string", "null"]
         createdAt:
           type: string
         updatedAt:
@@ -931,6 +939,14 @@ components:
           type: integer
         projectOwnerId:
           type: integer
+        toplineImprovement:
+          type: string
+        bottomLineOptimization:
+          type: string
+        complianceBenefits:
+          type: string
+        productivityImprovement:
+          type: string
       required:
         - title
         - description
@@ -964,6 +980,14 @@ components:
           type: integer
         projectOwnerId:
           type: integer
+        toplineImprovement:
+          type: string
+        bottomLineOptimization:
+          type: string
+        complianceBenefits:
+          type: string
+        productivityImprovement:
+          type: string
 
     Vendor:
       type: object
@@ -1326,6 +1350,19 @@ components:
           type: array
           items:
             type: integer
+        crossProjectPredecessors:
+          type: array
+          items:
+            type: object
+            properties:
+              projectId:
+                type: integer
+              taskId:
+                type: integer
+              projectName:
+                type: string
+              taskName:
+                type: string
         isCritical:
           type: boolean
         order:
@@ -1342,6 +1379,7 @@ components:
         - order
         - predecessorIds
         - successorIds
+        - crossProjectPredecessors
         - createdAt
 
     CreateTaskBody:
@@ -1367,6 +1405,15 @@ components:
           type: array
           items:
             type: integer
+        crossProjectPredecessors:
+          type: array
+          items:
+            type: object
+            properties:
+              projectId:
+                type: integer
+              taskId:
+                type: integer
         order:
           type: integer
       required:
@@ -1400,6 +1447,15 @@ components:
           type: array
           items:
             type: integer
+        crossProjectPredecessors:
+          type: array
+          items:
+            type: object
+            properties:
+              projectId:
+                type: integer
+              taskId:
+                type: integer
         order:
           type: integer
 

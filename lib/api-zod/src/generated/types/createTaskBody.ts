@@ -5,6 +5,7 @@
  * Project Hub API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateTaskBodyCrossProjectPredecessorsItem } from "./createTaskBodyCrossProjectPredecessorsItem";
 
 export interface CreateTaskBody {
   milestoneId?: number;
@@ -16,5 +17,6 @@ export interface CreateTaskBody {
   endDate?: string;
   estimatedHours?: number;
   predecessorIds?: number[];
+  crossProjectPredecessors?: CreateTaskBodyCrossProjectPredecessorsItem[];
   order?: number;
 }

@@ -1,37 +1,43 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { CreateUserBody, GetUserParams, ListUsersResponse, GetUserResponse } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
+function serializeUser(user: typeof usersTable.$inferSelect) {
+  return {
+    ...user,
+    createdAt: user.createdAt instanceof Date ? user.createdAt.toISOString() : user.createdAt,
+  };
+}
+
 router.get("/users", async (_req, res): Promise<void> => {
   const users = await db.select().from(usersTable).orderBy(usersTable.name);
-  res.json(ListUsersResponse.parse(users));
+  res.json(users.map(serializeUser));
 });
 
 router.post("/users", async (req, res): Promise<void> => {
-  const parsed = CreateUserBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+  const { name, email, role } = req.body;
+  if (!name || !email || !role) {
+    res.status(400).json({ error: "name, email and role are required" });
     return;
   }
-  const [user] = await db.insert(usersTable).values(parsed.data).returning();
-  res.status(201).json(GetUserResponse.parse(user));
+  const [user] = await db.insert(usersTable).values({ name, email, role }).returning();
+  res.status(201).json(serializeUser(user));
 });
 
 router.get("/users/:id", async (req, res): Promise<void> => {
-  const params = GetUserParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid user id" });
     return;
   }
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, params.data.id));
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id));
   if (!user) {
     res.status(404).json({ error: "User not found" });
     return;
   }
-  res.json(GetUserResponse.parse(user));
+  res.json(serializeUser(user));
 });
 
 export default router;

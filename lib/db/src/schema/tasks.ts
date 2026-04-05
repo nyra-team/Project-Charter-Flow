@@ -16,6 +16,7 @@ export const tasksTable = pgTable("tasks", {
   estimatedHours: numeric("estimated_hours", { precision: 8, scale: 2 }),
   actualHours: numeric("actual_hours", { precision: 8, scale: 2 }),
   predecessorIds: text("predecessor_ids").notNull().default("[]"),
+  crossProjectPredecessors: text("cross_project_predecessors").notNull().default("[]"),
   isCritical: boolean("is_critical").notNull().default(false),
   order: integer("order").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

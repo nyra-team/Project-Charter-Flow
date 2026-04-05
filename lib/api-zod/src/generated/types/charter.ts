@@ -35,6 +35,14 @@ export interface Charter {
   projectManagerId?: number | null;
   /** @nullable */
   projectId?: number | null;
+  /** @nullable */
+  toplineImprovement?: string | null;
+  /** @nullable */
+  bottomLineOptimization?: string | null;
+  /** @nullable */
+  complianceBenefits?: string | null;
+  /** @nullable */
+  productivityImprovement?: string | null;
   createdAt: string;
   updatedAt: string;
 }

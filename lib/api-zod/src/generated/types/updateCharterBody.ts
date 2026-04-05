@@ -18,4 +18,8 @@ export interface UpdateCharterBody {
   durationDays?: number;
   projectSponsorId?: number;
   projectOwnerId?: number;
+  toplineImprovement?: string;
+  bottomLineOptimization?: string;
+  complianceBenefits?: string;
+  productivityImprovement?: string;
 }
