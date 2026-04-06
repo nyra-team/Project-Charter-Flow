@@ -1,60 +1,121 @@
 import { useListProjects } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { formatCurrency, formatDate } from "../lib/format";
+import { formatDate } from "../lib/format";
 import { StatusBadge } from "../components/status-badge";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Progress } from "@/components/ui/progress";
+import { BarChart2, Calendar, CheckCircle2, Clock, ArrowUpRight } from "lucide-react";
 
 export default function ProjectsList() {
   const { data: projects, isLoading } = useListProjects();
 
+  const active = projects?.filter(p => p.status === "active") ?? [];
+  const others = projects?.filter(p => p.status !== "active") ?? [];
+  const all = [...active, ...others];
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold tracking-tight">Active Projects</h2>
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Projects</h2>
+          <p className="text-sm text-gray-500 mt-0.5">All projects in execution and planning</p>
+        </div>
+        {projects && projects.length > 0 && (
+          <div className="flex gap-3 text-xs text-gray-500">
+            <span className="flex items-center gap-1"><Clock size={11} className="text-indigo-400" />{active.length} active</span>
+            <span className="flex items-center gap-1"><CheckCircle2 size={11} className="text-emerald-400" />{others.filter(p => p.status === "completed").length} completed</span>
+          </div>
+        )}
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-48 w-full" />
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-52 rounded-2xl" />)}
         </div>
-      ) : projects && projects.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((project) => (
-            <Link key={project.id} href={`/projects/${project.id}`}>
-              <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
-                <CardHeader className="pb-2">
-                  <div className="flex justify-between items-start mb-2">
+      ) : all.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {all.map(project => {
+            const progress = project.progress ?? 0;
+            const isActive = project.status === "active";
+            return (
+              <Link key={project.id} href={`/projects/${project.id}`}>
+                <div
+                  className="rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 h-full flex flex-col"
+                  style={{ background: "white", border: "1px solid #E2E8F0" }}
+                >
+                  {/* Top row */}
+                  <div className="flex items-start justify-between mb-3">
                     <StatusBadge status={project.status} />
-                    <span className="text-xs text-muted-foreground">{formatDate(project.startDate)}</span>
+                    <ArrowUpRight size={15} className="text-gray-300" />
                   </div>
-                  <CardTitle className="text-xl">{project.name}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground line-clamp-2 mb-4">
-                    {project.description || "No description available"}
-                  </p>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-xs">
-                      <span>Progress</span>
-                      <span className="font-medium">{project.progress}%</span>
+
+                  {/* Icon + Name */}
+                  <div className="flex items-start gap-3 mb-3">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{
+                        background: isActive
+                          ? "linear-gradient(135deg, #6366F1, #8B5CF6)"
+                          : "linear-gradient(135deg, #94A3B8, #64748B)",
+                      }}
+                    >
+                      <BarChart2 size={18} className="text-white" />
                     </div>
-                    <Progress value={project.progress} className="h-2" />
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-bold text-gray-900 leading-tight">{project.name}</h3>
+                      {project.description && (
+                        <p className="text-xs text-gray-400 mt-0.5 line-clamp-2 leading-relaxed">
+                          {project.description}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+
+                  {/* Progress */}
+                  <div className="mt-auto">
+                    <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+                      <span className="font-medium">Progress</span>
+                      <span className="font-bold text-gray-700">{progress}%</span>
+                    </div>
+                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${progress}%`,
+                          background: progress >= 80
+                            ? "linear-gradient(90deg, #10B981, #059669)"
+                            : progress >= 40
+                              ? "linear-gradient(90deg, #6366F1, #8B5CF6)"
+                              : "linear-gradient(90deg, #F59E0B, #D97706)",
+                        }}
+                      />
+                    </div>
+
+                    {/* Dates */}
+                    {(project.startDate || project.endDate) && (
+                      <div className="flex items-center gap-1 mt-3 text-xs text-gray-400">
+                        <Calendar size={11} />
+                        {formatDate(project.startDate)}
+                        {project.endDate && <> — {formatDate(project.endDate)}</>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       ) : (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-            <p>No active projects found.</p>
-          </CardContent>
-        </Card>
+        <div
+          className="rounded-2xl p-12 text-center"
+          style={{ background: "white", border: "1px solid #E2E8F0" }}
+        >
+          <BarChart2 size={32} className="text-gray-200 mx-auto mb-3" />
+          <p className="font-medium text-gray-500 mb-1">No projects yet</p>
+          <p className="text-sm text-gray-400">
+            Approve a charter and create a project to get started.
+          </p>
+        </div>
       )}
     </div>
   );
