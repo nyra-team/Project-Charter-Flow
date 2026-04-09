@@ -168,7 +168,7 @@ function GamificationPanel() {
 
   return (
     <div
-      className="rounded-2xl p-5"
+      className="rounded-2xl p-5 h-full"
       style={{ background: "white", border: "1px solid #E2E8F0" }}
     >
       <div className="flex items-center gap-2 mb-4">
@@ -353,13 +353,13 @@ export default function Dashboard() {
 
       {/* Bottom row: Gamification + Activity */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
-        <div className="xl:col-span-2">
+        <div className="xl:col-span-2 flex flex-col">
           <GamificationPanel />
         </div>
 
         {/* Recent Activity */}
         <div
-          className="xl:col-span-3 rounded-2xl p-5"
+          className="xl:col-span-3 rounded-2xl p-5 h-full"
           style={{ background: "white", border: "1px solid #E2E8F0" }}
         >
           <div className="mb-4">
