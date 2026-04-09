@@ -93,7 +93,7 @@ function ProjectHealthSection({ health }: { health: NonNullable<ReturnType<typeo
 
   return (
     <div
-      className="rounded-2xl p-5"
+      className="rounded-2xl p-5 h-full"
       style={{ background: "white", border: "1px solid #E2E8F0" }}
     >
       <div className="flex items-center justify-between mb-4">
@@ -301,7 +301,7 @@ export default function Dashboard() {
       {/* Main 2-column layout */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
         {/* Project Health — spans 3 cols */}
-        <div className="xl:col-span-3">
+        <div className="xl:col-span-3 flex flex-col">
           <ProjectHealthSection health={summary?.projectHealth as Parameters<typeof ProjectHealthSection>[0]["health"]} />
         </div>
 
@@ -345,7 +345,7 @@ export default function Dashboard() {
                 </div>
               </>
             ) : (
-              <div className="h-48 flex items-center justify-center text-gray-400 text-sm">No data</div>
+              <div className="flex flex-1 items-center justify-center text-gray-400 text-sm py-8">No data</div>
             )}
           </div>
         </div>
