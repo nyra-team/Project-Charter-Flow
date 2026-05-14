@@ -23,4 +23,6 @@ export interface CreateCharterBody {
   bottomLineOptimization?: string;
   complianceBenefits?: string;
   productivityImprovement?: string;
+  strategicAlignmentTags?: string[];
+  nfaThreshold?: number;
 }

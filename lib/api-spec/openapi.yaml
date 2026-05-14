@@ -24,6 +24,30 @@ tags:
     description: Milestone operations
   - name: dashboard
     description: Dashboard and analytics
+  - name: portfolios
+    description: Portfolio management
+  - name: programs
+    description: Program management
+  - name: workstreams
+    description: Workstream management
+  - name: project_stages
+    description: Project lifecycle stage tracking
+  - name: documents
+    description: Document repository
+  - name: issues
+    description: Issue tracking
+  - name: messages
+    description: In-app communications
+  - name: resources
+    description: Resource allocations and RACI
+  - name: budget
+    description: Budget line management
+  - name: escalation
+    description: Escalation rules
+  - name: scoring
+    description: Project scoring
+  - name: notifications
+    description: Notification management
 
 paths:
   /healthz:
@@ -460,6 +484,17 @@ paths:
       operationId: listProjects
       tags: [projects]
       summary: List all projects
+      parameters:
+        - name: programId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: portfolioId
+          in: query
+          required: false
+          schema:
+            type: integer
       responses:
         "200":
           description: List of projects
@@ -797,6 +832,1276 @@ paths:
                 items:
                   $ref: "#/components/schemas/ActivityItem"
 
+  /portfolios:
+    get:
+      operationId: listPortfolios
+      tags: [portfolios]
+      summary: List all portfolios
+      responses:
+        "200":
+          description: List of portfolios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Portfolio"
+    post:
+      operationId: createPortfolio
+      tags: [portfolios]
+      summary: Create a portfolio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePortfolioBody"
+      responses:
+        "201":
+          description: Created portfolio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Portfolio"
+
+  /portfolios/{id}:
+    get:
+      operationId: getPortfolio
+      tags: [portfolios]
+      summary: Get a portfolio by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Portfolio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Portfolio"
+        "404":
+          description: Not found
+    patch:
+      operationId: updatePortfolio
+      tags: [portfolios]
+      summary: Update a portfolio
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePortfolioBody"
+      responses:
+        "200":
+          description: Updated portfolio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Portfolio"
+    delete:
+      operationId: deletePortfolio
+      tags: [portfolios]
+      summary: Delete a portfolio
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /programs:
+    get:
+      operationId: listPrograms
+      tags: [programs]
+      summary: List all programs
+      parameters:
+        - name: portfolioId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of programs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Program"
+    post:
+      operationId: createProgram
+      tags: [programs]
+      summary: Create a program
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProgramBody"
+      responses:
+        "201":
+          description: Created program
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Program"
+
+  /programs/{id}:
+    get:
+      operationId: getProgram
+      tags: [programs]
+      summary: Get a program by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Program
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Program"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateProgram
+      tags: [programs]
+      summary: Update a program
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProgramBody"
+      responses:
+        "200":
+          description: Updated program
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Program"
+    delete:
+      operationId: deleteProgram
+      tags: [programs]
+      summary: Delete a program
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/workstreams:
+    get:
+      operationId: listWorkstreams
+      tags: [workstreams]
+      summary: List workstreams for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of workstreams
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Workstream"
+    post:
+      operationId: createWorkstream
+      tags: [workstreams]
+      summary: Create a workstream for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkstreamBody"
+      responses:
+        "201":
+          description: Created workstream
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workstream"
+
+  /workstreams/{id}:
+    patch:
+      operationId: updateWorkstream
+      tags: [workstreams]
+      summary: Update a workstream
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkstreamBody"
+      responses:
+        "200":
+          description: Updated workstream
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Workstream"
+    delete:
+      operationId: deleteWorkstream
+      tags: [workstreams]
+      summary: Delete a workstream
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/stages:
+    get:
+      operationId: listProjectStages
+      tags: [project_stages]
+      summary: List lifecycle stages for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of project stages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectStage"
+    post:
+      operationId: createProjectStage
+      tags: [project_stages]
+      summary: Initialize a lifecycle stage for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectStageBody"
+      responses:
+        "201":
+          description: Created project stage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectStage"
+
+  /project-stages/{id}:
+    get:
+      operationId: getProjectStage
+      tags: [project_stages]
+      summary: Get a project stage by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Project stage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectStage"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateProjectStage
+      tags: [project_stages]
+      summary: Update a project stage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectStageBody"
+      responses:
+        "200":
+          description: Updated project stage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectStage"
+    delete:
+      operationId: deleteProjectStage
+      tags: [project_stages]
+      summary: Delete a project stage record
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/stages/{stage}/advance:
+    post:
+      operationId: advanceProjectStage
+      tags: [project_stages]
+      summary: Advance a project to the next lifecycle stage
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: stage
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Stage advanced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StageAdvanceResult"
+
+  /projects/{id}/documents:
+    get:
+      operationId: listDocuments
+      tags: [documents]
+      summary: List documents for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of documents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Document"
+    post:
+      operationId: createDocument
+      tags: [documents]
+      summary: Upload/create a document for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDocumentBody"
+      responses:
+        "201":
+          description: Created document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  /documents/{id}:
+    get:
+      operationId: getDocument
+      tags: [documents]
+      summary: Get a document by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateDocument
+      tags: [documents]
+      summary: Update a document
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDocumentBody"
+      responses:
+        "200":
+          description: Updated document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+    delete:
+      operationId: deleteDocument
+      tags: [documents]
+      summary: Delete a document
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /documents/{id}/versions:
+    get:
+      operationId: listDocumentVersions
+      tags: [documents]
+      summary: List versions of a document
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of document versions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DocumentVersion"
+    post:
+      operationId: addDocumentVersion
+      tags: [documents]
+      summary: Add a new version to a document
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDocumentVersionBody"
+      responses:
+        "201":
+          description: Created document version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentVersion"
+
+  /projects/{id}/issues:
+    get:
+      operationId: listIssues
+      tags: [issues]
+      summary: List issues for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of issues
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Issue"
+    post:
+      operationId: createIssue
+      tags: [issues]
+      summary: Create an issue for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateIssueBody"
+      responses:
+        "201":
+          description: Created issue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+
+  /issues/{id}:
+    get:
+      operationId: getIssue
+      tags: [issues]
+      summary: Get an issue by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Issue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateIssue
+      tags: [issues]
+      summary: Update an issue
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateIssueBody"
+      responses:
+        "200":
+          description: Updated issue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Issue"
+    delete:
+      operationId: deleteIssue
+      tags: [issues]
+      summary: Delete an issue
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/messages:
+    get:
+      operationId: listMessages
+      tags: [messages]
+      summary: List messages for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+    post:
+      operationId: createMessage
+      tags: [messages]
+      summary: Send a message in a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMessageBody"
+      responses:
+        "201":
+          description: Created message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+
+  /messages/{id}:
+    patch:
+      operationId: updateMessage
+      tags: [messages]
+      summary: Update a message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMessageBody"
+      responses:
+        "200":
+          description: Updated message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+    delete:
+      operationId: deleteMessage
+      tags: [messages]
+      summary: Delete a message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/resource-allocations:
+    get:
+      operationId: listResourceAllocations
+      tags: [resources]
+      summary: List resource allocations for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of resource allocations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ResourceAllocation"
+    post:
+      operationId: createResourceAllocation
+      tags: [resources]
+      summary: Create a resource allocation for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateResourceAllocationBody"
+      responses:
+        "201":
+          description: Created resource allocation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceAllocation"
+
+  /resource-allocations/{id}:
+    patch:
+      operationId: updateResourceAllocation
+      tags: [resources]
+      summary: Update a resource allocation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateResourceAllocationBody"
+      responses:
+        "200":
+          description: Updated resource allocation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResourceAllocation"
+    delete:
+      operationId: deleteResourceAllocation
+      tags: [resources]
+      summary: Delete a resource allocation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/raci:
+    get:
+      operationId: listRaci
+      tags: [resources]
+      summary: List RACI matrix for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of RACI entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RaciEntry"
+    post:
+      operationId: createRaciEntry
+      tags: [resources]
+      summary: Create a RACI matrix entry for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRaciEntryBody"
+      responses:
+        "201":
+          description: Created RACI entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RaciEntry"
+
+  /raci/{id}:
+    delete:
+      operationId: deleteRaciEntry
+      tags: [resources]
+      summary: Delete a RACI entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/budget-lines:
+    get:
+      operationId: listBudgetLines
+      tags: [budget]
+      summary: List budget lines for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of budget lines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BudgetLine"
+    post:
+      operationId: createBudgetLine
+      tags: [budget]
+      summary: Create a budget line for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBudgetLineBody"
+      responses:
+        "201":
+          description: Created budget line
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetLine"
+
+  /budget-lines/{id}:
+    patch:
+      operationId: updateBudgetLine
+      tags: [budget]
+      summary: Update a budget line
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBudgetLineBody"
+      responses:
+        "200":
+          description: Updated budget line
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BudgetLine"
+    delete:
+      operationId: deleteBudgetLine
+      tags: [budget]
+      summary: Delete a budget line
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /escalation-rules:
+    get:
+      operationId: listEscalationRules
+      tags: [escalation]
+      summary: List escalation rules
+      parameters:
+        - name: projectId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of escalation rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EscalationRule"
+    post:
+      operationId: createEscalationRule
+      tags: [escalation]
+      summary: Create an escalation rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEscalationRuleBody"
+      responses:
+        "201":
+          description: Created escalation rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EscalationRule"
+
+  /escalation-rules/{id}:
+    patch:
+      operationId: updateEscalationRule
+      tags: [escalation]
+      summary: Update an escalation rule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEscalationRuleBody"
+      responses:
+        "200":
+          description: Updated escalation rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EscalationRule"
+    delete:
+      operationId: deleteEscalationRule
+      tags: [escalation]
+      summary: Delete an escalation rule
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /scoring-criteria:
+    get:
+      operationId: listScoringCriteria
+      tags: [scoring]
+      summary: List scoring criteria
+      responses:
+        "200":
+          description: List of scoring criteria
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScoringCriteria"
+    post:
+      operationId: createScoringCriteria
+      tags: [scoring]
+      summary: Create a scoring criterion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateScoringCriteriaBody"
+      responses:
+        "201":
+          description: Created scoring criterion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScoringCriteria"
+
+  /scoring-criteria/{id}:
+    get:
+      operationId: getScoringCriteria
+      tags: [scoring]
+      summary: Get a scoring criterion by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Scoring criterion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScoringCriteria"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateScoringCriteria
+      tags: [scoring]
+      summary: Update a scoring criterion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateScoringCriteriaBody"
+      responses:
+        "200":
+          description: Updated scoring criterion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScoringCriteria"
+    delete:
+      operationId: deleteScoringCriteria
+      tags: [scoring]
+      summary: Delete a scoring criterion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/scores:
+    get:
+      operationId: listProjectScores
+      tags: [scoring]
+      summary: List scores for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of project scores
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectScore"
+    post:
+      operationId: createProjectScore
+      tags: [scoring]
+      summary: Add a score for a project criterion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectScoreBody"
+      responses:
+        "201":
+          description: Created project score
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectScore"
+
+  /project-scores/{id}:
+    patch:
+      operationId: updateProjectScore
+      tags: [scoring]
+      summary: Update a project score
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectScoreBody"
+      responses:
+        "200":
+          description: Updated project score
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectScore"
+    delete:
+      operationId: deleteProjectScore
+      tags: [scoring]
+      summary: Delete a project score
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List notifications
+      parameters:
+        - name: userId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Notification"
+    post:
+      operationId: createNotification
+      tags: [notifications]
+      summary: Create a notification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNotificationBody"
+      responses:
+        "201":
+          description: Created notification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+
+  /notifications/{id}/read:
+    patch:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark a notification as read
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+
+  /notifications/mark-all-read:
+    post:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      summary: Mark all notifications as read for a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkAllReadBody"
+      responses:
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                required:
+                  - success
+
 components:
   schemas:
     HealthStatus:
@@ -896,6 +2201,14 @@ components:
           type: ["string", "null"]
         productivityImprovement:
           type: ["string", "null"]
+        strategicAlignmentTags:
+          type: array
+          items:
+            type: string
+        scoringWeights:
+          type: object
+        nfaThreshold:
+          type: ["number", "null"]
         createdAt:
           type: string
         updatedAt:
@@ -909,6 +2222,8 @@ components:
         - tentativeBudget
         - status
         - submittedById
+        - strategicAlignmentTags
+        - scoringWeights
         - createdAt
         - updatedAt
 
@@ -947,6 +2262,12 @@ components:
           type: string
         productivityImprovement:
           type: string
+        strategicAlignmentTags:
+          type: array
+          items:
+            type: string
+        nfaThreshold:
+          type: number
       required:
         - title
         - description
@@ -988,6 +2309,12 @@ components:
           type: string
         productivityImprovement:
           type: string
+        strategicAlignmentTags:
+          type: array
+          items:
+            type: string
+        nfaThreshold:
+          type: number
 
     Vendor:
       type: object
@@ -1048,6 +2375,21 @@ components:
           description: "Likelihood: low, medium, high"
         mitigation:
           type: string
+        priority:
+          type: string
+          description: "Priority: low, medium, high, critical"
+        rag:
+          type: string
+          description: "RAG status: green, amber, red"
+        effortDays:
+          type: ["integer", "null"]
+        scheduleImpact:
+          type: ["string", "null"]
+        status:
+          type: string
+          description: "Status: open, mitigated, accepted, closed"
+        owner:
+          type: ["string", "null"]
         createdAt:
           type: string
       required:
@@ -1057,6 +2399,9 @@ components:
         - description
         - impact
         - likelihood
+        - priority
+        - rag
+        - status
         - createdAt
 
     CreateRiskBody:
@@ -1071,6 +2416,18 @@ components:
         likelihood:
           type: string
         mitigation:
+          type: string
+        priority:
+          type: string
+        rag:
+          type: string
+        effortDays:
+          type: integer
+        scheduleImpact:
+          type: string
+        status:
+          type: string
+        owner:
           type: string
       required:
         - title
@@ -1117,7 +2474,7 @@ components:
         charterId:
           type: integer
         approverId:
-          type: integer
+          type: ["integer", "null"]
         approverRole:
           type: string
           description: "Role: hod, executive_director, cfo, scm, chairman, finance, pmo"
@@ -1140,7 +2497,6 @@ components:
       required:
         - id
         - charterId
-        - approverId
         - approverRole
         - stage
         - status
@@ -1168,7 +2524,6 @@ components:
           type: integer
       required:
         - finalNegotiatedBudget
-        - approverId
 
     FinanceOrderBody:
       type: object
@@ -1181,7 +2536,6 @@ components:
           type: integer
       required:
         - internalOrderNumber
-        - approverId
 
     Project:
       type: object
@@ -1190,6 +2544,10 @@ components:
           type: integer
         charterId:
           type: integer
+        portfolioId:
+          type: ["integer", "null"]
+        programId:
+          type: ["integer", "null"]
         name:
           type: string
         description:
@@ -1197,6 +2555,31 @@ components:
         status:
           type: string
           description: "Status: planning, active, on_hold, completed, cancelled"
+        priority:
+          type: string
+          description: "Priority: P0, P1, P2, P3"
+        stage:
+          type: string
+          description: "Lifecycle stage: project_case, urs, rfp, vendor_evaluation, commercial, charter, nfa, pr_po, kickoff, development, implementation_plan, uat, go_live, closure_readiness, project_closure"
+        strategicTheme:
+          type: ["string", "null"]
+        ragStatus:
+          type: string
+          description: "RAG: green, amber, red"
+        ragOverrideJustification:
+          type: ["string", "null"]
+        capexBudget:
+          type: number
+        opexBudget:
+          type: number
+        budgetThresholdPct:
+          type: number
+        scoringTotal:
+          type: ["number", "null"]
+        siteRegion:
+          type: ["string", "null"]
+        function:
+          type: ["string", "null"]
         projectManagerId:
           type: ["integer", "null"]
         startDate:
@@ -1214,6 +2597,12 @@ components:
         - charterId
         - name
         - status
+        - priority
+        - stage
+        - ragStatus
+        - capexBudget
+        - opexBudget
+        - budgetThresholdPct
         - progress
         - createdAt
         - updatedAt
@@ -1223,12 +2612,32 @@ components:
       properties:
         charterId:
           type: integer
+        portfolioId:
+          type: integer
+        programId:
+          type: integer
         name:
           type: string
         description:
           type: string
         projectManagerId:
           type: integer
+        priority:
+          type: string
+        stage:
+          type: string
+        strategicTheme:
+          type: string
+        ragStatus:
+          type: string
+        capexBudget:
+          type: number
+        opexBudget:
+          type: number
+        siteRegion:
+          type: string
+        function:
+          type: string
         startDate:
           type: string
         endDate:
@@ -1240,11 +2649,37 @@ components:
     UpdateProjectBody:
       type: object
       properties:
+        portfolioId:
+          type: integer
+        programId:
+          type: integer
         name:
           type: string
         description:
           type: string
         status:
+          type: string
+        priority:
+          type: string
+        stage:
+          type: string
+        strategicTheme:
+          type: string
+        ragStatus:
+          type: string
+        ragOverrideJustification:
+          type: string
+        capexBudget:
+          type: number
+        opexBudget:
+          type: number
+        budgetThresholdPct:
+          type: number
+        scoringTotal:
+          type: number
+        siteRegion:
+          type: string
+        function:
           type: string
         projectManagerId:
           type: integer
@@ -1262,15 +2697,38 @@ components:
           type: integer
         projectId:
           type: integer
+        workstreamId:
+          type: ["integer", "null"]
         name:
           type: string
         description:
           type: string
         dueDate:
           type: ["string", "null"]
+        actualStart:
+          type: ["string", "null"]
+        actualEnd:
+          type: ["string", "null"]
         status:
           type: string
-          description: "Status: pending, in_progress, completed, overdue"
+          description: "Status: not_started, in_progress, completed, blocked, on_hold, cancelled"
+        priority:
+          type: string
+          description: "Priority: P0, P1, P2, P3"
+        rag:
+          type: string
+          description: "RAG: green, amber, red"
+        plannedEffortHours:
+          type: integer
+        scheduleVarianceDays:
+          type: integer
+        readinessChecklist:
+          type: array
+          items:
+            type: object
+        gateDecision:
+          type: ["string", "null"]
+          description: "Gate decision: go, no_go, conditional"
         order:
           type: integer
         createdAt:
@@ -1280,17 +2738,26 @@ components:
         - projectId
         - name
         - status
+        - priority
+        - rag
+        - plannedEffortHours
+        - scheduleVarianceDays
+        - readinessChecklist
         - order
         - createdAt
 
     CreateMilestoneBody:
       type: object
       properties:
+        workstreamId:
+          type: integer
         name:
           type: string
         description:
           type: string
         dueDate:
+          type: string
+        priority:
           type: string
         order:
           type: integer
@@ -1300,13 +2767,33 @@ components:
     UpdateMilestoneBody:
       type: object
       properties:
+        workstreamId:
+          type: integer
         name:
           type: string
         description:
           type: string
         dueDate:
           type: string
+        actualStart:
+          type: string
+        actualEnd:
+          type: string
         status:
+          type: string
+        priority:
+          type: string
+        rag:
+          type: string
+        plannedEffortHours:
+          type: integer
+        scheduleVarianceDays:
+          type: integer
+        readinessChecklist:
+          type: array
+          items:
+            type: object
+        gateDecision:
           type: string
         order:
           type: integer
@@ -1320,6 +2807,12 @@ components:
           type: integer
         milestoneId:
           type: ["integer", "null"]
+        workstreamId:
+          type: ["integer", "null"]
+        parentTaskId:
+          type: ["integer", "null"]
+        managerId:
+          type: ["integer", "null"]
         name:
           type: string
         description:
@@ -1328,20 +2821,35 @@ components:
           type: ["integer", "null"]
         assigneeName:
           type: ["string", "null"]
+        cftOwner:
+          type: ["integer", "null"]
+        cftDept:
+          type: ["string", "null"]
         status:
           type: string
-          description: "Status: not_started, in_progress, completed, blocked"
+          description: "Status: not_started, in_progress, completed, blocked, on_hold, cancelled"
         priority:
           type: string
-          description: "Priority: low, medium, high, critical"
+          description: "Priority: P0, P1, P2, P3"
+        rag:
+          type: string
+          description: "RAG: green, amber, red"
         startDate:
           type: ["string", "null"]
         endDate:
+          type: ["string", "null"]
+        actualStart:
+          type: ["string", "null"]
+        actualEnd:
           type: ["string", "null"]
         estimatedHours:
           type: ["number", "null"]
         actualHours:
           type: ["number", "null"]
+        plannedEffortHours:
+          type: ["number", "null"]
+        scheduleVarianceDays:
+          type: integer
         predecessorIds:
           type: array
           items:
@@ -1375,6 +2883,8 @@ components:
         - name
         - status
         - priority
+        - rag
+        - scheduleVarianceDays
         - isCritical
         - order
         - predecessorIds
@@ -1387,19 +2897,33 @@ components:
       properties:
         milestoneId:
           type: integer
+        workstreamId:
+          type: integer
+        parentTaskId:
+          type: integer
+        managerId:
+          type: integer
         name:
           type: string
         description:
           type: string
         assigneeId:
           type: integer
+        cftOwner:
+          type: integer
+        cftDept:
+          type: string
         priority:
+          type: string
+        rag:
           type: string
         startDate:
           type: string
         endDate:
           type: string
         estimatedHours:
+          type: number
+        plannedEffortHours:
           type: number
         predecessorIds:
           type: array
@@ -1425,24 +2949,44 @@ components:
       properties:
         milestoneId:
           type: integer
+        workstreamId:
+          type: integer
+        parentTaskId:
+          type: integer
+        managerId:
+          type: integer
         name:
           type: string
         description:
           type: string
         assigneeId:
           type: integer
+        cftOwner:
+          type: integer
+        cftDept:
+          type: string
         status:
           type: string
         priority:
+          type: string
+        rag:
           type: string
         startDate:
           type: string
         endDate:
           type: string
+        actualStart:
+          type: string
+        actualEnd:
+          type: string
         estimatedHours:
           type: number
         actualHours:
           type: number
+        plannedEffortHours:
+          type: number
+        scheduleVarianceDays:
+          type: integer
         predecessorIds:
           type: array
           items:
@@ -1514,6 +3058,49 @@ components:
         - ideal
         - completed
 
+    ProjectHealthSummary:
+      type: object
+      properties:
+        active:
+          type: integer
+        onTrack:
+          type: integer
+        offTrack:
+          type: integer
+        delayed:
+          type: integer
+        offTrackProjects:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+            required:
+              - id
+              - name
+        delayedProjects:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+            required:
+              - id
+              - name
+      required:
+        - active
+        - onTrack
+        - offTrack
+        - delayed
+        - offTrackProjects
+        - delayedProjects
+
     DashboardSummary:
       type: object
       properties:
@@ -1535,6 +3122,8 @@ components:
             $ref: "#/components/schemas/StatusCount"
         totalBudgetApproved:
           type: number
+        projectHealth:
+          $ref: "#/components/schemas/ProjectHealthSummary"
       required:
         - totalCharters
         - pendingApprovals
@@ -1581,3 +3170,907 @@ components:
         - entityId
         - entityType
         - createdAt
+
+    Portfolio:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        ownerId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - createdAt
+
+    CreatePortfolioBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        ownerId:
+          type: integer
+      required:
+        - name
+
+    UpdatePortfolioBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        ownerId:
+          type: integer
+
+    Program:
+      type: object
+      properties:
+        id:
+          type: integer
+        portfolioId:
+          type: ["integer", "null"]
+        name:
+          type: string
+        description:
+          type: string
+        ownerId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - createdAt
+
+    CreateProgramBody:
+      type: object
+      properties:
+        portfolioId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        ownerId:
+          type: integer
+      required:
+        - name
+
+    UpdateProgramBody:
+      type: object
+      properties:
+        portfolioId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        ownerId:
+          type: integer
+
+    Workstream:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        order:
+          type: integer
+        parentWorkstreamId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - projectId
+        - name
+        - order
+        - createdAt
+
+    CreateWorkstreamBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        order:
+          type: integer
+        parentWorkstreamId:
+          type: integer
+      required:
+        - name
+
+    UpdateWorkstreamBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        order:
+          type: integer
+        parentWorkstreamId:
+          type: integer
+
+    ProjectStage:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        stage:
+          type: string
+          description: "Lifecycle stage: project_case, urs, rfp, vendor_evaluation, commercial, charter, nfa, pr_po, kickoff, development, implementation_plan, uat, go_live, closure_readiness, project_closure"
+        status:
+          type: string
+          description: "Status: not_started, in_progress, complete, blocked"
+        enteredAt:
+          type: ["string", "null"]
+        completedAt:
+          type: ["string", "null"]
+        notes:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - projectId
+        - stage
+        - status
+        - createdAt
+
+    CreateProjectStageBody:
+      type: object
+      properties:
+        stage:
+          type: string
+        status:
+          type: string
+        notes:
+          type: string
+      required:
+        - stage
+
+    UpdateProjectStageBody:
+      type: object
+      properties:
+        status:
+          type: string
+        notes:
+          type: string
+        enteredAt:
+          type: string
+        completedAt:
+          type: string
+
+    StageAdvanceResult:
+      type: object
+      properties:
+        projectId:
+          type: integer
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectStage"
+        advancedTo:
+          type: ["string", "null"]
+      required:
+        - projectId
+        - stages
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        stage:
+          type: ["string", "null"]
+        name:
+          type: string
+        fileUrl:
+          type: ["string", "null"]
+        fileType:
+          type: ["string", "null"]
+        fileSize:
+          type: ["integer", "null"]
+        version:
+          type: integer
+        uploadedBy:
+          type: ["integer", "null"]
+        uploadedAt:
+          type: string
+        approvalStatus:
+          type: string
+        approvedBy:
+          type: ["integer", "null"]
+        approvedAt:
+          type: ["string", "null"]
+        accessLevel:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - projectId
+        - name
+        - version
+        - uploadedAt
+        - approvalStatus
+        - accessLevel
+        - tags
+        - createdAt
+
+    CreateDocumentBody:
+      type: object
+      properties:
+        name:
+          type: string
+        stage:
+          type: string
+        fileUrl:
+          type: string
+        fileType:
+          type: string
+        fileSize:
+          type: integer
+        uploadedBy:
+          type: integer
+        accessLevel:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+      required:
+        - name
+
+    UpdateDocumentBody:
+      type: object
+      properties:
+        name:
+          type: string
+        stage:
+          type: string
+        fileUrl:
+          type: string
+        fileType:
+          type: string
+        fileSize:
+          type: integer
+        approvalStatus:
+          type: string
+        approvedBy:
+          type: integer
+        accessLevel:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+
+    DocumentVersion:
+      type: object
+      properties:
+        id:
+          type: integer
+        documentId:
+          type: integer
+        version:
+          type: integer
+        fileUrl:
+          type: ["string", "null"]
+        uploadedBy:
+          type: ["integer", "null"]
+        uploadedAt:
+          type: string
+        notes:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - documentId
+        - version
+        - uploadedAt
+        - createdAt
+
+    CreateDocumentVersionBody:
+      type: object
+      properties:
+        fileUrl:
+          type: string
+        uploadedBy:
+          type: integer
+        notes:
+          type: string
+
+    Issue:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        taskId:
+          type: ["integer", "null"]
+        milestoneId:
+          type: ["integer", "null"]
+        title:
+          type: string
+        description:
+          type: string
+        dependencyType:
+          type: ["string", "null"]
+        blockingOwnerId:
+          type: ["integer", "null"]
+        blockingDept:
+          type: ["string", "null"]
+        originalDeadline:
+          type: ["string", "null"]
+        proposedRevisedDeadline:
+          type: ["string", "null"]
+        status:
+          type: string
+          description: "Status: open, pending, resolved"
+        raisedBy:
+          type: ["integer", "null"]
+        resolvedAt:
+          type: ["string", "null"]
+        resolutionNotes:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - projectId
+        - title
+        - status
+        - createdAt
+
+    CreateIssueBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        taskId:
+          type: integer
+        milestoneId:
+          type: integer
+        dependencyType:
+          type: string
+        blockingOwnerId:
+          type: integer
+        blockingDept:
+          type: string
+        originalDeadline:
+          type: string
+        proposedRevisedDeadline:
+          type: string
+        raisedBy:
+          type: integer
+      required:
+        - title
+
+    UpdateIssueBody:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        dependencyType:
+          type: string
+        blockingOwnerId:
+          type: integer
+        blockingDept:
+          type: string
+        originalDeadline:
+          type: string
+        proposedRevisedDeadline:
+          type: string
+        status:
+          type: string
+        resolutionNotes:
+          type: string
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        taskId:
+          type: ["integer", "null"]
+        milestoneId:
+          type: ["integer", "null"]
+        senderId:
+          type: integer
+        body:
+          type: string
+        attachments:
+          type: array
+          items:
+            type: object
+        taggedUserIds:
+          type: array
+          items:
+            type: integer
+        threadParentId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - projectId
+        - senderId
+        - body
+        - attachments
+        - taggedUserIds
+        - createdAt
+        - updatedAt
+
+    CreateMessageBody:
+      type: object
+      properties:
+        senderId:
+          type: integer
+        body:
+          type: string
+        taskId:
+          type: integer
+        milestoneId:
+          type: integer
+        attachments:
+          type: array
+          items:
+            type: object
+        taggedUserIds:
+          type: array
+          items:
+            type: integer
+        threadParentId:
+          type: integer
+      required:
+        - senderId
+        - body
+
+    UpdateMessageBody:
+      type: object
+      properties:
+        body:
+          type: string
+        attachments:
+          type: array
+          items:
+            type: object
+        taggedUserIds:
+          type: array
+          items:
+            type: integer
+
+    ResourceAllocation:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        workstreamId:
+          type: ["integer", "null"]
+        userId:
+          type: integer
+        role:
+          type: ["string", "null"]
+        skill:
+          type: ["string", "null"]
+        allocationPct:
+          type: number
+        startDate:
+          type: ["string", "null"]
+        endDate:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - projectId
+        - userId
+        - allocationPct
+        - createdAt
+
+    CreateResourceAllocationBody:
+      type: object
+      properties:
+        userId:
+          type: integer
+        workstreamId:
+          type: integer
+        role:
+          type: string
+        skill:
+          type: string
+        allocationPct:
+          type: number
+        startDate:
+          type: string
+        endDate:
+          type: string
+      required:
+        - userId
+
+    UpdateResourceAllocationBody:
+      type: object
+      properties:
+        workstreamId:
+          type: integer
+        role:
+          type: string
+        skill:
+          type: string
+        allocationPct:
+          type: number
+        startDate:
+          type: string
+        endDate:
+          type: string
+
+    RaciEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        taskId:
+          type: ["integer", "null"]
+        workstreamId:
+          type: ["integer", "null"]
+        userId:
+          type: integer
+        raciType:
+          type: string
+          description: "RACI type: R, A, C, I"
+        createdAt:
+          type: string
+      required:
+        - id
+        - projectId
+        - userId
+        - raciType
+        - createdAt
+
+    CreateRaciEntryBody:
+      type: object
+      properties:
+        userId:
+          type: integer
+        taskId:
+          type: integer
+        workstreamId:
+          type: integer
+        raciType:
+          type: string
+      required:
+        - userId
+        - raciType
+
+    BudgetLine:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        category:
+          type: string
+          description: "Category: CapEx, OpEx"
+        description:
+          type: string
+        baselineAmount:
+          type: number
+        forecastAmount:
+          type: number
+        actualAmount:
+          type: number
+        varianceAmount:
+          type: number
+        variancePct:
+          type: number
+        period:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - projectId
+        - category
+        - baselineAmount
+        - forecastAmount
+        - actualAmount
+        - varianceAmount
+        - variancePct
+        - createdAt
+
+    CreateBudgetLineBody:
+      type: object
+      properties:
+        category:
+          type: string
+        description:
+          type: string
+        baselineAmount:
+          type: number
+        forecastAmount:
+          type: number
+        actualAmount:
+          type: number
+        period:
+          type: string
+
+    UpdateBudgetLineBody:
+      type: object
+      properties:
+        category:
+          type: string
+        description:
+          type: string
+        baselineAmount:
+          type: number
+        forecastAmount:
+          type: number
+        actualAmount:
+          type: number
+        period:
+          type: string
+
+    EscalationRule:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: ["integer", "null"]
+        triggerType:
+          type: string
+          description: "Trigger: rag_red, delay_days, budget_variance_pct"
+        thresholdValue:
+          type: number
+        notifyUserIds:
+          type: array
+          items:
+            type: integer
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - triggerType
+        - thresholdValue
+        - notifyUserIds
+        - isActive
+        - createdAt
+
+    CreateEscalationRuleBody:
+      type: object
+      properties:
+        projectId:
+          type: integer
+        triggerType:
+          type: string
+        thresholdValue:
+          type: number
+        notifyUserIds:
+          type: array
+          items:
+            type: integer
+        isActive:
+          type: boolean
+      required:
+        - triggerType
+
+    UpdateEscalationRuleBody:
+      type: object
+      properties:
+        triggerType:
+          type: string
+        thresholdValue:
+          type: number
+        notifyUserIds:
+          type: array
+          items:
+            type: integer
+        isActive:
+          type: boolean
+
+    ScoringCriteria:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        weightPct:
+          type: number
+        description:
+          type: string
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - weightPct
+        - isActive
+        - createdAt
+
+    CreateScoringCriteriaBody:
+      type: object
+      properties:
+        name:
+          type: string
+        weightPct:
+          type: number
+        description:
+          type: string
+        isActive:
+          type: boolean
+      required:
+        - name
+
+    UpdateScoringCriteriaBody:
+      type: object
+      properties:
+        name:
+          type: string
+        weightPct:
+          type: number
+        description:
+          type: string
+        isActive:
+          type: boolean
+
+    ProjectScore:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        criterionId:
+          type: integer
+        criterionName:
+          type: ["string", "null"]
+        score:
+          type: integer
+        weightedScore:
+          type: number
+        notes:
+          type: string
+        createdAt:
+          type: string
+      required:
+        - id
+        - projectId
+        - criterionId
+        - score
+        - weightedScore
+        - createdAt
+
+    CreateProjectScoreBody:
+      type: object
+      properties:
+        criterionId:
+          type: integer
+        score:
+          type: integer
+        notes:
+          type: string
+      required:
+        - criterionId
+        - score
+
+    UpdateProjectScoreBody:
+      type: object
+      properties:
+        criterionId:
+          type: integer
+        score:
+          type: integer
+        notes:
+          type: string
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        type:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        link:
+          type: ["string", "null"]
+        isRead:
+          type: boolean
+        relatedEntityType:
+          type: ["string", "null"]
+        relatedEntityId:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - userId
+        - type
+        - title
+        - isRead
+        - createdAt
+
+    CreateNotificationBody:
+      type: object
+      properties:
+        userId:
+          type: integer
+        type:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        link:
+          type: string
+        relatedEntityType:
+          type: string
+        relatedEntityId:
+          type: integer
+      required:
+        - userId
+        - type
+        - title
+
+    MarkAllReadBody:
+      type: object
+      properties:
+        userId:
+          type: integer
+      required:
+        - userId

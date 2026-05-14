@@ -5,6 +5,7 @@
  * Project Hub API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CharterScoringWeights } from "./charterScoringWeights";
 
 export interface Charter {
   id: number;
@@ -43,6 +44,10 @@ export interface Charter {
   complianceBenefits?: string | null;
   /** @nullable */
   productivityImprovement?: string | null;
+  strategicAlignmentTags: string[];
+  scoringWeights: CharterScoringWeights;
+  /** @nullable */
+  nfaThreshold?: number | null;
   createdAt: string;
   updatedAt: string;
 }

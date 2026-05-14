@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, numeric, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -26,6 +26,10 @@ export const chartersTable = pgTable("charters", {
   bottomLineOptimization: text("bottom_line_optimization").default(""),
   complianceBenefits: text("compliance_benefits").default(""),
   productivityImprovement: text("productivity_improvement").default(""),
+  // Strategic alignment
+  strategicAlignmentTags: jsonb("strategic_alignment_tags").notNull().default([]),
+  scoringWeights: jsonb("scoring_weights").notNull().default({}),
+  nfaThreshold: numeric("nfa_threshold", { precision: 15, scale: 2 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

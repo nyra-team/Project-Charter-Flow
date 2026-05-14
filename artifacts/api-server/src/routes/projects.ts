@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable } from "@workspace/db";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, and } from "drizzle-orm";
 import {
   CreateProjectBody,
   GetProjectParams,
@@ -27,18 +27,43 @@ import { logActivity } from "./activity";
 const router: IRouter = Router();
 
 // Projects
-router.get("/projects", async (_req, res): Promise<void> => {
-  const projects = await db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt));
-  res.json(projects);
+router.get("/projects", async (req, res): Promise<void> => {
+  const programId = req.query.programId ? parseInt(req.query.programId as string) : undefined;
+  const portfolioId = req.query.portfolioId ? parseInt(req.query.portfolioId as string) : undefined;
+  const conditions = [];
+  if (programId != null && !isNaN(programId)) conditions.push(eq(projectsTable.programId, programId));
+  if (portfolioId != null && !isNaN(portfolioId)) conditions.push(eq(projectsTable.portfolioId, portfolioId));
+  const projects = conditions.length
+    ? await db.select().from(projectsTable).where(and(...conditions)).orderBy(desc(projectsTable.createdAt))
+    : await db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt));
+  res.json(projects.map(p => formatProject(p as unknown as Record<string, unknown>)));
 });
 
 router.post("/projects", async (req, res): Promise<void> => {
   const parsed = CreateProjectBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const [project] = await db.insert(projectsTable).values(parsed.data).returning();
+  const d = parsed.data as Record<string, unknown>;
+  const [project] = await db.insert(projectsTable).values({
+    charterId: parsed.data.charterId,
+    name: parsed.data.name,
+    description: parsed.data.description,
+    projectManagerId: parsed.data.projectManagerId,
+    startDate: parsed.data.startDate,
+    endDate: parsed.data.endDate,
+    portfolioId: d.portfolioId as number | undefined,
+    programId: d.programId as number | undefined,
+    priority: d.priority as string | undefined,
+    stage: d.stage as string | undefined,
+    strategicTheme: d.strategicTheme as string | undefined,
+    ragStatus: d.ragStatus as string | undefined,
+    capexBudget: parsed.data.capexBudget != null ? String(parsed.data.capexBudget) : undefined,
+    opexBudget: parsed.data.opexBudget != null ? String(parsed.data.opexBudget) : undefined,
+    siteRegion: d.siteRegion as string | undefined,
+    function: d.function as string | undefined,
+  }).returning();
   await db.update(chartersTable).set({ projectId: project.id, status: "active" }).where(eq(chartersTable.id, parsed.data.charterId));
   await logActivity("project_created", `Project "${project.name}" created`, project.id, "project");
-  res.status(201).json(project);
+  res.status(201).json(formatProject(project as unknown as Record<string, unknown>));
 });
 
 router.get("/projects/:id", async (req, res): Promise<void> => {
@@ -46,7 +71,7 @@ router.get("/projects/:id", async (req, res): Promise<void> => {
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, params.data.id));
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
-  res.json(project);
+  res.json(formatProject(project as unknown as Record<string, unknown>));
 });
 
 router.patch("/projects/:id", async (req, res): Promise<void> => {
@@ -54,9 +79,14 @@ router.patch("/projects/:id", async (req, res): Promise<void> => {
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateProjectBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const [project] = await db.update(projectsTable).set(parsed.data).where(eq(projectsTable.id, params.data.id)).returning();
+  const updateData: Record<string, unknown> = { ...parsed.data };
+  if (parsed.data.capexBudget !== undefined) updateData.capexBudget = String(parsed.data.capexBudget);
+  if (parsed.data.opexBudget !== undefined) updateData.opexBudget = String(parsed.data.opexBudget);
+  if (parsed.data.budgetThresholdPct !== undefined) updateData.budgetThresholdPct = String(parsed.data.budgetThresholdPct);
+  if (parsed.data.scoringTotal !== undefined) updateData.scoringTotal = String(parsed.data.scoringTotal);
+  const [project] = await db.update(projectsTable).set(updateData).where(eq(projectsTable.id, params.data.id)).returning();
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
-  res.json(project);
+  res.json(formatProject(project as unknown as Record<string, unknown>));
 });
 
 // Milestones
@@ -72,7 +102,13 @@ router.post("/projects/:id/milestones", async (req, res): Promise<void> => {
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = CreateMilestoneBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const [milestone] = await db.insert(milestonesTable).values({ projectId: params.data.id, ...parsed.data, order: parsed.data.order ?? 0 }).returning();
+  const md = parsed.data as Record<string, unknown>;
+  const [milestone] = await db.insert(milestonesTable).values({
+    projectId: params.data.id,
+    ...parsed.data,
+    order: parsed.data.order ?? 0,
+    scheduleVarianceDays: computeScheduleVarianceDays(parsed.data.dueDate, md.actualEnd as string | undefined),
+  }).returning();
   res.status(201).json(milestone);
 });
 
@@ -81,7 +117,13 @@ router.patch("/milestones/:id", async (req, res): Promise<void> => {
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateMilestoneBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
-  const [milestone] = await db.update(milestonesTable).set(parsed.data).where(eq(milestonesTable.id, params.data.id)).returning();
+  const updateData = { ...parsed.data } as Record<string, unknown>;
+  const [existingM] = await db.select().from(milestonesTable).where(eq(milestonesTable.id, params.data.id));
+  if (!existingM) { res.status(404).json({ error: "Milestone not found" }); return; }
+  const newDueDate = (updateData.dueDate as string | undefined) ?? existingM.dueDate;
+  const newActualEndM = (updateData.actualEnd as string | undefined) ?? existingM.actualEnd;
+  updateData.scheduleVarianceDays = computeScheduleVarianceDays(newDueDate, newActualEndM);
+  const [milestone] = await db.update(milestonesTable).set(updateData).where(eq(milestonesTable.id, params.data.id)).returning();
   if (!milestone) { res.status(404).json({ error: "Milestone not found" }); return; }
   res.json(milestone);
 });
@@ -109,12 +151,27 @@ router.post("/projects/:id/tasks", async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const predecessorIds = parsed.data.predecessorIds ?? [];
   const crossProjectPreds = (parsed.data as Record<string, unknown>).crossProjectPredecessors ?? [];
+  const pd = parsed.data as Record<string, unknown>;
   const [task] = await db.insert(tasksTable).values({
     projectId: params.data.id,
-    ...parsed.data,
+    milestoneId: parsed.data.milestoneId,
+    workstreamId: pd.workstreamId as number | undefined,
+    parentTaskId: pd.parentTaskId as number | undefined,
+    managerId: pd.managerId as number | undefined,
+    name: parsed.data.name,
+    description: parsed.data.description,
+    assigneeId: parsed.data.assigneeId,
+    cftOwner: pd.cftOwner as number | undefined,
+    cftDept: pd.cftDept as string | undefined,
+    priority: parsed.data.priority,
+    rag: pd.rag as string | undefined,
+    startDate: parsed.data.startDate,
+    endDate: parsed.data.endDate,
     predecessorIds: JSON.stringify(predecessorIds),
     crossProjectPredecessors: JSON.stringify(crossProjectPreds),
     estimatedHours: parsed.data.estimatedHours != null ? String(parsed.data.estimatedHours) : null,
+    plannedEffortHours: pd.plannedEffortHours != null ? String(pd.plannedEffortHours) : null,
+    scheduleVarianceDays: computeScheduleVarianceDays(parsed.data.endDate, pd.actualEnd as string | undefined),
     order: parsed.data.order ?? 0,
   }).returning();
   const [enriched] = await enrichTasks([task as unknown as Record<string, unknown>]);
@@ -148,6 +205,12 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
   if (parsed.data.actualHours !== undefined) {
     updateData.actualHours = parsed.data.actualHours != null ? String(parsed.data.actualHours) : null;
   }
+  // Recompute scheduleVarianceDays whenever endDate or actualEnd changes
+  const [existing] = await db.select().from(tasksTable).where(eq(tasksTable.id, params.data.id));
+  if (!existing) { res.status(404).json({ error: "Task not found" }); return; }
+  const newEndDate = (updateData.endDate as string | undefined) ?? existing.endDate;
+  const newActualEnd = (updateData.actualEnd as string | undefined) ?? existing.actualEnd;
+  updateData.scheduleVarianceDays = computeScheduleVarianceDays(newEndDate, newActualEnd);
   const [task] = await db.update(tasksTable).set(updateData).where(eq(tasksTable.id, params.data.id)).returning();
   if (!task) { res.status(404).json({ error: "Task not found" }); return; }
   const [enriched] = await enrichTasks([task as unknown as Record<string, unknown>]);
@@ -243,6 +306,25 @@ router.get("/projects/:id/burndown", async (req, res): Promise<void> => {
 
   res.json({ projectId: params.data.id, totalTasks, completedTasks, dataPoints });
 });
+
+function formatProject(p: Record<string, unknown>) {
+  return {
+    ...p,
+    capexBudget: p.capexBudget != null ? Number(p.capexBudget) : 0,
+    opexBudget: p.opexBudget != null ? Number(p.opexBudget) : 0,
+    budgetThresholdPct: p.budgetThresholdPct != null ? Number(p.budgetThresholdPct) : 10,
+    scoringTotal: p.scoringTotal != null ? Number(p.scoringTotal) : null,
+  };
+}
+
+function computeScheduleVarianceDays(plannedEnd: string | null | undefined, actualEnd: string | null | undefined): number {
+  if (!plannedEnd) return 0;
+  const planned = new Date(plannedEnd).getTime();
+  const actual = actualEnd ? new Date(actualEnd).getTime() : Date.now();
+  // Only compute if actually ended or overdue
+  if (!actualEnd && actual < planned) return 0;
+  return Math.round((actual - planned) / (1000 * 60 * 60 * 24));
+}
 
 async function enrichTasks(tasks: Array<Record<string, unknown>>) {
   if (!tasks.length) return [];

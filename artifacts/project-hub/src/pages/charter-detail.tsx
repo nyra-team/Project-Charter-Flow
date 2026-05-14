@@ -98,11 +98,11 @@ export default function CharterDetail() {
   const [showFinanceForm, setShowFinanceForm] = useState(false);
   const [activeTab, setActiveTab] = useState<"details" | "benefits" | "vendors" | "risks" | "squad" | "approvals">("details");
 
-  const { data: charter, isLoading } = useGetCharter(charterId, { query: { enabled: !!charterId } });
-  const { data: vendors } = useListCharterVendors(charterId, { query: { enabled: !!charterId } });
-  const { data: risks } = useListCharterRisks(charterId, { query: { enabled: !!charterId } });
-  const { data: squad } = useListCharterSquad(charterId, { query: { enabled: !!charterId } });
-  const { data: approvals } = useListApprovals({ charterId }, { query: { enabled: !!charterId } });
+  const { data: charter, isLoading } = useGetCharter(charterId);
+  const { data: vendors } = useListCharterVendors(charterId);
+  const { data: risks } = useListCharterRisks(charterId);
+  const { data: squad } = useListCharterSquad(charterId);
+  const { data: approvals } = useListApprovals({ charterId });
   const { data: users } = useListUsers();
 
   const submitMutation = useSubmitCharter();
@@ -123,10 +123,10 @@ export default function CharterDetail() {
       startDate: charter.startDate ?? "",
       endDate: charter.endDate ?? "",
       durationDays: charter.durationDays ?? 0,
-      toplineImprovement: (charter as Record<string, unknown>).toplineImprovement as string ?? "",
-      bottomLineOptimization: (charter as Record<string, unknown>).bottomLineOptimization as string ?? "",
-      complianceBenefits: (charter as Record<string, unknown>).complianceBenefits as string ?? "",
-      productivityImprovement: (charter as Record<string, unknown>).productivityImprovement as string ?? "",
+      toplineImprovement: ((charter as unknown as Record<string, unknown>).toplineImprovement as string) ?? "",
+      bottomLineOptimization: ((charter as unknown as Record<string, unknown>).bottomLineOptimization as string) ?? "",
+      complianceBenefits: ((charter as unknown as Record<string, unknown>).complianceBenefits as string) ?? "",
+      productivityImprovement: ((charter as unknown as Record<string, unknown>).productivityImprovement as string) ?? "",
     } : undefined,
   });
 
@@ -479,26 +479,26 @@ export default function CharterDetail() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <BenefitTag
                     label="Topline Improvement"
-                    value={(charter as Record<string, unknown>).toplineImprovement as string}
+                    value={(charter as unknown as Record<string, unknown>).toplineImprovement as string}
                     color="#ECFDF5"
                   />
                   <BenefitTag
                     label="Bottom Line Optimization"
-                    value={(charter as Record<string, unknown>).bottomLineOptimization as string}
+                    value={(charter as unknown as Record<string, unknown>).bottomLineOptimization as string}
                     color="#EFF6FF"
                   />
                   <BenefitTag
                     label="Compliance Benefits"
-                    value={(charter as Record<string, unknown>).complianceBenefits as string}
+                    value={(charter as unknown as Record<string, unknown>).complianceBenefits as string}
                     color="#FFFBEB"
                   />
                   <BenefitTag
                     label="Productivity Improvement"
-                    value={(charter as Record<string, unknown>).productivityImprovement as string}
+                    value={(charter as unknown as Record<string, unknown>).productivityImprovement as string}
                     color="#F5F3FF"
                   />
                   {!["toplineImprovement", "bottomLineOptimization", "complianceBenefits", "productivityImprovement"].some(
-                    k => !!(charter as Record<string, unknown>)[k]
+                    k => !!(charter as unknown as Record<string, unknown>)[k]
                   ) && (
                     <div className="col-span-2 text-center py-8 text-gray-400 text-sm">
                       No business benefits defined yet.

@@ -96,6 +96,9 @@ export const ListChartersResponseItem = zod.object({
   bottomLineOptimization: zod.string().nullish(),
   complianceBenefits: zod.string().nullish(),
   productivityImprovement: zod.string().nullish(),
+  strategicAlignmentTags: zod.array(zod.string()),
+  scoringWeights: zod.object({}).passthrough(),
+  nfaThreshold: zod.number().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -121,6 +124,8 @@ export const CreateCharterBody = zod.object({
   bottomLineOptimization: zod.string().optional(),
   complianceBenefits: zod.string().optional(),
   productivityImprovement: zod.string().optional(),
+  strategicAlignmentTags: zod.array(zod.string()).optional(),
+  nfaThreshold: zod.number().optional(),
 });
 
 /**
@@ -157,6 +162,9 @@ export const GetCharterResponse = zod.object({
   bottomLineOptimization: zod.string().nullish(),
   complianceBenefits: zod.string().nullish(),
   productivityImprovement: zod.string().nullish(),
+  strategicAlignmentTags: zod.array(zod.string()),
+  scoringWeights: zod.object({}).passthrough(),
+  nfaThreshold: zod.number().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -184,6 +192,8 @@ export const UpdateCharterBody = zod.object({
   bottomLineOptimization: zod.string().optional(),
   complianceBenefits: zod.string().optional(),
   productivityImprovement: zod.string().optional(),
+  strategicAlignmentTags: zod.array(zod.string()).optional(),
+  nfaThreshold: zod.number().optional(),
 });
 
 export const UpdateCharterResponse = zod.object({
@@ -213,6 +223,9 @@ export const UpdateCharterResponse = zod.object({
   bottomLineOptimization: zod.string().nullish(),
   complianceBenefits: zod.string().nullish(),
   productivityImprovement: zod.string().nullish(),
+  strategicAlignmentTags: zod.array(zod.string()),
+  scoringWeights: zod.object({}).passthrough(),
+  nfaThreshold: zod.number().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -251,6 +264,9 @@ export const SubmitCharterResponse = zod.object({
   bottomLineOptimization: zod.string().nullish(),
   complianceBenefits: zod.string().nullish(),
   productivityImprovement: zod.string().nullish(),
+  strategicAlignmentTags: zod.array(zod.string()),
+  scoringWeights: zod.object({}).passthrough(),
+  nfaThreshold: zod.number().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -304,6 +320,12 @@ export const ListCharterRisksResponseItem = zod.object({
   impact: zod.string().describe("Impact: low, medium, high"),
   likelihood: zod.string().describe("Likelihood: low, medium, high"),
   mitigation: zod.string().optional(),
+  priority: zod.string().describe("Priority: low, medium, high, critical"),
+  rag: zod.string().describe("RAG status: green, amber, red"),
+  effortDays: zod.number().nullish(),
+  scheduleImpact: zod.string().nullish(),
+  status: zod.string().describe("Status: open, mitigated, accepted, closed"),
+  owner: zod.string().nullish(),
   createdAt: zod.string(),
 });
 export const ListCharterRisksResponse = zod.array(ListCharterRisksResponseItem);
@@ -321,6 +343,12 @@ export const AddCharterRiskBody = zod.object({
   impact: zod.string(),
   likelihood: zod.string(),
   mitigation: zod.string().optional(),
+  priority: zod.string().optional(),
+  rag: zod.string().optional(),
+  effortDays: zod.number().optional(),
+  scheduleImpact: zod.string().optional(),
+  status: zod.string().optional(),
+  owner: zod.string().optional(),
 });
 
 /**
@@ -363,7 +391,7 @@ export const ListApprovalsQueryParams = zod.object({
 export const ListApprovalsResponseItem = zod.object({
   id: zod.number(),
   charterId: zod.number(),
-  approverId: zod.number(),
+  approverId: zod.number().nullish(),
   approverRole: zod
     .string()
     .describe(
@@ -393,7 +421,7 @@ export const GetApprovalParams = zod.object({
 export const GetApprovalResponse = zod.object({
   id: zod.number(),
   charterId: zod.number(),
-  approverId: zod.number(),
+  approverId: zod.number().nullish(),
   approverRole: zod
     .string()
     .describe(
@@ -427,7 +455,7 @@ export const DecideApprovalBody = zod.object({
 export const DecideApprovalResponse = zod.object({
   id: zod.number(),
   charterId: zod.number(),
-  approverId: zod.number(),
+  approverId: zod.number().nullish(),
   approverRole: zod
     .string()
     .describe(
@@ -456,7 +484,7 @@ export const ScmNegotiateParams = zod.object({
 export const ScmNegotiateBody = zod.object({
   finalNegotiatedBudget: zod.number(),
   comments: zod.string().optional(),
-  approverId: zod.number(),
+  approverId: zod.number().optional(),
 });
 
 export const ScmNegotiateResponse = zod.object({
@@ -486,6 +514,9 @@ export const ScmNegotiateResponse = zod.object({
   bottomLineOptimization: zod.string().nullish(),
   complianceBenefits: zod.string().nullish(),
   productivityImprovement: zod.string().nullish(),
+  strategicAlignmentTags: zod.array(zod.string()),
+  scoringWeights: zod.object({}).passthrough(),
+  nfaThreshold: zod.number().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -500,7 +531,7 @@ export const EnterFinanceOrderParams = zod.object({
 export const EnterFinanceOrderBody = zod.object({
   internalOrderNumber: zod.string(),
   comments: zod.string().optional(),
-  approverId: zod.number(),
+  approverId: zod.number().optional(),
 });
 
 export const EnterFinanceOrderResponse = zod.object({
@@ -530,6 +561,9 @@ export const EnterFinanceOrderResponse = zod.object({
   bottomLineOptimization: zod.string().nullish(),
   complianceBenefits: zod.string().nullish(),
   productivityImprovement: zod.string().nullish(),
+  strategicAlignmentTags: zod.array(zod.string()),
+  scoringWeights: zod.object({}).passthrough(),
+  nfaThreshold: zod.number().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -537,14 +571,36 @@ export const EnterFinanceOrderResponse = zod.object({
 /**
  * @summary List all projects
  */
+export const ListProjectsQueryParams = zod.object({
+  programId: zod.coerce.number().optional(),
+  portfolioId: zod.coerce.number().optional(),
+});
+
 export const ListProjectsResponseItem = zod.object({
   id: zod.number(),
   charterId: zod.number(),
+  portfolioId: zod.number().nullish(),
+  programId: zod.number().nullish(),
   name: zod.string(),
   description: zod.string().optional(),
   status: zod
     .string()
     .describe("Status: planning, active, on_hold, completed, cancelled"),
+  priority: zod.string().describe("Priority: P0, P1, P2, P3"),
+  stage: zod
+    .string()
+    .describe(
+      "Lifecycle stage: project_case, urs, rfp, vendor_evaluation, commercial, charter, nfa, pr_po, kickoff, development, implementation_plan, uat, go_live, closure_readiness, project_closure",
+    ),
+  strategicTheme: zod.string().nullish(),
+  ragStatus: zod.string().describe("RAG: green, amber, red"),
+  ragOverrideJustification: zod.string().nullish(),
+  capexBudget: zod.number(),
+  opexBudget: zod.number(),
+  budgetThresholdPct: zod.number(),
+  scoringTotal: zod.number().nullish(),
+  siteRegion: zod.string().nullish(),
+  function: zod.string().nullish(),
   projectManagerId: zod.number().nullish(),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
@@ -559,9 +615,19 @@ export const ListProjectsResponse = zod.array(ListProjectsResponseItem);
  */
 export const CreateProjectBody = zod.object({
   charterId: zod.number(),
+  portfolioId: zod.number().optional(),
+  programId: zod.number().optional(),
   name: zod.string(),
   description: zod.string().optional(),
   projectManagerId: zod.number().optional(),
+  priority: zod.string().optional(),
+  stage: zod.string().optional(),
+  strategicTheme: zod.string().optional(),
+  ragStatus: zod.string().optional(),
+  capexBudget: zod.number().optional(),
+  opexBudget: zod.number().optional(),
+  siteRegion: zod.string().optional(),
+  function: zod.string().optional(),
   startDate: zod.string().optional(),
   endDate: zod.string().optional(),
 });
@@ -576,11 +642,28 @@ export const GetProjectParams = zod.object({
 export const GetProjectResponse = zod.object({
   id: zod.number(),
   charterId: zod.number(),
+  portfolioId: zod.number().nullish(),
+  programId: zod.number().nullish(),
   name: zod.string(),
   description: zod.string().optional(),
   status: zod
     .string()
     .describe("Status: planning, active, on_hold, completed, cancelled"),
+  priority: zod.string().describe("Priority: P0, P1, P2, P3"),
+  stage: zod
+    .string()
+    .describe(
+      "Lifecycle stage: project_case, urs, rfp, vendor_evaluation, commercial, charter, nfa, pr_po, kickoff, development, implementation_plan, uat, go_live, closure_readiness, project_closure",
+    ),
+  strategicTheme: zod.string().nullish(),
+  ragStatus: zod.string().describe("RAG: green, amber, red"),
+  ragOverrideJustification: zod.string().nullish(),
+  capexBudget: zod.number(),
+  opexBudget: zod.number(),
+  budgetThresholdPct: zod.number(),
+  scoringTotal: zod.number().nullish(),
+  siteRegion: zod.string().nullish(),
+  function: zod.string().nullish(),
   projectManagerId: zod.number().nullish(),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
@@ -597,9 +680,22 @@ export const UpdateProjectParams = zod.object({
 });
 
 export const UpdateProjectBody = zod.object({
+  portfolioId: zod.number().optional(),
+  programId: zod.number().optional(),
   name: zod.string().optional(),
   description: zod.string().optional(),
   status: zod.string().optional(),
+  priority: zod.string().optional(),
+  stage: zod.string().optional(),
+  strategicTheme: zod.string().optional(),
+  ragStatus: zod.string().optional(),
+  ragOverrideJustification: zod.string().optional(),
+  capexBudget: zod.number().optional(),
+  opexBudget: zod.number().optional(),
+  budgetThresholdPct: zod.number().optional(),
+  scoringTotal: zod.number().optional(),
+  siteRegion: zod.string().optional(),
+  function: zod.string().optional(),
   projectManagerId: zod.number().optional(),
   startDate: zod.string().optional(),
   endDate: zod.string().optional(),
@@ -609,11 +705,28 @@ export const UpdateProjectBody = zod.object({
 export const UpdateProjectResponse = zod.object({
   id: zod.number(),
   charterId: zod.number(),
+  portfolioId: zod.number().nullish(),
+  programId: zod.number().nullish(),
   name: zod.string(),
   description: zod.string().optional(),
   status: zod
     .string()
     .describe("Status: planning, active, on_hold, completed, cancelled"),
+  priority: zod.string().describe("Priority: P0, P1, P2, P3"),
+  stage: zod
+    .string()
+    .describe(
+      "Lifecycle stage: project_case, urs, rfp, vendor_evaluation, commercial, charter, nfa, pr_po, kickoff, development, implementation_plan, uat, go_live, closure_readiness, project_closure",
+    ),
+  strategicTheme: zod.string().nullish(),
+  ragStatus: zod.string().describe("RAG: green, amber, red"),
+  ragOverrideJustification: zod.string().nullish(),
+  capexBudget: zod.number(),
+  opexBudget: zod.number(),
+  budgetThresholdPct: zod.number(),
+  scoringTotal: zod.number().nullish(),
+  siteRegion: zod.string().nullish(),
+  function: zod.string().nullish(),
   projectManagerId: zod.number().nullish(),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
@@ -632,12 +745,26 @@ export const ListMilestonesParams = zod.object({
 export const ListMilestonesResponseItem = zod.object({
   id: zod.number(),
   projectId: zod.number(),
+  workstreamId: zod.number().nullish(),
   name: zod.string(),
   description: zod.string().optional(),
   dueDate: zod.string().nullish(),
+  actualStart: zod.string().nullish(),
+  actualEnd: zod.string().nullish(),
   status: zod
     .string()
-    .describe("Status: pending, in_progress, completed, overdue"),
+    .describe(
+      "Status: not_started, in_progress, completed, blocked, on_hold, cancelled",
+    ),
+  priority: zod.string().describe("Priority: P0, P1, P2, P3"),
+  rag: zod.string().describe("RAG: green, amber, red"),
+  plannedEffortHours: zod.number(),
+  scheduleVarianceDays: zod.number(),
+  readinessChecklist: zod.array(zod.object({}).passthrough()),
+  gateDecision: zod
+    .string()
+    .nullish()
+    .describe("Gate decision: go, no_go, conditional"),
   order: zod.number(),
   createdAt: zod.string(),
 });
@@ -651,9 +778,11 @@ export const CreateMilestoneParams = zod.object({
 });
 
 export const CreateMilestoneBody = zod.object({
+  workstreamId: zod.number().optional(),
   name: zod.string(),
   description: zod.string().optional(),
   dueDate: zod.string().optional(),
+  priority: zod.string().optional(),
   order: zod.number().optional(),
 });
 
@@ -665,22 +794,45 @@ export const UpdateMilestoneParams = zod.object({
 });
 
 export const UpdateMilestoneBody = zod.object({
+  workstreamId: zod.number().optional(),
   name: zod.string().optional(),
   description: zod.string().optional(),
   dueDate: zod.string().optional(),
+  actualStart: zod.string().optional(),
+  actualEnd: zod.string().optional(),
   status: zod.string().optional(),
+  priority: zod.string().optional(),
+  rag: zod.string().optional(),
+  plannedEffortHours: zod.number().optional(),
+  scheduleVarianceDays: zod.number().optional(),
+  readinessChecklist: zod.array(zod.object({}).passthrough()).optional(),
+  gateDecision: zod.string().optional(),
   order: zod.number().optional(),
 });
 
 export const UpdateMilestoneResponse = zod.object({
   id: zod.number(),
   projectId: zod.number(),
+  workstreamId: zod.number().nullish(),
   name: zod.string(),
   description: zod.string().optional(),
   dueDate: zod.string().nullish(),
+  actualStart: zod.string().nullish(),
+  actualEnd: zod.string().nullish(),
   status: zod
     .string()
-    .describe("Status: pending, in_progress, completed, overdue"),
+    .describe(
+      "Status: not_started, in_progress, completed, blocked, on_hold, cancelled",
+    ),
+  priority: zod.string().describe("Priority: P0, P1, P2, P3"),
+  rag: zod.string().describe("RAG: green, amber, red"),
+  plannedEffortHours: zod.number(),
+  scheduleVarianceDays: zod.number(),
+  readinessChecklist: zod.array(zod.object({}).passthrough()),
+  gateDecision: zod
+    .string()
+    .nullish()
+    .describe("Gate decision: go, no_go, conditional"),
   order: zod.number(),
   createdAt: zod.string(),
 });
@@ -703,18 +855,30 @@ export const ListTasksResponseItem = zod.object({
   id: zod.number(),
   projectId: zod.number(),
   milestoneId: zod.number().nullish(),
+  workstreamId: zod.number().nullish(),
+  parentTaskId: zod.number().nullish(),
+  managerId: zod.number().nullish(),
   name: zod.string(),
   description: zod.string().optional(),
   assigneeId: zod.number().nullish(),
   assigneeName: zod.string().nullish(),
+  cftOwner: zod.number().nullish(),
+  cftDept: zod.string().nullish(),
   status: zod
     .string()
-    .describe("Status: not_started, in_progress, completed, blocked"),
-  priority: zod.string().describe("Priority: low, medium, high, critical"),
+    .describe(
+      "Status: not_started, in_progress, completed, blocked, on_hold, cancelled",
+    ),
+  priority: zod.string().describe("Priority: P0, P1, P2, P3"),
+  rag: zod.string().describe("RAG: green, amber, red"),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
+  actualStart: zod.string().nullish(),
+  actualEnd: zod.string().nullish(),
   estimatedHours: zod.number().nullish(),
   actualHours: zod.number().nullish(),
+  plannedEffortHours: zod.number().nullish(),
+  scheduleVarianceDays: zod.number(),
   predecessorIds: zod.array(zod.number()),
   successorIds: zod.array(zod.number()),
   crossProjectPredecessors: zod.array(
@@ -740,13 +904,20 @@ export const CreateTaskParams = zod.object({
 
 export const CreateTaskBody = zod.object({
   milestoneId: zod.number().optional(),
+  workstreamId: zod.number().optional(),
+  parentTaskId: zod.number().optional(),
+  managerId: zod.number().optional(),
   name: zod.string(),
   description: zod.string().optional(),
   assigneeId: zod.number().optional(),
+  cftOwner: zod.number().optional(),
+  cftDept: zod.string().optional(),
   priority: zod.string(),
+  rag: zod.string().optional(),
   startDate: zod.string().optional(),
   endDate: zod.string().optional(),
   estimatedHours: zod.number().optional(),
+  plannedEffortHours: zod.number().optional(),
   predecessorIds: zod.array(zod.number()).optional(),
   crossProjectPredecessors: zod
     .array(
@@ -770,18 +941,30 @@ export const GetTaskResponse = zod.object({
   id: zod.number(),
   projectId: zod.number(),
   milestoneId: zod.number().nullish(),
+  workstreamId: zod.number().nullish(),
+  parentTaskId: zod.number().nullish(),
+  managerId: zod.number().nullish(),
   name: zod.string(),
   description: zod.string().optional(),
   assigneeId: zod.number().nullish(),
   assigneeName: zod.string().nullish(),
+  cftOwner: zod.number().nullish(),
+  cftDept: zod.string().nullish(),
   status: zod
     .string()
-    .describe("Status: not_started, in_progress, completed, blocked"),
-  priority: zod.string().describe("Priority: low, medium, high, critical"),
+    .describe(
+      "Status: not_started, in_progress, completed, blocked, on_hold, cancelled",
+    ),
+  priority: zod.string().describe("Priority: P0, P1, P2, P3"),
+  rag: zod.string().describe("RAG: green, amber, red"),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
+  actualStart: zod.string().nullish(),
+  actualEnd: zod.string().nullish(),
   estimatedHours: zod.number().nullish(),
   actualHours: zod.number().nullish(),
+  plannedEffortHours: zod.number().nullish(),
+  scheduleVarianceDays: zod.number(),
   predecessorIds: zod.array(zod.number()),
   successorIds: zod.array(zod.number()),
   crossProjectPredecessors: zod.array(
@@ -806,15 +989,25 @@ export const UpdateTaskParams = zod.object({
 
 export const UpdateTaskBody = zod.object({
   milestoneId: zod.number().optional(),
+  workstreamId: zod.number().optional(),
+  parentTaskId: zod.number().optional(),
+  managerId: zod.number().optional(),
   name: zod.string().optional(),
   description: zod.string().optional(),
   assigneeId: zod.number().optional(),
+  cftOwner: zod.number().optional(),
+  cftDept: zod.string().optional(),
   status: zod.string().optional(),
   priority: zod.string().optional(),
+  rag: zod.string().optional(),
   startDate: zod.string().optional(),
   endDate: zod.string().optional(),
+  actualStart: zod.string().optional(),
+  actualEnd: zod.string().optional(),
   estimatedHours: zod.number().optional(),
   actualHours: zod.number().optional(),
+  plannedEffortHours: zod.number().optional(),
+  scheduleVarianceDays: zod.number().optional(),
   predecessorIds: zod.array(zod.number()).optional(),
   crossProjectPredecessors: zod
     .array(
@@ -831,18 +1024,30 @@ export const UpdateTaskResponse = zod.object({
   id: zod.number(),
   projectId: zod.number(),
   milestoneId: zod.number().nullish(),
+  workstreamId: zod.number().nullish(),
+  parentTaskId: zod.number().nullish(),
+  managerId: zod.number().nullish(),
   name: zod.string(),
   description: zod.string().optional(),
   assigneeId: zod.number().nullish(),
   assigneeName: zod.string().nullish(),
+  cftOwner: zod.number().nullish(),
+  cftDept: zod.string().nullish(),
   status: zod
     .string()
-    .describe("Status: not_started, in_progress, completed, blocked"),
-  priority: zod.string().describe("Priority: low, medium, high, critical"),
+    .describe(
+      "Status: not_started, in_progress, completed, blocked, on_hold, cancelled",
+    ),
+  priority: zod.string().describe("Priority: P0, P1, P2, P3"),
+  rag: zod.string().describe("RAG: green, amber, red"),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
+  actualStart: zod.string().nullish(),
+  actualEnd: zod.string().nullish(),
   estimatedHours: zod.number().nullish(),
   actualHours: zod.number().nullish(),
+  plannedEffortHours: zod.number().nullish(),
+  scheduleVarianceDays: zod.number(),
   predecessorIds: zod.array(zod.number()),
   successorIds: zod.array(zod.number()),
   crossProjectPredecessors: zod.array(
@@ -879,18 +1084,30 @@ export const GetCriticalPathResponse = zod.object({
       id: zod.number(),
       projectId: zod.number(),
       milestoneId: zod.number().nullish(),
+      workstreamId: zod.number().nullish(),
+      parentTaskId: zod.number().nullish(),
+      managerId: zod.number().nullish(),
       name: zod.string(),
       description: zod.string().optional(),
       assigneeId: zod.number().nullish(),
       assigneeName: zod.string().nullish(),
+      cftOwner: zod.number().nullish(),
+      cftDept: zod.string().nullish(),
       status: zod
         .string()
-        .describe("Status: not_started, in_progress, completed, blocked"),
-      priority: zod.string().describe("Priority: low, medium, high, critical"),
+        .describe(
+          "Status: not_started, in_progress, completed, blocked, on_hold, cancelled",
+        ),
+      priority: zod.string().describe("Priority: P0, P1, P2, P3"),
+      rag: zod.string().describe("RAG: green, amber, red"),
       startDate: zod.string().nullish(),
       endDate: zod.string().nullish(),
+      actualStart: zod.string().nullish(),
+      actualEnd: zod.string().nullish(),
       estimatedHours: zod.number().nullish(),
       actualHours: zod.number().nullish(),
+      plannedEffortHours: zod.number().nullish(),
+      scheduleVarianceDays: zod.number(),
       predecessorIds: zod.array(zod.number()),
       successorIds: zod.array(zod.number()),
       crossProjectPredecessors: zod.array(
@@ -952,6 +1169,26 @@ export const GetDashboardSummaryResponse = zod.object({
     }),
   ),
   totalBudgetApproved: zod.number(),
+  projectHealth: zod
+    .object({
+      active: zod.number(),
+      onTrack: zod.number(),
+      offTrack: zod.number(),
+      delayed: zod.number(),
+      offTrackProjects: zod.array(
+        zod.object({
+          id: zod.number(),
+          name: zod.string(),
+        }),
+      ),
+      delayedProjects: zod.array(
+        zod.object({
+          id: zod.number(),
+          name: zod.string(),
+        }),
+      ),
+    })
+    .optional(),
 });
 
 /**
@@ -964,7 +1201,7 @@ export const GetPendingApprovalsQueryParams = zod.object({
 export const GetPendingApprovalsResponseItem = zod.object({
   id: zod.number(),
   charterId: zod.number(),
-  approverId: zod.number(),
+  approverId: zod.number().nullish(),
   approverRole: zod
     .string()
     .describe(
@@ -1002,3 +1239,1141 @@ export const GetRecentActivityResponseItem = zod.object({
 export const GetRecentActivityResponse = zod.array(
   GetRecentActivityResponseItem,
 );
+
+/**
+ * @summary List all portfolios
+ */
+export const ListPortfoliosResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  description: zod.string().optional(),
+  ownerId: zod.number().nullish(),
+  createdAt: zod.string(),
+});
+export const ListPortfoliosResponse = zod.array(ListPortfoliosResponseItem);
+
+/**
+ * @summary Create a portfolio
+ */
+export const CreatePortfolioBody = zod.object({
+  name: zod.string(),
+  description: zod.string().optional(),
+  ownerId: zod.number().optional(),
+});
+
+/**
+ * @summary Get a portfolio by ID
+ */
+export const GetPortfolioParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetPortfolioResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  description: zod.string().optional(),
+  ownerId: zod.number().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Update a portfolio
+ */
+export const UpdatePortfolioParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdatePortfolioBody = zod.object({
+  name: zod.string().optional(),
+  description: zod.string().optional(),
+  ownerId: zod.number().optional(),
+});
+
+export const UpdatePortfolioResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  description: zod.string().optional(),
+  ownerId: zod.number().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a portfolio
+ */
+export const DeletePortfolioParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List all programs
+ */
+export const ListProgramsQueryParams = zod.object({
+  portfolioId: zod.coerce.number().optional(),
+});
+
+export const ListProgramsResponseItem = zod.object({
+  id: zod.number(),
+  portfolioId: zod.number().nullish(),
+  name: zod.string(),
+  description: zod.string().optional(),
+  ownerId: zod.number().nullish(),
+  createdAt: zod.string(),
+});
+export const ListProgramsResponse = zod.array(ListProgramsResponseItem);
+
+/**
+ * @summary Create a program
+ */
+export const CreateProgramBody = zod.object({
+  portfolioId: zod.number().optional(),
+  name: zod.string(),
+  description: zod.string().optional(),
+  ownerId: zod.number().optional(),
+});
+
+/**
+ * @summary Get a program by ID
+ */
+export const GetProgramParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetProgramResponse = zod.object({
+  id: zod.number(),
+  portfolioId: zod.number().nullish(),
+  name: zod.string(),
+  description: zod.string().optional(),
+  ownerId: zod.number().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Update a program
+ */
+export const UpdateProgramParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateProgramBody = zod.object({
+  portfolioId: zod.number().optional(),
+  name: zod.string().optional(),
+  description: zod.string().optional(),
+  ownerId: zod.number().optional(),
+});
+
+export const UpdateProgramResponse = zod.object({
+  id: zod.number(),
+  portfolioId: zod.number().nullish(),
+  name: zod.string(),
+  description: zod.string().optional(),
+  ownerId: zod.number().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a program
+ */
+export const DeleteProgramParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List workstreams for a project
+ */
+export const ListWorkstreamsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListWorkstreamsResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  name: zod.string(),
+  description: zod.string().optional(),
+  order: zod.number(),
+  parentWorkstreamId: zod.number().nullish(),
+  createdAt: zod.string(),
+});
+export const ListWorkstreamsResponse = zod.array(ListWorkstreamsResponseItem);
+
+/**
+ * @summary Create a workstream for a project
+ */
+export const CreateWorkstreamParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateWorkstreamBody = zod.object({
+  name: zod.string(),
+  description: zod.string().optional(),
+  order: zod.number().optional(),
+  parentWorkstreamId: zod.number().optional(),
+});
+
+/**
+ * @summary Update a workstream
+ */
+export const UpdateWorkstreamParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateWorkstreamBody = zod.object({
+  name: zod.string().optional(),
+  description: zod.string().optional(),
+  order: zod.number().optional(),
+  parentWorkstreamId: zod.number().optional(),
+});
+
+export const UpdateWorkstreamResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  name: zod.string(),
+  description: zod.string().optional(),
+  order: zod.number(),
+  parentWorkstreamId: zod.number().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a workstream
+ */
+export const DeleteWorkstreamParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List lifecycle stages for a project
+ */
+export const ListProjectStagesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListProjectStagesResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  stage: zod
+    .string()
+    .describe(
+      "Lifecycle stage: project_case, urs, rfp, vendor_evaluation, commercial, charter, nfa, pr_po, kickoff, development, implementation_plan, uat, go_live, closure_readiness, project_closure",
+    ),
+  status: zod
+    .string()
+    .describe("Status: not_started, in_progress, complete, blocked"),
+  enteredAt: zod.string().nullish(),
+  completedAt: zod.string().nullish(),
+  notes: zod.string().optional(),
+  createdAt: zod.string(),
+});
+export const ListProjectStagesResponse = zod.array(
+  ListProjectStagesResponseItem,
+);
+
+/**
+ * @summary Initialize a lifecycle stage for a project
+ */
+export const CreateProjectStageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateProjectStageBody = zod.object({
+  stage: zod.string(),
+  status: zod.string().optional(),
+  notes: zod.string().optional(),
+});
+
+/**
+ * @summary Get a project stage by ID
+ */
+export const GetProjectStageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetProjectStageResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  stage: zod
+    .string()
+    .describe(
+      "Lifecycle stage: project_case, urs, rfp, vendor_evaluation, commercial, charter, nfa, pr_po, kickoff, development, implementation_plan, uat, go_live, closure_readiness, project_closure",
+    ),
+  status: zod
+    .string()
+    .describe("Status: not_started, in_progress, complete, blocked"),
+  enteredAt: zod.string().nullish(),
+  completedAt: zod.string().nullish(),
+  notes: zod.string().optional(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Update a project stage
+ */
+export const UpdateProjectStageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateProjectStageBody = zod.object({
+  status: zod.string().optional(),
+  notes: zod.string().optional(),
+  enteredAt: zod.string().optional(),
+  completedAt: zod.string().optional(),
+});
+
+export const UpdateProjectStageResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  stage: zod
+    .string()
+    .describe(
+      "Lifecycle stage: project_case, urs, rfp, vendor_evaluation, commercial, charter, nfa, pr_po, kickoff, development, implementation_plan, uat, go_live, closure_readiness, project_closure",
+    ),
+  status: zod
+    .string()
+    .describe("Status: not_started, in_progress, complete, blocked"),
+  enteredAt: zod.string().nullish(),
+  completedAt: zod.string().nullish(),
+  notes: zod.string().optional(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a project stage record
+ */
+export const DeleteProjectStageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary Advance a project to the next lifecycle stage
+ */
+export const AdvanceProjectStageParams = zod.object({
+  id: zod.coerce.number(),
+  stage: zod.coerce.string(),
+});
+
+export const AdvanceProjectStageResponse = zod.object({
+  projectId: zod.number(),
+  stages: zod.array(
+    zod.object({
+      id: zod.number(),
+      projectId: zod.number(),
+      stage: zod
+        .string()
+        .describe(
+          "Lifecycle stage: project_case, urs, rfp, vendor_evaluation, commercial, charter, nfa, pr_po, kickoff, development, implementation_plan, uat, go_live, closure_readiness, project_closure",
+        ),
+      status: zod
+        .string()
+        .describe("Status: not_started, in_progress, complete, blocked"),
+      enteredAt: zod.string().nullish(),
+      completedAt: zod.string().nullish(),
+      notes: zod.string().optional(),
+      createdAt: zod.string(),
+    }),
+  ),
+  advancedTo: zod.string().nullish(),
+});
+
+/**
+ * @summary List documents for a project
+ */
+export const ListDocumentsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListDocumentsResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  stage: zod.string().nullish(),
+  name: zod.string(),
+  fileUrl: zod.string().nullish(),
+  fileType: zod.string().nullish(),
+  fileSize: zod.number().nullish(),
+  version: zod.number(),
+  uploadedBy: zod.number().nullish(),
+  uploadedAt: zod.string(),
+  approvalStatus: zod.string(),
+  approvedBy: zod.number().nullish(),
+  approvedAt: zod.string().nullish(),
+  accessLevel: zod.string(),
+  tags: zod.array(zod.string()),
+  description: zod.string().optional(),
+  createdAt: zod.string(),
+});
+export const ListDocumentsResponse = zod.array(ListDocumentsResponseItem);
+
+/**
+ * @summary Upload/create a document for a project
+ */
+export const CreateDocumentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateDocumentBody = zod.object({
+  name: zod.string(),
+  stage: zod.string().optional(),
+  fileUrl: zod.string().optional(),
+  fileType: zod.string().optional(),
+  fileSize: zod.number().optional(),
+  uploadedBy: zod.number().optional(),
+  accessLevel: zod.string().optional(),
+  tags: zod.array(zod.string()).optional(),
+  description: zod.string().optional(),
+});
+
+/**
+ * @summary Get a document by ID
+ */
+export const GetDocumentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetDocumentResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  stage: zod.string().nullish(),
+  name: zod.string(),
+  fileUrl: zod.string().nullish(),
+  fileType: zod.string().nullish(),
+  fileSize: zod.number().nullish(),
+  version: zod.number(),
+  uploadedBy: zod.number().nullish(),
+  uploadedAt: zod.string(),
+  approvalStatus: zod.string(),
+  approvedBy: zod.number().nullish(),
+  approvedAt: zod.string().nullish(),
+  accessLevel: zod.string(),
+  tags: zod.array(zod.string()),
+  description: zod.string().optional(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Update a document
+ */
+export const UpdateDocumentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateDocumentBody = zod.object({
+  name: zod.string().optional(),
+  stage: zod.string().optional(),
+  fileUrl: zod.string().optional(),
+  fileType: zod.string().optional(),
+  fileSize: zod.number().optional(),
+  approvalStatus: zod.string().optional(),
+  approvedBy: zod.number().optional(),
+  accessLevel: zod.string().optional(),
+  tags: zod.array(zod.string()).optional(),
+  description: zod.string().optional(),
+});
+
+export const UpdateDocumentResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  stage: zod.string().nullish(),
+  name: zod.string(),
+  fileUrl: zod.string().nullish(),
+  fileType: zod.string().nullish(),
+  fileSize: zod.number().nullish(),
+  version: zod.number(),
+  uploadedBy: zod.number().nullish(),
+  uploadedAt: zod.string(),
+  approvalStatus: zod.string(),
+  approvedBy: zod.number().nullish(),
+  approvedAt: zod.string().nullish(),
+  accessLevel: zod.string(),
+  tags: zod.array(zod.string()),
+  description: zod.string().optional(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a document
+ */
+export const DeleteDocumentParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List versions of a document
+ */
+export const ListDocumentVersionsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListDocumentVersionsResponseItem = zod.object({
+  id: zod.number(),
+  documentId: zod.number(),
+  version: zod.number(),
+  fileUrl: zod.string().nullish(),
+  uploadedBy: zod.number().nullish(),
+  uploadedAt: zod.string(),
+  notes: zod.string().optional(),
+  createdAt: zod.string(),
+});
+export const ListDocumentVersionsResponse = zod.array(
+  ListDocumentVersionsResponseItem,
+);
+
+/**
+ * @summary Add a new version to a document
+ */
+export const AddDocumentVersionParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const AddDocumentVersionBody = zod.object({
+  fileUrl: zod.string().optional(),
+  uploadedBy: zod.number().optional(),
+  notes: zod.string().optional(),
+});
+
+/**
+ * @summary List issues for a project
+ */
+export const ListIssuesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListIssuesResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  taskId: zod.number().nullish(),
+  milestoneId: zod.number().nullish(),
+  title: zod.string(),
+  description: zod.string().optional(),
+  dependencyType: zod.string().nullish(),
+  blockingOwnerId: zod.number().nullish(),
+  blockingDept: zod.string().nullish(),
+  originalDeadline: zod.string().nullish(),
+  proposedRevisedDeadline: zod.string().nullish(),
+  status: zod.string().describe("Status: open, pending, resolved"),
+  raisedBy: zod.number().nullish(),
+  resolvedAt: zod.string().nullish(),
+  resolutionNotes: zod.string().optional(),
+  createdAt: zod.string(),
+});
+export const ListIssuesResponse = zod.array(ListIssuesResponseItem);
+
+/**
+ * @summary Create an issue for a project
+ */
+export const CreateIssueParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateIssueBody = zod.object({
+  title: zod.string(),
+  description: zod.string().optional(),
+  taskId: zod.number().optional(),
+  milestoneId: zod.number().optional(),
+  dependencyType: zod.string().optional(),
+  blockingOwnerId: zod.number().optional(),
+  blockingDept: zod.string().optional(),
+  originalDeadline: zod.string().optional(),
+  proposedRevisedDeadline: zod.string().optional(),
+  raisedBy: zod.number().optional(),
+});
+
+/**
+ * @summary Get an issue by ID
+ */
+export const GetIssueParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetIssueResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  taskId: zod.number().nullish(),
+  milestoneId: zod.number().nullish(),
+  title: zod.string(),
+  description: zod.string().optional(),
+  dependencyType: zod.string().nullish(),
+  blockingOwnerId: zod.number().nullish(),
+  blockingDept: zod.string().nullish(),
+  originalDeadline: zod.string().nullish(),
+  proposedRevisedDeadline: zod.string().nullish(),
+  status: zod.string().describe("Status: open, pending, resolved"),
+  raisedBy: zod.number().nullish(),
+  resolvedAt: zod.string().nullish(),
+  resolutionNotes: zod.string().optional(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Update an issue
+ */
+export const UpdateIssueParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateIssueBody = zod.object({
+  title: zod.string().optional(),
+  description: zod.string().optional(),
+  dependencyType: zod.string().optional(),
+  blockingOwnerId: zod.number().optional(),
+  blockingDept: zod.string().optional(),
+  originalDeadline: zod.string().optional(),
+  proposedRevisedDeadline: zod.string().optional(),
+  status: zod.string().optional(),
+  resolutionNotes: zod.string().optional(),
+});
+
+export const UpdateIssueResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  taskId: zod.number().nullish(),
+  milestoneId: zod.number().nullish(),
+  title: zod.string(),
+  description: zod.string().optional(),
+  dependencyType: zod.string().nullish(),
+  blockingOwnerId: zod.number().nullish(),
+  blockingDept: zod.string().nullish(),
+  originalDeadline: zod.string().nullish(),
+  proposedRevisedDeadline: zod.string().nullish(),
+  status: zod.string().describe("Status: open, pending, resolved"),
+  raisedBy: zod.number().nullish(),
+  resolvedAt: zod.string().nullish(),
+  resolutionNotes: zod.string().optional(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete an issue
+ */
+export const DeleteIssueParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List messages for a project
+ */
+export const ListMessagesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListMessagesResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  taskId: zod.number().nullish(),
+  milestoneId: zod.number().nullish(),
+  senderId: zod.number(),
+  body: zod.string(),
+  attachments: zod.array(zod.object({}).passthrough()),
+  taggedUserIds: zod.array(zod.number()),
+  threadParentId: zod.number().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListMessagesResponse = zod.array(ListMessagesResponseItem);
+
+/**
+ * @summary Send a message in a project
+ */
+export const CreateMessageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateMessageBody = zod.object({
+  senderId: zod.number(),
+  body: zod.string(),
+  taskId: zod.number().optional(),
+  milestoneId: zod.number().optional(),
+  attachments: zod.array(zod.object({}).passthrough()).optional(),
+  taggedUserIds: zod.array(zod.number()).optional(),
+  threadParentId: zod.number().optional(),
+});
+
+/**
+ * @summary Update a message
+ */
+export const UpdateMessageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateMessageBody = zod.object({
+  body: zod.string().optional(),
+  attachments: zod.array(zod.object({}).passthrough()).optional(),
+  taggedUserIds: zod.array(zod.number()).optional(),
+});
+
+export const UpdateMessageResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  taskId: zod.number().nullish(),
+  milestoneId: zod.number().nullish(),
+  senderId: zod.number(),
+  body: zod.string(),
+  attachments: zod.array(zod.object({}).passthrough()),
+  taggedUserIds: zod.array(zod.number()),
+  threadParentId: zod.number().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Delete a message
+ */
+export const DeleteMessageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List resource allocations for a project
+ */
+export const ListResourceAllocationsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListResourceAllocationsResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  workstreamId: zod.number().nullish(),
+  userId: zod.number(),
+  role: zod.string().nullish(),
+  skill: zod.string().nullish(),
+  allocationPct: zod.number(),
+  startDate: zod.string().nullish(),
+  endDate: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+export const ListResourceAllocationsResponse = zod.array(
+  ListResourceAllocationsResponseItem,
+);
+
+/**
+ * @summary Create a resource allocation for a project
+ */
+export const CreateResourceAllocationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateResourceAllocationBody = zod.object({
+  userId: zod.number(),
+  workstreamId: zod.number().optional(),
+  role: zod.string().optional(),
+  skill: zod.string().optional(),
+  allocationPct: zod.number().optional(),
+  startDate: zod.string().optional(),
+  endDate: zod.string().optional(),
+});
+
+/**
+ * @summary Update a resource allocation
+ */
+export const UpdateResourceAllocationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateResourceAllocationBody = zod.object({
+  workstreamId: zod.number().optional(),
+  role: zod.string().optional(),
+  skill: zod.string().optional(),
+  allocationPct: zod.number().optional(),
+  startDate: zod.string().optional(),
+  endDate: zod.string().optional(),
+});
+
+export const UpdateResourceAllocationResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  workstreamId: zod.number().nullish(),
+  userId: zod.number(),
+  role: zod.string().nullish(),
+  skill: zod.string().nullish(),
+  allocationPct: zod.number(),
+  startDate: zod.string().nullish(),
+  endDate: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a resource allocation
+ */
+export const DeleteResourceAllocationParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List RACI matrix for a project
+ */
+export const ListRaciParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListRaciResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  taskId: zod.number().nullish(),
+  workstreamId: zod.number().nullish(),
+  userId: zod.number(),
+  raciType: zod.string().describe("RACI type: R, A, C, I"),
+  createdAt: zod.string(),
+});
+export const ListRaciResponse = zod.array(ListRaciResponseItem);
+
+/**
+ * @summary Create a RACI matrix entry for a project
+ */
+export const CreateRaciEntryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateRaciEntryBody = zod.object({
+  userId: zod.number(),
+  taskId: zod.number().optional(),
+  workstreamId: zod.number().optional(),
+  raciType: zod.string(),
+});
+
+/**
+ * @summary Delete a RACI entry
+ */
+export const DeleteRaciEntryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List budget lines for a project
+ */
+export const ListBudgetLinesParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListBudgetLinesResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  category: zod.string().describe("Category: CapEx, OpEx"),
+  description: zod.string().optional(),
+  baselineAmount: zod.number(),
+  forecastAmount: zod.number(),
+  actualAmount: zod.number(),
+  varianceAmount: zod.number(),
+  variancePct: zod.number(),
+  period: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+export const ListBudgetLinesResponse = zod.array(ListBudgetLinesResponseItem);
+
+/**
+ * @summary Create a budget line for a project
+ */
+export const CreateBudgetLineParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateBudgetLineBody = zod.object({
+  category: zod.string().optional(),
+  description: zod.string().optional(),
+  baselineAmount: zod.number().optional(),
+  forecastAmount: zod.number().optional(),
+  actualAmount: zod.number().optional(),
+  period: zod.string().optional(),
+});
+
+/**
+ * @summary Update a budget line
+ */
+export const UpdateBudgetLineParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateBudgetLineBody = zod.object({
+  category: zod.string().optional(),
+  description: zod.string().optional(),
+  baselineAmount: zod.number().optional(),
+  forecastAmount: zod.number().optional(),
+  actualAmount: zod.number().optional(),
+  period: zod.string().optional(),
+});
+
+export const UpdateBudgetLineResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  category: zod.string().describe("Category: CapEx, OpEx"),
+  description: zod.string().optional(),
+  baselineAmount: zod.number(),
+  forecastAmount: zod.number(),
+  actualAmount: zod.number(),
+  varianceAmount: zod.number(),
+  variancePct: zod.number(),
+  period: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a budget line
+ */
+export const DeleteBudgetLineParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List escalation rules
+ */
+export const ListEscalationRulesQueryParams = zod.object({
+  projectId: zod.coerce.number().optional(),
+});
+
+export const ListEscalationRulesResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number().nullish(),
+  triggerType: zod
+    .string()
+    .describe("Trigger: rag_red, delay_days, budget_variance_pct"),
+  thresholdValue: zod.number(),
+  notifyUserIds: zod.array(zod.number()),
+  isActive: zod.boolean(),
+  createdAt: zod.string(),
+});
+export const ListEscalationRulesResponse = zod.array(
+  ListEscalationRulesResponseItem,
+);
+
+/**
+ * @summary Create an escalation rule
+ */
+export const CreateEscalationRuleBody = zod.object({
+  projectId: zod.number().optional(),
+  triggerType: zod.string(),
+  thresholdValue: zod.number().optional(),
+  notifyUserIds: zod.array(zod.number()).optional(),
+  isActive: zod.boolean().optional(),
+});
+
+/**
+ * @summary Update an escalation rule
+ */
+export const UpdateEscalationRuleParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateEscalationRuleBody = zod.object({
+  triggerType: zod.string().optional(),
+  thresholdValue: zod.number().optional(),
+  notifyUserIds: zod.array(zod.number()).optional(),
+  isActive: zod.boolean().optional(),
+});
+
+export const UpdateEscalationRuleResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number().nullish(),
+  triggerType: zod
+    .string()
+    .describe("Trigger: rag_red, delay_days, budget_variance_pct"),
+  thresholdValue: zod.number(),
+  notifyUserIds: zod.array(zod.number()),
+  isActive: zod.boolean(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete an escalation rule
+ */
+export const DeleteEscalationRuleParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List scoring criteria
+ */
+export const ListScoringCriteriaResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  weightPct: zod.number(),
+  description: zod.string().optional(),
+  isActive: zod.boolean(),
+  createdAt: zod.string(),
+});
+export const ListScoringCriteriaResponse = zod.array(
+  ListScoringCriteriaResponseItem,
+);
+
+/**
+ * @summary Create a scoring criterion
+ */
+export const CreateScoringCriteriaBody = zod.object({
+  name: zod.string(),
+  weightPct: zod.number().optional(),
+  description: zod.string().optional(),
+  isActive: zod.boolean().optional(),
+});
+
+/**
+ * @summary Get a scoring criterion by ID
+ */
+export const GetScoringCriteriaParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetScoringCriteriaResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  weightPct: zod.number(),
+  description: zod.string().optional(),
+  isActive: zod.boolean(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Update a scoring criterion
+ */
+export const UpdateScoringCriteriaParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateScoringCriteriaBody = zod.object({
+  name: zod.string().optional(),
+  weightPct: zod.number().optional(),
+  description: zod.string().optional(),
+  isActive: zod.boolean().optional(),
+});
+
+export const UpdateScoringCriteriaResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  weightPct: zod.number(),
+  description: zod.string().optional(),
+  isActive: zod.boolean(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a scoring criterion
+ */
+export const DeleteScoringCriteriaParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List scores for a project
+ */
+export const ListProjectScoresParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListProjectScoresResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  criterionId: zod.number(),
+  criterionName: zod.string().nullish(),
+  score: zod.number(),
+  weightedScore: zod.number(),
+  notes: zod.string().optional(),
+  createdAt: zod.string(),
+});
+export const ListProjectScoresResponse = zod.array(
+  ListProjectScoresResponseItem,
+);
+
+/**
+ * @summary Add a score for a project criterion
+ */
+export const CreateProjectScoreParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateProjectScoreBody = zod.object({
+  criterionId: zod.number(),
+  score: zod.number(),
+  notes: zod.string().optional(),
+});
+
+/**
+ * @summary Update a project score
+ */
+export const UpdateProjectScoreParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateProjectScoreBody = zod.object({
+  criterionId: zod.number().optional(),
+  score: zod.number().optional(),
+  notes: zod.string().optional(),
+});
+
+export const UpdateProjectScoreResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  criterionId: zod.number(),
+  criterionName: zod.string().nullish(),
+  score: zod.number(),
+  weightedScore: zod.number(),
+  notes: zod.string().optional(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a project score
+ */
+export const DeleteProjectScoreParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List notifications
+ */
+export const ListNotificationsQueryParams = zod.object({
+  userId: zod.coerce.number().optional(),
+});
+
+export const ListNotificationsResponseItem = zod.object({
+  id: zod.number(),
+  userId: zod.number(),
+  type: zod.string(),
+  title: zod.string(),
+  body: zod.string().optional(),
+  link: zod.string().nullish(),
+  isRead: zod.boolean(),
+  relatedEntityType: zod.string().nullish(),
+  relatedEntityId: zod.number().nullish(),
+  createdAt: zod.string(),
+});
+export const ListNotificationsResponse = zod.array(
+  ListNotificationsResponseItem,
+);
+
+/**
+ * @summary Create a notification
+ */
+export const CreateNotificationBody = zod.object({
+  userId: zod.number(),
+  type: zod.string(),
+  title: zod.string(),
+  body: zod.string().optional(),
+  link: zod.string().optional(),
+  relatedEntityType: zod.string().optional(),
+  relatedEntityId: zod.number().optional(),
+});
+
+/**
+ * @summary Mark a notification as read
+ */
+export const MarkNotificationReadParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const MarkNotificationReadResponse = zod.object({
+  id: zod.number(),
+  userId: zod.number(),
+  type: zod.string(),
+  title: zod.string(),
+  body: zod.string().optional(),
+  link: zod.string().nullish(),
+  isRead: zod.boolean(),
+  relatedEntityType: zod.string().nullish(),
+  relatedEntityId: zod.number().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Mark all notifications as read for a user
+ */
+export const MarkAllNotificationsReadBody = zod.object({
+  userId: zod.number(),
+});
+
+export const MarkAllNotificationsReadResponse = zod.object({
+  success: zod.boolean(),
+});

@@ -56,6 +56,7 @@ router.post("/charters", async (req, res): Promise<void> => {
   const [charter] = await db.insert(chartersTable).values({
     ...parsed.data,
     tentativeBudget: String(parsed.data.tentativeBudget),
+    nfaThreshold: parsed.data.nfaThreshold != null ? String(parsed.data.nfaThreshold) : null,
   }).returning();
   await logActivity("charter_created", `Charter "${charter.title}" created`, charter.id, "charter", charter.submittedById);
   res.status(201).json(formatCharter(charter));
@@ -91,6 +92,9 @@ router.patch("/charters/:id", async (req, res): Promise<void> => {
   const updateData: Record<string, unknown> = { ...parsed.data };
   if (parsed.data.tentativeBudget !== undefined) {
     updateData.tentativeBudget = String(parsed.data.tentativeBudget);
+  }
+  if ((parsed.data as Record<string, unknown>).nfaThreshold != null) {
+    updateData.nfaThreshold = String((parsed.data as Record<string, unknown>).nfaThreshold);
   }
   const [charter] = await db.update(chartersTable).set(updateData).where(eq(chartersTable.id, params.data.id)).returning();
   if (!charter) {
@@ -184,7 +188,7 @@ router.post("/charters/:id/scm-negotiate", async (req, res): Promise<void> => {
   } else {
     await db.insert(approvalsTable).values({
       charterId: params.data.id,
-      approverId: parsed.data.approverId,
+      approverId: parsed.data.approverId ?? null,
       approverRole: "scm",
       stage: "scm_review",
       status: "approved",
@@ -243,7 +247,7 @@ router.post("/charters/:id/finance-order", async (req, res): Promise<void> => {
   } else {
     await db.insert(approvalsTable).values({
       charterId: params.data.id,
-      approverId: parsed.data.approverId,
+      approverId: parsed.data.approverId ?? null,
       approverRole: "finance",
       stage: "finance_review",
       status: "approved",
@@ -344,8 +348,9 @@ router.post("/charters/:id/squad", async (req, res): Promise<void> => {
 function formatCharter(c: Record<string, unknown>) {
   return {
     ...c,
-    tentativeBudget: c.tentativeBudget !== null && c.tentativeBudget !== undefined ? Number(c.tentativeBudget) : 0,
-    finalNegotiatedBudget: c.finalNegotiatedBudget !== null && c.finalNegotiatedBudget !== undefined ? Number(c.finalNegotiatedBudget) : null,
+    tentativeBudget: c.tentativeBudget != null ? Number(c.tentativeBudget) : 0,
+    finalNegotiatedBudget: c.finalNegotiatedBudget != null ? Number(c.finalNegotiatedBudget) : null,
+    nfaThreshold: c.nfaThreshold != null ? Number(c.nfaThreshold) : null,
   };
 }
 

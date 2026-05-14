@@ -5,6 +5,7 @@
  * Project Hub API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ProjectHealthSummary } from "./projectHealthSummary";
 import type { StatusCount } from "./statusCount";
 
 export interface DashboardSummary {
@@ -15,4 +16,5 @@ export interface DashboardSummary {
   chartersByStatus: StatusCount[];
   projectsByStatus: StatusCount[];
   totalBudgetApproved: number;
+  projectHealth?: ProjectHealthSummary;
 }

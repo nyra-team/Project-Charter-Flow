@@ -22,4 +22,6 @@ export interface UpdateCharterBody {
   bottomLineOptimization?: string;
   complianceBenefits?: string;
   productivityImprovement?: string;
+  strategicAlignmentTags?: string[];
+  nfaThreshold?: number;
 }

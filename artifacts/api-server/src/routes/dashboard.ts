@@ -117,15 +117,15 @@ router.get("/dashboard/gamification", async (_req, res): Promise<void> => {
   for (const approval of decidedApprovals) {
     if (!approval.approverId) continue;
     const createdAt = approval.createdAt instanceof Date ? approval.createdAt : new Date(approval.createdAt);
-    const updatedAt = approval.updatedAt instanceof Date ? approval.updatedAt : new Date(approval.updatedAt);
-    const responseMs = Math.max(0, updatedAt.getTime() - createdAt.getTime());
+    const decidedAt = approval.decidedAt instanceof Date ? approval.decidedAt : (approval.decidedAt ? new Date(approval.decidedAt) : new Date());
+    const responseMs = Math.max(0, decidedAt.getTime() - createdAt.getTime());
 
     if (!scoresByUser[approval.approverId]) {
       scoresByUser[approval.approverId] = { totalMs: 0, count: 0, approved: 0, rejected: 0 };
     }
     scoresByUser[approval.approverId].totalMs += responseMs;
     scoresByUser[approval.approverId].count++;
-    if (approval.decision === "approved") scoresByUser[approval.approverId].approved++;
+    if (approval.status === "approved") scoresByUser[approval.approverId].approved++;
     else scoresByUser[approval.approverId].rejected++;
   }
 

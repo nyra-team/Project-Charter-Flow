@@ -78,14 +78,16 @@ router.post("/approvals/:id/decide", async (req, res): Promise<void> => {
   }).where(eq(approvalsTable.id, params.data.id)).returning();
 
   const [charter] = await db.select().from(chartersTable).where(eq(chartersTable.id, approval.charterId));
-  const [approver] = await db.select().from(usersTable).where(eq(usersTable.id, approval.approverId));
+  const [approver] = approval.approverId != null
+    ? await db.select().from(usersTable).where(eq(usersTable.id, approval.approverId))
+    : [undefined];
 
   await logActivity(
     `approval_${decision}`,
     `${approver?.name ?? "Approver"} (${approval.approverRole}) ${decision} charter "${charter?.title}"`,
     approval.charterId,
     "charter",
-    approval.approverId
+    approval.approverId ?? undefined
   );
 
   // Check workflow progression

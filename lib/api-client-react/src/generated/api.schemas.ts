@@ -26,6 +26,8 @@ export interface CreateUserBody {
   department: string;
 }
 
+export type CharterScoringWeights = { [key: string]: unknown };
+
 export interface Charter {
   id: number;
   title: string;
@@ -63,6 +65,10 @@ export interface Charter {
   complianceBenefits?: string | null;
   /** @nullable */
   productivityImprovement?: string | null;
+  strategicAlignmentTags: string[];
+  scoringWeights: CharterScoringWeights;
+  /** @nullable */
+  nfaThreshold?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -84,6 +90,8 @@ export interface CreateCharterBody {
   bottomLineOptimization?: string;
   complianceBenefits?: string;
   productivityImprovement?: string;
+  strategicAlignmentTags?: string[];
+  nfaThreshold?: number;
 }
 
 export interface UpdateCharterBody {
@@ -102,6 +110,8 @@ export interface UpdateCharterBody {
   bottomLineOptimization?: string;
   complianceBenefits?: string;
   productivityImprovement?: string;
+  strategicAlignmentTags?: string[];
+  nfaThreshold?: number;
 }
 
 export interface Vendor {
@@ -131,6 +141,18 @@ export interface Risk {
   /** Likelihood: low, medium, high */
   likelihood: string;
   mitigation?: string;
+  /** Priority: low, medium, high, critical */
+  priority: string;
+  /** RAG status: green, amber, red */
+  rag: string;
+  /** @nullable */
+  effortDays?: number | null;
+  /** @nullable */
+  scheduleImpact?: string | null;
+  /** Status: open, mitigated, accepted, closed */
+  status: string;
+  /** @nullable */
+  owner?: string | null;
   createdAt: string;
 }
 
@@ -140,6 +162,12 @@ export interface CreateRiskBody {
   impact: string;
   likelihood: string;
   mitigation?: string;
+  priority?: string;
+  rag?: string;
+  effortDays?: number;
+  scheduleImpact?: string;
+  status?: string;
+  owner?: string;
 }
 
 export interface SquadMember {
@@ -158,7 +186,8 @@ export interface CreateSquadMemberBody {
 export interface Approval {
   id: number;
   charterId: number;
-  approverId: number;
+  /** @nullable */
+  approverId?: number | null;
   /** Role: hod, executive_director, cfo, scm, chairman, finance, pmo */
   approverRole: string;
   /** Stage: parallel_review, scm_review, chairman_review, finance_review, pmo_review */
@@ -185,22 +214,45 @@ export interface ApprovalDecisionBody {
 export interface ScmNegotiateBody {
   finalNegotiatedBudget: number;
   comments?: string;
-  approverId: number;
+  approverId?: number;
 }
 
 export interface FinanceOrderBody {
   internalOrderNumber: string;
   comments?: string;
-  approverId: number;
+  approverId?: number;
 }
 
 export interface Project {
   id: number;
   charterId: number;
+  /** @nullable */
+  portfolioId?: number | null;
+  /** @nullable */
+  programId?: number | null;
   name: string;
   description?: string;
   /** Status: planning, active, on_hold, completed, cancelled */
   status: string;
+  /** Priority: P0, P1, P2, P3 */
+  priority: string;
+  /** Lifecycle stage: project_case, urs, rfp, vendor_evaluation, commercial, charter, nfa, pr_po, kickoff, development, implementation_plan, uat, go_live, closure_readiness, project_closure */
+  stage: string;
+  /** @nullable */
+  strategicTheme?: string | null;
+  /** RAG: green, amber, red */
+  ragStatus: string;
+  /** @nullable */
+  ragOverrideJustification?: string | null;
+  capexBudget: number;
+  opexBudget: number;
+  budgetThresholdPct: number;
+  /** @nullable */
+  scoringTotal?: number | null;
+  /** @nullable */
+  siteRegion?: string | null;
+  /** @nullable */
+  function?: string | null;
   /** @nullable */
   projectManagerId?: number | null;
   /** @nullable */
@@ -214,48 +266,106 @@ export interface Project {
 
 export interface CreateProjectBody {
   charterId: number;
+  portfolioId?: number;
+  programId?: number;
   name: string;
   description?: string;
   projectManagerId?: number;
+  priority?: string;
+  stage?: string;
+  strategicTheme?: string;
+  ragStatus?: string;
+  capexBudget?: number;
+  opexBudget?: number;
+  siteRegion?: string;
+  function?: string;
   startDate?: string;
   endDate?: string;
 }
 
 export interface UpdateProjectBody {
+  portfolioId?: number;
+  programId?: number;
   name?: string;
   description?: string;
   status?: string;
+  priority?: string;
+  stage?: string;
+  strategicTheme?: string;
+  ragStatus?: string;
+  ragOverrideJustification?: string;
+  capexBudget?: number;
+  opexBudget?: number;
+  budgetThresholdPct?: number;
+  scoringTotal?: number;
+  siteRegion?: string;
+  function?: string;
   projectManagerId?: number;
   startDate?: string;
   endDate?: string;
   progress?: number;
 }
 
+export type MilestoneReadinessChecklistItem = { [key: string]: unknown };
+
 export interface Milestone {
   id: number;
   projectId: number;
+  /** @nullable */
+  workstreamId?: number | null;
   name: string;
   description?: string;
   /** @nullable */
   dueDate?: string | null;
-  /** Status: pending, in_progress, completed, overdue */
+  /** @nullable */
+  actualStart?: string | null;
+  /** @nullable */
+  actualEnd?: string | null;
+  /** Status: not_started, in_progress, completed, blocked, on_hold, cancelled */
   status: string;
+  /** Priority: P0, P1, P2, P3 */
+  priority: string;
+  /** RAG: green, amber, red */
+  rag: string;
+  plannedEffortHours: number;
+  scheduleVarianceDays: number;
+  readinessChecklist: MilestoneReadinessChecklistItem[];
+  /**
+   * Gate decision: go, no_go, conditional
+   * @nullable
+   */
+  gateDecision?: string | null;
   order: number;
   createdAt: string;
 }
 
 export interface CreateMilestoneBody {
+  workstreamId?: number;
   name: string;
   description?: string;
   dueDate?: string;
+  priority?: string;
   order?: number;
 }
 
+export type UpdateMilestoneBodyReadinessChecklistItem = {
+  [key: string]: unknown;
+};
+
 export interface UpdateMilestoneBody {
+  workstreamId?: number;
   name?: string;
   description?: string;
   dueDate?: string;
+  actualStart?: string;
+  actualEnd?: string;
   status?: string;
+  priority?: string;
+  rag?: string;
+  plannedEffortHours?: number;
+  scheduleVarianceDays?: number;
+  readinessChecklist?: UpdateMilestoneBodyReadinessChecklistItem[];
+  gateDecision?: string;
   order?: number;
 }
 
@@ -271,24 +381,43 @@ export interface Task {
   projectId: number;
   /** @nullable */
   milestoneId?: number | null;
+  /** @nullable */
+  workstreamId?: number | null;
+  /** @nullable */
+  parentTaskId?: number | null;
+  /** @nullable */
+  managerId?: number | null;
   name: string;
   description?: string;
   /** @nullable */
   assigneeId?: number | null;
   /** @nullable */
   assigneeName?: string | null;
-  /** Status: not_started, in_progress, completed, blocked */
+  /** @nullable */
+  cftOwner?: number | null;
+  /** @nullable */
+  cftDept?: string | null;
+  /** Status: not_started, in_progress, completed, blocked, on_hold, cancelled */
   status: string;
-  /** Priority: low, medium, high, critical */
+  /** Priority: P0, P1, P2, P3 */
   priority: string;
+  /** RAG: green, amber, red */
+  rag: string;
   /** @nullable */
   startDate?: string | null;
   /** @nullable */
   endDate?: string | null;
   /** @nullable */
+  actualStart?: string | null;
+  /** @nullable */
+  actualEnd?: string | null;
+  /** @nullable */
   estimatedHours?: number | null;
   /** @nullable */
   actualHours?: number | null;
+  /** @nullable */
+  plannedEffortHours?: number | null;
+  scheduleVarianceDays: number;
   predecessorIds: number[];
   successorIds: number[];
   crossProjectPredecessors: TaskCrossProjectPredecessorsItem[];
@@ -304,13 +433,20 @@ export type CreateTaskBodyCrossProjectPredecessorsItem = {
 
 export interface CreateTaskBody {
   milestoneId?: number;
+  workstreamId?: number;
+  parentTaskId?: number;
+  managerId?: number;
   name: string;
   description?: string;
   assigneeId?: number;
+  cftOwner?: number;
+  cftDept?: string;
   priority: string;
+  rag?: string;
   startDate?: string;
   endDate?: string;
   estimatedHours?: number;
+  plannedEffortHours?: number;
   predecessorIds?: number[];
   crossProjectPredecessors?: CreateTaskBodyCrossProjectPredecessorsItem[];
   order?: number;
@@ -323,15 +459,25 @@ export type UpdateTaskBodyCrossProjectPredecessorsItem = {
 
 export interface UpdateTaskBody {
   milestoneId?: number;
+  workstreamId?: number;
+  parentTaskId?: number;
+  managerId?: number;
   name?: string;
   description?: string;
   assigneeId?: number;
+  cftOwner?: number;
+  cftDept?: string;
   status?: string;
   priority?: string;
+  rag?: string;
   startDate?: string;
   endDate?: string;
+  actualStart?: string;
+  actualEnd?: string;
   estimatedHours?: number;
   actualHours?: number;
+  plannedEffortHours?: number;
+  scheduleVarianceDays?: number;
   predecessorIds?: number[];
   crossProjectPredecessors?: UpdateTaskBodyCrossProjectPredecessorsItem[];
   order?: number;
@@ -358,6 +504,25 @@ export interface Burndown {
   dataPoints: BurndownDataPoint[];
 }
 
+export type ProjectHealthSummaryOffTrackProjectsItem = {
+  id: number;
+  name: string;
+};
+
+export type ProjectHealthSummaryDelayedProjectsItem = {
+  id: number;
+  name: string;
+};
+
+export interface ProjectHealthSummary {
+  active: number;
+  onTrack: number;
+  offTrack: number;
+  delayed: number;
+  offTrackProjects: ProjectHealthSummaryOffTrackProjectsItem[];
+  delayedProjects: ProjectHealthSummaryDelayedProjectsItem[];
+}
+
 export interface StatusCount {
   status: string;
   count: number;
@@ -371,6 +536,7 @@ export interface DashboardSummary {
   chartersByStatus: StatusCount[];
   projectsByStatus: StatusCount[];
   totalBudgetApproved: number;
+  projectHealth?: ProjectHealthSummary;
 }
 
 export interface ActivityItem {
@@ -386,6 +552,471 @@ export interface ActivityItem {
   createdAt: string;
 }
 
+export interface Portfolio {
+  id: number;
+  name: string;
+  description?: string;
+  /** @nullable */
+  ownerId?: number | null;
+  createdAt: string;
+}
+
+export interface CreatePortfolioBody {
+  name: string;
+  description?: string;
+  ownerId?: number;
+}
+
+export interface UpdatePortfolioBody {
+  name?: string;
+  description?: string;
+  ownerId?: number;
+}
+
+export interface Program {
+  id: number;
+  /** @nullable */
+  portfolioId?: number | null;
+  name: string;
+  description?: string;
+  /** @nullable */
+  ownerId?: number | null;
+  createdAt: string;
+}
+
+export interface CreateProgramBody {
+  portfolioId?: number;
+  name: string;
+  description?: string;
+  ownerId?: number;
+}
+
+export interface UpdateProgramBody {
+  portfolioId?: number;
+  name?: string;
+  description?: string;
+  ownerId?: number;
+}
+
+export interface Workstream {
+  id: number;
+  projectId: number;
+  name: string;
+  description?: string;
+  order: number;
+  /** @nullable */
+  parentWorkstreamId?: number | null;
+  createdAt: string;
+}
+
+export interface CreateWorkstreamBody {
+  name: string;
+  description?: string;
+  order?: number;
+  parentWorkstreamId?: number;
+}
+
+export interface UpdateWorkstreamBody {
+  name?: string;
+  description?: string;
+  order?: number;
+  parentWorkstreamId?: number;
+}
+
+export interface ProjectStage {
+  id: number;
+  projectId: number;
+  /** Lifecycle stage: project_case, urs, rfp, vendor_evaluation, commercial, charter, nfa, pr_po, kickoff, development, implementation_plan, uat, go_live, closure_readiness, project_closure */
+  stage: string;
+  /** Status: not_started, in_progress, complete, blocked */
+  status: string;
+  /** @nullable */
+  enteredAt?: string | null;
+  /** @nullable */
+  completedAt?: string | null;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface CreateProjectStageBody {
+  stage: string;
+  status?: string;
+  notes?: string;
+}
+
+export interface UpdateProjectStageBody {
+  status?: string;
+  notes?: string;
+  enteredAt?: string;
+  completedAt?: string;
+}
+
+export interface StageAdvanceResult {
+  projectId: number;
+  stages: ProjectStage[];
+  /** @nullable */
+  advancedTo?: string | null;
+}
+
+export interface Document {
+  id: number;
+  projectId: number;
+  /** @nullable */
+  stage?: string | null;
+  name: string;
+  /** @nullable */
+  fileUrl?: string | null;
+  /** @nullable */
+  fileType?: string | null;
+  /** @nullable */
+  fileSize?: number | null;
+  version: number;
+  /** @nullable */
+  uploadedBy?: number | null;
+  uploadedAt: string;
+  approvalStatus: string;
+  /** @nullable */
+  approvedBy?: number | null;
+  /** @nullable */
+  approvedAt?: string | null;
+  accessLevel: string;
+  tags: string[];
+  description?: string;
+  createdAt: string;
+}
+
+export interface CreateDocumentBody {
+  name: string;
+  stage?: string;
+  fileUrl?: string;
+  fileType?: string;
+  fileSize?: number;
+  uploadedBy?: number;
+  accessLevel?: string;
+  tags?: string[];
+  description?: string;
+}
+
+export interface UpdateDocumentBody {
+  name?: string;
+  stage?: string;
+  fileUrl?: string;
+  fileType?: string;
+  fileSize?: number;
+  approvalStatus?: string;
+  approvedBy?: number;
+  accessLevel?: string;
+  tags?: string[];
+  description?: string;
+}
+
+export interface DocumentVersion {
+  id: number;
+  documentId: number;
+  version: number;
+  /** @nullable */
+  fileUrl?: string | null;
+  /** @nullable */
+  uploadedBy?: number | null;
+  uploadedAt: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface CreateDocumentVersionBody {
+  fileUrl?: string;
+  uploadedBy?: number;
+  notes?: string;
+}
+
+export interface Issue {
+  id: number;
+  projectId: number;
+  /** @nullable */
+  taskId?: number | null;
+  /** @nullable */
+  milestoneId?: number | null;
+  title: string;
+  description?: string;
+  /** @nullable */
+  dependencyType?: string | null;
+  /** @nullable */
+  blockingOwnerId?: number | null;
+  /** @nullable */
+  blockingDept?: string | null;
+  /** @nullable */
+  originalDeadline?: string | null;
+  /** @nullable */
+  proposedRevisedDeadline?: string | null;
+  /** Status: open, pending, resolved */
+  status: string;
+  /** @nullable */
+  raisedBy?: number | null;
+  /** @nullable */
+  resolvedAt?: string | null;
+  resolutionNotes?: string;
+  createdAt: string;
+}
+
+export interface CreateIssueBody {
+  title: string;
+  description?: string;
+  taskId?: number;
+  milestoneId?: number;
+  dependencyType?: string;
+  blockingOwnerId?: number;
+  blockingDept?: string;
+  originalDeadline?: string;
+  proposedRevisedDeadline?: string;
+  raisedBy?: number;
+}
+
+export interface UpdateIssueBody {
+  title?: string;
+  description?: string;
+  dependencyType?: string;
+  blockingOwnerId?: number;
+  blockingDept?: string;
+  originalDeadline?: string;
+  proposedRevisedDeadline?: string;
+  status?: string;
+  resolutionNotes?: string;
+}
+
+export type MessageAttachmentsItem = { [key: string]: unknown };
+
+export interface Message {
+  id: number;
+  projectId: number;
+  /** @nullable */
+  taskId?: number | null;
+  /** @nullable */
+  milestoneId?: number | null;
+  senderId: number;
+  body: string;
+  attachments: MessageAttachmentsItem[];
+  taggedUserIds: number[];
+  /** @nullable */
+  threadParentId?: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateMessageBodyAttachmentsItem = { [key: string]: unknown };
+
+export interface CreateMessageBody {
+  senderId: number;
+  body: string;
+  taskId?: number;
+  milestoneId?: number;
+  attachments?: CreateMessageBodyAttachmentsItem[];
+  taggedUserIds?: number[];
+  threadParentId?: number;
+}
+
+export type UpdateMessageBodyAttachmentsItem = { [key: string]: unknown };
+
+export interface UpdateMessageBody {
+  body?: string;
+  attachments?: UpdateMessageBodyAttachmentsItem[];
+  taggedUserIds?: number[];
+}
+
+export interface ResourceAllocation {
+  id: number;
+  projectId: number;
+  /** @nullable */
+  workstreamId?: number | null;
+  userId: number;
+  /** @nullable */
+  role?: string | null;
+  /** @nullable */
+  skill?: string | null;
+  allocationPct: number;
+  /** @nullable */
+  startDate?: string | null;
+  /** @nullable */
+  endDate?: string | null;
+  createdAt: string;
+}
+
+export interface CreateResourceAllocationBody {
+  userId: number;
+  workstreamId?: number;
+  role?: string;
+  skill?: string;
+  allocationPct?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface UpdateResourceAllocationBody {
+  workstreamId?: number;
+  role?: string;
+  skill?: string;
+  allocationPct?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface RaciEntry {
+  id: number;
+  projectId: number;
+  /** @nullable */
+  taskId?: number | null;
+  /** @nullable */
+  workstreamId?: number | null;
+  userId: number;
+  /** RACI type: R, A, C, I */
+  raciType: string;
+  createdAt: string;
+}
+
+export interface CreateRaciEntryBody {
+  userId: number;
+  taskId?: number;
+  workstreamId?: number;
+  raciType: string;
+}
+
+export interface BudgetLine {
+  id: number;
+  projectId: number;
+  /** Category: CapEx, OpEx */
+  category: string;
+  description?: string;
+  baselineAmount: number;
+  forecastAmount: number;
+  actualAmount: number;
+  varianceAmount: number;
+  variancePct: number;
+  /** @nullable */
+  period?: string | null;
+  createdAt: string;
+}
+
+export interface CreateBudgetLineBody {
+  category?: string;
+  description?: string;
+  baselineAmount?: number;
+  forecastAmount?: number;
+  actualAmount?: number;
+  period?: string;
+}
+
+export interface UpdateBudgetLineBody {
+  category?: string;
+  description?: string;
+  baselineAmount?: number;
+  forecastAmount?: number;
+  actualAmount?: number;
+  period?: string;
+}
+
+export interface EscalationRule {
+  id: number;
+  /** @nullable */
+  projectId?: number | null;
+  /** Trigger: rag_red, delay_days, budget_variance_pct */
+  triggerType: string;
+  thresholdValue: number;
+  notifyUserIds: number[];
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateEscalationRuleBody {
+  projectId?: number;
+  triggerType: string;
+  thresholdValue?: number;
+  notifyUserIds?: number[];
+  isActive?: boolean;
+}
+
+export interface UpdateEscalationRuleBody {
+  triggerType?: string;
+  thresholdValue?: number;
+  notifyUserIds?: number[];
+  isActive?: boolean;
+}
+
+export interface ScoringCriteria {
+  id: number;
+  name: string;
+  weightPct: number;
+  description?: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface CreateScoringCriteriaBody {
+  name: string;
+  weightPct?: number;
+  description?: string;
+  isActive?: boolean;
+}
+
+export interface UpdateScoringCriteriaBody {
+  name?: string;
+  weightPct?: number;
+  description?: string;
+  isActive?: boolean;
+}
+
+export interface ProjectScore {
+  id: number;
+  projectId: number;
+  criterionId: number;
+  /** @nullable */
+  criterionName?: string | null;
+  score: number;
+  weightedScore: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface CreateProjectScoreBody {
+  criterionId: number;
+  score: number;
+  notes?: string;
+}
+
+export interface UpdateProjectScoreBody {
+  criterionId?: number;
+  score?: number;
+  notes?: string;
+}
+
+export interface Notification {
+  id: number;
+  userId: number;
+  type: string;
+  title: string;
+  body?: string;
+  /** @nullable */
+  link?: string | null;
+  isRead: boolean;
+  /** @nullable */
+  relatedEntityType?: string | null;
+  /** @nullable */
+  relatedEntityId?: number | null;
+  createdAt: string;
+}
+
+export interface CreateNotificationBody {
+  userId: number;
+  type: string;
+  title: string;
+  body?: string;
+  link?: string;
+  relatedEntityType?: string;
+  relatedEntityId?: number;
+}
+
+export interface MarkAllReadBody {
+  userId: number;
+}
+
 export type ListChartersParams = {
   status?: string;
   submittedBy?: number;
@@ -397,6 +1028,27 @@ export type ListApprovalsParams = {
   status?: string;
 };
 
+export type ListProjectsParams = {
+  programId?: number;
+  portfolioId?: number;
+};
+
 export type GetPendingApprovalsParams = {
   approverId?: number;
+};
+
+export type ListProgramsParams = {
+  portfolioId?: number;
+};
+
+export type ListEscalationRulesParams = {
+  projectId?: number;
+};
+
+export type ListNotificationsParams = {
+  userId?: number;
+};
+
+export type MarkAllNotificationsRead200 = {
+  success: boolean;
 };

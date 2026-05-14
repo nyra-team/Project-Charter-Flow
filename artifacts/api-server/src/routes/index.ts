@@ -5,6 +5,17 @@ import chartersRouter from "./charters";
 import approvalsRouter from "./approvals";
 import projectsRouter from "./projects";
 import dashboardRouter from "./dashboard";
+import portfoliosRouter from "./portfolios";
+import workstreamsRouter from "./workstreams";
+import projectStagesRouter from "./project_stages";
+import documentsRouter from "./documents";
+import issuesRouter from "./issues";
+import messagesRouter from "./messages";
+import resourcesRouter from "./resources";
+import budgetRouter from "./budget";
+import escalationRouter from "./escalation";
+import scoringRouter from "./scoring";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -14,5 +25,16 @@ router.use(chartersRouter);
 router.use(approvalsRouter);
 router.use(projectsRouter);
 router.use(dashboardRouter);
+router.use(portfoliosRouter);
+router.use(workstreamsRouter);
+router.use(projectStagesRouter);
+router.use(documentsRouter);
+router.use(issuesRouter);
+router.use(messagesRouter);
+router.use(resourcesRouter);
+router.use(budgetRouter);
+router.use(escalationRouter);
+router.use(scoringRouter);
+router.use(notificationsRouter);
 
 export default router;

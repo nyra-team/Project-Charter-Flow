@@ -431,11 +431,11 @@ export default function ProjectDetail() {
   const [view, setView] = useState<"list" | "gantt">("list");
   const [activeTab, setActiveTab] = useState<"plan" | "analytics">("plan");
 
-  const { data: project, isLoading: loadingProject } = useGetProject(projectId, { query: { enabled: !!projectId } });
-  const { data: rawMilestones } = useListMilestones(projectId, { query: { enabled: !!projectId } });
-  const { data: rawTasks } = useListTasks(projectId, { query: { enabled: !!projectId } });
-  const { data: burndown } = useGetBurndown(projectId, { query: { enabled: !!projectId } });
-  const { data: criticalPath } = useGetCriticalPath(projectId, { query: { enabled: !!projectId } });
+  const { data: project, isLoading: loadingProject } = useGetProject(projectId);
+  const { data: rawMilestones } = useListMilestones(projectId);
+  const { data: rawTasks } = useListTasks(projectId);
+  const { data: burndown } = useGetBurndown(projectId);
+  const { data: criticalPath } = useGetCriticalPath(projectId);
 
   const milestones: Milestone[] = (rawMilestones ?? []) as Milestone[];
   const tasks: Task[] = (rawTasks ?? []) as Task[];

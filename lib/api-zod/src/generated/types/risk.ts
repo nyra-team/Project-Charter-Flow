@@ -16,5 +16,17 @@ export interface Risk {
   /** Likelihood: low, medium, high */
   likelihood: string;
   mitigation?: string;
+  /** Priority: low, medium, high, critical */
+  priority: string;
+  /** RAG status: green, amber, red */
+  rag: string;
+  /** @nullable */
+  effortDays?: number | null;
+  /** @nullable */
+  scheduleImpact?: string | null;
+  /** Status: open, mitigated, accepted, closed */
+  status: string;
+  /** @nullable */
+  owner?: string | null;
   createdAt: string;
 }

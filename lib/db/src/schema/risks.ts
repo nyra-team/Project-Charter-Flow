@@ -10,6 +10,13 @@ export const risksTable = pgTable("risks", {
   impact: text("impact").notNull().default("medium"),
   likelihood: text("likelihood").notNull().default("medium"),
   mitigation: text("mitigation").default(""),
+  // Extended fields
+  priority: text("priority").notNull().default("medium"),
+  rag: text("rag").notNull().default("green"),
+  effortDays: integer("effort_days"),
+  scheduleImpact: text("schedule_impact").default(""),
+  status: text("status").notNull().default("open"),
+  owner: text("owner").default(""),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

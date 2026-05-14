@@ -5,7 +5,7 @@ import { z } from "zod/v4";
 export const approvalsTable = pgTable("approvals", {
   id: serial("id").primaryKey(),
   charterId: integer("charter_id").notNull(),
-  approverId: integer("approver_id").notNull(),
+  approverId: integer("approver_id"),
   approverRole: text("approver_role").notNull(),
   stage: text("stage").notNull(),
   status: text("status").notNull().default("pending"),

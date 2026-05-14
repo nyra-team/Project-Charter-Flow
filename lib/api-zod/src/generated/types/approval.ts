@@ -9,7 +9,8 @@
 export interface Approval {
   id: number;
   charterId: number;
-  approverId: number;
+  /** @nullable */
+  approverId?: number | null;
   /** Role: hod, executive_director, cfo, scm, chairman, finance, pmo */
   approverRole: string;
   /** Stage: parallel_review, scm_review, chairman_review, finance_review, pmo_review */

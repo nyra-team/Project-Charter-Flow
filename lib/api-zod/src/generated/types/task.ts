@@ -12,24 +12,43 @@ export interface Task {
   projectId: number;
   /** @nullable */
   milestoneId?: number | null;
+  /** @nullable */
+  workstreamId?: number | null;
+  /** @nullable */
+  parentTaskId?: number | null;
+  /** @nullable */
+  managerId?: number | null;
   name: string;
   description?: string;
   /** @nullable */
   assigneeId?: number | null;
   /** @nullable */
   assigneeName?: string | null;
-  /** Status: not_started, in_progress, completed, blocked */
+  /** @nullable */
+  cftOwner?: number | null;
+  /** @nullable */
+  cftDept?: string | null;
+  /** Status: not_started, in_progress, completed, blocked, on_hold, cancelled */
   status: string;
-  /** Priority: low, medium, high, critical */
+  /** Priority: P0, P1, P2, P3 */
   priority: string;
+  /** RAG: green, amber, red */
+  rag: string;
   /** @nullable */
   startDate?: string | null;
   /** @nullable */
   endDate?: string | null;
   /** @nullable */
+  actualStart?: string | null;
+  /** @nullable */
+  actualEnd?: string | null;
+  /** @nullable */
   estimatedHours?: number | null;
   /** @nullable */
   actualHours?: number | null;
+  /** @nullable */
+  plannedEffortHours?: number | null;
+  scheduleVarianceDays: number;
   predecessorIds: number[];
   successorIds: number[];
   crossProjectPredecessors: TaskCrossProjectPredecessorsItem[];

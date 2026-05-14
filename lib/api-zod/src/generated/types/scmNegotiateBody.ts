@@ -9,5 +9,5 @@
 export interface ScmNegotiateBody {
   finalNegotiatedBudget: number;
   comments?: string;
-  approverId: number;
+  approverId?: number;
 }

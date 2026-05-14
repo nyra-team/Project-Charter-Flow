@@ -9,10 +9,33 @@
 export interface Project {
   id: number;
   charterId: number;
+  /** @nullable */
+  portfolioId?: number | null;
+  /** @nullable */
+  programId?: number | null;
   name: string;
   description?: string;
   /** Status: planning, active, on_hold, completed, cancelled */
   status: string;
+  /** Priority: P0, P1, P2, P3 */
+  priority: string;
+  /** Lifecycle stage: project_case, urs, rfp, vendor_evaluation, commercial, charter, nfa, pr_po, kickoff, development, implementation_plan, uat, go_live, closure_readiness, project_closure */
+  stage: string;
+  /** @nullable */
+  strategicTheme?: string | null;
+  /** RAG: green, amber, red */
+  ragStatus: string;
+  /** @nullable */
+  ragOverrideJustification?: string | null;
+  capexBudget: number;
+  opexBudget: number;
+  budgetThresholdPct: number;
+  /** @nullable */
+  scoringTotal?: number | null;
+  /** @nullable */
+  siteRegion?: string | null;
+  /** @nullable */
+  function?: string | null;
   /** @nullable */
   projectManagerId?: number | null;
   /** @nullable */

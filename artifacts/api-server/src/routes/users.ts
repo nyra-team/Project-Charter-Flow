@@ -17,12 +17,12 @@ router.get("/users", async (_req, res): Promise<void> => {
 });
 
 router.post("/users", async (req, res): Promise<void> => {
-  const { name, email, role } = req.body;
+  const { name, email, role, department } = req.body;
   if (!name || !email || !role) {
     res.status(400).json({ error: "name, email and role are required" });
     return;
   }
-  const [user] = await db.insert(usersTable).values({ name, email, role }).returning();
+  const [user] = await db.insert(usersTable).values({ name, email, role, department: department ?? "General" }).returning();
   res.status(201).json(serializeUser(user));
 });
 

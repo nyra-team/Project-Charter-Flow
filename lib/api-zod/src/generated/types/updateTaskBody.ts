@@ -9,15 +9,25 @@ import type { UpdateTaskBodyCrossProjectPredecessorsItem } from "./updateTaskBod
 
 export interface UpdateTaskBody {
   milestoneId?: number;
+  workstreamId?: number;
+  parentTaskId?: number;
+  managerId?: number;
   name?: string;
   description?: string;
   assigneeId?: number;
+  cftOwner?: number;
+  cftDept?: string;
   status?: string;
   priority?: string;
+  rag?: string;
   startDate?: string;
   endDate?: string;
+  actualStart?: string;
+  actualEnd?: string;
   estimatedHours?: number;
   actualHours?: number;
+  plannedEffortHours?: number;
+  scheduleVarianceDays?: number;
   predecessorIds?: number[];
   crossProjectPredecessors?: UpdateTaskBodyCrossProjectPredecessorsItem[];
   order?: number;

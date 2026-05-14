@@ -8,9 +8,19 @@
 
 export interface CreateProjectBody {
   charterId: number;
+  portfolioId?: number;
+  programId?: number;
   name: string;
   description?: string;
   projectManagerId?: number;
+  priority?: string;
+  stage?: string;
+  strategicTheme?: string;
+  ragStatus?: string;
+  capexBudget?: number;
+  opexBudget?: number;
+  siteRegion?: string;
+  function?: string;
   startDate?: string;
   endDate?: string;
 }

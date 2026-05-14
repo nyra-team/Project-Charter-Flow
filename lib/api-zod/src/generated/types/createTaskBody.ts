@@ -9,13 +9,20 @@ import type { CreateTaskBodyCrossProjectPredecessorsItem } from "./createTaskBod
 
 export interface CreateTaskBody {
   milestoneId?: number;
+  workstreamId?: number;
+  parentTaskId?: number;
+  managerId?: number;
   name: string;
   description?: string;
   assigneeId?: number;
+  cftOwner?: number;
+  cftDept?: string;
   priority: string;
+  rag?: string;
   startDate?: string;
   endDate?: string;
   estimatedHours?: number;
+  plannedEffortHours?: number;
   predecessorIds?: number[];
   crossProjectPredecessors?: CreateTaskBodyCrossProjectPredecessorsItem[];
   order?: number;

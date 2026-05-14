@@ -184,7 +184,7 @@ export default function ApprovalsList() {
                       <div>
                         <Link href={`/charters/${approval.charterId}`}>
                           <h3 className="font-semibold text-gray-900 hover:text-indigo-600 transition-colors">
-                            {(approval as Record<string, unknown>).charterTitle as string || `Charter #${approval.charterId}`}
+                            {(approval as unknown as Record<string, unknown>).charterTitle as string || `Charter #${approval.charterId}`}
                           </h3>
                         </Link>
                         <div className="flex items-center gap-3 mt-1">

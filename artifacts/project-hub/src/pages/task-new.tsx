@@ -29,7 +29,7 @@ export default function NewTask() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  const { data: milestones } = useListMilestones(projectId, { query: { enabled: !!projectId } });
+  const { data: milestones } = useListMilestones(projectId);
   const { data: users } = useListUsers();
   
   const form = useForm<z.infer<typeof taskSchema>>({
@@ -47,9 +47,9 @@ export default function NewTask() {
   function onSubmit(values: z.infer<typeof taskSchema>) {
     createTask.mutate(
       {
+        id: projectId,
         data: {
           ...values,
-          projectId
         }
       },
       {

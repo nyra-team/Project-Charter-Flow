@@ -5,11 +5,21 @@
  * Project Hub API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { UpdateMilestoneBodyReadinessChecklistItem } from "./updateMilestoneBodyReadinessChecklistItem";
 
 export interface UpdateMilestoneBody {
+  workstreamId?: number;
   name?: string;
   description?: string;
   dueDate?: string;
+  actualStart?: string;
+  actualEnd?: string;
   status?: string;
+  priority?: string;
+  rag?: string;
+  plannedEffortHours?: number;
+  scheduleVarianceDays?: number;
+  readinessChecklist?: UpdateMilestoneBodyReadinessChecklistItem[];
+  gateDecision?: string;
   order?: number;
 }

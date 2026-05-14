@@ -1,4 +1,4 @@
-import { useGetDashboardSummary, useGetRecentActivity } from "@workspace/api-client-react";
+import { useGetDashboardSummary, useGetRecentActivity, type DashboardSummary } from "@workspace/api-client-react";
 import { formatCurrency } from "../lib/format";
 import {
   FileText, CheckSquare, BarChart3, DollarSign, ArrowUpRight, Clock,
@@ -64,7 +64,7 @@ function MetricCard({
   return href ? <Link href={href}>{inner}</Link> : inner;
 }
 
-function ProjectHealthSection({ health }: { health: NonNullable<ReturnType<typeof useGetDashboardSummary>["data"]>["projectHealth"] }) {
+function ProjectHealthSection({ health }: { health: DashboardSummary["projectHealth"] }) {
   if (!health) return null;
 
   const tiles = [
@@ -86,9 +86,10 @@ function ProjectHealthSection({ health }: { health: NonNullable<ReturnType<typeo
     },
   ];
 
-  const problems = [
-    ...(health.offTrackProjects ?? []).map(p => ({ ...p, kind: "off-track" as const })),
-    ...(health.delayedProjects ?? []).map(p => ({ ...p, kind: "delayed" as const })),
+  type ProblemItem = { id: number; name: string; kind: "off-track" | "delayed"; reason?: string; daysOverdue?: number; behindBy?: number };
+  const problems: ProblemItem[] = [
+    ...(health.offTrackProjects ?? []).map(p => ({ ...(p as unknown as ProblemItem), kind: "off-track" as const })),
+    ...(health.delayedProjects ?? []).map(p => ({ ...(p as unknown as ProblemItem), kind: "delayed" as const })),
   ];
 
   return (
@@ -143,10 +144,10 @@ function ProjectHealthSection({ health }: { health: NonNullable<ReturnType<typeo
                   <p className="text-sm font-semibold text-gray-800 truncate">{p.name}</p>
                   <p className="text-xs text-gray-500 truncate">{p.reason}</p>
                 </div>
-                {p.kind === "delayed" && "daysOverdue" in p && (
+                {p.kind === "delayed" && p.daysOverdue != null && (
                   <span className="text-xs font-bold text-red-600 flex-shrink-0">+{p.daysOverdue}d</span>
                 )}
-                {p.kind === "off-track" && "behindBy" in p && (
+                {p.kind === "off-track" && p.behindBy != null && (
                   <span className="text-xs font-bold text-amber-600 flex-shrink-0">{p.behindBy}% behind</span>
                 )}
               </div>
@@ -234,7 +235,7 @@ function GamificationPanel() {
 
 export default function Dashboard() {
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary();
-  const { data: activities, isLoading: loadingActivity } = useGetRecentActivity({ query: { enabled: true } });
+  const { data: activities, isLoading: loadingActivity } = useGetRecentActivity();
 
   if (loadingSummary) {
     return (

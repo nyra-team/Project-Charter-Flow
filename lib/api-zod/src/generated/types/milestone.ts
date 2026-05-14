@@ -5,16 +5,35 @@
  * Project Hub API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { MilestoneReadinessChecklistItem } from "./milestoneReadinessChecklistItem";
 
 export interface Milestone {
   id: number;
   projectId: number;
+  /** @nullable */
+  workstreamId?: number | null;
   name: string;
   description?: string;
   /** @nullable */
   dueDate?: string | null;
-  /** Status: pending, in_progress, completed, overdue */
+  /** @nullable */
+  actualStart?: string | null;
+  /** @nullable */
+  actualEnd?: string | null;
+  /** Status: not_started, in_progress, completed, blocked, on_hold, cancelled */
   status: string;
+  /** Priority: P0, P1, P2, P3 */
+  priority: string;
+  /** RAG: green, amber, red */
+  rag: string;
+  plannedEffortHours: number;
+  scheduleVarianceDays: number;
+  readinessChecklist: MilestoneReadinessChecklistItem[];
+  /**
+   * Gate decision: go, no_go, conditional
+   * @nullable
+   */
+  gateDecision?: string | null;
   order: number;
   createdAt: string;
 }

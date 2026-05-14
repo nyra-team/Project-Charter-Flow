@@ -9,5 +9,5 @@
 export interface FinanceOrderBody {
   internalOrderNumber: string;
   comments?: string;
-  approverId: number;
+  approverId?: number;
 }

@@ -7,9 +7,22 @@
  */
 
 export interface UpdateProjectBody {
+  portfolioId?: number;
+  programId?: number;
   name?: string;
   description?: string;
   status?: string;
+  priority?: string;
+  stage?: string;
+  strategicTheme?: string;
+  ragStatus?: string;
+  ragOverrideJustification?: string;
+  capexBudget?: number;
+  opexBudget?: number;
+  budgetThresholdPct?: number;
+  scoringTotal?: number;
+  siteRegion?: string;
+  function?: string;
   projectManagerId?: number;
   startDate?: string;
   endDate?: string;

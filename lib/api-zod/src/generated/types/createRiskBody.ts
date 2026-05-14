@@ -12,4 +12,10 @@ export interface CreateRiskBody {
   impact: string;
   likelihood: string;
   mitigation?: string;
+  priority?: string;
+  rag?: string;
+  effortDays?: number;
+  scheduleImpact?: string;
+  status?: string;
+  owner?: string;
 }
