@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, issuesTable } from "@workspace/db";
+import { db, issuesTable, projectsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 
 const router: IRouter = Router();
@@ -14,6 +14,8 @@ router.get("/projects/:id/issues", async (req, res): Promise<void> => {
 router.post("/projects/:id/issues", async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [projI] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  if (projI?.status === "closed") { res.status(409).json({ error: "Project is closed. Issues cannot be raised." }); return; }
   const { title, description, taskId, milestoneId, dependencyType, blockingOwnerId, blockingDept, originalDeadline, proposedRevisedDeadline, raisedBy } = req.body as {
     title: string; description?: string; taskId?: number; milestoneId?: number; dependencyType?: string;
     blockingOwnerId?: number; blockingDept?: string; originalDeadline?: string; proposedRevisedDeadline?: string; raisedBy?: number;
@@ -37,6 +39,11 @@ router.get("/issues/:id", async (req, res): Promise<void> => {
 router.patch("/issues/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [existingIssue] = await db.select({ projectId: issuesTable.projectId }).from(issuesTable).where(eq(issuesTable.id, id));
+  if (existingIssue) {
+    const [projIssue] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, existingIssue.projectId));
+    if (projIssue?.status === "closed") { res.status(409).json({ error: "Project is closed. Issues cannot be updated." }); return; }
+  }
   const updateData: Record<string, unknown> = {};
   const fields = ["title", "description", "dependencyType", "blockingOwnerId", "blockingDept", "originalDeadline", "proposedRevisedDeadline", "status", "resolutionNotes"];
   for (const f of fields) {

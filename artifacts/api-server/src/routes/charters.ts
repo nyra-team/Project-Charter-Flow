@@ -53,13 +53,53 @@ router.post("/charters", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+
+  // Server-side business-case validation:
+  // description = Business Justification (≥100 characters)
+  // scope       = Scope Summary (≥50 characters)
+  const descLen = (parsed.data.description ?? "").trim().length;
+  if (descLen < 100) {
+    res.status(422).json({
+      error: `Business Justification must be at least 100 characters (currently ${descLen}).`,
+      field: "description",
+      charCount: descLen,
+      required: 100,
+    });
+    return;
+  }
+  const scopeLen = (parsed.data.scope ?? "").trim().length;
+  if (scopeLen < 50) {
+    res.status(422).json({
+      error: `Scope Summary must be at least 50 characters (currently ${scopeLen}).`,
+      field: "scope",
+      charCount: scopeLen,
+      required: 50,
+    });
+    return;
+  }
+
   const [charter] = await db.insert(chartersTable).values({
     ...parsed.data,
     tentativeBudget: String(parsed.data.tentativeBudget),
     nfaThreshold: parsed.data.nfaThreshold != null ? String(parsed.data.nfaThreshold) : null,
   }).returning();
-  await logActivity("charter_created", `Charter "${charter.title}" created`, charter.id, "charter", charter.submittedById);
-  res.status(201).json(formatCharter(charter));
+
+  // Generate server-side PC reference ID: PC-YYYY-XXXXX (padded charter DB id)
+  // This guarantees uniqueness because it is derived from the auto-increment PK.
+  const pcYear = new Date().getFullYear();
+  const pcId = `PC-${pcYear}-${String(charter.id).padStart(5, "0")}`;
+
+  // Embed the server-generated pcId in strategicAlignmentTags.
+  // Strip any client-submitted PC_ID: tag (cannot be trusted) and prepend the canonical one.
+  const clientTags = (charter.strategicAlignmentTags as string[] | null) ?? [];
+  const tagsWithPcId = [`PC_ID:${pcId}`, ...clientTags.filter(t => !t.startsWith("PC_ID:"))];
+  const [updatedCharter] = await db.update(chartersTable)
+    .set({ strategicAlignmentTags: tagsWithPcId })
+    .where(eq(chartersTable.id, charter.id))
+    .returning();
+
+  await logActivity("charter_created", `Charter "${charter.title}" created (ref: ${pcId})`, charter.id, "charter", charter.submittedById);
+  res.status(201).json({ ...formatCharter(updatedCharter ?? charter), pcId });
 });
 
 // Get charter

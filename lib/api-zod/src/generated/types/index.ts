@@ -98,6 +98,8 @@ export * from "./updateScoringCriteriaBody";
 export * from "./updateTaskBody";
 export * from "./updateTaskBodyCrossProjectPredecessorsItem";
 export * from "./updateWorkstreamBody";
+export * from "./uploadUrlRequest";
+export * from "./uploadUrlResponse";
 export * from "./user";
 export * from "./vendor";
 export * from "./workstream";

@@ -1,10 +1,10 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRoute, Link } from "wouter";
 import {
   useGetProject, useListMilestones, useListTasks,
-  useGetBurndown, useGetCriticalPath,
+  useGetBurndown, useGetCriticalPath, useListProjectStages,
 } from "@workspace/api-client-react";
-import { formatDate } from "../lib/format";
+import { formatDate, formatCurrency } from "../lib/format";
 import { StatusBadge } from "../components/status-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
@@ -15,8 +15,12 @@ import {
 import {
   ChevronLeft, BarChart2, List, Milestone,
   Plus, CheckCircle2, Clock, AlertTriangle, Flag,
-  ChevronDown, ChevronRight,
+  ChevronDown, ChevronRight, Layers, XCircle,
 } from "lucide-react";
+import { StageProgressBar } from "../components/stage-progress-bar";
+import { StagePanel } from "../components/stage-panel";
+import { getCurrentStageKey, LIFECYCLE_STAGES } from "../lib/lifecycle-config";
+import { useUserStore } from "../lib/store";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const DAY_MS = 86_400_000;
@@ -66,7 +70,6 @@ function GanttChart({
   const totalDays = Math.ceil((maxDate.getTime() - minDate.getTime()) / DAY_MS);
   const svgW = totalDays * DAY_W;
 
-  // Build flat rows: milestone header + its tasks
   type Row = { type: "milestone"; item: Milestone } | { type: "task"; item: Task };
   const rows: Row[] = [];
   const used = new Set<number>();
@@ -77,12 +80,11 @@ function GanttChart({
       if (t.milestoneId === m.id) { rows.push({ type: "task", item: t }); used.add(t.id); }
     }
   }
-  // unassigned tasks
   for (const t of tasks) {
     if (!used.has(t.id)) rows.push({ type: "task", item: t });
   }
 
-  const svgH = rows.length * ROW_H + 56; // header rows
+  const svgH = rows.length * ROW_H + 56;
 
   function dayX(d: Date) {
     return ((d.getTime() - minDate.getTime()) / DAY_MS) * DAY_W;
@@ -104,9 +106,8 @@ function GanttChart({
     return { x: startX, w, type: "task" as const };
   }
 
-  // Week headers
   const weeks: { label: string; x: number; w: number }[] = [];
-  const d = new Date(minDate); d.setDate(d.getDate() - d.getDay()); // align to Sunday
+  const d = new Date(minDate); d.setDate(d.getDate() - d.getDay());
   while (d < maxDate) {
     const wx = Math.max(0, dayX(d));
     const nd = new Date(d); nd.setDate(nd.getDate() + 7);
@@ -117,10 +118,8 @@ function GanttChart({
     d.setDate(d.getDate() + 7);
   }
 
-  // Today line
   const todayX = dayX(new Date());
 
-  // Dependency arrows (predecessor to successor)
   const taskRowIdx: Record<number, number> = {};
   rows.forEach((r, i) => { if (r.type === "task") taskRowIdx[(r.item as Task).id] = i; });
   const taskBarX: Record<number, { x: number; w: number }> = {};
@@ -139,7 +138,7 @@ function GanttChart({
     try {
       if (Array.isArray(t.predecessorIds)) predIds = t.predecessorIds.map(Number);
       else if (typeof t.predecessorIds === "string" && t.predecessorIds) predIds = JSON.parse(t.predecessorIds).map(Number);
-    } catch { /* ignore */ }
+    } catch {}
 
     const toBarX = taskBarX[t.id];
     const toRowIdx = taskRowIdx[t.id];
@@ -158,27 +157,15 @@ function GanttChart({
 
   return (
     <div className="flex" style={{ height: svgH + 2, overflow: "hidden" }}>
-      {/* Left: task name column */}
-      <div
-        className="flex-shrink-0 border-r border-gray-100"
-        style={{ width: LEFT_W, minWidth: LEFT_W, height: svgH }}
-      >
-        {/* Header */}
-        <div
-          className="flex items-center px-4 border-b border-gray-100"
-          style={{ height: 56, background: "#F8FAFC" }}
-        >
+      <div className="flex-shrink-0 border-r border-gray-100" style={{ width: LEFT_W, minWidth: LEFT_W, height: svgH }}>
+        <div className="flex items-center px-4 border-b border-gray-100" style={{ height: 56, background: "#F8FAFC" }}>
           <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Task / Milestone</span>
         </div>
         {rows.map((row, i) => (
           <div
             key={`${row.type}-${row.item.id}`}
             className="flex items-center border-b border-gray-50"
-            style={{
-              height: ROW_H,
-              paddingLeft: row.type === "task" ? 28 : 12,
-              background: i % 2 === 0 ? "white" : "#FAFBFC",
-            }}
+            style={{ height: ROW_H, paddingLeft: row.type === "task" ? 28 : 12, background: i % 2 === 0 ? "white" : "#FAFBFC" }}
           >
             {row.type === "milestone" ? (
               <div className="flex items-center gap-1.5">
@@ -191,8 +178,7 @@ function GanttChart({
                   className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                   style={{
                     background: criticalIds.has((row.item as Task).id) ? "#EF4444"
-                      : row.item.status === "completed" ? "#10B981"
-                        : "#6366F1",
+                      : row.item.status === "completed" ? "#10B981" : "#6366F1",
                   }}
                 />
                 <span className="text-xs text-gray-700 truncate">{row.item.name}</span>
@@ -207,45 +193,26 @@ function GanttChart({
         ))}
       </div>
 
-      {/* Right: scrollable SVG timeline */}
       <div className="flex-1 overflow-x-auto">
         <svg width={svgW} height={svgH} style={{ display: "block" }}>
-          {/* Background alternating rows */}
           {rows.map((row, i) => (
-            <rect
-              key={`bg-${i}`}
-              x={0} y={56 + i * ROW_H}
-              width={svgW} height={ROW_H}
-              fill={i % 2 === 0 ? "white" : "#FAFBFC"}
-            />
+            <rect key={`bg-${i}`} x={0} y={56 + i * ROW_H} width={svgW} height={ROW_H} fill={i % 2 === 0 ? "white" : "#FAFBFC"} />
           ))}
-
-          {/* Week columns + headers */}
           {weeks.map((w, i) => (
             <g key={i}>
-              <rect x={w.x} y={0} width={w.w} height={56}
-                fill={i % 2 === 0 ? "#F8FAFC" : "#F1F5F9"} />
-              <line x1={w.x} y1={0} x2={w.x} y2={svgH}
-                stroke="#E2E8F0" strokeWidth={1} />
-              <text x={w.x + w.w / 2} y={34} textAnchor="middle"
-                fontSize={10} fill="#94A3B8" fontWeight={600}>
-                {w.label}
-              </text>
+              <rect x={w.x} y={0} width={w.w} height={56} fill={i % 2 === 0 ? "#F8FAFC" : "#F1F5F9"} />
+              <line x1={w.x} y1={0} x2={w.x} y2={svgH} stroke="#E2E8F0" strokeWidth={1} />
+              <text x={w.x + w.w / 2} y={34} textAnchor="middle" fontSize={10} fill="#94A3B8" fontWeight={600}>{w.label}</text>
             </g>
           ))}
           <line x1={0} y1={56} x2={svgW} y2={56} stroke="#E2E8F0" strokeWidth={1} />
-
-          {/* Today line */}
           {todayX >= 0 && todayX <= svgW && (
             <g>
-              <line x1={todayX} y1={0} x2={todayX} y2={svgH}
-                stroke="#EF4444" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />
+              <line x1={todayX} y1={0} x2={todayX} y2={svgH} stroke="#EF4444" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />
               <rect x={todayX - 16} y={2} width={32} height={14} rx={3} fill="#EF4444" opacity={0.9} />
               <text x={todayX} y={12} textAnchor="middle" fontSize={8} fill="white" fontWeight={700}>TODAY</text>
             </g>
           )}
-
-          {/* Dependency arrows */}
           <defs>
             <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
               <path d="M0,0 L6,3 L0,6 Z" fill="#94A3B8" />
@@ -254,20 +221,14 @@ function GanttChart({
           {arrows.map((a, i) => {
             const mx = (a.x1 + a.x2) / 2;
             const d = `M${a.x1},${a.y1} C${mx},${a.y1} ${mx},${a.y2} ${a.x2},${a.y2}`;
-            return (
-              <path key={i} d={d} fill="none" stroke="#94A3B8"
-                strokeWidth={1.5} markerEnd="url(#arrowhead)" opacity={0.6} />
-            );
+            return <path key={i} d={d} fill="none" stroke="#94A3B8" strokeWidth={1.5} markerEnd="url(#arrowhead)" opacity={0.6} />;
           })}
-
-          {/* Bars */}
           {rows.map((row, i) => {
             const bp = rowBarProps(row);
             if (!bp) return null;
             const y = 56 + i * ROW_H;
             const isCritical = row.type === "task" && criticalIds.has((row.item as Task).id);
             const isDone = row.item.status === "completed";
-
             if (bp.type === "milestone") {
               const size = 9;
               return (
@@ -282,24 +243,16 @@ function GanttChart({
             const { x: bx, w: bw } = bp as { x: number; w: number; type: "task" };
             const barH = 18;
             const by = y + (ROW_H - barH) / 2;
-            const barFill = isDone ? "#10B981"
-              : isCritical ? "#EF4444"
-                : row.item.status === "blocked" ? "#F59E0B"
-                  : "#6366F1";
+            const barFill = isDone ? "#10B981" : isCritical ? "#EF4444" : row.item.status === "blocked" ? "#F59E0B" : "#6366F1";
             return (
               <g key={`bar-${i}`}>
-                <rect
-                  x={bx} y={by} width={bw} height={barH} rx={4}
-                  fill={barFill} opacity={isDone ? 0.6 : 0.85}
-                />
+                <rect x={bx} y={by} width={bw} height={barH} rx={4} fill={barFill} opacity={isDone ? 0.6 : 0.85} />
                 {bw > 40 && (
                   <text x={bx + 6} y={by + 12} fontSize={9} fill="white" fontWeight={600}>
                     {row.item.name.substring(0, Math.floor(bw / 8))}
                   </text>
                 )}
-                {isCritical && (
-                  <rect x={bx} y={by + barH - 3} width={bw} height={3} rx={0} fill="#B91C1C" />
-                )}
+                {isCritical && <rect x={bx} y={by + barH - 3} width={bw} height={3} rx={0} fill="#B91C1C" />}
               </g>
             );
           })}
@@ -310,9 +263,7 @@ function GanttChart({
 }
 
 // ── List View ─────────────────────────────────────────────────────────────────
-function HierarchyList({
-  milestones, tasks, criticalIds,
-}: { milestones: Milestone[]; tasks: Task[]; criticalIds: Set<number> }) {
+function HierarchyList({ milestones, tasks, criticalIds }: { milestones: Milestone[]; tasks: Task[]; criticalIds: Set<number> }) {
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
 
   const PRIORITY_COLORS: Record<string, string> = {
@@ -339,7 +290,6 @@ function HierarchyList({
         const isCollapsed = g.milestone && collapsed.has(g.milestone.id);
         return (
           <div key={gi}>
-            {/* Milestone row */}
             <div
               className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:opacity-90 transition-opacity"
               style={{ background: "linear-gradient(90deg, #EEF2FF, #F5F3FF)" }}
@@ -369,7 +319,6 @@ function HierarchyList({
               )}
             </div>
 
-            {/* Task rows */}
             {!isCollapsed && g.tasks.map(t => {
               const isCritical = criticalIds.has(t.id);
               return (
@@ -390,9 +339,7 @@ function HierarchyList({
                     <div className="flex items-center gap-2">
                       <span className={`text-sm font-medium ${isCritical ? "text-red-700" : "text-gray-800"}`}>{t.name}</span>
                       {isCritical && (
-                        <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: "#FEE2E2", color: "#991B1B" }}>
-                          CRITICAL
-                        </span>
+                        <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: "#FEE2E2", color: "#991B1B" }}>CRITICAL</span>
                       )}
                     </div>
                     {t.assigneeName && <p className="text-xs text-gray-400 mt-0.5">{t.assigneeName}</p>}
@@ -401,10 +348,7 @@ function HierarchyList({
                     {t.priority && (
                       <span
                         className="text-xs px-2 py-0.5 rounded-full font-medium capitalize"
-                        style={{
-                          background: PRIORITY_COLORS[t.priority] ?? "#F8FAFC",
-                          color: PRIORITY_TEXT[t.priority] ?? "#64748B",
-                        }}
+                        style={{ background: PRIORITY_COLORS[t.priority] ?? "#F8FAFC", color: PRIORITY_TEXT[t.priority] ?? "#64748B" }}
                       >
                         {t.priority}
                       </span>
@@ -424,18 +368,70 @@ function HierarchyList({
   );
 }
 
+// ── NFA status hook ───────────────────────────────────────────────────────────
+interface NFAStatus {
+  triggered: boolean;
+  overrunPct: number;
+  threshold: number;
+  totalBaseline: number;
+  totalActual: number;
+  nfaChainExists: boolean;
+  // Correct order: hod → scm → cfo → chairman
+  nfaChain: string[];
+}
+
+// Read-only NFA status — no side effects on GET
+function useNFAStatus(projectId: number): NFAStatus | null {
+  const [status, setStatus] = useState<NFAStatus | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/projects/${projectId}/nfa-status`)
+      .then(r => { if (!r.ok) throw new Error("nfa-status failed"); return r.json(); })
+      .then(data => { if (!cancelled) setStatus(data as NFAStatus); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [projectId]);
+
+  // When overrun is detected and the chain does not yet exist, create it via POST (side-effect action)
+  useEffect(() => {
+    if (status?.triggered && !status.nfaChainExists) {
+      fetch(`/api/projects/${projectId}/nfa-trigger`, { method: "POST" })
+        .then(r => r.json())
+        .then(result => {
+          const r = result as { created?: boolean; chainLength?: number };
+          if (r.created) {
+            // Re-fetch status to update nfaChainExists flag
+            fetch(`/api/projects/${projectId}/nfa-status`)
+              .then(res => res.json())
+              .then(data => setStatus(data as NFAStatus))
+              .catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+  }, [projectId, status?.triggered, status?.nfaChainExists]);
+
+  return status;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function ProjectDetail() {
   const [, params] = useRoute("/projects/:id");
+  const { role } = useUserStore();
   const projectId = parseInt(params?.id || "0");
   const [view, setView] = useState<"list" | "gantt">("list");
-  const [activeTab, setActiveTab] = useState<"plan" | "analytics">("plan");
+  const [activeTab, setActiveTab] = useState<"lifecycle" | "plan" | "analytics">("lifecycle");
+  const [selectedStageKey, setSelectedStageKey] = useState<string | undefined>(undefined);
+  const [nfaDismissed, setNfaDismissed] = useState(false);
 
   const { data: project, isLoading: loadingProject } = useGetProject(projectId);
   const { data: rawMilestones } = useListMilestones(projectId);
   const { data: rawTasks } = useListTasks(projectId);
   const { data: burndown } = useGetBurndown(projectId);
   const { data: criticalPath } = useGetCriticalPath(projectId);
+  const { data: stageRecords = [] } = useListProjectStages(projectId);
+
+  const nfaStatus = useNFAStatus(projectId);
 
   const milestones: Milestone[] = (rawMilestones ?? []) as Milestone[];
   const tasks: Task[] = (rawTasks ?? []) as Task[];
@@ -448,6 +444,16 @@ export default function ProjectDetail() {
   const blockedTasks = tasks.filter(t => t.status === "blocked").length;
   const inProgressTasks = tasks.filter(t => t.status === "in_progress").length;
 
+  const currentStageKey = useMemo(
+    () => getCurrentStageKey(project?.stage, stageRecords as Array<{ stage: string; status: string }>),
+    [project?.stage, stageRecords]
+  );
+
+  const handleStageClick = useCallback((key: string) => {
+    setSelectedStageKey(key);
+    setActiveTab("lifecycle");
+  }, []);
+
   if (loadingProject) {
     return (
       <div className="space-y-4">
@@ -459,6 +465,7 @@ export default function ProjectDetail() {
   if (!project) return <div className="text-center py-16 text-gray-400">Project not found</div>;
 
   const TABS = [
+    { id: "lifecycle" as const, label: "Lifecycle", icon: Layers },
     { id: "plan" as const, label: "Project Plan", icon: Milestone },
     { id: "analytics" as const, label: "Analytics", icon: BarChart2 },
   ];
@@ -473,11 +480,33 @@ export default function ProjectDetail() {
         </button>
       </Link>
 
+      {/* NFA Budget Overrun Alert */}
+      {nfaStatus?.triggered && !nfaDismissed && (
+        <div
+          className="rounded-2xl p-4 flex items-start gap-3"
+          style={{ background: "#FFF7ED", border: "1px solid #FDBA74" }}
+        >
+          <AlertTriangle size={18} className="text-orange-500 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-bold text-orange-800">NFA Budget Overrun Triggered</p>
+            <p className="text-xs text-orange-700 mt-1">
+              Actual budget has exceeded the baseline by <strong>{nfaStatus.overrunPct.toFixed(1)}%</strong>
+              {" "}(threshold: {nfaStatus.threshold}%).
+              An NFA approval workflow has been automatically triggered.
+              Routing to: {nfaStatus.nfaChain.join(" → ")}.
+            </p>
+          </div>
+          <button
+            onClick={() => setNfaDismissed(true)}
+            className="text-orange-400 hover:text-orange-600 flex-shrink-0"
+          >
+            <XCircle size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Header */}
-      <div
-        className="rounded-2xl p-6"
-        style={{ background: "white", border: "1px solid #E2E8F0" }}
-      >
+      <div className="rounded-2xl p-6" style={{ background: "white", border: "1px solid #E2E8F0" }}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
@@ -486,6 +515,14 @@ export default function ProjectDetail() {
               {project.startDate && (
                 <span className="text-xs text-gray-400">
                   {formatDate(project.startDate)} — {formatDate(project.endDate)}
+                </span>
+              )}
+              {project.stage && (
+                <span
+                  className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                  style={{ background: "#EEF2FF", color: "#4F46E5" }}
+                >
+                  {LIFECYCLE_STAGES.find(s => s.key === currentStageKey)?.label ?? currentStageKey}
                 </span>
               )}
             </div>
@@ -513,10 +550,7 @@ export default function ProjectDetail() {
           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all"
-              style={{
-                width: `${project.progress ?? 0}%`,
-                background: "linear-gradient(90deg, #6366F1, #8B5CF6)",
-              }}
+              style={{ width: `${project.progress ?? 0}%`, background: "linear-gradient(90deg, #6366F1, #8B5CF6)" }}
             />
           </div>
         </div>
@@ -588,16 +622,81 @@ export default function ProjectDetail() {
         )}
       </div>
 
-      {/* Content */}
+      {/* ── Lifecycle Tab ────────────────────────────────────────────── */}
+      {activeTab === "lifecycle" && (
+        <div className="space-y-5">
+          <StageProgressBar
+            currentStageKey={currentStageKey}
+            stageRecords={stageRecords as Array<{ stage: string; status: string }>}
+            onStageClick={key => {
+              setSelectedStageKey(key === selectedStageKey ? undefined : key);
+            }}
+            selectedStageKey={selectedStageKey}
+            role={role}
+          />
+
+          <StagePanel
+            projectId={projectId}
+            charterId={project.charterId}
+            currentStageKey={currentStageKey}
+            selectedStageKey={selectedStageKey}
+          />
+
+          {/* All stages quick nav */}
+          <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+            <h4 className="text-sm font-bold text-gray-700 mb-3">All Lifecycle Stages</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+              {LIFECYCLE_STAGES.map((stage, idx) => {
+                const stageRecord = (stageRecords as Array<{ stage: string; status: string }>)
+                  .find(r => r.stage === stage.key);
+                const isComplete = stageRecord?.status === "complete" || idx < LIFECYCLE_STAGES.findIndex(s => s.key === currentStageKey);
+                const isActive = stage.key === currentStageKey;
+                const isSelected = stage.key === (selectedStageKey ?? currentStageKey);
+
+                return (
+                  <button
+                    key={stage.key}
+                    onClick={() => handleStageClick(stage.key)}
+                    className="flex items-center gap-3 p-3 rounded-xl text-left transition-all hover:shadow-sm"
+                    style={{
+                      background: isSelected ? `${stage.color}12` : "#F8FAFC",
+                      border: `1px solid ${isSelected ? stage.color + "40" : "#E2E8F0"}`,
+                    }}
+                  >
+                    <div
+                      className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                      style={{
+                        background: isComplete ? "#10B981" : isActive ? stage.color : "#E2E8F0",
+                        color: isComplete || isActive ? "white" : "#94A3B8",
+                      }}
+                    >
+                      {isComplete ? "✓" : idx + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-gray-800 truncate">{stage.label}</p>
+                      <p className="text-xs text-gray-400 truncate">{stage.description.substring(0, 40)}...</p>
+                    </div>
+                    {isActive && (
+                      <span className="text-xs font-bold px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: "#EEF2FF", color: "#4F46E5" }}>Active</span>
+                    )}
+                    {isComplete && !isActive && (
+                      <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Plan Tab ─────────────────────────────────────────────────── */}
       {activeTab === "plan" && (
         <>
           {view === "list" && (
             <div>
               {milestones.length === 0 && tasks.length === 0 ? (
-                <div
-                  className="rounded-2xl p-12 text-center"
-                  style={{ background: "white", border: "1px solid #E2E8F0" }}
-                >
+                <div className="rounded-2xl p-12 text-center" style={{ background: "white", border: "1px solid #E2E8F0" }}>
                   <Milestone size={32} className="text-gray-300 mx-auto mb-3" />
                   <p className="text-gray-500 font-medium mb-1">No tasks yet</p>
                   <p className="text-sm text-gray-400">Add milestones and tasks to start planning your project.</p>
@@ -609,15 +708,8 @@ export default function ProjectDetail() {
           )}
 
           {view === "gantt" && (
-            <div
-              className="rounded-2xl overflow-hidden"
-              style={{ background: "white", border: "1px solid #E2E8F0" }}
-            >
-              {/* Legend */}
-              <div
-                className="flex items-center gap-5 px-4 py-2.5 border-b border-gray-100"
-                style={{ background: "#F8FAFC" }}
-              >
+            <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+              <div className="flex items-center gap-5 px-4 py-2.5 border-b border-gray-100" style={{ background: "#F8FAFC" }}>
                 <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Gantt Legend</span>
                 <div className="flex items-center gap-1.5">
                   <div className="w-8 h-3 rounded" style={{ background: "#6366F1" }} />
@@ -646,26 +738,17 @@ export default function ProjectDetail() {
                   Add tasks with start/end dates to see the Gantt chart.
                 </div>
               ) : (
-                <GanttChart
-                  milestones={milestones}
-                  tasks={tasks}
-                  criticalIds={criticalIds}
-                  minDate={minDate}
-                  maxDate={maxDate}
-                />
+                <GanttChart milestones={milestones} tasks={tasks} criticalIds={criticalIds} minDate={minDate} maxDate={maxDate} />
               )}
             </div>
           )}
         </>
       )}
 
+      {/* ── Analytics Tab ────────────────────────────────────────────── */}
       {activeTab === "analytics" && (
         <div className="space-y-5">
-          {/* Burndown Chart */}
-          <div
-            className="rounded-2xl p-5"
-            style={{ background: "white", border: "1px solid #E2E8F0" }}
-          >
+          <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
             <div className="mb-4">
               <h3 className="font-semibold text-gray-900">Burndown Chart</h3>
               <p className="text-xs text-gray-400 mt-0.5">Ideal vs actual remaining work</p>
@@ -694,7 +777,6 @@ export default function ProjectDetail() {
             </div>
           </div>
 
-          {/* Critical Path list */}
           <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
             <div className="mb-4">
               <h3 className="font-semibold text-gray-900">Critical Path</h3>

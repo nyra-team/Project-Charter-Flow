@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable } from "@workspace/db";
+import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable, approvalsTable } from "@workspace/db";
 import { eq, desc, inArray, and } from "drizzle-orm";
 import {
   CreateProjectBody,
@@ -77,6 +77,12 @@ router.get("/projects/:id", async (req, res): Promise<void> => {
 router.patch("/projects/:id", async (req, res): Promise<void> => {
   const params = UpdateProjectParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  // Closed projects are archived and read-only (allow only explicit status re-opens if needed)
+  const [current] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, params.data.id));
+  if (current?.status === "closed") {
+    res.status(409).json({ error: "Project is closed and archived. Metadata updates are not permitted." });
+    return;
+  }
   const parsed = UpdateProjectBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const updateData: Record<string, unknown> = { ...parsed.data };
@@ -100,6 +106,8 @@ router.get("/projects/:id/milestones", async (req, res): Promise<void> => {
 router.post("/projects/:id/milestones", async (req, res): Promise<void> => {
   const params = CreateMilestoneParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [proj] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, params.data.id));
+  if (proj?.status === "closed") { res.status(409).json({ error: "Project is closed. Milestones cannot be added." }); return; }
   const parsed = CreateMilestoneBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const md = parsed.data as Record<string, unknown>;
@@ -119,6 +127,10 @@ router.patch("/milestones/:id", async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const updateData = { ...parsed.data } as Record<string, unknown>;
   const [existingM] = await db.select().from(milestonesTable).where(eq(milestonesTable.id, params.data.id));
+  if (existingM) {
+    const [proj] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, existingM.projectId));
+    if (proj?.status === "closed") { res.status(409).json({ error: "Project is closed. Milestones cannot be updated." }); return; }
+  }
   if (!existingM) { res.status(404).json({ error: "Milestone not found" }); return; }
   const newDueDate = (updateData.dueDate as string | undefined) ?? existingM.dueDate;
   const newActualEndM = (updateData.actualEnd as string | undefined) ?? existingM.actualEnd;
@@ -147,6 +159,8 @@ router.get("/projects/:id/tasks", async (req, res): Promise<void> => {
 router.post("/projects/:id/tasks", async (req, res): Promise<void> => {
   const params = CreateTaskParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [projT] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, params.data.id));
+  if (projT?.status === "closed") { res.status(409).json({ error: "Project is closed. Tasks cannot be added." }); return; }
   const parsed = CreateTaskBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const predecessorIds = parsed.data.predecessorIds ?? [];
@@ -208,6 +222,8 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
   // Recompute scheduleVarianceDays whenever endDate or actualEnd changes
   const [existing] = await db.select().from(tasksTable).where(eq(tasksTable.id, params.data.id));
   if (!existing) { res.status(404).json({ error: "Task not found" }); return; }
+  const [projTask] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, existing.projectId));
+  if (projTask?.status === "closed") { res.status(409).json({ error: "Project is closed. Tasks cannot be updated." }); return; }
   const newEndDate = (updateData.endDate as string | undefined) ?? existing.endDate;
   const newActualEnd = (updateData.actualEnd as string | undefined) ?? existing.actualEnd;
   updateData.scheduleVarianceDays = computeScheduleVarianceDays(newEndDate, newActualEnd);
@@ -305,6 +321,117 @@ router.get("/projects/:id/burndown", async (req, res): Promise<void> => {
   }
 
   res.json({ projectId: params.data.id, totalTasks, completedTasks, dataPoints });
+});
+
+// NFA budget overrun status — READ-ONLY, no side effects
+router.get("/projects/:id/nfa-status", async (req, res): Promise<void> => {
+  const projectId = parseInt(req.params.id);
+  if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const { budgetLinesTable } = await import("@workspace/db");
+  const lines = await db.select().from(budgetLinesTable).where(eq(budgetLinesTable.projectId, projectId));
+
+  const totalBaseline = lines.reduce((sum, l) => sum + Number(l.baselineAmount ?? 0), 0);
+  const totalActual = lines.reduce((sum, l) => sum + Number(l.actualAmount ?? 0), 0);
+  const thresholdPct = Number(project.budgetThresholdPct ?? 10);
+
+  let overrunPct = 0;
+  if (totalBaseline > 0) {
+    overrunPct = ((totalActual - totalBaseline) / totalBaseline) * 100;
+  }
+
+  const triggered = overrunPct > thresholdPct;
+
+  // Check if an approval chain already exists for this overrun (read-only)
+  let nfaChainExists = false;
+  if (project.charterId) {
+    const existing = await db.select()
+      .from(approvalsTable)
+      .where(and(
+        eq(approvalsTable.charterId, project.charterId),
+        eq(approvalsTable.stage, "nfa_overrun"),
+      ));
+    nfaChainExists = existing.length > 0;
+  }
+
+  res.json({
+    projectId,
+    triggered,
+    overrunPct: Math.round(overrunPct * 100) / 100,
+    threshold: thresholdPct,
+    totalBaseline,
+    totalActual,
+    nfaChainExists,
+    // Correct chain order: Functional Head → SCM Head → CFO → Management
+    nfaChain: triggered ? ["hod", "scm", "cfo", "chairman"] : [],
+  });
+});
+
+// NFA overrun approval chain creation — explicit POST action, idempotent
+// Chain order: Functional Head (hod) → SCM Head (scm) → CFO (cfo) → Management (chairman)
+router.post("/projects/:id/nfa-trigger", async (req, res): Promise<void> => {
+  const projectId = parseInt(req.params.id);
+  if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (!project.charterId) { res.status(422).json({ error: "Project has no associated charter; cannot create NFA chain." }); return; }
+
+  // Verify overrun is actually triggered before creating chain
+  const { budgetLinesTable } = await import("@workspace/db");
+  const lines = await db.select().from(budgetLinesTable).where(eq(budgetLinesTable.projectId, projectId));
+  const totalBaseline = lines.reduce((sum, l) => sum + Number(l.baselineAmount ?? 0), 0);
+  const totalActual = lines.reduce((sum, l) => sum + Number(l.actualAmount ?? 0), 0);
+  const thresholdPct = Number(project.budgetThresholdPct ?? 10);
+  const overrunPct = totalBaseline > 0 ? ((totalActual - totalBaseline) / totalBaseline) * 100 : 0;
+
+  if (overrunPct <= thresholdPct) {
+    res.status(422).json({ error: `No budget overrun detected (${overrunPct.toFixed(1)}% ≤ threshold ${thresholdPct}%).` });
+    return;
+  }
+
+  // Idempotency: do not create duplicate chain
+  const existing = await db.select()
+    .from(approvalsTable)
+    .where(and(
+      eq(approvalsTable.charterId, project.charterId),
+      eq(approvalsTable.stage, "nfa_overrun"),
+    ));
+
+  if (existing.length > 0) {
+    res.json({ projectId, created: false, message: "NFA approval chain already exists.", chainLength: existing.length });
+    return;
+  }
+
+  // Create chain in the correct order: Functional Head → SCM Head → CFO → Management
+  const nfaRoles = ["hod", "scm", "cfo", "chairman"] as const;
+  let created = 0;
+  for (const roleKey of nfaRoles) {
+    const [approver] = await db.select().from(usersTable)
+      .where(eq(usersTable.role, roleKey))
+      .limit(1);
+    if (approver) {
+      await db.insert(approvalsTable).values({
+        charterId: project.charterId,
+        approverId: approver.id,
+        approverRole: roleKey,
+        stage: "nfa_overrun",
+        status: "pending",
+        comments: `NFA budget overrun triggered: actual exceeds baseline by ${overrunPct.toFixed(1)}% (threshold ${thresholdPct}%). Approval required from ${roleKey}.`,
+      });
+      created++;
+    }
+  }
+
+  await logActivity(
+    "nfa_overrun_triggered",
+    `NFA budget overrun triggered for project ${projectId}: ${overrunPct.toFixed(1)}% over baseline. Approval chain (${nfaRoles.join(" → ")}) created.`,
+    projectId,
+    "project",
+  );
+
+  res.status(201).json({ projectId, created: true, chainLength: created, overrunPct: Math.round(overrunPct * 100) / 100 });
 });
 
 function formatProject(p: Record<string, unknown>) {

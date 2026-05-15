@@ -1,0 +1,368 @@
+export const LIFECYCLE_STAGES = [
+  {
+    key: "project_case",
+    label: "Project Case",
+    shortLabel: "PC",
+    description: "Business case creation and initial approval routing",
+    color: "#6366F1",
+    requiredDocs: [
+      { id: "pc_form", name: "Project Case Form", description: "Completed PC form with business justification", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+      { id: "business_case", name: "Business Case Document", description: "Detailed business case with ROI analysis", acceptedTypes: ["PDF", "DOCX", "XLSX"], maxSizeMB: 25 },
+    ],
+    checklistItems: [
+      { id: "biz_just", label: "Business justification documented (≥100 chars)", blocking: true },
+      { id: "scope_done", label: "Scope summary completed (≥50 chars)", blocking: true },
+      { id: "outcomes", label: "Expected outcomes defined", blocking: true },
+      { id: "sponsor", label: "Project sponsor assigned", blocking: false },
+      { id: "budget_est", label: "Preliminary budget estimated (CapEx/OpEx split)", blocking: true },
+    ],
+    prerequisites: [] as string[],
+    advanceRoles: ["initiator", "pmo"],
+    advanceLabel: "Submit Project Case",
+  },
+  {
+    key: "urs",
+    label: "URS",
+    shortLabel: "URS",
+    description: "User Requirements Specification — dual-approval by Business Owner and IT Team",
+    color: "#8B5CF6",
+    requiredDocs: [
+      { id: "urs_doc", name: "URS Document", description: "Full user requirements specification", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+      { id: "urs_review", name: "URS Review Sign-off", description: "Signed review sheet from Business & IT", acceptedTypes: ["PDF"], maxSizeMB: 10 },
+    ],
+    checklistItems: [
+      { id: "biz_req", label: "Business requirements fully documented", blocking: true },
+      { id: "it_review", label: "IT Team review completed", blocking: true },
+      { id: "biz_owner_approved", label: "Business Owner approval received", blocking: true },
+      { id: "it_approved", label: "IT Team approval received", blocking: true },
+      { id: "version_ctrl", label: "URS version control applied", blocking: false },
+    ],
+    prerequisites: ["project_case"],
+    advanceRoles: ["hod", "pmo"],
+    advanceLabel: "Approve URS & Advance to RFP",
+    stageSpecific: { hasURSDualApproval: true },
+  },
+  {
+    key: "rfp",
+    label: "RFP",
+    shortLabel: "RFP",
+    description: "Request for Proposal — vendor selection and RFP issuance",
+    color: "#3B82F6",
+    requiredDocs: [
+      { id: "rfp_doc", name: "RFP Document", description: "Detailed RFP with technical and commercial requirements", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+      { id: "vendor_list", name: "Vendor Shortlist", description: "List of invited vendors with justification", acceptedTypes: ["PDF", "DOCX", "XLSX"], maxSizeMB: 10 },
+    ],
+    checklistItems: [
+      { id: "urs_approved_gate", label: "URS stage approved ✓", blocking: true },
+      { id: "rfp_created", label: "RFP document created or uploaded", blocking: true },
+      { id: "urs_populated", label: "RFP header auto-populated from URS", blocking: false },
+      { id: "vendor_invited", label: "Vendor list defined and notified", blocking: true },
+      { id: "deadline_set", label: "Proposal submission deadline set", blocking: true },
+    ],
+    prerequisites: ["urs"],
+    advanceRoles: ["scm", "pmo"],
+    advanceLabel: "Issue RFP & Advance to Vendor Evaluation",
+    stageSpecific: { hasRFPTemplate: true },
+  },
+  {
+    key: "vendor_evaluation",
+    label: "Vendor Evaluation",
+    shortLabel: "VE",
+    description: "Functional & technical evaluation of vendor proposals, commercial negotiation and Finance approval",
+    color: "#10B981",
+    requiredDocs: [
+      { id: "func_scorecard", name: "Functional Scorecard", description: "Completed functional evaluation scorecard", acceptedTypes: ["PDF", "XLSX"], maxSizeMB: 25 },
+      { id: "tech_eval", name: "Technical Evaluation Report", description: "Technical assessment of each vendor", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+      { id: "commercial_proposals", name: "Commercial Proposals", description: "Received commercial proposals from shortlisted vendors", acceptedTypes: ["PDF", "XLSX"], maxSizeMB: 25 },
+      { id: "negotiation_log", name: "Negotiation Log", description: "Record of all commercial negotiations", acceptedTypes: ["PDF", "DOCX", "XLSX"], maxSizeMB: 10 },
+      { id: "final_commercials", name: "Finalized Commercials", description: "SCM-uploaded finalized commercial terms", acceptedTypes: ["PDF"], maxSizeMB: 25 },
+    ],
+    checklistItems: [
+      { id: "proposals_received", label: "All vendor proposals received", blocking: true },
+      { id: "func_eval_done", label: "Functional evaluation scorecard completed", blocking: true },
+      { id: "tech_eval_done", label: "Technical evaluation completed", blocking: true },
+      { id: "demo_conducted", label: "Vendor demos/presentations conducted", blocking: false },
+      { id: "eval_summary", label: "Evaluation summary report compiled", blocking: true },
+      { id: "proposals_analysed", label: "Commercial proposals analysed", blocking: true },
+      { id: "negotiation_complete", label: "Negotiation log completed", blocking: true },
+      { id: "scm_uploaded", label: "SCM uploaded finalized commercials", blocking: true },
+      { id: "finance_reviewed", label: "Finance review completed", blocking: true },
+      { id: "vendor_selected", label: "Preferred vendor selected", blocking: true },
+    ],
+    prerequisites: ["rfp"],
+    advanceRoles: ["scm", "finance", "hod", "pmo"],
+    advanceLabel: "Complete Vendor Evaluation & Advance to Charter",
+    stageSpecific: { hasVendorEvalScorecard: true },
+  },
+  {
+    key: "charter",
+    label: "Charter",
+    shortLabel: "CHR",
+    description: "Project Charter approval — PMO and Department Head sign-off",
+    color: "#EF4444",
+    requiredDocs: [
+      { id: "charter_doc", name: "Project Charter", description: "Fully completed project charter document", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+      { id: "charter_template", name: "Charter Template", description: "Completed charter template with all mandatory sections", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+    ],
+    checklistItems: [
+      { id: "charter_drafted", label: "Charter document drafted and uploaded", blocking: true },
+      { id: "pmo_review", label: "PMO review completed", blocking: true },
+      { id: "dept_head_approved", label: "Department Head approval received", blocking: true },
+      { id: "budget_confirmed", label: "Project budget confirmed", blocking: true },
+      { id: "timeline_approved", label: "Project timeline approved", blocking: false },
+    ],
+    prerequisites: ["vendor_evaluation"],
+    advanceRoles: ["pmo", "hod"],
+    advanceLabel: "Approve Charter & Advance to NFA",
+  },
+  {
+    key: "nfa",
+    label: "NFA Approval",
+    shortLabel: "NFA",
+    description: "No Financial Approval — multi-level routing: Finance → PMO → Dept Head → Management",
+    color: "#EC4899",
+    requiredDocs: [
+      { id: "nfa_form", name: "NFA Form", description: "Completed NFA form with budget justification", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+      { id: "budget_breakdown", name: "Budget Breakdown", description: "Detailed CapEx/OpEx budget breakdown", acceptedTypes: ["PDF", "XLSX"], maxSizeMB: 25 },
+    ],
+    checklistItems: [
+      { id: "charter_approved_gate", label: "Charter stage approved ✓", blocking: true },
+      { id: "nfa_form_submitted", label: "NFA form submitted", blocking: true },
+      { id: "finance_head_approved", label: "Finance Head approval received", blocking: true },
+      { id: "pmo_nfa_approved", label: "PMO approval received", blocking: true },
+      { id: "dept_head_nfa", label: "Department Head approval received", blocking: true },
+      { id: "mgmt_approved", label: "Management / CFO approval received", blocking: true },
+    ],
+    prerequisites: ["charter"],
+    advanceRoles: ["cfo", "chairman"],
+    advanceLabel: "Complete NFA Approval & Advance to PR/PO",
+  },
+  {
+    key: "pr_po",
+    label: "PR/PO Release",
+    shortLabel: "PO",
+    description: "Purchase Requisition and Purchase Order release",
+    color: "#0EA5E9",
+    requiredDocs: [
+      { id: "pr_form", name: "PR Form", description: "Purchase Requisition form", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+      { id: "po_document", name: "PO Document", description: "Purchase Order document from approved vendor", acceptedTypes: ["PDF"], maxSizeMB: 25 },
+      { id: "vendor_contract", name: "Vendor Contract", description: "Signed vendor contract", acceptedTypes: ["PDF"], maxSizeMB: 25 },
+    ],
+    checklistItems: [
+      { id: "nfa_approved_gate", label: "NFA stage approved ✓", blocking: true },
+      { id: "vendor_contract_uploaded", label: "Vendor contract uploaded ✓", blocking: true },
+      { id: "pr_submitted", label: "PR form submitted", blocking: true },
+      { id: "po_released", label: "PO document uploaded and released", blocking: true },
+      { id: "sap_order", label: "SAP internal order number confirmed", blocking: false },
+    ],
+    prerequisites: ["nfa"],
+    advanceRoles: ["finance", "scm"],
+    advanceLabel: "Release PO & Advance to Kickoff",
+  },
+  {
+    key: "kickoff",
+    label: "Project Kickoff",
+    shortLabel: "KO",
+    description: "Official project kickoff meeting and project activation",
+    color: "#14B8A6",
+    requiredDocs: [
+      { id: "kickoff_minutes", name: "Meeting Minutes", description: "Kickoff meeting minutes and attendee list", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 10 },
+      { id: "kickoff_deck", name: "Kickoff Presentation", description: "Project kickoff presentation deck", acceptedTypes: ["PDF", "PPTX"], maxSizeMB: 25 },
+    ],
+    checklistItems: [
+      { id: "kickoff_date_set", label: "Kickoff date confirmed", blocking: true },
+      { id: "attendees_defined", label: "Attendees list finalized", blocking: true },
+      { id: "kickoff_held", label: "Kickoff meeting conducted", blocking: true },
+      { id: "minutes_uploaded", label: "Meeting minutes uploaded", blocking: true },
+      { id: "project_activated", label: "Project status set to In Progress", blocking: true },
+    ],
+    prerequisites: ["pr_po"],
+    advanceRoles: ["pm", "pmo"],
+    advanceLabel: "Confirm Kickoff & Start Development",
+    stageSpecific: { hasKickoffAttendees: true },
+  },
+  {
+    key: "development",
+    label: "Development",
+    shortLabel: "DEV",
+    description: "Active development and configuration phase",
+    color: "#6366F1",
+    requiredDocs: [
+      { id: "build_specs", name: "Build Specifications", description: "Detailed build and configuration specifications", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+      { id: "dev_status", name: "Development Status Report", description: "Progress update report", acceptedTypes: ["PDF", "DOCX", "XLSX"], maxSizeMB: 10 },
+    ],
+    checklistItems: [
+      { id: "dev_env_ready", label: "Development environment set up", blocking: true },
+      { id: "build_specs_uploaded", label: "Build specifications uploaded", blocking: false },
+      { id: "dev_progress_50", label: "Development at least 50% complete", blocking: false },
+      { id: "status_updated", label: "Status notes and % complete updated", blocking: true },
+      { id: "blockers_resolved", label: "All blockers resolved or escalated", blocking: false },
+    ],
+    prerequisites: ["kickoff"],
+    advanceRoles: ["pm", "pmo"],
+    advanceLabel: "Development Complete — Advance to Implementation Plan",
+  },
+  {
+    key: "implementation_plan",
+    label: "Implementation Plan",
+    shortLabel: "IMP",
+    description: "Implementation planning with milestones, dependencies and stakeholder sign-off",
+    color: "#8B5CF6",
+    requiredDocs: [
+      { id: "impl_plan", name: "Implementation Plan", description: "Detailed implementation plan document", acceptedTypes: ["PDF", "DOCX", "XLSX"], maxSizeMB: 25 },
+      { id: "cutover_plan", name: "Cutover Plan", description: "System cutover and rollback plan", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+    ],
+    checklistItems: [
+      { id: "impl_plan_uploaded", label: "Implementation plan uploaded", blocking: true },
+      { id: "milestones_defined", label: "All milestones defined in system", blocking: true },
+      { id: "dependencies_mapped", label: "Task dependencies mapped", blocking: false },
+      { id: "stakeholder_signoff", label: "Stakeholder sign-off on plan", blocking: true },
+      { id: "cutover_plan_approved", label: "Cutover plan reviewed and approved", blocking: true },
+    ],
+    prerequisites: ["development"],
+    advanceRoles: ["pm", "pmo"],
+    advanceLabel: "Implementation Plan Approved — Advance to UAT",
+  },
+  {
+    key: "uat",
+    label: "UAT Sign-off",
+    shortLabel: "UAT",
+    description: "User Acceptance Testing — 100% critical defect closure required before Go Live",
+    color: "#F59E0B",
+    requiredDocs: [
+      { id: "uat_plan", name: "UAT Test Plan", description: "Comprehensive UAT test plan and cases", acceptedTypes: ["PDF", "DOCX", "XLSX"], maxSizeMB: 25 },
+      { id: "uat_signoff", name: "UAT Sign-off Document", description: "Signed UAT completion sign-off", acceptedTypes: ["PDF"], maxSizeMB: 10 },
+      { id: "defect_log", name: "Defect Log", description: "Full defect log with closure status", acceptedTypes: ["PDF", "XLSX"], maxSizeMB: 25 },
+    ],
+    checklistItems: [
+      { id: "uat_plan_approved", label: "UAT test plan approved", blocking: true },
+      { id: "test_cases_executed", label: "All test cases executed", blocking: true },
+      { id: "critical_defects_closed", label: "100% of critical defects closed", blocking: true },
+      { id: "high_defects_80", label: "≥80% of high defects closed", blocking: false },
+      { id: "uat_signed", label: "UAT sign-off document obtained", blocking: true },
+    ],
+    prerequisites: ["implementation_plan"],
+    advanceRoles: ["pm", "hod"],
+    advanceLabel: "UAT Approved — Advance to Go Live",
+    stageSpecific: { hasUATDefects: true },
+  },
+  {
+    key: "go_live",
+    label: "Go Live",
+    shortLabel: "GO",
+    description: "System go-live, stakeholder notifications and post-launch monitoring",
+    color: "#10B981",
+    requiredDocs: [
+      { id: "go_live_checklist", name: "Go Live Checklist", description: "Completed pre-go-live checklist", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 10 },
+      { id: "training_materials", name: "Training Materials", description: "End-user training materials (video up to 500MB)", acceptedTypes: ["PDF", "DOCX", "MP4", "MOV"], maxSizeMB: 500 },
+      { id: "comms_plan", name: "Communications Plan", description: "Stakeholder notification and communication plan", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 10 },
+    ],
+    checklistItems: [
+      { id: "uat_approved_gate", label: "UAT stage approved ✓", blocking: true },
+      { id: "go_live_date_frozen", label: "Go Live date frozen by Project Lead", blocking: true },
+      { id: "training_uploaded", label: "Training materials uploaded", blocking: true },
+      { id: "stakeholders_notified", label: "Stakeholders notified of Go Live date", blocking: true },
+      { id: "hypercare_plan", label: "Hypercare / support plan in place", blocking: false },
+    ],
+    prerequisites: ["uat"],
+    advanceRoles: ["pm", "pmo"],
+    advanceLabel: "Go Live Complete — Advance to Closure Readiness",
+    stageSpecific: { hasGoLiveCountdown: true },
+  },
+  {
+    key: "closure_readiness",
+    label: "Closure Readiness",
+    shortLabel: "CR",
+    description: "CSAT survey, documentation handover and mandatory deliverable sign-off",
+    color: "#64748B",
+    requiredDocs: [
+      { id: "csat_results", name: "CSAT Survey Results", description: "Customer satisfaction survey results", acceptedTypes: ["PDF", "XLSX"], maxSizeMB: 10 },
+      { id: "doc_handover", name: "Documentation Handover Package", description: "All project documentation for operations handover", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+      { id: "deliverable_signoffs", name: "Deliverable Sign-offs", description: "Signed acceptance for each deliverable", acceptedTypes: ["PDF"], maxSizeMB: 25 },
+    ],
+    checklistItems: [
+      { id: "csat_complete", label: "CSAT survey distributed and completed", blocking: true },
+      { id: "doc_handover_done", label: "Documentation handover package uploaded", blocking: true },
+      { id: "all_deliverables_signed", label: "All deliverables signed off by stakeholders", blocking: true },
+      { id: "support_transitioned", label: "Support transitioned to operations team", blocking: true },
+      { id: "outstanding_issues_resolved", label: "All outstanding issues resolved or closed", blocking: false },
+    ],
+    prerequisites: ["go_live"],
+    advanceRoles: ["pm", "pmo"],
+    advanceLabel: "Closure Readiness Complete — Initiate Project Closure",
+    stageSpecific: { hasClosureReadinessSection: true },
+  },
+  {
+    key: "project_closure",
+    label: "Project Closure",
+    shortLabel: "CLS",
+    description: "Final closure — Lessons Learned, Closure Report and project archival",
+    color: "#1E293B",
+    requiredDocs: [
+      { id: "lessons_learned", name: "Lessons Learned Report", description: "Structured lessons learned document", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+      { id: "closure_report", name: "Closure Report", description: "Auto-generated project closure report", acceptedTypes: ["PDF"], maxSizeMB: 25 },
+      { id: "final_financials", name: "Final Financial Report", description: "Actual vs budget summary", acceptedTypes: ["PDF", "XLSX"], maxSizeMB: 25 },
+    ],
+    checklistItems: [
+      { id: "all_artifacts_approved", label: "All project artifacts approved ✓", blocking: true },
+      { id: "lessons_learned_done", label: "Lessons Learned structured form completed", blocking: true },
+      { id: "closure_report_generated", label: "Closure Report generated", blocking: true },
+      { id: "final_financials_uploaded", label: "Final financial report submitted", blocking: true },
+      { id: "stakeholder_closed", label: "Project closure acknowledged by sponsor", blocking: true },
+    ],
+    prerequisites: ["closure_readiness"],
+    advanceRoles: ["pm", "pmo", "chairman"],
+    advanceLabel: "Close Project & Archive",
+    stageSpecific: { isClosureStage: true },
+  },
+] as const;
+
+export type LifecycleStageKey = typeof LIFECYCLE_STAGES[number]["key"];
+
+export function getStageConfig(key: string) {
+  return LIFECYCLE_STAGES.find(s => s.key === key) ?? null;
+}
+
+export function getStageIndex(key: string): number {
+  return LIFECYCLE_STAGES.findIndex(s => s.key === key);
+}
+
+export function isStageComplete(stageKey: string, stageRecords: Array<{ stage: string; status: string }>) {
+  return stageRecords.some(r => r.stage === stageKey && r.status === "complete");
+}
+
+export function isStageActive(stageKey: string, stageRecords: Array<{ stage: string; status: string }>) {
+  return stageRecords.some(r => r.stage === stageKey && r.status === "in_progress");
+}
+
+export function getCurrentStageKey(projectStage: string | null | undefined, stageRecords: Array<{ stage: string; status: string }>): string {
+  const activeRecord = stageRecords.find(r => r.status === "in_progress");
+  if (activeRecord) return activeRecord.stage;
+  return projectStage ?? "project_case";
+}
+
+export const STRATEGIC_THEMES = [
+  "Digital Transformation",
+  "Operational Excellence",
+  "Customer Experience",
+  "Revenue Growth",
+  "Cost Reduction",
+  "Compliance & Risk",
+  "Sustainability",
+  "Innovation",
+  "Infrastructure",
+  "Talent & Culture",
+] as const;
+
+export const FUNCTIONS_LIST = [
+  "Finance",
+  "Human Resources",
+  "Information Technology",
+  "Operations",
+  "Sales & Marketing",
+  "Supply Chain",
+  "Legal & Compliance",
+  "Engineering",
+  "Customer Service",
+  "Strategy",
+] as const;

@@ -162,7 +162,18 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       color: r.value === role ? "#A5B4FC" : "rgba(148,163,184,0.8)",
                       background: r.value === role ? "rgba(99,102,241,0.15)" : "transparent",
                     }}
-                    onClick={() => { setRole(r.value); setShowRoleMenu(false); }}
+                    onClick={() => {
+                      setRole(r.value);
+                      setShowRoleMenu(false);
+                      // Persist the chosen role to the server-side session so advance
+                      // endpoint can authorize from req.session.simulatedRole (not a header).
+                      fetch("/api/session/role", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ role: r.value }),
+                      }).catch(() => {});
+                    }}
                     onMouseEnter={e => {
                       if (r.value !== role) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
                     }}
