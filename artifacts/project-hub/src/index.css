@@ -134,8 +134,12 @@
   --amber-accent: 35 92% 50%;
   --amber-accent-foreground: 224 28% 10%;
 
-  /* Signature CTA — deep purple, reads strong on near-white */
-  --cta: 262 62% 38%;
+  /* Signature CTA — deep emerald.
+     Color-theory rationale: direct complement of the pastel pink (~340°)
+     the button sits on, and analogous to the sea green (~155°) on the
+     left of the banner — ties the hero gradient together while creating
+     maximum attention via complementary contrast. */
+  --cta: 162 72% 26%;
   --cta-foreground: 0 0% 100%;
 
   --chart-1: 190 82% 40%;
