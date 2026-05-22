@@ -1,0 +1,71 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+
+.atelier-theme {
+  --background: 230 15% 6%;
+  --foreground: 0 0% 95%;
+  --card: 230 15% 8%;
+  --card-foreground: 0 0% 95%;
+  --popover: 230 15% 8%;
+  --popover-foreground: 0 0% 95%;
+  --primary: 35 90% 60%;
+  --primary-foreground: 230 15% 6%;
+  --secondary: 230 10% 15%;
+  --secondary-foreground: 0 0% 95%;
+  --muted: 230 10% 15%;
+  --muted-foreground: 230 5% 60%;
+  --accent: 260 60% 60%;
+  --accent-foreground: 0 0% 95%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 230 10% 20%;
+  --input: 230 10% 20%;
+  --ring: 35 90% 60%;
+  --radius: 1rem;
+  
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  min-height: 100vh;
+}
+
+.atelier-mesh-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: 
+    radial-gradient(circle at 10% 20%, rgba(200, 140, 50, 0.07), transparent 35%),
+    radial-gradient(circle at 90% 40%, rgba(130, 80, 220, 0.08), transparent 35%),
+    radial-gradient(circle at 40% 90%, rgba(40, 160, 150, 0.06), transparent 35%);
+  filter: blur(60px);
+}
+
+.atelier-glass {
+  background: rgba(25, 25, 30, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.atelier-glass:hover {
+  background: rgba(30, 30, 35, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px -4px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
