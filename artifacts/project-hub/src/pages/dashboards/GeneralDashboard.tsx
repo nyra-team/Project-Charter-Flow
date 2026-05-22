@@ -80,7 +80,7 @@ function ProjectHealthSection({ health }: { health: DashboardSummary["projectHea
           return (
             <div key={t.label} className={`rounded-lg p-3 text-center border border-border ${t.bg} ring-1 ${t.ring}`}>
               <div className="flex justify-center mb-1.5"><Icon size={16} className={t.iconCls} /></div>
-              <div className={`text-2xl font-serif font-semibold num-tabular ${t.accentText}`}>{t.value}</div>
+              <div className={`text-2xl font-mono font-semibold num-tabular ${t.accentText}`}>{t.value}</div>
               <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground mt-0.5">{t.label}</div>
             </div>
           );
@@ -160,7 +160,7 @@ function GamificationPanel({ refetchInterval }: { refetchInterval: number | fals
                 </div>
               </div>
               <div className="flex-shrink-0 text-right">
-                <div className="text-base font-serif font-semibold num-tabular text-primary">{user.totalScore}</div>
+                <div className="text-base font-mono font-semibold num-tabular text-primary">{user.totalScore}</div>
                 <div className="text-[10px] text-muted-foreground font-mono">pts</div>
               </div>
             </div>
@@ -198,27 +198,27 @@ export default function GeneralDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Hero header */}
-      <div className="relative rounded-2xl border border-border bg-card overflow-hidden ph-rise">
-        <div className="absolute inset-0 ambient-mesh opacity-60 pointer-events-none" />
+      {/* Hero header — Atelier glass + ambient mesh, Command Center mono caption */}
+      <div className="relative rounded-2xl overflow-hidden ph-rise glass-surface">
+        <div className="absolute inset-0 ambient-mesh opacity-70 pointer-events-none" />
         <div className="relative flex items-start justify-between flex-wrap gap-4 p-6 lg:p-8">
           <div className="min-w-0">
-            <p className="text-[10px] font-mono tracking-[0.18em] uppercase text-muted-foreground mb-2">
+            <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground mb-2">
               Enterprise PMO · Overview
             </p>
-            <h2 className="font-serif text-3xl lg:text-4xl font-semibold tracking-tight text-card-foreground">
+            <h2 className="text-3xl lg:text-4xl font-bold tracking-tight text-card-foreground">
               Good {greeting()}.
             </h2>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
-              {summary?.activeProjects ?? 0} active project{summary?.activeProjects === 1 ? "" : "s"} ·
-              {" "}{summary?.pendingApprovals ?? 0} awaiting approval ·
-              {" "}{summary?.totalCharters ?? 0} charter{summary?.totalCharters === 1 ? "" : "s"} in pipeline
+              <span className="font-mono num-tabular text-card-foreground font-semibold">{summary?.activeProjects ?? 0}</span> active project{summary?.activeProjects === 1 ? "" : "s"} ·
+              {" "}<span className="font-mono num-tabular text-card-foreground font-semibold">{summary?.pendingApprovals ?? 0}</span> awaiting approval ·
+              {" "}<span className="font-mono num-tabular text-card-foreground font-semibold">{summary?.totalCharters ?? 0}</span> charter{summary?.totalCharters === 1 ? "" : "s"} in pipeline
             </p>
           </div>
           <div className="flex items-center gap-3">
             <IntervalPicker />
             <Link href="/charters/new">
-              <button className="flex items-center gap-2 px-4 h-9 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.98] transition-all shadow-sm">
+              <button className="flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold bg-amber-accent text-amber-accent-foreground hover:opacity-90 active:scale-[0.98] transition-all glow-amber">
                 <FileText size={14} /> New Charter
               </button>
             </Link>

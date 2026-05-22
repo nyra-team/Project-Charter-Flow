@@ -219,7 +219,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* Header */}
         <header className="h-16 flex-shrink-0 flex items-center justify-between px-6 z-10 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70 border-b border-border">
           <div className="flex items-center gap-3 min-w-0">
-            <h1 className="font-serif text-[22px] font-semibold text-foreground tracking-tight truncate">{pageTitle}</h1>
+            <h1 className="text-[20px] font-bold text-foreground tracking-tight truncate">{pageTitle}</h1>
             <span className="hidden md:inline-flex items-center gap-1.5 text-[10px] font-mono tracking-wider uppercase text-muted-foreground px-2 py-0.5 rounded border border-border/60">
               <span className="w-1.5 h-1.5 rounded-full bg-success pulse-ring" />
               Live
@@ -242,8 +242,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page Content */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin bg-background">
-          <div className="absolute inset-0 ambient-mesh-soft pointer-events-none opacity-50" style={{ position: "fixed", zIndex: 0 }} />
+        <div className="relative flex-1 overflow-y-auto scrollbar-thin bg-background">
+          <div className="page-ambient" />
           <div className="relative max-w-[1600px] mx-auto p-6 lg:p-8">
             {children}
           </div>

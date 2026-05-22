@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
@@ -45,6 +45,10 @@
   --color-warn: hsl(var(--warn));
   --color-warn-foreground: hsl(var(--warn-foreground));
 
+  /* Atelier amber as a signature accent (CTAs, highlights) */
+  --color-amber-accent: hsl(var(--amber-accent));
+  --color-amber-accent-foreground: hsl(var(--amber-accent-foreground));
+
   --color-chart-1: hsl(var(--chart-1));
   --color-chart-2: hsl(var(--chart-2));
   --color-chart-3: hsl(var(--chart-3));
@@ -63,18 +67,20 @@
   --color-sidebar-ring: hsl(var(--sidebar-ring));
 
   --font-sans: var(--app-font-sans);
-  --font-serif: var(--app-font-serif);
   --font-mono: var(--app-font-mono);
+  --font-display: var(--app-font-sans);
 
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* Split radii — tight for controls/badges (Command Center), softer for cards (Atelier) */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+  --radius-2xl: 18px;
 }
 
 /* ───────────────────────────────────────────────────────────────
-   LIGHT MODE — "Atelier Day"
-   Warm editorial palette, premium PMO feel.
+   LIGHT MODE — Command Center adapted to light
+   Sharp cyan on near-white, tactical, dense, no warmth.
    ─────────────────────────────────────────────────────────────── */
 :root {
   --button-outline: rgba(0,0,0, .08);
@@ -83,68 +89,70 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .07);
 
-  /* Warm parchment background, deep ink foreground */
-  --background: 42 28% 97%;
-  --foreground: 222 32% 11%;
+  /* Clean near-white surface, deep ink */
+  --background: 220 22% 98%;
+  --foreground: 224 28% 10%;
 
-  --border: 42 14% 89%;
-  --input: 42 14% 89%;
-  --ring: 188 85% 38%;
+  --border: 222 14% 90%;
+  --input: 222 14% 90%;
+  --ring: 190 78% 38%;
 
   --card: 0 0% 100%;
-  --card-foreground: 222 32% 11%;
-  --card-border: 42 14% 90%;
+  --card-foreground: 224 28% 10%;
+  --card-border: 222 14% 91%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 222 32% 11%;
-  --popover-border: 42 14% 90%;
+  --popover-foreground: 224 28% 10%;
+  --popover-border: 222 14% 90%;
 
-  /* Refined teal accent — works premium in both modes */
-  --primary: 188 82% 32%;
+  /* Sharp cyan (Command Center primary) — slightly deeper for AA on light */
+  --primary: 190 82% 35%;
   --primary-foreground: 0 0% 100%;
 
-  --secondary: 42 18% 93%;
-  --secondary-foreground: 222 32% 18%;
+  --secondary: 220 16% 95%;
+  --secondary-foreground: 224 28% 16%;
 
-  --muted: 42 18% 94%;
-  --muted-foreground: 222 12% 42%;
+  --muted: 220 16% 95%;
+  --muted-foreground: 222 10% 42%;
 
-  --accent: 42 22% 92%;
-  --accent-foreground: 222 32% 14%;
+  --accent: 220 16% 94%;
+  --accent-foreground: 224 28% 12%;
 
-  --destructive: 0 75% 52%;
+  --destructive: 0 75% 50%;
   --destructive-foreground: 0 0% 100%;
 
   --success: 158 65% 36%;
   --success-foreground: 0 0% 100%;
-  --warn: 35 92% 48%;
+  --warn: 35 92% 46%;
   --warn-foreground: 0 0% 100%;
 
-  /* Chart palette tuned for warm light bg */
-  --chart-1: 188 82% 38%;
+  /* Atelier amber accent — used for signature CTAs/highlights in both modes */
+  --amber-accent: 35 92% 50%;
+  --amber-accent-foreground: 224 28% 10%;
+
+  --chart-1: 190 82% 40%;
   --chart-2: 158 65% 42%;
   --chart-3: 35 92% 52%;
-  --chart-4: 0 75% 58%;
-  --chart-5: 262 60% 58%;
+  --chart-4: 0 75% 56%;
+  --chart-5: 262 65% 58%;
 
-  /* Sidebar stays atelier-dark in BOTH modes for editorial contrast */
-  --sidebar: 225 26% 8%;
-  --sidebar-foreground: 42 18% 88%;
-  --sidebar-border: 225 14% 16%;
-  --sidebar-primary: 188 90% 55%;
-  --sidebar-primary-foreground: 225 30% 8%;
-  --sidebar-accent: 225 18% 14%;
-  --sidebar-accent-foreground: 42 18% 92%;
-  --sidebar-ring: 188 90% 55%;
+  /* Sidebar = Atelier-dark in BOTH modes for editorial contrast */
+  --sidebar: 230 18% 6%;
+  --sidebar-foreground: 220 14% 88%;
+  --sidebar-border: 230 14% 14%;
+  --sidebar-primary: 190 95% 55%;
+  --sidebar-primary-foreground: 230 30% 8%;
+  --sidebar-accent: 230 16% 12%;
+  --sidebar-accent-foreground: 220 14% 92%;
+  --sidebar-ring: 190 95% 55%;
 
-  --app-font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --app-font-serif: 'Fraunces', 'Source Serif Pro', Georgia, Cambria, 'Times New Roman', Times, serif;
+  --app-font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --app-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 
-  --radius: 0.5rem;
+  --radius: 0.375rem; /* 6px — tactical Command Center base */
 
   --shadow-2xs: 0px 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-xs: 0px 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-xs: 0px 1px 3px rgba(15, 23, 42, 0.05);
   --shadow-sm: 0px 2px 6px rgba(15, 23, 42, 0.05), 0px 1px 2px rgba(15, 23, 42, 0.04);
   --shadow: 0px 4px 12px rgba(15, 23, 42, 0.06), 0px 2px 4px rgba(15, 23, 42, 0.04);
   --shadow-md: 0px 12px 24px -8px rgba(15, 23, 42, 0.10), 0px 4px 8px -4px rgba(15, 23, 42, 0.05);
@@ -163,17 +171,18 @@
   --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
-  /* Mesh / ambient background tokens */
-  --mesh-1: 188 82% 90%;
-  --mesh-2: 262 60% 92%;
-  --mesh-3: 35 92% 92%;
-  --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-border: rgba(15, 23, 42, 0.08);
+  /* Mesh / ambient — kept very subtle in light */
+  --mesh-amber: 35 92% 92%;
+  --mesh-purple: 262 70% 94%;
+  --mesh-teal: 188 80% 92%;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(15, 23, 42, 0.06);
 }
 
 /* ───────────────────────────────────────────────────────────────
-   DARK MODE — "Atelier Night"
-   Deep warm dark, glassmorphic surfaces, cyan accent.
+   DARK MODE — Atelier
+   Deep navy, glass surfaces, amber/purple/teal radial glow.
+   Sharp Command Center cyan as primary action color.
    ─────────────────────────────────────────────────────────────── */
 .dark {
   --button-outline: rgba(255,255,255, .08);
@@ -182,55 +191,60 @@
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  --background: 225 18% 6%;
-  --foreground: 42 18% 92%;
+  /* Atelier deep navy */
+  --background: 230 15% 6%;
+  --foreground: 220 12% 95%;
 
-  --border: 225 14% 16%;
-  --input: 225 14% 16%;
-  --ring: 188 95% 55%;
+  --border: 230 10% 18%;
+  --input: 230 10% 18%;
+  --ring: 190 95% 55%;
 
-  --card: 225 16% 9%;
-  --card-foreground: 42 18% 92%;
-  --card-border: 225 14% 16%;
+  /* Card uses glass — solid token is fallback; .glass-surface utility overlays blur */
+  --card: 230 14% 10%;
+  --card-foreground: 220 12% 95%;
+  --card-border: 230 10% 18%;
 
-  --popover: 225 16% 10%;
-  --popover-foreground: 42 18% 92%;
-  --popover-border: 225 14% 18%;
+  --popover: 230 14% 11%;
+  --popover-foreground: 220 12% 95%;
+  --popover-border: 230 10% 20%;
 
-  --primary: 188 95% 55%;
-  --primary-foreground: 225 30% 8%;
+  --primary: 190 95% 55%;
+  --primary-foreground: 230 30% 8%;
 
-  --secondary: 225 14% 14%;
-  --secondary-foreground: 42 18% 92%;
+  --secondary: 230 10% 14%;
+  --secondary-foreground: 220 12% 95%;
 
-  --muted: 225 14% 14%;
-  --muted-foreground: 225 8% 60%;
+  --muted: 230 10% 14%;
+  --muted-foreground: 220 8% 60%;
 
-  --accent: 225 14% 16%;
-  --accent-foreground: 42 18% 92%;
+  --accent: 230 10% 16%;
+  --accent-foreground: 220 12% 95%;
 
   --destructive: 0 78% 60%;
   --destructive-foreground: 0 0% 100%;
 
-  --success: 158 68% 48%;
-  --success-foreground: 225 30% 8%;
-  --warn: 35 95% 58%;
-  --warn-foreground: 225 30% 8%;
+  --success: 158 65% 50%;
+  --success-foreground: 230 30% 8%;
+  --warn: 35 92% 58%;
+  --warn-foreground: 230 30% 8%;
 
-  --chart-1: 188 95% 55%;
-  --chart-2: 158 68% 48%;
-  --chart-3: 35 95% 58%;
+  --amber-accent: 35 90% 60%;
+  --amber-accent-foreground: 230 30% 8%;
+
+  --chart-1: 190 95% 55%;
+  --chart-2: 158 68% 50%;
+  --chart-3: 35 92% 58%;
   --chart-4: 0 78% 62%;
-  --chart-5: 262 70% 68%;
+  --chart-5: 262 75% 70%;
 
-  --sidebar: 225 20% 5%;
-  --sidebar-foreground: 42 18% 88%;
-  --sidebar-border: 225 14% 14%;
-  --sidebar-primary: 188 95% 55%;
-  --sidebar-primary-foreground: 225 30% 8%;
-  --sidebar-accent: 225 18% 12%;
-  --sidebar-accent-foreground: 42 18% 92%;
-  --sidebar-ring: 188 95% 55%;
+  --sidebar: 230 18% 4%;
+  --sidebar-foreground: 220 12% 88%;
+  --sidebar-border: 230 14% 12%;
+  --sidebar-primary: 190 95% 55%;
+  --sidebar-primary-foreground: 230 30% 8%;
+  --sidebar-accent: 230 14% 10%;
+  --sidebar-accent-foreground: 220 12% 92%;
+  --sidebar-ring: 190 95% 55%;
 
   --shadow-2xs: 0px 1px 2px rgba(0, 0, 0, 0.40);
   --shadow-xs: 0px 1px 3px rgba(0, 0, 0, 0.50);
@@ -241,71 +255,101 @@
   --shadow-xl: 0px 32px 64px -16px rgba(0, 0, 0, 0.75);
   --shadow-2xl: 0px 48px 96px -24px rgba(0, 0, 0, 0.85);
 
-  --mesh-1: 188 95% 14%;
-  --mesh-2: 262 70% 16%;
-  --mesh-3: 35 80% 14%;
-  --glass-bg: rgba(20, 24, 33, 0.55);
+  /* Atelier mesh — amber, purple, teal radials on near-black */
+  --mesh-amber: 35 90% 18%;
+  --mesh-purple: 262 60% 22%;
+  --mesh-teal: 188 80% 18%;
+  --glass-bg: rgba(25, 27, 35, 0.45);
   --glass-border: rgba(255, 255, 255, 0.06);
 }
 
 @layer base {
-  * {
-    @apply border-border;
-  }
+  * { @apply border-border; }
   html, body {
     @apply font-sans antialiased bg-background text-foreground;
     font-feature-settings: "cv11", "ss01", "ss03";
-  }
-  body {
-    background-image: var(--app-bg-mesh, none);
-    background-attachment: fixed;
+    letter-spacing: -0.01em;
   }
 }
 
 @layer utilities {
-  input[type="search"]::-webkit-search-cancel-button {
-    @apply hidden;
-  }
+  input[type="search"]::-webkit-search-cancel-button { @apply hidden; }
   [contenteditable][data-placeholder]:empty::before {
     content: attr(data-placeholder);
     color: hsl(var(--muted-foreground));
     pointer-events: none;
   }
 
-  /* ── Atelier glass surface ─────────────────────────── */
+  /* ── Atelier glass surface (active in dark; falls back to card in light) ── */
   .glass-surface {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--card-border));
+  }
+  .dark .glass-surface {
     background-color: var(--glass-bg);
-    backdrop-filter: blur(14px) saturate(140%);
-    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
     border: 1px solid var(--glass-border);
+    box-shadow: 0 4px 24px -4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .glass-surface-hover {
+    transition: background-color .2s, border-color .2s, transform .25s, box-shadow .25s;
+  }
+  .glass-surface-hover:hover { border-color: hsl(var(--border)); }
+  .dark .glass-surface-hover:hover {
+    background-color: rgba(35, 38, 48, 0.55);
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 8px 32px -4px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06);
   }
 
-  /* ── Ambient mesh background for hero panes ────────── */
+  /* ── Ambient radial mesh — amber + purple + teal (Atelier) ── */
   .ambient-mesh {
     background-image:
-      radial-gradient(at 18% 12%, hsl(var(--mesh-1) / 0.55) 0px, transparent 45%),
-      radial-gradient(at 82% 8%, hsl(var(--mesh-2) / 0.40) 0px, transparent 50%),
-      radial-gradient(at 50% 95%, hsl(var(--mesh-3) / 0.35) 0px, transparent 55%);
+      radial-gradient(circle at 10% 18%, hsl(var(--mesh-amber) / 0.85) 0px, transparent 38%),
+      radial-gradient(circle at 88% 22%, hsl(var(--mesh-purple) / 0.75) 0px, transparent 42%),
+      radial-gradient(circle at 50% 100%, hsl(var(--mesh-teal) / 0.65) 0px, transparent 45%);
+    filter: blur(40px);
   }
   .ambient-mesh-soft {
     background-image:
-      radial-gradient(at 80% 0%, hsl(var(--mesh-1) / 0.30) 0px, transparent 55%),
-      radial-gradient(at 0% 100%, hsl(var(--mesh-2) / 0.22) 0px, transparent 55%);
+      radial-gradient(circle at 80% 0%, hsl(var(--mesh-amber) / 0.5) 0px, transparent 50%),
+      radial-gradient(circle at 0% 100%, hsl(var(--mesh-purple) / 0.45) 0px, transparent 55%);
+    filter: blur(60px);
   }
 
-  /* ── Hairline divider ──────────────────────────────── */
+  /* ── Page background ambient mesh (Atelier signature) ── */
+  .page-ambient {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+      radial-gradient(circle at 12% 14%, hsl(var(--mesh-amber) / 0.55), transparent 35%),
+      radial-gradient(circle at 88% 38%, hsl(var(--mesh-purple) / 0.55), transparent 38%),
+      radial-gradient(circle at 38% 92%, hsl(var(--mesh-teal) / 0.45), transparent 38%);
+    filter: blur(60px);
+    opacity: 0.65;
+  }
+  .dark .page-ambient { opacity: 0.55; }
+
+  /* ── Hairline divider ── */
   .hairline {
     background-image: linear-gradient(to right, transparent, hsl(var(--border)), transparent);
     height: 1px;
   }
 
-  /* ── Mono numeric for KPI values ───────────────────── */
+  /* ── Mono numerals (tabular, slashed zero, lining) ── */
   .num-tabular {
     font-feature-settings: "tnum", "lnum", "zero";
     font-variant-numeric: tabular-nums slashed-zero;
   }
 
-  /* ── Scrollbar (subtle, themed) ────────────────────── */
+  /* ── Atelier dotted/dashed CTA border (Command Center flavor) ── */
+  .btn-dashed {
+    border-style: dashed;
+  }
+
+  /* ── Scrollbar (subtle, themed) ── */
   .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
   .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
   .scrollbar-thin::-webkit-scrollbar-thumb {
@@ -316,25 +360,40 @@
     background: hsl(var(--muted-foreground) / 0.5);
   }
 
-  /* ── Subtle entrance animation for cards ───────────── */
+  /* ── Entrance animation ── */
   @keyframes ph-rise {
-    from { opacity: 0; transform: translateY(6px); }
+    from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  .ph-rise {
-    animation: ph-rise 0.45s cubic-bezier(.2,.7,.3,1) both;
-  }
-  .ph-rise-2 { animation-delay: 0.05s; }
-  .ph-rise-3 { animation-delay: 0.10s; }
-  .ph-rise-4 { animation-delay: 0.15s; }
+  .ph-rise { animation: ph-rise 0.5s cubic-bezier(.16,1,.3,1) both; }
+  .ph-rise-2 { animation-delay: 0.06s; }
+  .ph-rise-3 { animation-delay: 0.12s; }
+  .ph-rise-4 { animation-delay: 0.18s; }
 
   @keyframes ph-pulse-ring {
-    0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.35); }
+    0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.45); }
     50%      { box-shadow: 0 0 0 6px hsl(var(--primary) / 0); }
   }
   .pulse-ring { animation: ph-pulse-ring 2.4s ease-out infinite; }
 
-  /* ── Existing elevate utility (kept for compat) ────── */
+  /* ── Glow utilities for Atelier accents ── */
+  .glow-amber {
+    box-shadow: 0 0 18px hsl(var(--amber-accent) / 0.35);
+  }
+  .glow-primary {
+    box-shadow: 0 0 18px hsl(var(--primary) / 0.30);
+  }
+  .glow-destructive {
+    box-shadow: 0 0 12px hsl(var(--destructive) / 0.35);
+  }
+
+  /* ── RAG dot with ring (Command Center) ── */
+  .rag-dot {
+    @apply inline-block w-2.5 h-2.5 rounded-full ring-2 ring-offset-2;
+    ring-offset-color: hsl(var(--card));
+  }
+
+  /* ── Existing elevate utility (kept for compat) ── */
   .toggle-elevate::before,
   .toggle-elevate-2::before {
     content: "";
@@ -344,12 +403,8 @@
     border-radius: inherit;
     z-index: -1;
   }
-  .toggle-elevate.toggle-elevated::before {
-    background-color: var(--elevate-2);
-  }
-  .border.toggle-elevate::before {
-    inset: -1px;
-  }
+  .toggle-elevate.toggle-elevated::before { background-color: var(--elevate-2); }
+  .border.toggle-elevate::before { inset: -1px; }
   .hover-elevate:not(.no-default-hover-elevate),
   .active-elevate:not(.no-default-active-elevate),
   .hover-elevate-2:not(.no-default-hover-elevate),
@@ -369,13 +424,9 @@
     z-index: 999;
   }
   .hover-elevate:hover:not(.no-default-hover-elevate)::after,
-  .active-elevate:active:not(.no-default-active-elevate)::after {
-    background-color: var(--elevate-1);
-  }
+  .active-elevate:active:not(.no-default-active-elevate)::after { background-color: var(--elevate-1); }
   .hover-elevate-2:hover:not(.no-default-hover-elevate)::after,
-  .active-elevate-2:active:not(.no-default-active-elevate)::after {
-    background-color: var(--elevate-2);
-  }
+  .active-elevate-2:active:not(.no-default-active-elevate)::after { background-color: var(--elevate-2); }
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after,
   .border.active-elevate:not(.no-active-interaction-elevate)::after,
   .border.hover-elevate-2:not(.no-hover-interaction-elevate)::after,
@@ -384,4 +435,3 @@
     inset: -1px;
   }
 }
-

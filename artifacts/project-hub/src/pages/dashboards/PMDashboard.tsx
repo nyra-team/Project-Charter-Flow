@@ -185,21 +185,21 @@ export default function PMDashboard() {
 
   return (
     <div className="space-y-6" data-print-target>
-      {/* Hero header */}
-      <div className="relative rounded-2xl border border-border bg-card overflow-hidden ph-rise">
-        <div className="absolute inset-0 ambient-mesh opacity-60 pointer-events-none" />
+      {/* Hero header — Atelier glass + ambient mesh */}
+      <div className="relative rounded-2xl overflow-hidden ph-rise glass-surface">
+        <div className="absolute inset-0 ambient-mesh opacity-70 pointer-events-none" />
         <div className="relative flex items-start justify-between flex-wrap gap-4 p-6 lg:p-8">
           <div className="min-w-0">
-            <p className="text-[10px] font-mono tracking-[0.18em] uppercase text-muted-foreground mb-2">
+            <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground mb-2">
               Project Manager · Command View
             </p>
-            <h2 className="font-serif text-3xl lg:text-4xl font-semibold tracking-tight text-card-foreground">
+            <h2 className="text-3xl lg:text-4xl font-bold tracking-tight text-card-foreground">
               Good {greeting()}. Here's your portfolio.
             </h2>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
-              {activeProjects.length} active project{activeProjects.length === 1 ? "" : "s"} under your management ·
-              {" "}{tasksDueThisWeek.length} task{tasksDueThisWeek.length === 1 ? "" : "s"} due this week ·
-              {" "}{overdueTasks.length} overdue
+              <span className="font-mono num-tabular text-card-foreground font-semibold">{activeProjects.length}</span> active project{activeProjects.length === 1 ? "" : "s"} under your management ·
+              {" "}<span className="font-mono num-tabular text-card-foreground font-semibold">{tasksDueThisWeek.length}</span> due this week ·
+              {" "}<span className="font-mono num-tabular text-destructive font-semibold">{overdueTasks.length}</span> overdue
             </p>
           </div>
           <IntervalPicker />
@@ -279,7 +279,7 @@ export default function PMDashboard() {
             <div className="hairline" />
             <div className="flex items-center justify-between">
               <span className="text-[13px] text-muted-foreground">Total</span>
-              <span className="text-base font-serif font-semibold num-tabular text-card-foreground">{taskTotal}</span>
+              <span className="text-base font-mono font-semibold num-tabular text-card-foreground">{taskTotal}</span>
             </div>
           </div>
         </DashboardCard>
@@ -386,7 +386,7 @@ export default function PMDashboard() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[10px] font-mono uppercase tracking-wider text-primary/80 mb-1">Awaiting Action</p>
-                  <p className="text-2xl font-serif font-semibold num-tabular text-card-foreground leading-none">
+                  <p className="text-2xl font-mono font-semibold num-tabular text-card-foreground leading-none">
                     {summary?.pendingApprovals ?? 0}
                   </p>
                   <p className="text-[11px] text-muted-foreground mt-2">Click to review the queue</p>
@@ -442,7 +442,7 @@ function QuickStat({ label, value, icon: Icon, tone = "default" }: { label: stri
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">{label}</span>
         <Icon size={11} className="text-muted-foreground/60" />
       </div>
-      <p className={`text-xl font-serif font-semibold num-tabular mt-1 ${cls}`}>{value}</p>
+      <p className={`text-xl font-mono font-semibold num-tabular mt-1 ${cls}`}>{value}</p>
     </div>
   );
 }

@@ -6,82 +6,94 @@ import * as XLSX from "xlsx";
 
 type RagKey = "green" | "amber" | "red" | "grey";
 
-const RAG_CLASSES: Record<RagKey, { wrap: string; dot: string; label: string }> = {
-  green: { wrap: "bg-success/10 text-success border-success/20",     dot: "bg-success",     label: "Green" },
-  amber: { wrap: "bg-warn/10 text-warn border-warn/20",              dot: "bg-warn",        label: "Amber" },
-  red:   { wrap: "bg-destructive/10 text-destructive border-destructive/20", dot: "bg-destructive", label: "Red" },
-  grey:  { wrap: "bg-muted text-muted-foreground border-border",     dot: "bg-muted-foreground/60", label: "N/A" },
+const RAG_CLASSES: Record<RagKey, { wrap: string; dot: string; ring: string; label: string }> = {
+  green: { wrap: "bg-success/10 text-success border-success/20",                  dot: "bg-success",          ring: "ring-success/30",     label: "Green" },
+  amber: { wrap: "bg-warn/10 text-warn border-warn/20",                           dot: "bg-warn",             ring: "ring-warn/30",        label: "Amber" },
+  red:   { wrap: "bg-destructive/10 text-destructive border-destructive/20",      dot: "bg-destructive",      ring: "ring-destructive/30", label: "Red" },
+  grey:  { wrap: "bg-muted text-muted-foreground border-border",                  dot: "bg-muted-foreground/60", ring: "ring-border",      label: "N/A" },
 };
 
 export function RAGBadge({ status, size = "sm" }: { status?: string | null; size?: "xs" | "sm" | "md" }) {
   const key = ((status ?? "grey").toLowerCase() as RagKey);
   const cfg = RAG_CLASSES[key] ?? RAG_CLASSES.grey;
   const dotSize = size === "xs" ? "w-1.5 h-1.5" : size === "md" ? "w-2.5 h-2.5" : "w-2 h-2";
-  const px = size === "xs" ? "px-1.5 py-0.5 text-[10px]" : size === "md" ? "px-3 py-1 text-sm" : "px-2 py-0.5 text-xs";
+  const px = size === "xs" ? "px-1.5 py-0.5 text-[10px]" : size === "md" ? "px-3 py-1 text-sm" : "px-2 py-0.5 text-[11px]";
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full font-semibold border ${px} ${cfg.wrap}`}>
+    <span className={`inline-flex items-center gap-1.5 font-medium font-mono uppercase tracking-wider rounded-sm border ${px} ${cfg.wrap}`}>
       <span className={`rounded-full flex-shrink-0 ${dotSize} ${cfg.dot}`} />
       {cfg.label}
     </span>
   );
 }
 
+/** RAG dot with ring — Command Center style. */
+export function RAGDot({ status, size = "sm" }: { status?: string | null; size?: "xs" | "sm" | "md" }) {
+  const key = ((status ?? "grey").toLowerCase() as RagKey);
+  const cfg = RAG_CLASSES[key] ?? RAG_CLASSES.grey;
+  const sz = size === "xs" ? "w-2 h-2" : size === "md" ? "w-3 h-3" : "w-2.5 h-2.5";
+  return (
+    <span className={`inline-block rounded-full ring-2 ring-offset-2 ring-offset-card ${sz} ${cfg.dot} ${cfg.ring}`} />
+  );
+}
+
 // ─── KPI Tile ─────────────────────────────────────────────────────────────────
+// Command Center structure: secondary icon pill top-right, large mono numeral,
+// uppercase label, trend caption. Highlight variant gets a top accent bar.
 
-type KpiTone = "default" | "primary" | "warn" | "danger" | "success";
+type KpiTone = "default" | "primary" | "warn" | "danger" | "success" | "amber";
 
-const KPI_TONES: Record<KpiTone, { ring: string; icon: string; iconBg: string; accentText: string }> = {
-  default: { ring: "ring-1 ring-border",                icon: "text-foreground/80",   iconBg: "bg-muted",           accentText: "text-foreground" },
-  primary: { ring: "ring-1 ring-primary/30",            icon: "text-primary",         iconBg: "bg-primary/10",      accentText: "text-primary" },
-  warn:    { ring: "ring-1 ring-warn/30",               icon: "text-warn",            iconBg: "bg-warn/10",         accentText: "text-warn" },
-  danger:  { ring: "ring-1 ring-destructive/40",        icon: "text-destructive",     iconBg: "bg-destructive/10",  accentText: "text-destructive" },
-  success: { ring: "ring-1 ring-success/30",            icon: "text-success",         iconBg: "bg-success/10",      accentText: "text-success" },
+const KPI_TONES: Record<KpiTone, { iconText: string; iconBg: string; accentText: string; bar: string }> = {
+  default: { iconText: "text-foreground/80",   iconBg: "bg-secondary",       accentText: "text-foreground",    bar: "bg-border" },
+  primary: { iconText: "text-primary",         iconBg: "bg-primary/10",      accentText: "text-foreground",    bar: "bg-primary" },
+  warn:    { iconText: "text-warn",            iconBg: "bg-warn/10",         accentText: "text-foreground",    bar: "bg-warn" },
+  danger:  { iconText: "text-destructive",     iconBg: "bg-destructive/10",  accentText: "text-destructive",   bar: "bg-destructive" },
+  success: { iconText: "text-success",         iconBg: "bg-success/10",      accentText: "text-foreground",    bar: "bg-success" },
+  amber:   { iconText: "text-amber-accent",    iconBg: "bg-amber-accent/10", accentText: "text-foreground",    bar: "bg-amber-accent" },
 };
 
 export function KPITile({
-  label, value, sub, icon: Icon, tone = "default", trend, trendLabel,
-  // legacy `gradient` prop ignored — kept for compat
+  label, value, sub, icon: Icon, tone = "default", trend, trendLabel, highlight,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   icon?: React.ComponentType<{ size?: number; className?: string }>;
   tone?: KpiTone;
+  /** ignored — legacy compat */
   gradient?: string;
   trend?: "up" | "down" | "flat";
   trendLabel?: string;
+  /** Show a thin colored bar across the top — for critical metrics. */
+  highlight?: boolean;
 }) {
   const TrendIcon = trend === "up" ? TrendingUp : trend === "down" ? TrendingDown : Minus;
   const trendCls = trend === "up" ? "text-success" : trend === "down" ? "text-destructive" : "text-muted-foreground";
   const t = KPI_TONES[tone];
 
   return (
-    <div className={`group relative rounded-xl p-5 bg-card text-card-foreground border border-card-border shadow-xs hover:shadow-md transition-all hover:-translate-y-0.5 ${t.ring}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground mb-2">
-            {label}
-          </p>
-          <div className={`text-3xl font-serif font-semibold tracking-tight num-tabular truncate ${t.accentText}`}>
-            {value}
-          </div>
-          {(sub || trendLabel) && (
-            <div className="flex items-center gap-1.5 mt-2">
-              {trend && <TrendIcon size={11} className={trendCls} />}
-              <p className={`text-[11px] ${trend ? trendCls : "text-muted-foreground"}`}>
-                {trendLabel ?? sub}
-              </p>
+    <div className={`group relative overflow-hidden rounded-xl bg-card text-card-foreground border border-card-border glass-surface glass-surface-hover transition-all`}>
+      {highlight && <div className={`absolute top-0 left-0 right-0 h-0.5 ${t.bar}`} />}
+      <div className="p-4 sm:p-5">
+        <div className="flex justify-between items-start mb-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+          {Icon && (
+            <div className={`p-1.5 rounded-md ${t.iconBg}`}>
+              <Icon size={14} className={t.iconText} />
             </div>
           )}
         </div>
-        {Icon && (
-          <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${t.iconBg}`}>
-            <Icon size={18} className={t.icon} />
+        <div className={`text-3xl font-semibold font-mono num-tabular tracking-tight truncate ${t.accentText}`}>
+          {value}
+        </div>
+        {(sub || trendLabel) && (
+          <div className="flex items-center gap-1.5 mt-2">
+            {trend && <TrendIcon size={10} className={trendCls} />}
+            <p className={`text-[10px] font-mono ${trend ? trendCls : "text-muted-foreground"}`}>
+              {trendLabel ?? sub}
+            </p>
           </div>
         )}
       </div>
-      {/* Subtle bottom accent line on hover */}
-      <span className={`absolute left-5 right-5 bottom-0 h-px scale-x-0 group-hover:scale-x-100 origin-left transition-transform ${t.iconBg} opacity-80`} />
     </div>
   );
 }
@@ -109,7 +121,7 @@ export function SLACountdown({ deadline }: { deadline: string | Date }) {
   }, [deadline]);
 
   return (
-    <span className={`text-xs font-mono font-semibold px-2 py-0.5 rounded-full border ${
+    <span className={`text-xs font-mono font-semibold px-2 py-0.5 rounded-sm border ${
       urgent ? "bg-destructive/10 text-destructive border-destructive/20" : "bg-success/10 text-success border-success/20"
     }`}>
       {remaining}
@@ -126,9 +138,7 @@ export type FilterDef = {
 };
 
 export function FilterBar({
-  filters,
-  values,
-  onChange,
+  filters, values, onChange,
 }: {
   filters: FilterDef[];
   values: Record<string, string>;
@@ -138,11 +148,11 @@ export function FilterBar({
     <div className="flex flex-wrap gap-2 items-center">
       {filters.map(f => (
         <div key={f.key} className="flex items-center gap-1.5">
-          <label className="text-xs text-muted-foreground font-medium whitespace-nowrap">{f.label}:</label>
+          <label className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground whitespace-nowrap">{f.label}</label>
           <select
             value={values[f.key] ?? ""}
             onChange={e => onChange(f.key, e.target.value)}
-            className="text-xs border rounded-md px-2 py-1.5 bg-card text-card-foreground border-border focus:outline-none focus:ring-2 focus:ring-ring/40"
+            className="text-xs rounded-md px-2 py-1.5 bg-card text-card-foreground border border-border focus:outline-none focus:ring-2 focus:ring-ring/40"
           >
             <option value="">All</option>
             {f.options.map(o => (
@@ -176,15 +186,15 @@ export function useAutoRefresh() {
     lastRefreshed,
     markRefreshed,
     IntervalPicker: () => (
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <RefreshCw size={12} />
-        <span className="font-mono">
-          Updated {lastRefreshed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
+        <RefreshCw size={11} />
+        <span>
+          {lastRefreshed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </span>
         <select
           value={intervalMs}
           onChange={e => setIntervalMs(Number(e.target.value))}
-          className="text-xs border rounded-md px-1.5 py-1 bg-card text-card-foreground border-border focus:outline-none focus:ring-2 focus:ring-ring/40"
+          className="text-[11px] rounded-md px-1.5 py-1 bg-card text-card-foreground border border-border focus:outline-none focus:ring-2 focus:ring-ring/40"
         >
           {INTERVALS.map(i => (
             <option key={i.value} value={i.value}>{i.label}</option>
@@ -200,6 +210,7 @@ export function useAutoRefresh() {
 export function DashboardCard({
   title, subtitle, children, className = "", actions,
   onExportCSV, onExportXLSX, onExportPDF, lastRefreshed,
+  variant = "default",
 }: {
   title: string;
   subtitle?: string;
@@ -210,14 +221,19 @@ export function DashboardCard({
   onExportXLSX?: () => void;
   onExportPDF?: () => void;
   lastRefreshed?: Date;
+  /** "mono" gives the Command Center tactical look (mono title, monospace meta). */
+  variant?: "default" | "mono";
 }) {
   const [showExport, setShowExport] = useState(false);
+  const titleCls = variant === "mono"
+    ? "text-[13px] font-semibold text-card-foreground tracking-tight"
+    : "text-[14px] font-semibold text-card-foreground tracking-tight";
 
   return (
-    <div className={`rounded-xl bg-card text-card-foreground border border-card-border shadow-xs ${className}`}>
-      <div className="flex items-start justify-between px-5 pt-4 pb-3 border-b border-border/60">
+    <div className={`rounded-xl bg-card text-card-foreground border border-card-border glass-surface ${className}`}>
+      <div className="flex items-start justify-between gap-3 px-5 pt-4 pb-3 border-b border-border/60">
         <div className="min-w-0">
-          <h3 className="font-serif font-semibold text-[15px] text-card-foreground tracking-tight truncate">{title}</h3>
+          <h3 className={`${titleCls} truncate`}>{title}</h3>
           {subtitle && <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{subtitle}</p>}
           {lastRefreshed && (
             <p className="text-[10px] text-muted-foreground/70 mt-0.5 font-mono">
@@ -225,13 +241,13 @@ export function DashboardCard({
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+        <div className="flex items-center gap-2 ml-2 flex-shrink-0">
           {actions}
           {(onExportCSV || onExportXLSX || onExportPDF) && (
             <div className="relative">
               <button
                 onClick={() => setShowExport(!showExport)}
-                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded border border-border hover:border-foreground/30 transition-colors"
+                className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground px-2 py-1 rounded-md border border-border hover:border-foreground/30 transition-colors"
               >
                 <Download size={11} /> Export
               </button>
