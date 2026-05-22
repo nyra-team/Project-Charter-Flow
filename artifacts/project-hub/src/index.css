@@ -326,14 +326,14 @@
     isolation: isolate;
     border-radius: 9999px;
     color: hsl(var(--card-foreground));
-    /* Tinted with the sidebar navy at low alpha so the button reads as a
-       darker frosted lozenge in the same family as the left rail. */
+    /* Tinted with a warm espresso brown at low alpha to match the perceived
+       sidebar warmth (its amber ambient wash). */
     background:
       linear-gradient(180deg,
-        hsl(var(--sidebar) / 0.22) 0%,
-        hsl(var(--sidebar) / 0.14) 50%,
-        hsl(var(--sidebar) / 0.10) 100%);
-    border: 1px solid hsl(var(--sidebar) / 0.30);
+        hsl(26 55% 22% / 0.22) 0%,
+        hsl(26 55% 22% / 0.14) 50%,
+        hsl(26 55% 22% / 0.10) 100%);
+    border: 1px solid hsl(26 55% 22% / 0.30);
     backdrop-filter: blur(8px) saturate(140%);
     -webkit-backdrop-filter: blur(8px) saturate(140%);
     box-shadow:
@@ -392,9 +392,9 @@
   .btn-glossy-cta:hover {
     background:
       linear-gradient(180deg,
-        hsl(var(--sidebar) / 0.32) 0%,
-        hsl(var(--sidebar) / 0.22) 50%,
-        hsl(var(--sidebar) / 0.16) 100%);
+        hsl(26 55% 22% / 0.32) 0%,
+        hsl(26 55% 22% / 0.22) 50%,
+        hsl(26 55% 22% / 0.16) 100%);
   }
   .dark .btn-glossy-cta:hover {
     background:
