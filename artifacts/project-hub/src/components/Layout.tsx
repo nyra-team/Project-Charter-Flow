@@ -40,6 +40,7 @@ const MAIN_NAV: NavItem[] = [
 
 const PORTFOLIO_NAV: NavItem[] = [
   { href: "/portfolio", label: "Portfolio View", icon: FolderOpen },
+  { href: "/documents", label: "Documents", icon: FileText },
 ];
 
 const ADMIN_NAV: NavItem[] = [

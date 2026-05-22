@@ -18,8 +18,11 @@ import {
   ChevronLeft, BarChart2, List, Milestone as MilestoneIcon,
   Plus, CheckCircle2, Clock, AlertTriangle, Flag,
   ChevronDown, ChevronRight, Layers, XCircle,
-  LayoutGrid, Kanban, Table2, Star,
+  LayoutGrid, Kanban, Table2, Star, Users, DollarSign, FileText,
 } from "lucide-react";
+import { ResourceTab } from "../components/resource-tab";
+import { BudgetTab } from "../components/budget-tab";
+import { DocumentsTab } from "../components/documents-tab";
 import { StageProgressBar } from "../components/stage-progress-bar";
 import { StagePanel } from "../components/stage-panel";
 import { getCurrentStageKey, LIFECYCLE_STAGES } from "../lib/lifecycle-config";
@@ -332,7 +335,7 @@ export default function ProjectDetail() {
   const { role } = useUserStore();
   const projectId = parseInt(params?.id || "0");
 
-  const [activeTab, setActiveTab] = useState<"lifecycle" | "grid" | "gantt" | "board" | "analytics" | "scoring">("lifecycle");
+  const [activeTab, setActiveTab] = useState<"lifecycle" | "grid" | "gantt" | "board" | "resources" | "budget" | "documents" | "analytics" | "scoring">("lifecycle");
   const [gridSubTab, setGridSubTab] = useState<"tasks" | "milestones">("tasks");
   const [selectedStageKey, setSelectedStageKey] = useState<string | undefined>(undefined);
   const [nfaDismissed, setNfaDismissed] = useState(false);
@@ -416,6 +419,9 @@ export default function ProjectDetail() {
     { id: "grid" as const, label: "Grid", icon: Table2 },
     { id: "gantt" as const, label: "Gantt", icon: BarChart2 },
     { id: "board" as const, label: "Board", icon: Kanban },
+    { id: "resources" as const, label: "Resources", icon: Users },
+    { id: "budget" as const, label: "Budget", icon: DollarSign },
+    { id: "documents" as const, label: "Documents", icon: FileText },
     { id: "analytics" as const, label: "Analytics", icon: LayoutGrid },
     { id: "scoring" as const, label: "Scoring", icon: Star },
   ];
@@ -942,6 +948,28 @@ export default function ProjectDetail() {
             );
           })()}
         </div>
+      )}
+
+      {/* ── Resources Tab ────────────────────────────────────────────── */}
+      {activeTab === "resources" && (
+        <ResourceTab
+          projectId={projectId}
+          projectStartDate={project.startDate}
+          projectEndDate={project.endDate}
+        />
+      )}
+
+      {/* ── Budget Tab ───────────────────────────────────────────────── */}
+      {activeTab === "budget" && (
+        <BudgetTab
+          projectId={projectId}
+          budgetThresholdPct={Number((project as { budgetThresholdPct?: number }).budgetThresholdPct ?? 10)}
+        />
+      )}
+
+      {/* ── Documents Tab ────────────────────────────────────────────── */}
+      {activeTab === "documents" && (
+        <DocumentsTab projectId={projectId} />
       )}
 
       {/* ── Analytics Tab ────────────────────────────────────────────── */}

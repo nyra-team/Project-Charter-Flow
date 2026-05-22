@@ -13,6 +13,7 @@ import ProjectDetail from "./pages/project-detail";
 import NewTask from "./pages/task-new";
 import PortfolioView from "./pages/portfolio";
 import AdminScoring from "./pages/admin-scoring";
+import DocumentsPage from "./pages/documents";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -31,6 +32,7 @@ function Router() {
         <Route path="/projects/:id/tasks/new" component={NewTask} />
         <Route path="/portfolio" component={PortfolioView} />
         <Route path="/admin/scoring" component={AdminScoring} />
+        <Route path="/documents" component={DocumentsPage} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
