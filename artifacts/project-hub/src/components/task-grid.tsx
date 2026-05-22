@@ -1,0 +1,668 @@
+import {
+  useState, useMemo, useCallback, useRef, useEffect, type ReactElement,
+} from "react";
+import { useUpdateTask, useCreateTask, useListIssues } from "@workspace/api-client-react";
+import { useToast } from "@/hooks/use-toast";
+import { ChevronRight, ChevronDown, Plus, AlertTriangle, ArrowUpDown, Layers } from "lucide-react";
+import { RagDot, StatusSelect, PrioritySelect } from "./task-status-chip";
+import { fmtVariance, DEPARTMENTS } from "../lib/task-constants";
+import { IssueRaiseModal } from "./issue-raise-modal";
+
+export interface GridTask {
+  id: number;
+  projectId: number;
+  milestoneId?: number | null;
+  workstreamId?: number | null;
+  parentTaskId?: number | null;
+  name: string;
+  status: string;
+  priority: string;
+  rag?: string | null;
+  assigneeId?: number | null;
+  assigneeName?: string | null;
+  managerId?: number | null;
+  cftOwner?: number | null;
+  cftDept?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  actualStart?: string | null;
+  actualEnd?: string | null;
+  scheduleVarianceDays?: number | null;
+  predecessorIds?: number[] | string | null;
+  estimatedHours?: number | null;
+  plannedEffortHours?: number | null;
+  isCritical?: boolean;
+}
+
+interface TaskGridProps {
+  tasks: GridTask[];
+  projectId: number;
+  onRefresh: () => void;
+  users: Array<{ id: number; name: string }>;
+}
+
+// All sortable columns
+type SortKey =
+  | "name" | "status" | "priority" | "rag"
+  | "assigneeId" | "managerId" | "parentTaskId"
+  | "startDate" | "endDate" | "actualStart" | "actualEnd"
+  | "scheduleVarianceDays" | "plannedEffortHours" | "cftDept";
+
+type SortDir = "asc" | "desc";
+
+// Flat row descriptors for virtualization
+type FlatRow =
+  | { type: "task"; task: GridTask; isSubtask: boolean }
+  | { type: "addSubtask"; parentId: number };
+
+const ROW_HEIGHT = 38; // px per rendered row
+const VIEWPORT_H = 520; // visible table height
+const OVERSCAN = 5;    // extra rows to render above/below viewport
+
+// ── RAG rollup from child statuses ───────────────────────────────────────────
+function computeRollupRag(children: GridTask[]): string {
+  if (!children.length) return "green";
+  const statuses = children.map(t => t.status);
+  if (statuses.some(s => s === "delayed")) return "red";
+  if (statuses.some(s => s === "at_risk" || s === "on_hold")) return "amber";
+  return "green";
+}
+
+// ── CFT owner options filtered by dept (using task-history heuristic) ────────
+function buildCftOwnerOptions(
+  cftDept: string | null | undefined,
+  allTasks: GridTask[],
+  allUsers: Array<{ id: number; name: string }>
+): Array<{ value: string; label: string }> {
+  const all = allUsers.map(u => ({ value: u.id.toString(), label: u.name }));
+  if (!cftDept) return all;
+  const depts = cftDept.split(",").map(d => d.trim()).filter(Boolean);
+  const seen = new Set(
+    allTasks
+      .filter(t => t.cftOwner && t.cftDept && depts.some(d => t.cftDept!.includes(d)))
+      .map(t => t.cftOwner!)
+  );
+  if (seen.size === 0) return all;
+  return allUsers.filter(u => seen.has(u.id)).map(u => ({
+    value: u.id.toString(),
+    label: `${u.name} (${cftDept})`,
+  }));
+}
+
+// ── Multi-select up to 2 departments ─────────────────────────────────────────
+function MultiDeptSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = useMemo(
+    () => (value ? value.split(",").map(s => s.trim()).filter(Boolean) : []),
+    [value]
+  );
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  function toggle(dept: string) {
+    if (selected.includes(dept)) {
+      onChange(selected.filter(d => d !== dept).join(", "));
+    } else if (selected.length < 2) {
+      onChange([...selected, dept].join(", "));
+    }
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="text-xs text-left truncate w-full px-1 py-0.5 rounded hover:bg-indigo-50"
+        title={selected.join(", ") || "Select CFT Team (up to 2)"}
+      >
+        {selected.length > 0
+          ? <span className="text-gray-700">{selected.join(", ")}</span>
+          : <span className="text-gray-300 italic">CFT Team</span>}
+      </button>
+      {open && (
+        <div className="absolute z-50 bg-white border rounded-lg shadow-xl p-1 min-w-36" style={{ top: "100%", left: 0 }}>
+          <p className="text-xs text-gray-400 px-2 py-1">Select up to 2 departments</p>
+          {DEPARTMENTS.map(d => {
+            const checked = selected.includes(d);
+            const disabled = !checked && selected.length >= 2;
+            return (
+              <label key={d} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 text-xs"
+                style={{ opacity: disabled ? 0.4 : 1, cursor: disabled ? "not-allowed" : "pointer" }}>
+                <input type="checkbox" checked={checked} disabled={disabled}
+                  onChange={() => toggle(d)} className="accent-indigo-500 w-3 h-3" />
+                <span className="text-gray-700">{d}</span>
+              </label>
+            );
+          })}
+          {selected.length > 0 && (
+            <button onClick={() => { onChange(""); setOpen(false); }}
+              className="w-full text-left text-xs text-red-400 hover:text-red-600 px-2 py-1 mt-1 border-t border-gray-100">
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Inline number cell (effort, etc.) ────────────────────────────────────────
+function InlineNumberCell({ value, onSave }: { value: number | null | undefined; onSave: (v: number | null) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [local, setLocal] = useState(value?.toString() ?? "");
+
+  function commit() {
+    setEditing(false);
+    const parsed = local === "" ? null : parseFloat(local);
+    onSave(isNaN(parsed!) ? null : parsed);
+  }
+
+  if (!editing) {
+    return (
+      <span
+        className="cursor-pointer hover:bg-indigo-50 px-1 rounded text-xs text-gray-600 block text-center"
+        onClick={() => { setLocal(value?.toString() ?? ""); setEditing(true); }}
+      >
+        {value != null ? `${value}h` : <span className="text-gray-300">—</span>}
+      </span>
+    );
+  }
+  return (
+    <input autoFocus type="number" value={local}
+      onChange={e => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+      className="text-xs border rounded px-1 py-0.5 w-full outline-none text-center" style={{ maxWidth: 65 }}
+      min={0} step={0.5} />
+  );
+}
+
+// ── Generic inline cell (date / select / text) ────────────────────────────────
+function InlineCell({ type, value, options, onSave, placeholder, displayLabel }: {
+  type: "text" | "date" | "select";
+  value: string;
+  options?: Array<{ value: string; label: string }>;
+  onSave: (v: string) => void;
+  placeholder?: string;
+  displayLabel?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [local, setLocal] = useState(value);
+
+  function commit() { setEditing(false); if (local !== value) onSave(local); }
+
+  const display = displayLabel ?? (value || "");
+
+  if (!editing) {
+    return (
+      <span className="cursor-pointer hover:bg-indigo-50 px-1 rounded text-xs text-gray-700 truncate block"
+        onClick={() => { setLocal(value); setEditing(true); }} title={display || placeholder}>
+        {display || <span className="text-gray-300 italic">{placeholder ?? "—"}</span>}
+      </span>
+    );
+  }
+
+  if (type === "date") {
+    return (
+      <input type="date" autoFocus value={local}
+        onChange={e => setLocal(e.target.value)} onBlur={commit}
+        onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+        className="text-xs border rounded px-1 py-0.5 w-full outline-none" style={{ maxWidth: 115 }} />
+    );
+  }
+
+  if (type === "select") {
+    return (
+      <select autoFocus value={local}
+        onChange={e => setLocal(e.target.value)}
+        onBlur={() => { setEditing(false); onSave(local); }}
+        className="text-xs border rounded px-1 py-0.5 w-full outline-none">
+        <option value="">—</option>
+        {options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    );
+  }
+
+  return (
+    <input autoFocus type="text" value={local}
+      onChange={e => setLocal(e.target.value)} onBlur={commit}
+      onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
+      className="text-xs border rounded px-1 py-0.5 w-full outline-none" />
+  );
+}
+
+// ── Main TaskGrid ─────────────────────────────────────────────────────────────
+export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) {
+  const { toast } = useToast();
+  const updateTask = useUpdateTask();
+  const createTask = useCreateTask();
+  const { data: issues = [] } = useListIssues(projectId);
+
+  // Optimistic patches (local override before server confirms)
+  const [pendingPatches, setPendingPatches] = useState<Record<number, Record<string, unknown>>>({});
+
+  // Virtualization
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [sortKey, setSortKey] = useState<SortKey>("name");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [issueModal, setIssueModal] = useState<{ taskId: number; taskName: string } | null>(null);
+  const [addingSubtask, setAddingSubtask] = useState<number | null>(null);
+  const [newSubtaskName, setNewSubtaskName] = useState("");
+
+  const issueCountByTask = useMemo(() => {
+    const m: Record<number, number> = {};
+    for (const i of issues as Array<{ taskId?: number | null; status: string }>) {
+      if (i.taskId && i.status !== "resolved") {
+        m[i.taskId] = (m[i.taskId] ?? 0) + 1;
+      }
+    }
+    return m;
+  }, [issues]);
+
+  const subtaskMap = useMemo(() => {
+    const m: Record<number, GridTask[]> = {};
+    for (const t of tasks) {
+      if (t.parentTaskId) (m[t.parentTaskId] ??= []).push(t);
+    }
+    return m;
+  }, [tasks]);
+
+  const topLevel = useMemo(() => tasks.filter(t => !t.parentTaskId), [tasks]);
+
+  function toggleExpand(id: number) {
+    setExpanded(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }
+
+  function handleSort(key: SortKey) {
+    if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortKey(key); setSortDir("asc"); }
+  }
+
+  const sortedTop = useMemo(() => {
+    const priorityOrder: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };
+    return [...topLevel].sort((a, b) => {
+      const aD = { ...a, ...pendingPatches[a.id] };
+      const bD = { ...b, ...pendingPatches[b.id] };
+      let va: string | number = (aD[sortKey] ?? "") as string | number;
+      let vb: string | number = (bD[sortKey] ?? "") as string | number;
+      if (sortKey === "scheduleVarianceDays" || sortKey === "plannedEffortHours") {
+        va = Number(aD[sortKey] ?? 0); vb = Number(bD[sortKey] ?? 0);
+      }
+      if (sortKey === "priority") { va = priorityOrder[aD.priority] ?? 9; vb = priorityOrder[bD.priority] ?? 9; }
+      if (va < vb) return sortDir === "asc" ? -1 : 1;
+      if (va > vb) return sortDir === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [topLevel, sortKey, sortDir, pendingPatches]);
+
+  // Build flat list of visible rows for virtualization
+  const flatRows = useMemo<FlatRow[]>(() => {
+    const rows: FlatRow[] = [];
+    for (const task of sortedTop) {
+      rows.push({ type: "task", task, isSubtask: false });
+      if (expanded.has(task.id)) {
+        for (const sub of subtaskMap[task.id] ?? []) {
+          rows.push({ type: "task", task: sub, isSubtask: true });
+        }
+        if (addingSubtask === task.id) {
+          rows.push({ type: "addSubtask", parentId: task.id });
+        }
+      }
+    }
+    return rows;
+  }, [sortedTop, expanded, subtaskMap, addingSubtask]);
+
+  // Virtual window
+  const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIdx = Math.min(flatRows.length, startIdx + Math.ceil(VIEWPORT_H / ROW_HEIGHT) + OVERSCAN * 2);
+  const visibleRows = flatRows.slice(startIdx, endIdx);
+  const topPad = startIdx * ROW_HEIGHT;
+  const bottomPad = Math.max(0, (flatRows.length - endIdx) * ROW_HEIGHT);
+
+  // Optimistic patch + rollback on error
+  const patch = useCallback((taskId: number, data: Record<string, unknown>) => {
+    setPendingPatches(prev => ({ ...prev, [taskId]: { ...(prev[taskId] ?? {}), ...data } }));
+    updateTask.mutate(
+      { id: taskId, data: data as Parameters<typeof updateTask.mutate>[0]["data"] },
+      {
+        onSuccess: () => {
+          setPendingPatches(prev => { const n = { ...prev }; delete n[taskId]; return n; });
+          onRefresh();
+        },
+        onError: () => {
+          setPendingPatches(prev => { const n = { ...prev }; delete n[taskId]; return n; });
+          toast({ title: "Update failed — changes reverted", variant: "destructive" });
+        },
+      }
+    );
+  }, [updateTask, onRefresh, toast]);
+
+  function addSubtask(parentId: number) {
+    if (!newSubtaskName.trim()) return;
+    const parent = tasks.find(t => t.id === parentId);
+    createTask.mutate(
+      {
+        id: projectId,
+        data: {
+          name: newSubtaskName,
+          parentTaskId: parentId,
+          milestoneId: parent?.milestoneId ?? undefined,
+          workstreamId: parent?.workstreamId ?? undefined,
+          priority: parent?.priority ?? "P2",
+          status: "not_started",
+          rag: "green",
+        } as Parameters<typeof createTask.mutate>[0]["data"],
+      },
+      {
+        onSuccess: () => {
+          setAddingSubtask(null);
+          setNewSubtaskName("");
+          setExpanded(prev => new Set([...prev, parentId]));
+          onRefresh();
+          toast({ title: "Subtask added" });
+        },
+        onError: () => toast({ title: "Failed to add subtask", variant: "destructive" }),
+      }
+    );
+  }
+
+  const getPredIds = (task: GridTask): number[] => {
+    try {
+      if (Array.isArray(task.predecessorIds)) return task.predecessorIds.map(Number);
+      if (typeof task.predecessorIds === "string" && task.predecessorIds) return JSON.parse(task.predecessorIds);
+    } catch {}
+    return [];
+  };
+
+  const userOptions = users.map(u => ({ value: u.id.toString(), label: u.name }));
+
+  function renderFlatRow(row: FlatRow, rowIdx: number): ReactElement {
+    if (row.type === "addSubtask") {
+      return (
+        <tr key={`add-${row.parentId}`} className="border-b border-gray-100 bg-indigo-50/40" style={{ height: ROW_HEIGHT }}>
+          <td />
+          <td colSpan={5} className="py-1 px-2" style={{ paddingLeft: 22 }}>
+            <div className="flex items-center gap-2">
+              <input autoFocus type="text" value={newSubtaskName}
+                onChange={e => setNewSubtaskName(e.target.value)} placeholder="Subtask name..."
+                className="flex-1 text-xs border rounded px-2 py-1 outline-none"
+                onKeyDown={e => {
+                  if (e.key === "Enter") addSubtask(row.parentId);
+                  if (e.key === "Escape") { setAddingSubtask(null); setNewSubtaskName(""); }
+                }} />
+              <button onClick={() => addSubtask(row.parentId)} className="text-xs px-2 py-1 rounded bg-indigo-500 text-white font-medium">Add</button>
+              <button onClick={() => { setAddingSubtask(null); setNewSubtaskName(""); }} className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600">Cancel</button>
+            </div>
+          </td>
+          <td colSpan={13} />
+        </tr>
+      );
+    }
+
+    const { task, isSubtask } = row;
+    const d: GridTask = { ...task, ...pendingPatches[task.id] };
+
+    const subs = subtaskMap[task.id] ?? [];
+    const isExp = expanded.has(task.id);
+    const variance = fmtVariance(d.scheduleVarianceDays);
+    const issueCount = issueCountByTask[task.id] ?? 0;
+    const userLabel = (id?: number | null) => users.find(u => u.id === id)?.name ?? "";
+
+    const predNames = getPredIds(task).map(id => {
+      const t = tasks.find(x => x.id === id);
+      return t ? `#${id} ${t.name}` : `#${id}`;
+    }).join(", ");
+
+    const rollupRag = !isSubtask && subs.length > 0 ? computeRollupRag(subs) : null;
+    const displayRag = rollupRag ?? d.rag ?? "green";
+    const cftOwnerOptions = buildCftOwnerOptions(d.cftDept, tasks, users);
+
+    // Parent Task ID + Name
+    const parentDisplay = task.parentTaskId
+      ? (() => {
+          const p = tasks.find(t => t.id === task.parentTaskId);
+          return { id: task.parentTaskId, name: p?.name ?? "" };
+        })()
+      : null;
+
+    return (
+      <tr
+        key={`${rowIdx}-${task.id}`}
+        className="border-b border-gray-50 hover:bg-indigo-50/30 transition-colors text-xs"
+        style={{ height: ROW_HEIGHT, background: task.isCritical ? "#FFF5F5" : isSubtask ? "#FAFBFF" : "white" }}
+      >
+        {/* Expand toggle */}
+        <td className="px-1 text-center" style={{ width: 28 }}>
+          {!isSubtask && (
+            <button onClick={() => toggleExpand(task.id)} className="text-gray-400 hover:text-indigo-500">
+              {isExp ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+            </button>
+          )}
+        </td>
+
+        {/* Name */}
+        <td className="pr-2" style={{ paddingLeft: isSubtask ? 22 : 8, minWidth: 190, maxWidth: 220 }}>
+          <div className="flex items-center gap-1.5 min-w-0">
+            {isSubtask && <div className="w-1.5 h-1.5 rounded-full bg-indigo-300 flex-shrink-0" />}
+            {task.isCritical && !isSubtask && (
+              <span className="px-1 rounded font-bold flex-shrink-0" style={{ background: "#FEE2E2", color: "#991B1B", fontSize: 9 }}>CP</span>
+            )}
+            <span className="font-medium text-gray-800 truncate" title={task.name}>{task.name}</span>
+            {!isSubtask && subs.length > 0 && (
+              <span className="ml-1 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full flex-shrink-0"
+                style={{ background: "#EEF2FF", color: "#4F46E5", fontSize: 9 }}
+                title={`${subs.length} subtask${subs.length !== 1 ? "s" : ""}`}>
+                <Layers size={9} />{subs.length}
+              </span>
+            )}
+          </div>
+        </td>
+
+        {/* Parent Task ID */}
+        <td className="px-1" style={{ minWidth: 105, maxWidth: 120 }}>
+          {parentDisplay ? (
+            <span className="text-xs truncate block" title={`#${parentDisplay.id} ${parentDisplay.name}`}>
+              <span className="font-mono font-bold text-indigo-400">#{parentDisplay.id}</span>
+              {parentDisplay.name && <span className="text-gray-500 ml-0.5">{parentDisplay.name}</span>}
+            </span>
+          ) : <span className="text-gray-300 text-xs">—</span>}
+        </td>
+
+        {/* Status */}
+        <td className="px-1" style={{ minWidth: 130 }}>
+          <StatusSelect value={d.status} onChange={v => patch(task.id, { status: v })} />
+        </td>
+
+        {/* Priority */}
+        <td className="px-1" style={{ minWidth: 95 }}>
+          <PrioritySelect value={d.priority} onChange={v => patch(task.id, { priority: v })} />
+        </td>
+
+        {/* RAG with rollup */}
+        <td className="px-1 text-center" style={{ width: 55 }}>
+          <div className="flex flex-col items-center">
+            <RagDot rag={displayRag} />
+            {rollupRag && rollupRag !== (d.rag ?? "green") && (
+              <span className="text-gray-400" style={{ fontSize: 9 }} title="Rolled up from subtasks">↑</span>
+            )}
+          </div>
+        </td>
+
+        {/* Owner */}
+        <td className="px-1" style={{ minWidth: 95, maxWidth: 110 }}>
+          <InlineCell type="select" value={d.assigneeId?.toString() ?? ""} options={userOptions}
+            onSave={v => patch(task.id, { assigneeId: v ? parseInt(v) : null })}
+            displayLabel={d.assigneeName ?? userLabel(d.assigneeId)} placeholder="Owner" />
+        </td>
+
+        {/* Manager */}
+        <td className="px-1" style={{ minWidth: 95, maxWidth: 110 }}>
+          <InlineCell type="select" value={d.managerId?.toString() ?? ""} options={userOptions}
+            onSave={v => patch(task.id, { managerId: v ? parseInt(v) : null })}
+            displayLabel={userLabel(d.managerId)} placeholder="Manager" />
+        </td>
+
+        {/* Planned Start */}
+        <td className="px-1" style={{ minWidth: 90 }}>
+          <InlineCell type="date" value={d.startDate ?? ""} onSave={v => patch(task.id, { startDate: v || null })} placeholder="Start" />
+        </td>
+
+        {/* Planned End */}
+        <td className="px-1" style={{ minWidth: 90 }}>
+          <InlineCell type="date" value={d.endDate ?? ""} onSave={v => patch(task.id, { endDate: v || null })} placeholder="End" />
+        </td>
+
+        {/* Actual Start */}
+        <td className="px-1" style={{ minWidth: 90 }}>
+          <InlineCell type="date" value={d.actualStart ?? ""} onSave={v => patch(task.id, { actualStart: v || null })} placeholder="Act. Start" />
+        </td>
+
+        {/* Actual End */}
+        <td className="px-1" style={{ minWidth: 90 }}>
+          <InlineCell type="date" value={d.actualEnd ?? ""} onSave={v => patch(task.id, { actualEnd: v || null })} placeholder="Act. End" />
+        </td>
+
+        {/* Schedule Variance */}
+        <td className="px-1 text-center" style={{ minWidth: 75 }}>
+          <span className="text-xs font-semibold" style={{ color: variance.color }}>{variance.text}</span>
+        </td>
+
+        {/* Predecessor */}
+        <td className="px-1" style={{ minWidth: 115, maxWidth: 130 }}>
+          <span className="text-xs text-gray-500 truncate block" title={predNames}>
+            {predNames || <span className="text-gray-300 italic">—</span>}
+          </span>
+        </td>
+
+        {/* CFT Team (≤2 depts) */}
+        <td className="px-1" style={{ minWidth: 125 }}>
+          <MultiDeptSelect value={d.cftDept ?? ""} onChange={v => patch(task.id, { cftDept: v || null })} />
+        </td>
+
+        {/* CFT Owner (filtered by dept) */}
+        <td className="px-1" style={{ minWidth: 105 }}>
+          <InlineCell type="select" value={d.cftOwner?.toString() ?? ""} options={cftOwnerOptions}
+            onSave={v => patch(task.id, { cftOwner: v ? parseInt(v) : null })}
+            displayLabel={userLabel(d.cftOwner)} placeholder="CFT Owner" />
+        </td>
+
+        {/* Planned Effort — inline number */}
+        <td className="px-1" style={{ minWidth: 65 }}>
+          <InlineNumberCell
+            value={d.plannedEffortHours ?? d.estimatedHours}
+            onSave={v => patch(task.id, { plannedEffortHours: v, estimatedHours: v })}
+          />
+        </td>
+
+        {/* Issues */}
+        <td className="px-1 text-center" style={{ width: 60 }}>
+          <button
+            onClick={() => setIssueModal({ taskId: task.id, taskName: task.name })}
+            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
+            style={{ background: issueCount > 0 ? "#FDEDEE" : "#F1F5F9", color: issueCount > 0 ? "#DC3545" : "#94A3B8" }}
+            title={issueCount > 0 ? `${issueCount} open issue${issueCount !== 1 ? "s" : ""}` : "Raise issue"}
+          >
+            <AlertTriangle size={10} />{issueCount > 0 ? issueCount : "+"}
+          </button>
+        </td>
+
+        {/* Add subtask */}
+        <td className="px-1 text-center" style={{ width: 32 }}>
+          {!isSubtask && (
+            <button onClick={() => { setAddingSubtask(task.id); setExpanded(prev => new Set([...prev, task.id])); }}
+              className="text-gray-300 hover:text-indigo-400" title="Add subtask">
+              <Plus size={13} />
+            </button>
+          )}
+        </td>
+      </tr>
+    );
+  }
+
+  function SortBtn({ col }: { col: SortKey }): ReactElement {
+    const active = sortKey === col;
+    return (
+      <button onClick={() => handleSort(col)}
+        className="inline-flex items-center ml-0.5 transition-opacity"
+        style={{ opacity: active ? 1 : 0.4 }}>
+        <ArrowUpDown size={10} />
+      </button>
+    );
+  }
+
+  const thCls = "text-left text-xs font-bold text-gray-500 uppercase tracking-wide py-2.5 px-1 border-b border-gray-100 bg-gray-50 whitespace-nowrap";
+
+  return (
+    <>
+      {/* Virtualized scrollable table container */}
+      <div
+        ref={scrollRef}
+        onScroll={e => setScrollTop(e.currentTarget.scrollTop)}
+        className="overflow-x-auto overflow-y-auto rounded-2xl"
+        style={{ border: "1px solid #E2E8F0", height: VIEWPORT_H, position: "relative" }}
+      >
+        <table className="border-collapse" style={{ tableLayout: "auto", minWidth: 1750 }}>
+          <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
+            <tr>
+              <th style={{ width: 28 }} className={thCls}></th>
+              <th style={{ minWidth: 190 }} className={thCls}>Task Name <SortBtn col="name" /></th>
+              <th style={{ minWidth: 105 }} className={thCls}>Parent Task ID <SortBtn col="parentTaskId" /></th>
+              <th style={{ minWidth: 130 }} className={thCls}>Status <SortBtn col="status" /></th>
+              <th style={{ minWidth: 95 }} className={thCls}>Priority <SortBtn col="priority" /></th>
+              <th style={{ width: 55 }} className={thCls}>RAG <SortBtn col="rag" /></th>
+              <th style={{ minWidth: 95 }} className={thCls}>Owner <SortBtn col="assigneeId" /></th>
+              <th style={{ minWidth: 95 }} className={thCls}>Manager <SortBtn col="managerId" /></th>
+              <th style={{ minWidth: 90 }} className={thCls}>Plan. Start <SortBtn col="startDate" /></th>
+              <th style={{ minWidth: 90 }} className={thCls}>Plan. End <SortBtn col="endDate" /></th>
+              <th style={{ minWidth: 90 }} className={thCls}>Act. Start <SortBtn col="actualStart" /></th>
+              <th style={{ minWidth: 90 }} className={thCls}>Act. End <SortBtn col="actualEnd" /></th>
+              <th style={{ minWidth: 75 }} className={thCls}>Variance <SortBtn col="scheduleVarianceDays" /></th>
+              <th style={{ minWidth: 115 }} className={thCls}>Predecessor</th>
+              <th style={{ minWidth: 125 }} className={thCls}>CFT Team (≤2) <SortBtn col="cftDept" /></th>
+              <th style={{ minWidth: 105 }} className={thCls}>CFT Owner</th>
+              <th style={{ minWidth: 65 }} className={thCls}>Effort <SortBtn col="plannedEffortHours" /></th>
+              <th style={{ width: 60 }} className={thCls}>Issues</th>
+              <th style={{ width: 32 }} className={thCls}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* Top virtual spacer */}
+            {topPad > 0 && <tr aria-hidden style={{ height: topPad }}><td colSpan={19} /></tr>}
+
+            {flatRows.length === 0 && (
+              <tr><td colSpan={19} className="text-center py-16 text-gray-400 text-sm">No tasks found.</td></tr>
+            )}
+
+            {visibleRows.map((row, i) => renderFlatRow(row, startIdx + i))}
+
+            {/* Bottom virtual spacer */}
+            {bottomPad > 0 && <tr aria-hidden style={{ height: bottomPad }}><td colSpan={19} /></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      {issueModal && (
+        <IssueRaiseModal
+          open={true}
+          onClose={() => setIssueModal(null)}
+          projectId={projectId}
+          taskId={issueModal.taskId}
+          taskName={issueModal.taskName}
+        />
+      )}
+    </>
+  );
+}

@@ -137,6 +137,23 @@ router.patch("/milestones/:id", async (req, res): Promise<void> => {
   updateData.scheduleVarianceDays = computeScheduleVarianceDays(newDueDate, newActualEndM);
   const [milestone] = await db.update(milestonesTable).set(updateData).where(eq(milestonesTable.id, params.data.id)).returning();
   if (!milestone) { res.status(404).json({ error: "Milestone not found" }); return; }
+
+  // Audit trail: log what changed
+  const msChangedFields = Object.keys(parsed.data).filter(k => k !== "scheduleVarianceDays");
+  if (msChangedFields.length > 0) {
+    const fieldSummary = msChangedFields.map(k => {
+      const newVal = (parsed.data as Record<string, unknown>)[k];
+      return `${k}: ${newVal}`;
+    }).join(", ");
+    await logActivity(
+      "milestone_updated",
+      `Milestone "${existingM.name}" updated — ${fieldSummary}`,
+      existingM.projectId,
+      "milestone",
+      existingM.id
+    );
+  }
+
   res.json(milestone);
 });
 
@@ -230,6 +247,23 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
   const [task] = await db.update(tasksTable).set(updateData).where(eq(tasksTable.id, params.data.id)).returning();
   if (!task) { res.status(404).json({ error: "Task not found" }); return; }
   const [enriched] = await enrichTasks([task as unknown as Record<string, unknown>]);
+
+  // Audit trail: log what changed
+  const changedFields = Object.keys(parsed.data).filter(k => k !== "scheduleVarianceDays");
+  if (changedFields.length > 0) {
+    const fieldSummary = changedFields.map(k => {
+      const newVal = (parsed.data as Record<string, unknown>)[k];
+      return `${k}: ${Array.isArray(newVal) ? JSON.stringify(newVal) : newVal}`;
+    }).join(", ");
+    await logActivity(
+      "task_updated",
+      `Task "${existing.name}" updated — ${fieldSummary}`,
+      existing.projectId,
+      "task",
+      existing.id
+    );
+  }
+
   res.json(enriched);
 });
 

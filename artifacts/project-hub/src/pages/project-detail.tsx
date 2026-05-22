@@ -2,7 +2,8 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { useRoute, Link } from "wouter";
 import {
   useGetProject, useListMilestones, useListTasks,
-  useGetBurndown, useGetCriticalPath, useListProjectStages,
+  useGetBurndown, useGetCriticalPath, useListProjectStages, useListUsers,
+  useListIssues, useUpdateProject,
 } from "@workspace/api-client-react";
 import { formatDate, formatCurrency } from "../lib/format";
 import { StatusBadge } from "../components/status-badge";
@@ -13,14 +14,21 @@ import {
   Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
 import {
-  ChevronLeft, BarChart2, List, Milestone,
+  ChevronLeft, BarChart2, List, Milestone as MilestoneIcon,
   Plus, CheckCircle2, Clock, AlertTriangle, Flag,
   ChevronDown, ChevronRight, Layers, XCircle,
+  LayoutGrid, Kanban, Table2,
 } from "lucide-react";
 import { StageProgressBar } from "../components/stage-progress-bar";
 import { StagePanel } from "../components/stage-panel";
 import { getCurrentStageKey, LIFECYCLE_STAGES } from "../lib/lifecycle-config";
 import { useUserStore } from "../lib/store";
+import { TaskGrid, type GridTask } from "../components/task-grid";
+import { MilestoneGrid, type GridMilestone } from "../components/milestone-grid";
+import { ConnectBoard } from "../components/connect-board";
+import { ProgressTrackingPanel } from "../components/progress-tracking-panel";
+import { TaskFilterBar, applyTaskFilters, type TaskFilters } from "../components/task-filter-bar";
+import { getStatusMeta, fmtVariance, getPriorityMeta, TASK_PRIORITIES } from "../lib/task-constants";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const DAY_MS = 86_400_000;
@@ -34,7 +42,28 @@ function toDate(s?: string | null): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
-function datesForProject(project: { startDate?: string | null; endDate?: string | null }, milestones: Milestone[], tasks: Task[]) {
+type MilestoneRaw = {
+  id: number; name: string; dueDate?: string | null; status: string;
+  description?: string | null; priority?: string; rag?: string | null;
+  actualStart?: string | null; actualEnd?: string | null;
+  plannedEffortHours?: number | null; scheduleVarianceDays?: number | null;
+  gateDecision?: string | null;
+};
+
+type TaskRaw = {
+  id: number; name: string; milestoneId?: number | null; workstreamId?: number | null;
+  startDate?: string | null; endDate?: string | null;
+  status: string; priority: string; estimatedHours?: number | null;
+  assigneeId?: number | null; assigneeName?: string | null;
+  predecessorIds?: string | number[] | null;
+  parentTaskId?: number | null; managerId?: number | null;
+  cftOwner?: number | null; cftDept?: string | null;
+  actualStart?: string | null; actualEnd?: string | null;
+  scheduleVarianceDays?: number | null; plannedEffortHours?: number | null;
+  rag?: string | null; isCritical?: boolean;
+};
+
+function datesForProject(project: { startDate?: string | null; endDate?: string | null }, milestones: MilestoneRaw[], tasks: TaskRaw[]) {
   const dates: Date[] = [];
   const p = toDate(project.startDate) ?? toDate(project.endDate);
   if (p) dates.push(p);
@@ -52,25 +81,17 @@ function datesForProject(project: { startDate?: string | null; endDate?: string 
   return { min, max };
 }
 
-type Milestone = { id: number; name: string; dueDate?: string | null; status: string; description?: string | null };
-type Task = {
-  id: number; name: string; milestoneId?: number | null;
-  startDate?: string | null; endDate?: string | null;
-  status: string; priority: string; estimatedHours?: number | null;
-  assigneeName?: string | null; predecessorIds?: string | number[] | null;
-};
-
 // ── Gantt SVG ────────────────────────────────────────────────────────────────
 function GanttChart({
   milestones, tasks, criticalIds, minDate, maxDate,
 }: {
-  milestones: Milestone[]; tasks: Task[];
+  milestones: MilestoneRaw[]; tasks: TaskRaw[];
   criticalIds: Set<number>; minDate: Date; maxDate: Date;
 }) {
   const totalDays = Math.ceil((maxDate.getTime() - minDate.getTime()) / DAY_MS);
   const svgW = totalDays * DAY_W;
 
-  type Row = { type: "milestone"; item: Milestone } | { type: "task"; item: Task };
+  type Row = { type: "milestone"; item: MilestoneRaw } | { type: "task"; item: TaskRaw };
   const rows: Row[] = [];
   const used = new Set<number>();
 
@@ -97,7 +118,7 @@ function GanttChart({
       const cx = dayX(dd);
       return { cx, type: "milestone" as const };
     }
-    const t = row.item as Task;
+    const t = row.item as TaskRaw;
     const s = toDate(t.startDate); const e = toDate(t.endDate);
     if (!s) return null;
     const startX = dayX(s);
@@ -121,19 +142,19 @@ function GanttChart({
   const todayX = dayX(new Date());
 
   const taskRowIdx: Record<number, number> = {};
-  rows.forEach((r, i) => { if (r.type === "task") taskRowIdx[(r.item as Task).id] = i; });
+  rows.forEach((r, i) => { if (r.type === "task") taskRowIdx[(r.item as TaskRaw).id] = i; });
   const taskBarX: Record<number, { x: number; w: number }> = {};
   rows.forEach(r => {
     if (r.type === "task") {
       const props = rowBarProps(r);
-      if (props && props.type === "task") taskBarX[(r.item as Task).id] = { x: props.x, w: props.w };
+      if (props && props.type === "task") taskBarX[(r.item as TaskRaw).id] = { x: props.x, w: props.w };
     }
   });
 
   const arrows: { x1: number; y1: number; x2: number; y2: number }[] = [];
   for (const row of rows) {
     if (row.type !== "task") continue;
-    const t = row.item as Task;
+    const t = row.item as TaskRaw;
     let predIds: number[] = [];
     try {
       if (Array.isArray(t.predecessorIds)) predIds = t.predecessorIds.map(Number);
@@ -177,14 +198,14 @@ function GanttChart({
                 <div
                   className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                   style={{
-                    background: criticalIds.has((row.item as Task).id) ? "#EF4444"
+                    background: criticalIds.has((row.item as TaskRaw).id) ? "#EF4444"
                       : row.item.status === "completed" ? "#10B981" : "#6366F1",
                   }}
                 />
                 <span className="text-xs text-gray-700 truncate">{row.item.name}</span>
-                {(row.item as Task).assigneeName && (
+                {(row.item as TaskRaw).assigneeName && (
                   <span className="text-xs text-gray-400 ml-auto pr-2 flex-shrink-0 hidden xl:block">
-                    {(row.item as Task).assigneeName}
+                    {(row.item as TaskRaw).assigneeName}
                   </span>
                 )}
               </div>
@@ -220,14 +241,14 @@ function GanttChart({
           </defs>
           {arrows.map((a, i) => {
             const mx = (a.x1 + a.x2) / 2;
-            const d = `M${a.x1},${a.y1} C${mx},${a.y1} ${mx},${a.y2} ${a.x2},${a.y2}`;
-            return <path key={i} d={d} fill="none" stroke="#94A3B8" strokeWidth={1.5} markerEnd="url(#arrowhead)" opacity={0.6} />;
+            const dPath = `M${a.x1},${a.y1} C${mx},${a.y1} ${mx},${a.y2} ${a.x2},${a.y2}`;
+            return <path key={i} d={dPath} fill="none" stroke="#94A3B8" strokeWidth={1.5} markerEnd="url(#arrowhead)" opacity={0.6} />;
           })}
           {rows.map((row, i) => {
             const bp = rowBarProps(row);
             if (!bp) return null;
             const y = 56 + i * ROW_H;
-            const isCritical = row.type === "task" && criticalIds.has((row.item as Task).id);
+            const isCritical = row.type === "task" && criticalIds.has((row.item as TaskRaw).id);
             const isDone = row.item.status === "completed";
             if (bp.type === "milestone") {
               const size = 9;
@@ -262,112 +283,6 @@ function GanttChart({
   );
 }
 
-// ── List View ─────────────────────────────────────────────────────────────────
-function HierarchyList({ milestones, tasks, criticalIds }: { milestones: Milestone[]; tasks: Task[]; criticalIds: Set<number> }) {
-  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
-
-  const PRIORITY_COLORS: Record<string, string> = {
-    critical: "#FEF2F2", high: "#FFFBEB", medium: "#EFF6FF", low: "#F0FDF4",
-  };
-  const PRIORITY_TEXT: Record<string, string> = {
-    critical: "#991B1B", high: "#92400E", medium: "#1E40AF", low: "#065F46",
-  };
-
-  const used = new Set<number>();
-  const groups: { milestone: Milestone | null; tasks: Task[] }[] = [];
-
-  for (const m of milestones) {
-    const mTasks = tasks.filter(t => t.milestoneId === m.id);
-    mTasks.forEach(t => used.add(t.id));
-    groups.push({ milestone: m, tasks: mTasks });
-  }
-  const unassigned = tasks.filter(t => !used.has(t.id));
-  if (unassigned.length) groups.push({ milestone: null, tasks: unassigned });
-
-  return (
-    <div className="rounded-2xl overflow-hidden" style={{ border: "1px solid #E2E8F0" }}>
-      {groups.map((g, gi) => {
-        const isCollapsed = g.milestone && collapsed.has(g.milestone.id);
-        return (
-          <div key={gi}>
-            <div
-              className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:opacity-90 transition-opacity"
-              style={{ background: "linear-gradient(90deg, #EEF2FF, #F5F3FF)" }}
-              onClick={() => {
-                if (!g.milestone) return;
-                setCollapsed(prev => {
-                  const n = new Set(prev);
-                  if (n.has(g.milestone!.id)) n.delete(g.milestone!.id);
-                  else n.add(g.milestone!.id);
-                  return n;
-                });
-              }}
-            >
-              {g.milestone ? (
-                <>
-                  {isCollapsed ? <ChevronRight size={14} className="text-indigo-400" /> : <ChevronDown size={14} className="text-indigo-400" />}
-                  <Flag size={13} className="text-indigo-600" />
-                  <span className="font-bold text-sm text-indigo-900">{g.milestone.name}</span>
-                  {g.milestone.dueDate && (
-                    <span className="text-xs text-indigo-500 ml-2">Due {formatDate(g.milestone.dueDate)}</span>
-                  )}
-                  <StatusBadge status={g.milestone.status} />
-                  <span className="ml-auto text-xs text-indigo-400">{g.tasks.length} tasks</span>
-                </>
-              ) : (
-                <span className="font-semibold text-sm text-gray-500">Unassigned Tasks</span>
-              )}
-            </div>
-
-            {!isCollapsed && g.tasks.map(t => {
-              const isCritical = criticalIds.has(t.id);
-              return (
-                <div
-                  key={t.id}
-                  className="flex items-center gap-3 px-4 py-2.5 border-t border-gray-50 hover:bg-gray-50 transition-colors"
-                  style={{ background: isCritical ? "#FFF5F5" : "white", paddingLeft: g.milestone ? 40 : 16 }}
-                >
-                  <div
-                    className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                    style={{
-                      background: t.status === "completed" ? "#10B981"
-                        : t.status === "blocked" ? "#F59E0B"
-                          : isCritical ? "#EF4444" : "#6366F1",
-                    }}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-sm font-medium ${isCritical ? "text-red-700" : "text-gray-800"}`}>{t.name}</span>
-                      {isCritical && (
-                        <span className="text-xs px-1.5 py-0.5 rounded font-bold" style={{ background: "#FEE2E2", color: "#991B1B" }}>CRITICAL</span>
-                      )}
-                    </div>
-                    {t.assigneeName && <p className="text-xs text-gray-400 mt-0.5">{t.assigneeName}</p>}
-                  </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {t.priority && (
-                      <span
-                        className="text-xs px-2 py-0.5 rounded-full font-medium capitalize"
-                        style={{ background: PRIORITY_COLORS[t.priority] ?? "#F8FAFC", color: PRIORITY_TEXT[t.priority] ?? "#64748B" }}
-                      >
-                        {t.priority}
-                      </span>
-                    )}
-                    <StatusBadge status={t.status} />
-                    {t.estimatedHours != null && (
-                      <span className="text-xs text-gray-400 w-14 text-right">{t.estimatedHours}h</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // ── NFA status hook ───────────────────────────────────────────────────────────
 interface NFAStatus {
   triggered: boolean;
@@ -376,11 +291,9 @@ interface NFAStatus {
   totalBaseline: number;
   totalActual: number;
   nfaChainExists: boolean;
-  // Correct order: hod → scm → cfo → chairman
   nfaChain: string[];
 }
 
-// Read-only NFA status — no side effects on GET
 function useNFAStatus(projectId: number): NFAStatus | null {
   const [status, setStatus] = useState<NFAStatus | null>(null);
   useEffect(() => {
@@ -392,7 +305,6 @@ function useNFAStatus(projectId: number): NFAStatus | null {
     return () => { cancelled = true; };
   }, [projectId]);
 
-  // When overrun is detected and the chain does not yet exist, create it via POST (side-effect action)
   useEffect(() => {
     if (status?.triggered && !status.nfaChainExists) {
       fetch(`/api/projects/${projectId}/nfa-trigger`, { method: "POST" })
@@ -400,7 +312,6 @@ function useNFAStatus(projectId: number): NFAStatus | null {
         .then(result => {
           const r = result as { created?: boolean; chainLength?: number };
           if (r.created) {
-            // Re-fetch status to update nfaChainExists flag
             fetch(`/api/projects/${projectId}/nfa-status`)
               .then(res => res.json())
               .then(data => setStatus(data as NFAStatus))
@@ -419,30 +330,40 @@ export default function ProjectDetail() {
   const [, params] = useRoute("/projects/:id");
   const { role } = useUserStore();
   const projectId = parseInt(params?.id || "0");
-  const [view, setView] = useState<"list" | "gantt">("list");
-  const [activeTab, setActiveTab] = useState<"lifecycle" | "plan" | "analytics">("lifecycle");
+
+  const [activeTab, setActiveTab] = useState<"lifecycle" | "grid" | "gantt" | "board" | "analytics">("lifecycle");
+  const [gridSubTab, setGridSubTab] = useState<"tasks" | "milestones">("tasks");
   const [selectedStageKey, setSelectedStageKey] = useState<string | undefined>(undefined);
   const [nfaDismissed, setNfaDismissed] = useState(false);
+  const [selectedBoardTaskId, setSelectedBoardTaskId] = useState<number | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
-  const { data: project, isLoading: loadingProject } = useGetProject(projectId);
-  const { data: rawMilestones } = useListMilestones(projectId);
-  const { data: rawTasks } = useListTasks(projectId);
+  // Filters
+  const [taskFilters, setTaskFilters] = useState<TaskFilters>({ search: "", status: "", priority: "", rag: "", dateFrom: "", dateTo: "" });
+  const [ownerFilter, setOwnerFilter] = useState("");
+
+  const { data: project, isLoading: loadingProject, refetch: refetchProject } = useGetProject(projectId);
+  const { data: rawMilestones, refetch: refetchMilestones } = useListMilestones(projectId);
+  const { data: rawTasks, refetch: refetchTasks } = useListTasks(projectId);
+  const updateProject = useUpdateProject();
   const { data: burndown } = useGetBurndown(projectId);
   const { data: criticalPath } = useGetCriticalPath(projectId);
   const { data: stageRecords = [] } = useListProjectStages(projectId);
+  const { data: users = [] } = useListUsers();
+  const { data: projectIssues = [] } = useListIssues(projectId);
 
   const nfaStatus = useNFAStatus(projectId);
 
-  const milestones: Milestone[] = (rawMilestones ?? []) as Milestone[];
-  const tasks: Task[] = (rawTasks ?? []) as Task[];
+  const milestones: MilestoneRaw[] = (rawMilestones ?? []) as MilestoneRaw[];
+  const tasks: TaskRaw[] = (rawTasks ?? []) as TaskRaw[];
   const criticalIds = useMemo(() => new Set<number>((criticalPath?.criticalTasks ?? []).map((t: { id: number }) => t.id)), [criticalPath]);
 
   const { min: minDate, max: maxDate } = useMemo(() => datesForProject(project ?? {}, milestones, tasks), [project, milestones, tasks]);
 
-  const totalTasks = tasks.length;
-  const completedTasks = tasks.filter(t => t.status === "completed").length;
-  const blockedTasks = tasks.filter(t => t.status === "blocked").length;
-  const inProgressTasks = tasks.filter(t => t.status === "in_progress").length;
+  const totalTasks = tasks.filter(t => !t.parentTaskId).length;
+  const completedTasks = tasks.filter(t => t.status === "completed" && !t.parentTaskId).length;
+  const blockedTasks = tasks.filter(t => (t.status === "delayed" || t.status === "at_risk") && !t.parentTaskId).length;
+  const inProgressTasks = tasks.filter(t => t.status === "in_progress" && !t.parentTaskId).length;
 
   const currentStageKey = useMemo(
     () => getCurrentStageKey(project?.stage, stageRecords as Array<{ stage: string; status: string }>),
@@ -453,6 +374,26 @@ export default function ProjectDetail() {
     setSelectedStageKey(key);
     setActiveTab("lifecycle");
   }, []);
+
+  function handleRefresh() {
+    refetchTasks();
+    refetchMilestones();
+    setLastUpdated(new Date());
+  }
+
+  const usersArr = users as Array<{ id: number; name: string }>;
+
+  const filteredTasks = useMemo(() => {
+    const top = tasks.filter(t => !t.parentTaskId);
+    return applyTaskFilters(top, taskFilters, ownerFilter);
+  }, [tasks, taskFilters, ownerFilter]);
+
+  // Include subtasks of filtered tasks
+  const filteredTasksWithSubs = useMemo(() => {
+    const topIds = new Set(filteredTasks.map(t => t.id));
+    const subs = tasks.filter(t => t.parentTaskId && topIds.has(t.parentTaskId));
+    return [...filteredTasks, ...subs];
+  }, [filteredTasks, tasks]);
 
   if (loadingProject) {
     return (
@@ -466,8 +407,10 @@ export default function ProjectDetail() {
 
   const TABS = [
     { id: "lifecycle" as const, label: "Lifecycle", icon: Layers },
-    { id: "plan" as const, label: "Project Plan", icon: Milestone },
-    { id: "analytics" as const, label: "Analytics", icon: BarChart2 },
+    { id: "grid" as const, label: "Grid", icon: Table2 },
+    { id: "gantt" as const, label: "Gantt", icon: BarChart2 },
+    { id: "board" as const, label: "Board", icon: Kanban },
+    { id: "analytics" as const, label: "Analytics", icon: LayoutGrid },
   ];
 
   return (
@@ -510,7 +453,7 @@ export default function ProjectDetail() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-            <div className="flex items-center gap-3 mt-2">
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
               <StatusBadge status={project.status} />
               {project.startDate && (
                 <span className="text-xs text-gray-400">
@@ -525,6 +468,32 @@ export default function ProjectDetail() {
                   {LIFECYCLE_STAGES.find(s => s.key === currentStageKey)?.label ?? currentStageKey}
                 </span>
               )}
+              {/* Project-level Priority — inline editable */}
+              {(() => {
+                const rawPriority = (project as { priority?: string }).priority ?? "P2";
+                const priMeta = getPriorityMeta(rawPriority);
+                return (
+                  <div className="relative group inline-flex items-center">
+                    <select
+                      value={rawPriority}
+                      onChange={e => {
+                        updateProject.mutate(
+                          { id: projectId, data: { priority: e.target.value } },
+                          { onSuccess: () => refetchProject() }
+                        );
+                      }}
+                      className="text-xs font-bold px-2 py-0.5 rounded-full border-0 outline-none appearance-none cursor-pointer pr-5"
+                      style={{ background: priMeta.bg, color: priMeta.color }}
+                      title="Project priority"
+                    >
+                      {TASK_PRIORITIES.map(p => (
+                        <option key={p.value} value={p.value}>{p.label}</option>
+                      ))}
+                    </select>
+                    <span className="pointer-events-none absolute right-1.5 text-gray-400" style={{ fontSize: 9 }}>▾</span>
+                  </div>
+                );
+              })()}
             </div>
             {project.description && (
               <p className="text-sm text-gray-500 mt-2 max-w-xl">{project.description}</p>
@@ -541,27 +510,13 @@ export default function ProjectDetail() {
           </Link>
         </div>
 
-        {/* Progress */}
-        <div className="mt-4">
-          <div className="flex justify-between text-sm mb-1.5">
-            <span className="font-medium text-gray-600">Overall Progress</span>
-            <span className="font-bold text-gray-900">{project.progress ?? 0}%</span>
-          </div>
-          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{ width: `${project.progress ?? 0}%`, background: "linear-gradient(90deg, #6366F1, #8B5CF6)" }}
-            />
-          </div>
-        </div>
-
         {/* Quick stats */}
         <div className="grid grid-cols-4 gap-3 mt-4">
           {[
             { label: "Total Tasks", value: totalTasks, icon: List, color: "#6366F1", bg: "#EEF2FF" },
             { label: "Completed", value: completedTasks, icon: CheckCircle2, color: "#10B981", bg: "#ECFDF5" },
             { label: "In Progress", value: inProgressTasks, icon: Clock, color: "#3B82F6", bg: "#EFF6FF" },
-            { label: "Blocked", value: blockedTasks, icon: AlertTriangle, color: "#F59E0B", bg: "#FFFBEB" },
+            { label: "At Risk/Delayed", value: blockedTasks, icon: AlertTriangle, color: "#F59E0B", bg: "#FFFBEB" },
           ].map(s => {
             const Icon = s.icon;
             return (
@@ -576,7 +531,7 @@ export default function ProjectDetail() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
         <div className="flex gap-1 p-1 rounded-xl" style={{ background: "#F1F5F9" }}>
           {TABS.map(tab => {
             const Icon = tab.icon;
@@ -597,29 +552,6 @@ export default function ProjectDetail() {
             );
           })}
         </div>
-
-        {activeTab === "plan" && (
-          <div className="flex gap-1 p-1 rounded-xl" style={{ background: "#F1F5F9" }}>
-            {([{ id: "list", icon: List, label: "List" }, { id: "gantt", icon: BarChart2, label: "Gantt" }] as const).map(v => {
-              const Icon = v.icon;
-              return (
-                <button
-                  key={v.id}
-                  onClick={() => setView(v.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-                  style={{
-                    background: view === v.id ? "white" : "transparent",
-                    color: view === v.id ? "#4338CA" : "#64748B",
-                    boxShadow: view === v.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                  }}
-                >
-                  <Icon size={13} />
-                  {v.label}
-                </button>
-              );
-            })}
-          </div>
-        )}
       </div>
 
       {/* ── Lifecycle Tab ────────────────────────────────────────────── */}
@@ -690,64 +622,277 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* ── Plan Tab ─────────────────────────────────────────────────── */}
-      {activeTab === "plan" && (
-        <>
-          {view === "list" && (
-            <div>
-              {milestones.length === 0 && tasks.length === 0 ? (
-                <div className="rounded-2xl p-12 text-center" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-                  <Milestone size={32} className="text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500 font-medium mb-1">No tasks yet</p>
-                  <p className="text-sm text-gray-400">Add milestones and tasks to start planning your project.</p>
-                </div>
-              ) : (
-                <HierarchyList milestones={milestones} tasks={tasks} criticalIds={criticalIds} />
-              )}
+      {/* ── Grid Tab ─────────────────────────────────────────────────── */}
+      {activeTab === "grid" && (
+        <div className="space-y-4">
+          {/* Grid sub-tab: Tasks vs Milestones */}
+          <div className="flex items-center gap-3">
+            <div className="flex gap-1 p-1 rounded-xl" style={{ background: "#F1F5F9" }}>
+              {([
+                { id: "tasks" as const, label: "Tasks & Subtasks" },
+                { id: "milestones" as const, label: "Milestones" },
+              ]).map(sub => (
+                <button
+                  key={sub.id}
+                  onClick={() => setGridSubTab(sub.id)}
+                  className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                  style={{
+                    background: gridSubTab === sub.id ? "white" : "transparent",
+                    color: gridSubTab === sub.id ? "#4338CA" : "#64748B",
+                    boxShadow: gridSubTab === sub.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                  }}
+                >
+                  {sub.label}
+                </button>
+              ))}
             </div>
+            <span className="text-xs text-gray-400 ml-2">
+              {gridSubTab === "tasks"
+                ? `${filteredTasks.length} task${filteredTasks.length !== 1 ? "s" : ""}`
+                : `${milestones.length} milestone${milestones.length !== 1 ? "s" : ""}`}
+            </span>
+          </div>
+
+          {/* Filter bar */}
+          <div className="rounded-xl px-4 py-2" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+            <TaskFilterBar
+              filters={taskFilters}
+              onChange={setTaskFilters}
+              owners={usersArr}
+              ownerFilter={ownerFilter}
+              onOwnerChange={setOwnerFilter}
+            />
+          </div>
+
+          {/* Progress panel */}
+          <ProgressTrackingPanel milestones={milestones} tasks={tasks} lastUpdated={lastUpdated} />
+
+          {/* Grid view */}
+          {gridSubTab === "tasks" && (
+            <TaskGrid
+              tasks={filteredTasksWithSubs as GridTask[]}
+              projectId={projectId}
+              onRefresh={handleRefresh}
+              users={usersArr}
+            />
           )}
 
-          {view === "gantt" && (
-            <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-              <div className="flex items-center gap-5 px-4 py-2.5 border-b border-gray-100" style={{ background: "#F8FAFC" }}>
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Gantt Legend</span>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-8 h-3 rounded" style={{ background: "#6366F1" }} />
-                  <span className="text-xs text-gray-500">Task</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-8 h-3 rounded" style={{ background: "#EF4444" }} />
-                  <span className="text-xs text-gray-500">Critical Path</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-8 h-3 rounded" style={{ background: "#10B981" }} />
-                  <span className="text-xs text-gray-500">Completed</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-4 h-4 rotate-45" style={{ background: "#4F46E5" }} />
-                  <span className="text-xs text-gray-500">Milestone</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-6 h-0.5 border-t-2 border-dashed border-red-400" />
-                  <span className="text-xs text-gray-500">Today</span>
+          {gridSubTab === "milestones" && (
+            <MilestoneGrid
+              milestones={milestones as GridMilestone[]}
+              tasks={tasks}
+              projectId={projectId}
+              onRefresh={handleRefresh}
+              users={usersArr}
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── Gantt Tab ────────────────────────────────────────────────── */}
+      {activeTab === "gantt" && (
+        <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+          <div className="flex items-center gap-5 px-4 py-2.5 border-b border-gray-100" style={{ background: "#F8FAFC" }}>
+            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Gantt Legend</span>
+            {[
+              { color: "#6366F1", label: "Task" },
+              { color: "#EF4444", label: "Critical Path" },
+              { color: "#10B981", label: "Completed" },
+            ].map(l => (
+              <div key={l.label} className="flex items-center gap-1.5">
+                <div className="w-8 h-3 rounded" style={{ background: l.color }} />
+                <span className="text-xs text-gray-500">{l.label}</span>
+              </div>
+            ))}
+            <div className="flex items-center gap-1.5">
+              <div className="w-4 h-4 rotate-45" style={{ background: "#4F46E5" }} />
+              <span className="text-xs text-gray-500">Milestone</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-6 h-0.5 border-t-2 border-dashed border-red-400" />
+              <span className="text-xs text-gray-500">Today</span>
+            </div>
+          </div>
+
+          {milestones.length === 0 && tasks.length === 0 ? (
+            <div className="p-12 text-center text-gray-400 text-sm">
+              Add tasks with start/end dates to see the Gantt chart.
+            </div>
+          ) : (
+            <GanttChart milestones={milestones} tasks={tasks} criticalIds={criticalIds} minDate={minDate} maxDate={maxDate} />
+          )}
+        </div>
+      )}
+
+      {/* ── Board Tab ────────────────────────────────────────────────── */}
+      {activeTab === "board" && (
+        <div className="space-y-4">
+          <div className="rounded-xl px-4 py-2" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+            <div className="flex items-center justify-between py-1">
+              <p className="text-xs text-gray-500">Drag cards between columns to update status. Milestones shown as <span className="font-semibold">[M]</span> cards.</p>
+              <span className="text-xs text-gray-400">{tasks.filter(t => !t.parentTaskId).length + milestones.length} items</span>
+            </div>
+          </div>
+          <ConnectBoard
+            tasks={tasks as Parameters<typeof ConnectBoard>[0]["tasks"]}
+            milestones={milestones as Parameters<typeof ConnectBoard>[0]["milestones"]}
+            projectId={projectId}
+            onRefresh={handleRefresh}
+            onTaskClick={taskId => {
+              setSelectedBoardTaskId(taskId);
+            }}
+          />
+
+          {/* Task Detail Drawer */}
+          {selectedBoardTaskId !== null && (() => {
+            const t = tasks.find(x => x.id === selectedBoardTaskId);
+            if (!t) return null;
+            const ownerName = usersArr.find(u => u.id === t.assigneeId)?.name;
+            const managerName = usersArr.find(u => u.id === t.managerId)?.name;
+            return (
+              <div
+                className="fixed inset-0 z-50 flex justify-end"
+                onClick={() => setSelectedBoardTaskId(null)}
+              >
+                <div
+                  className="relative w-full max-w-sm bg-white h-full shadow-2xl overflow-y-auto"
+                  style={{ borderLeft: "1px solid #E2E8F0" }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <div className="px-5 py-4 border-b border-gray-100 flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-1">Task Detail</p>
+                      <h2 className="font-bold text-gray-900 text-base leading-tight">{t.name}</h2>
+                    </div>
+                    <button
+                      onClick={() => setSelectedBoardTaskId(null)}
+                      className="text-gray-400 hover:text-gray-700 flex-shrink-0 mt-0.5"
+                    >
+                      <XCircle size={18} />
+                    </button>
+                  </div>
+                  <div className="px-5 py-4 space-y-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-gray-500 w-20">Status</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{
+                        background: getStatusMeta(t.status).bg, color: getStatusMeta(t.status).color
+                      }}>{getStatusMeta(t.status).label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-gray-500 w-20">Priority</span>
+                      <span className="text-xs text-gray-700">{t.priority}</span>
+                    </div>
+                    {ownerName && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-gray-500 w-20">Owner</span>
+                        <span className="text-xs text-gray-700">{ownerName}</span>
+                      </div>
+                    )}
+                    {managerName && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-gray-500 w-20">Manager</span>
+                        <span className="text-xs text-gray-700">{managerName}</span>
+                      </div>
+                    )}
+                    {t.startDate && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-gray-500 w-20">Start</span>
+                        <span className="text-xs text-gray-700">{formatDate(t.startDate)}</span>
+                      </div>
+                    )}
+                    {t.endDate && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-gray-500 w-20">Due</span>
+                        <span className="text-xs text-gray-700">{formatDate(t.endDate)}</span>
+                      </div>
+                    )}
+                    {t.cftDept && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-gray-500 w-20">CFT Team</span>
+                        <span className="text-xs text-gray-700">{t.cftDept}</span>
+                      </div>
+                    )}
+                    {t.scheduleVarianceDays != null && t.scheduleVarianceDays !== 0 && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-gray-500 w-20">Variance</span>
+                        <span className="text-xs font-semibold" style={{ color: fmtVariance(t.scheduleVarianceDays).color }}>
+                          {fmtVariance(t.scheduleVarianceDays).text}
+                        </span>
+                      </div>
+                    )}
+                    {t.isCritical && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FEE2E2", color: "#991B1B" }}>
+                          Critical Path
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Issues section */}
+                  {(() => {
+                    const taskIssues = (projectIssues as Array<{
+                      id: number; title: string; status: string;
+                      dependencyType?: string | null;
+                      blockingOwnerId?: number | null;
+                      originalDeadline?: string | null;
+                      proposedRevisedDeadline?: string | null;
+                      taskId?: number | null;
+                    }>).filter(i => i.taskId === selectedBoardTaskId);
+                    if (!taskIssues.length) return null;
+                    return (
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                          Issues ({taskIssues.length})
+                        </p>
+                        <div className="space-y-2">
+                          {taskIssues.map(issue => {
+                            const isOpen = issue.status !== "resolved";
+                            const blockingOwner = usersArr.find(u => u.id === issue.blockingOwnerId)?.name;
+                            return (
+                              <div
+                                key={issue.id}
+                                className="rounded-lg p-2.5 space-y-1"
+                                style={{ background: isOpen ? "#FFF8F5" : "#F0FFF4", border: `1px solid ${isOpen ? "#FDBA74" : "#86EFAC"}` }}
+                              >
+                                <div className="flex items-start gap-1.5">
+                                  <AlertTriangle size={11} className={isOpen ? "text-amber-500" : "text-green-500"} style={{ flexShrink: 0, marginTop: 1 }} />
+                                  <p className="text-xs font-semibold text-gray-800 flex-1 leading-tight">{issue.title}</p>
+                                </div>
+                                {issue.dependencyType && (
+                                  <p className="text-xs text-gray-500 pl-4">Type: <b>{issue.dependencyType}</b></p>
+                                )}
+                                {blockingOwner && (
+                                  <p className="text-xs text-gray-500 pl-4">Blocking: <b>{blockingOwner}</b></p>
+                                )}
+                                {issue.proposedRevisedDeadline && (
+                                  <p className="text-xs text-amber-600 pl-4">Proposed deadline: <b>{formatDate(issue.proposedRevisedDeadline)}</b></p>
+                                )}
+                                <p
+                                  className="text-xs pl-4 font-medium"
+                                  style={{ color: isOpen ? "#DC3545" : "#28A745" }}
+                                >
+                                  {issue.status.charAt(0).toUpperCase() + issue.status.slice(1)}
+                                </p>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
-
-              {milestones.length === 0 && tasks.length === 0 ? (
-                <div className="p-12 text-center text-gray-400 text-sm">
-                  Add tasks with start/end dates to see the Gantt chart.
-                </div>
-              ) : (
-                <GanttChart milestones={milestones} tasks={tasks} criticalIds={criticalIds} minDate={minDate} maxDate={maxDate} />
-              )}
-            </div>
-          )}
-        </>
+            );
+          })()}
+        </div>
       )}
 
       {/* ── Analytics Tab ────────────────────────────────────────────── */}
       {activeTab === "analytics" && (
         <div className="space-y-5">
+          <ProgressTrackingPanel milestones={milestones} tasks={tasks} lastUpdated={lastUpdated} />
+
           <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
             <div className="mb-4">
               <h3 className="font-semibold text-gray-900">Burndown Chart</h3>
@@ -784,7 +929,7 @@ export default function ProjectDetail() {
             </div>
             {criticalPath?.criticalTasks?.length ? (
               <div className="space-y-2">
-                {criticalPath.criticalTasks.map((t: Task, idx: number) => (
+                {criticalPath.criticalTasks.map((t: TaskRaw, idx: number) => (
                   <div
                     key={t.id}
                     className="flex items-center gap-3 p-3 rounded-xl"
