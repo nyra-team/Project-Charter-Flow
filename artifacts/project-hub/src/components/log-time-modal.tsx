@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { useListTimelogs, useCreateTimelog, useListUsers } from "@workspace/api-client-react";
+import { useListTimelogs, useCreateTimelog, useListUsers, customFetch } from "@workspace/api-client-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Clock, Plus, X } from "lucide-react";
+import { Clock, Plus, X, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import { formatDate } from "../lib/format";
 
 interface LogTimeModalProps {
@@ -37,24 +38,79 @@ export function LogTimeModal({ open, onClose, taskId, taskName, plannedEffortHou
   const createTimelog = useCreateTimelog();
 
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ date: today(), hours: "", note: "", userId: "" });
+
+  const qc = useQueryClient();
+  const invalidateTaskData = () => {
+    qc.invalidateQueries({ predicate: (q) => {
+      const k = q.queryKey?.[0];
+      return typeof k === "string" && (k.includes("/api/projects") || k.includes("/api/tasks"));
+    }});
+  };
+  const updateTimelog = useMutation({
+    mutationFn: (vars: { id: number; data: { date?: string; hours?: number; note?: string; userId?: number | null } }) =>
+      customFetch(`/api/tasks/${taskId}/timelogs/${vars.id}`, { method: "PATCH", body: JSON.stringify(vars.data) }),
+    onSuccess: invalidateTaskData,
+  });
+  const deleteTimelog = useMutation({
+    mutationFn: (id: number) => customFetch(`/api/tasks/${taskId}/timelogs/${id}`, { method: "DELETE" }),
+    onSuccess: invalidateTaskData,
+  });
 
   const usersArr = users as Array<{ id: number; name: string }>;
   const entries = timelogs as TimelogEntry[];
 
   const totalLogged = entries.reduce((sum, e) => sum + e.hours, 0);
   const planned = plannedEffortHours ?? 0;
-  const pct = planned > 0 ? Math.min(100, Math.round((totalLogged / planned) * 100)) : null;
+  const pct = planned > 0 ? Math.round((totalLogged / planned) * 100) : null;
+  const overLogged = planned > 0 && totalLogged > planned;
 
   function resetForm() {
     setForm({ date: today(), hours: "", note: "", userId: "" });
     setShowForm(false);
+    setEditingId(null);
+  }
+
+  function handleEdit(e: TimelogEntry) {
+    setEditingId(e.id);
+    setShowForm(true);
+    setForm({
+      date: e.date.split("T")[0],
+      hours: String(e.hours),
+      note: e.note ?? "",
+      userId: e.userId ? String(e.userId) : "",
+    });
+  }
+
+  function handleDelete(id: number) {
+    if (!confirm("Delete this time log entry?")) return;
+    deleteTimelog.mutate(id, {
+      onSuccess: () => { toast({ title: "Entry deleted" }); refetch(); },
+      onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
+    });
   }
 
   function handleSubmit() {
     const hrs = parseFloat(form.hours);
     if (!form.date) { toast({ title: "Date is required", variant: "destructive" }); return; }
     if (!form.hours || isNaN(hrs) || hrs < 0.25) { toast({ title: "Hours must be ≥ 0.25", variant: "destructive" }); return; }
+
+    if (editingId) {
+      updateTimelog.mutate({
+        id: editingId,
+        data: {
+          date: form.date,
+          hours: hrs,
+          note: form.note || undefined,
+          userId: form.userId ? parseInt(form.userId) : null,
+        },
+      }, {
+        onSuccess: () => { toast({ title: "Entry updated" }); resetForm(); refetch(); },
+        onError: () => toast({ title: "Failed to update", variant: "destructive" }),
+      });
+      return;
+    }
 
     createTimelog.mutate(
       {
@@ -90,20 +146,25 @@ export function LogTimeModal({ open, onClose, taskId, taskName, plannedEffortHou
         <div className="space-y-4">
           {/* Effort summary bar */}
           {planned > 0 && (
-            <div className="rounded-xl p-3 space-y-1.5" style={{ background: "#F0F4FF", border: "1px solid #C7D2FE" }}>
-              <div className="flex justify-between text-xs font-medium text-indigo-700">
-                <span>Effort progress</span>
+            <div className="rounded-xl p-3 space-y-1.5" style={{ background: overLogged ? "#FEF2F2" : "#F0F4FF", border: `1px solid ${overLogged ? "#FECACA" : "#C7D2FE"}` }}>
+              <div className="flex justify-between text-xs font-medium" style={{ color: overLogged ? "#B91C1C" : "#4338CA" }}>
+                <span className="flex items-center gap-1">{overLogged && <AlertTriangle size={11} />} Effort progress</span>
                 <span>{totalLogged.toFixed(1)}h / {planned}h planned {pct != null ? `(${pct}%)` : ""}</span>
               </div>
-              <div className="w-full rounded-full overflow-hidden" style={{ background: "#C7D2FE", height: 6 }}>
+              <div className="w-full rounded-full overflow-hidden" style={{ background: overLogged ? "#FECACA" : "#C7D2FE", height: 6 }}>
                 <div
                   className="h-full rounded-full transition-all"
                   style={{
-                    width: `${pct ?? 0}%`,
-                    background: (pct ?? 0) > 100 ? "#DC3545" : "#6366F1",
+                    width: `${Math.min(100, pct ?? 0)}%`,
+                    background: overLogged ? "#DC2626" : "#6366F1",
                   }}
                 />
               </div>
+              {overLogged && (
+                <p className="text-[11px] text-red-700 mt-1">
+                  Over-logged by {(totalLogged - planned).toFixed(1)}h. Notification sent to the task assignee and project PM.
+                </p>
+              )}
             </div>
           )}
 
@@ -137,6 +198,14 @@ export function LogTimeModal({ open, onClose, taskId, taskName, plannedEffortHou
                       <p className="text-xs text-gray-500 mt-1 truncate" title={entry.note}>{entry.note}</p>
                     )}
                   </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <button onClick={() => handleEdit(entry)} className="p-1.5 rounded hover:bg-indigo-100 text-gray-400 hover:text-indigo-600" title="Edit">
+                      <Pencil size={12} />
+                    </button>
+                    <button onClick={() => handleDelete(entry.id)} className="p-1.5 rounded hover:bg-red-100 text-gray-400 hover:text-red-600" title="Delete">
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -150,7 +219,7 @@ export function LogTimeModal({ open, onClose, taskId, taskName, plannedEffortHou
           {showForm ? (
             <div className="rounded-xl p-4 space-y-3" style={{ background: "#F0F9FF", border: "1px solid #7DD3FC" }}>
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-gray-700">Log Time</p>
+                <p className="text-sm font-semibold text-gray-700">{editingId ? "Edit Entry" : "Log Time"}</p>
                 <button onClick={resetForm} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
               </div>
 
@@ -188,8 +257,8 @@ export function LogTimeModal({ open, onClose, taskId, taskName, plannedEffortHou
               </div>
 
               <div className="flex gap-2 pt-1">
-                <Button size="sm" onClick={handleSubmit} disabled={createTimelog.isPending} className="text-xs">
-                  {createTimelog.isPending ? "Saving..." : "Log Time"}
+                <Button size="sm" onClick={handleSubmit} disabled={createTimelog.isPending || updateTimelog.isPending} className="text-xs">
+                  {(createTimelog.isPending || updateTimelog.isPending) ? "Saving..." : (editingId ? "Save Changes" : "Log Time")}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={resetForm} className="text-xs">Cancel</Button>
               </div>

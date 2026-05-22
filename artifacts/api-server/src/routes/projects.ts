@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable, approvalsTable, timelogsTable, scoringCriteriaTable, projectScoresTable } from "@workspace/db";
+import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable, approvalsTable, timelogsTable, scoringCriteriaTable, projectScoresTable, notificationsTable, activityTable } from "@workspace/db";
 import { eq, desc, inArray, and, sql } from "drizzle-orm";
 import {
   CreateProjectBody,
@@ -328,7 +328,7 @@ router.get("/tasks/:id/timelogs", async (req, res): Promise<void> => {
 router.post("/tasks/:id/timelogs", async (req, res): Promise<void> => {
   const taskId = parseInt(req.params.id);
   if (isNaN(taskId)) { res.status(400).json({ error: "Invalid task id" }); return; }
-  const [task] = await db.select({ id: tasksTable.id }).from(tasksTable).where(eq(tasksTable.id, taskId)).limit(1);
+  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId)).limit(1);
   if (!task) { res.status(404).json({ error: "Task not found" }); return; }
   const { date, hours, note, userId } = req.body as { date?: string; hours?: number; note?: string; userId?: number };
   if (!date || !hours || hours < 0.25) { res.status(400).json({ error: "date and hours (≥ 0.25) are required" }); return; }
@@ -340,15 +340,129 @@ router.post("/tasks/:id/timelogs", async (req, res): Promise<void> => {
     note: note ?? "",
   }).returning();
 
-  // Sync actualHours on the task with the running sum of all timelogs
   const allLogs = await db.select({ hours: timelogsTable.hours }).from(timelogsTable).where(eq(timelogsTable.taskId, taskId));
   const totalHours = allLogs.reduce((s, l) => s + Number(l.hours), 0);
   await db.update(tasksTable).set({ actualHours: sql`${totalHours}` }).where(eq(tasksTable.id, taskId));
+
+  // Over-log warning notification (Task #23)
+  const planned = Number(task.plannedEffortHours ?? 0);
+  if (planned > 0 && totalHours > planned) {
+    const notifyUserIds = new Set<number>();
+    if (task.assigneeId) notifyUserIds.add(task.assigneeId);
+    const [proj] = await db.select({ pmId: projectsTable.projectManagerId }).from(projectsTable).where(eq(projectsTable.id, task.projectId)).limit(1);
+    if (proj?.pmId) notifyUserIds.add(proj.pmId);
+    for (const uid of notifyUserIds) {
+      await db.insert(notificationsTable).values({
+        userId: uid,
+        type: "effort_overrun",
+        title: `Task "${task.name}" exceeded planned effort`,
+        body: `Logged ${totalHours.toFixed(1)}h / ${planned}h planned (${Math.round((totalHours / planned) * 100)}%)`,
+        link: `/projects/${task.projectId}`,
+        relatedEntityType: "task",
+        relatedEntityId: task.id,
+      });
+    }
+    await logActivity("task_overrun", `Task "${task.name}" over-logged: ${totalHours.toFixed(1)}h / ${planned}h`, task.id, "task", userId);
+  }
+
+  await logActivity("timelog_added", `Logged ${hours}h on "${task.name}"`, task.id, "task", userId);
 
   const userName = userId
     ? (await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId)).limit(1))[0]?.name ?? null
     : null;
   res.status(201).json({ ...row, hours: Number(row.hours), userName });
+});
+
+router.patch("/tasks/:taskId/timelogs/:id", async (req, res): Promise<void> => {
+  const taskId = parseInt(req.params.taskId);
+  const id = parseInt(req.params.id);
+  if (isNaN(taskId) || isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const { date, hours, note, userId } = req.body as { date?: string; hours?: number; note?: string; userId?: number | null };
+  const update: Record<string, unknown> = {};
+  if (date !== undefined) update.date = date;
+  if (hours !== undefined) {
+    if (hours < 0.25) { res.status(400).json({ error: "hours must be ≥ 0.25" }); return; }
+    update.hours = String(hours);
+  }
+  if (note !== undefined) update.note = note;
+  if (userId !== undefined) update.userId = userId;
+  const [row] = await db.update(timelogsTable).set(update).where(eq(timelogsTable.id, id)).returning();
+  if (!row) { res.status(404).json({ error: "Timelog not found" }); return; }
+  const allLogs = await db.select({ hours: timelogsTable.hours }).from(timelogsTable).where(eq(timelogsTable.taskId, taskId));
+  const totalHours = allLogs.reduce((s, l) => s + Number(l.hours), 0);
+  await db.update(tasksTable).set({ actualHours: sql`${totalHours}` }).where(eq(tasksTable.id, taskId));
+  res.json({ ...row, hours: Number(row.hours) });
+});
+
+router.delete("/tasks/:taskId/timelogs/:id", async (req, res): Promise<void> => {
+  const taskId = parseInt(req.params.taskId);
+  const id = parseInt(req.params.id);
+  if (isNaN(taskId) || isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  await db.delete(timelogsTable).where(eq(timelogsTable.id, id));
+  const allLogs = await db.select({ hours: timelogsTable.hours }).from(timelogsTable).where(eq(timelogsTable.taskId, taskId));
+  const totalHours = allLogs.reduce((s, l) => s + Number(l.hours), 0);
+  await db.update(tasksTable).set({ actualHours: sql`${totalHours}` }).where(eq(tasksTable.id, taskId));
+  res.sendStatus(204);
+});
+
+// Project audit trail (uses activity table, scoped to project + its tasks + milestones)
+router.get("/projects/:id/audit", async (req, res): Promise<void> => {
+  const projectId = parseInt(req.params.id);
+  if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const taskRows = await db.select({ id: tasksTable.id }).from(tasksTable).where(eq(tasksTable.projectId, projectId));
+  const msRows = await db.select({ id: milestonesTable.id }).from(milestonesTable).where(eq(milestonesTable.projectId, projectId));
+  const taskIds = taskRows.map(t => t.id);
+  const msIds = msRows.map(m => m.id);
+  const conditions = [and(eq(activityTable.entityType, "project"), eq(activityTable.entityId, projectId))!];
+  if (taskIds.length) conditions.push(and(eq(activityTable.entityType, "task"), inArray(activityTable.entityId, taskIds))!);
+  if (msIds.length) conditions.push(and(eq(activityTable.entityType, "milestone"), inArray(activityTable.entityId, msIds))!);
+  const filtered = await db.select().from(activityTable)
+    .where(sql.join(conditions.map(c => sql`(${c})`), sql` OR `))
+    .orderBy(desc(activityTable.createdAt))
+    .limit(500);
+  const userIds = [...new Set(filtered.filter(a => a.userId).map(a => a.userId!))];
+  const users = userIds.length
+    ? await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(inArray(usersTable.id, userIds))
+    : [];
+  const userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
+  res.json(filtered.map(a => ({ ...a, userName: a.userId ? userMap[a.userId] ?? null : null })));
+});
+
+// Effort burn aggregate (Task #21): weekly cumulative planned vs actual across project tasks
+router.get("/projects/:id/effort-burn", async (req, res): Promise<void> => {
+  const projectId = parseInt(req.params.id);
+  if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const tasks = await db.select().from(tasksTable).where(eq(tasksTable.projectId, projectId));
+  const taskIds = tasks.map(t => t.id);
+  if (!taskIds.length) { res.json({ weeks: [], totalPlanned: 0, totalActual: 0 }); return; }
+  const logs = await db.select().from(timelogsTable).where(inArray(timelogsTable.taskId, taskIds));
+  const totalPlanned = tasks.reduce((s, t) => s + Number(t.plannedEffortHours ?? 0), 0);
+
+  // Bucket by ISO week (yyyy-Www)
+  const weekOf = (d: string | Date) => {
+    const date = new Date(d);
+    const tmp = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = (tmp.getUTCDay() + 6) % 7;
+    tmp.setUTCDate(tmp.getUTCDate() - dayNum + 3);
+    const firstThursday = tmp.valueOf();
+    tmp.setUTCMonth(0, 1);
+    if (tmp.getUTCDay() !== 4) tmp.setUTCMonth(0, 1 + ((4 - tmp.getUTCDay()) + 7) % 7);
+    const week = 1 + Math.ceil((firstThursday - tmp.valueOf()) / (7 * 86400000));
+    return `${new Date(d).getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+  };
+  const buckets: Record<string, number> = {};
+  for (const l of logs) {
+    const k = weekOf(l.date as unknown as string);
+    buckets[k] = (buckets[k] ?? 0) + Number(l.hours);
+  }
+  const sortedWeeks = Object.keys(buckets).sort();
+  let cumActual = 0;
+  const weeks = sortedWeeks.map(w => {
+    cumActual += buckets[w];
+    return { week: w, actual: buckets[w], cumulativeActual: cumActual, planned: totalPlanned };
+  });
+  const totalActual = logs.reduce((s, l) => s + Number(l.hours), 0);
+  res.json({ weeks, totalPlanned, totalActual });
 });
 
 // Critical path

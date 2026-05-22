@@ -19,8 +19,11 @@ import {
   Plus, CheckCircle2, Clock, AlertTriangle, Flag,
   ChevronDown, ChevronRight, Layers, XCircle,
   LayoutGrid, Kanban, Table2, Star, Users, DollarSign, FileText,
-  Shield, AlertCircle, UserCheck, Zap,
+  Shield, AlertCircle, UserCheck, Zap, MessageSquare, History,
 } from "lucide-react";
+import { MessagesTab } from "../components/messages-tab";
+import { AuditTab } from "../components/audit-tab";
+import { EffortBurnChart } from "../components/effort-burn-chart";
 import { ResourceTab } from "../components/resource-tab";
 import { BudgetTab } from "../components/budget-tab";
 import { DocumentsTab } from "../components/documents-tab";
@@ -340,7 +343,7 @@ export default function ProjectDetail() {
   const { role } = useUserStore();
   const projectId = parseInt(params?.id || "0");
 
-  const [activeTab, setActiveTab] = useState<"lifecycle" | "grid" | "gantt" | "board" | "resources" | "budget" | "documents" | "risks" | "issues" | "raci" | "escalation" | "analytics" | "scoring">("lifecycle");
+  const [activeTab, setActiveTab] = useState<"lifecycle" | "grid" | "gantt" | "board" | "resources" | "budget" | "documents" | "risks" | "issues" | "raci" | "escalation" | "messages" | "audit" | "analytics" | "scoring">("lifecycle");
   const [gridSubTab, setGridSubTab] = useState<"tasks" | "milestones">("tasks");
   const [selectedStageKey, setSelectedStageKey] = useState<string | undefined>(undefined);
   const [nfaDismissed, setNfaDismissed] = useState(false);
@@ -431,6 +434,8 @@ export default function ProjectDetail() {
     { id: "issues" as const, label: "Issues", icon: AlertCircle },
     { id: "raci" as const, label: "RACI", icon: UserCheck },
     { id: "escalation" as const, label: "Escalation", icon: Zap },
+    { id: "messages" as const, label: "Messages", icon: MessageSquare },
+    { id: "audit" as const, label: "Audit", icon: History },
     { id: "analytics" as const, label: "Analytics", icon: LayoutGrid },
     { id: "scoring" as const, label: "Scoring", icon: Star },
   ];
@@ -1001,10 +1006,14 @@ export default function ProjectDetail() {
         <EscalationRulesTab projectId={projectId} />
       )}
 
+      {activeTab === "messages" && <MessagesTab projectId={projectId} />}
+      {activeTab === "audit" && <AuditTab projectId={projectId} />}
+
       {/* ── Analytics Tab ────────────────────────────────────────────── */}
       {activeTab === "analytics" && (
         <div className="space-y-5">
           <ProgressTrackingPanel milestones={milestones} tasks={tasks} lastUpdated={lastUpdated} />
+          <EffortBurnChart projectId={projectId} />
 
           <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
             <div className="mb-4">

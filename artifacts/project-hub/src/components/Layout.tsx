@@ -9,12 +9,12 @@ import {
   LogOut,
   Settings,
   ChevronDown,
-  Bell,
   Search,
   FolderOpen,
   PieChart,
 } from "lucide-react";
 import { useState } from "react";
+import { NotificationBell } from "./notification-bell";
 
 const ROLES = [
   { value: "initiator", label: "Initiator", initials: "IN" },
@@ -228,10 +228,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <span className="hidden sm:inline">Search...</span>
               <kbd className="hidden sm:inline text-xs px-1.5 py-0.5 rounded" style={{ background: "#E2E8F0", fontFamily: "monospace" }}>⌘K</kbd>
             </button>
-            <button className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors relative" style={{ color: "#64748B" }}>
-              <Bell size={17} />
-              <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-indigo-500" />
-            </button>
+            <NotificationBell />
             <Link href="/admin/scoring">
               <button className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors" style={{ color: "#64748B" }} title="Scoring Configuration">
                 <Settings size={17} />
