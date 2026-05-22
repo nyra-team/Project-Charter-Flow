@@ -11,6 +11,10 @@ export const approvalsTable = pgTable("approvals", {
   status: text("status").notNull().default("pending"),
   comments: text("comments"),
   decidedAt: timestamp("decided_at", { withTimezone: true }),
+  // SLA tracking — populated when approval is requested
+  slaHours: integer("sla_hours").notNull().default(48),
+  dueAt: timestamp("due_at", { withTimezone: true }),
+  breachedAt: timestamp("breached_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

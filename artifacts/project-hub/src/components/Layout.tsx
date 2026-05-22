@@ -15,6 +15,7 @@ import {
   Search,
   FolderOpen,
   PieChart,
+  BookOpen,
   Moon,
   Sun,
   Command,
@@ -51,6 +52,7 @@ const MAIN_NAV: NavItem[] = [
 const PORTFOLIO_NAV: NavItem[] = [
   { href: "/portfolio", label: "Portfolio View", icon: FolderOpen },
   { href: "/documents", label: "Documents", icon: FileText },
+  { href: "/lessons-learned", label: "Lessons Learned", icon: BookOpen },
 ];
 
 const ADMIN_NAV: NavItem[] = [

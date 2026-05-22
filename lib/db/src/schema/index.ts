@@ -20,3 +20,8 @@ export * from "./escalation_rules";
 export * from "./scoring";
 export * from "./notifications";
 export * from "./timelogs";
+export * from "./meetings";
+export * from "./lessons_learned";
+export * from "./benefits_reviews";
+export * from "./change_requests";
+export * from "./baselines";

@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Shield, AlertTriangle, X } from "lucide-react";
+import { AiButton, AiResultPanel } from "./ai-button";
 
 type Risk = {
   id: number; charterId: number; title: string; description: string;
@@ -117,9 +118,45 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
           </h3>
           <p className="text-xs text-gray-400 mt-0.5">{risksArr.length} risk{risksArr.length !== 1 ? "s" : ""} · {severe} severe (score ≥ 15)</p>
         </div>
-        <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}>
-          <Plus size={14} /> Add Risk
-        </button>
+        <div className="flex items-center gap-2">
+          <AiButton
+            label="Suggest Risks"
+            endpoint={`/api/ai/charters/${charterId}/risk-suggestions`}
+            variant="primary"
+            size="md"
+          >
+            {({ run, loading, result, error }) => (
+              <div className="flex flex-col items-end gap-2">
+                <button onClick={run} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 disabled:opacity-50">
+                  ✨ Suggest Risks (AI)
+                </button>
+                {(loading || error || result) && (
+                  <div className="w-[420px]"><AiResultPanel loading={loading} error={error} result={result} render={(r) => {
+                    const suggestions = (r as { risks?: Array<{ title: string; description: string; impact: string; likelihood: string; mitigation?: string }>; suggestions?: Array<{ title: string; description: string; impact: string; likelihood: string; mitigation?: string }> }).risks ?? (r as { suggestions?: Array<{ title: string; description: string; impact: string; likelihood: string; mitigation?: string }> }).suggestions ?? [];
+                    return (
+                      <div className="space-y-2 text-xs max-h-[260px] overflow-y-auto">
+                        {suggestions.map((s, i) => (
+                          <div key={i} className="rounded border border-indigo-100 bg-white p-2">
+                            <div className="font-semibold text-gray-900">{s.title}</div>
+                            <div className="text-muted-foreground">{s.description}</div>
+                            <div className="flex gap-2 mt-1 items-center">
+                              <span className="text-[10px] uppercase px-1 py-0.5 rounded bg-rose-50 text-rose-700">{s.impact}/{s.likelihood}</span>
+                              <button onClick={() => addRisk.mutate({ id: charterId, data: { title: s.title, description: s.description, impact: s.impact, likelihood: s.likelihood, mitigation: s.mitigation, status: "open", priority: "medium" } }, { onSuccess: () => { toast({ title: "Risk added from AI suggestion" }); refetch(); } })} className="text-[10px] font-semibold text-indigo-600 hover:underline ml-auto">+ Add to register</button>
+                            </div>
+                          </div>
+                        ))}
+                        {suggestions.length === 0 && <div className="text-muted-foreground italic">No new suggestions.</div>}
+                      </div>
+                    );
+                  }} /></div>
+                )}
+              </div>
+            )}
+          </AiButton>
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}>
+            <Plus size={14} /> Add Risk
+          </button>
+        </div>
       </div>
 
       {/* Heat Map */}

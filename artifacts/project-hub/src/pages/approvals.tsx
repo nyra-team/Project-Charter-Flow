@@ -10,6 +10,23 @@ import {
   Clock, FileText, MessageSquare, AlertCircle,
 } from "lucide-react";
 
+function SlaBadge({ approval }: { approval: { slaHours?: number; dueAt?: string | null; breachedAt?: string | null; createdAt?: string } }) {
+  const due = approval.dueAt ? new Date(approval.dueAt) : null;
+  const now = new Date();
+  const breached = approval.breachedAt || (due && due < now);
+  if (!due) {
+    return <span className="text-xs text-muted-foreground/80 flex items-center gap-1"><Clock size={11} />Awaiting your review</span>;
+  }
+  const hoursLeft = (due.getTime() - now.getTime()) / 3_600_000;
+  if (breached) {
+    return <span className="text-xs font-bold flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200"><AlertCircle size={11} /> SLA BREACHED · {Math.abs(Math.round(hoursLeft))}h overdue</span>;
+  }
+  if (hoursLeft < 4) {
+    return <span className="text-xs font-bold flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200"><Clock size={11} /> Due in {Math.round(hoursLeft)}h</span>;
+  }
+  return <span className="text-xs flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100"><Clock size={11} /> SLA {approval.slaHours ?? 48}h · due {due.toLocaleString()}</span>;
+}
+
 const STAGE_LABELS: Record<string, string> = {
   parallel_review: "HOD / ED / CFO Review",
   scm_review: "SCM Negotiation",
@@ -178,15 +195,12 @@ export default function ApprovalsList() {
                             {(approval as unknown as Record<string, unknown>).charterTitle as string || `Charter #${approval.charterId}`}
                           </h3>
                         </Link>
-                        <div className="flex items-center gap-3 mt-1">
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
                           <span className="text-xs text-muted-foreground/80 flex items-center gap-1">
                             <CheckSquare size={11} />
                             {STAGE_LABELS[approval.stage ?? ""] ?? (approval.stage ?? "Review")}
                           </span>
-                          <span className="text-xs text-muted-foreground/80 flex items-center gap-1">
-                            <Clock size={11} />
-                            Awaiting your review
-                          </span>
+                          <SlaBadge approval={approval as unknown as { slaHours?: number; dueAt?: string | null; breachedAt?: string | null; createdAt?: string }} />
                         </div>
                       </div>
                       <button

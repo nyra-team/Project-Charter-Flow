@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Plus, Trash2, DollarSign, AlertTriangle, Pencil, Check, X } from "lucide-react";
+import { AiButton, AiResultPanel } from "./ai-button";
 import { formatCurrency } from "../lib/format";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell,
@@ -121,13 +122,55 @@ export function BudgetTab({
             </h3>
             <p className="text-xs text-gray-400 mt-0.5">CapEx & OpEx baseline vs forecast vs actual.</p>
           </div>
-          <button
-            onClick={() => setShowAdd(true)}
+          <div className="flex items-center gap-2">
+            <AiButton
+              endpoint={`/api/ai/projects/${projectId}/budget-insights`}
+              label="Budget Insights"
+              variant="subtle"
+              size="md"
+            >
+              {({ run, loading, result, error }) => (
+                <div className="flex flex-col items-end gap-2">
+                  <button onClick={run} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 disabled:opacity-50">
+                    ✨ Budget Insights (AI)
+                  </button>
+                  {(loading || error || result != null) && (
+                    <div className="w-[420px]"><AiResultPanel loading={loading} error={error} result={result} render={(r) => {
+                      const raw = r as {
+                        headline?: string; overall_health?: string;
+                        over_utilized_categories?: Array<{ category: string; variancePct?: number; note?: string }>;
+                        under_utilized_categories?: Array<{ category: string; variancePct?: number; note?: string }>;
+                        recommendations?: string[];
+                      };
+                      const d = {
+                        overall_status: raw.overall_health,
+                        summary: raw.headline,
+                        over_utilized: raw.over_utilized_categories?.map(c => c.category) ?? [],
+                        under_utilized: raw.under_utilized_categories?.map(c => c.category) ?? [],
+                        recommendations: raw.recommendations ?? [],
+                      };
+                      return (
+                        <div className="space-y-2 text-xs">
+                          {d.overall_status && <div className="font-bold uppercase text-[10px] tracking-wider text-indigo-700">{d.overall_status}</div>}
+                          {d.summary && <p>{d.summary}</p>}
+                          {d.over_utilized?.length ? <div><strong>Over-utilized:</strong> {d.over_utilized.join(", ")}</div> : null}
+                          {d.under_utilized?.length ? <div><strong>Under-utilized:</strong> {d.under_utilized.join(", ")}</div> : null}
+                          {d.recommendations?.length ? <ul className="list-disc pl-4">{d.recommendations.map((x, i) => <li key={i}>{x}</li>)}</ul> : null}
+                        </div>
+                      );
+                    }} /></div>
+                  )}
+                </div>
+              )}
+            </AiButton>
+            <button
+              onClick={() => setShowAdd(true)}
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
             style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}
           >
             <Plus size={14} /> Add Budget Line
           </button>
+          </div>
         </div>
 
         {/* Summary tiles */}

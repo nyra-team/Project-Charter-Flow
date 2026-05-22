@@ -20,9 +20,14 @@ import {
   ChevronDown, ChevronRight, Layers, XCircle,
   LayoutGrid, Kanban, Table2, Star, Users, DollarSign, FileText,
   Shield, AlertCircle, UserCheck, Zap, MessageSquare, History,
+  TrendingUp, GitBranch, Calendar as CalendarIcon,
 } from "lucide-react";
 import { MessagesTab } from "../components/messages-tab";
 import { AuditTab } from "../components/audit-tab";
+import { BenefitsTab } from "../components/benefits-tab";
+import { ChangeRequestsTab } from "../components/change-requests-tab";
+import { MeetingsTab } from "../components/meetings-tab";
+import { AiButton, AiResultPanel } from "../components/ai-button";
 import { EffortBurnChart } from "../components/effort-burn-chart";
 import { ResourceTab } from "../components/resource-tab";
 import { BudgetTab } from "../components/budget-tab";
@@ -343,7 +348,10 @@ export default function ProjectDetail() {
   const { role } = useUserStore();
   const projectId = parseInt(params?.id || "0");
 
-  const [activeTab, setActiveTab] = useState<"lifecycle" | "grid" | "gantt" | "board" | "resources" | "budget" | "documents" | "risks" | "issues" | "raci" | "escalation" | "messages" | "audit" | "analytics" | "scoring">("lifecycle");
+  const [activeTab, setActiveTab] = useState<"lifecycle" | "grid" | "gantt" | "board" | "resources" | "budget" | "documents" | "risks" | "issues" | "raci" | "escalation" | "messages" | "audit" | "analytics" | "scoring" | "meetings" | "changes" | "benefits">("lifecycle");
+  const [aiSummary, setAiSummary] = useState<{ summary?: string; highlights?: string[]; concerns?: string[] } | null>(null);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
   const [gridSubTab, setGridSubTab] = useState<"tasks" | "milestones">("tasks");
   const [selectedStageKey, setSelectedStageKey] = useState<string | undefined>(undefined);
   const [nfaDismissed, setNfaDismissed] = useState(false);
@@ -434,6 +442,9 @@ export default function ProjectDetail() {
     { id: "issues" as const, label: "Issues", icon: AlertCircle },
     { id: "raci" as const, label: "RACI", icon: UserCheck },
     { id: "escalation" as const, label: "Escalation", icon: Zap },
+    { id: "meetings" as const, label: "Meetings", icon: CalendarIcon },
+    { id: "changes" as const, label: "Changes", icon: GitBranch },
+    { id: "benefits" as const, label: "Benefits", icon: TrendingUp },
     { id: "messages" as const, label: "Messages", icon: MessageSquare },
     { id: "audit" as const, label: "Audit", icon: History },
     { id: "analytics" as const, label: "Analytics", icon: LayoutGrid },
@@ -1006,12 +1017,69 @@ export default function ProjectDetail() {
         <EscalationRulesTab projectId={projectId} />
       )}
 
+      {activeTab === "meetings" && <MeetingsTab projectId={projectId} />}
+      {activeTab === "changes" && <ChangeRequestsTab projectId={projectId} currentStage={currentStageKey} />}
+      {activeTab === "benefits" && <BenefitsTab projectId={projectId} />}
       {activeTab === "messages" && <MessagesTab projectId={projectId} />}
       {activeTab === "audit" && <AuditTab projectId={projectId} />}
 
       {/* ── Analytics Tab ────────────────────────────────────────────── */}
       {activeTab === "analytics" && (
         <div className="space-y-5">
+          <div className="rounded-2xl p-5 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/20 border border-indigo-200 dark:border-indigo-900">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="font-semibold text-indigo-900 dark:text-indigo-200">AI Project Summary</h3>
+                <p className="text-xs text-indigo-700/70 dark:text-indigo-400 mt-0.5">One-click executive briefing from all signals</p>
+              </div>
+              <AiButton
+                label="Generate Summary"
+                endpoint={`/api/ai/projects/${projectId}/dashboard-summary`}
+                variant="primary"
+                size="md"
+                onResult={(d) => {
+                  const raw = d as { headline?: string; summary?: string; key_wins?: string[]; highlights?: string[]; key_concerns?: string[]; concerns?: string[]; decisions_needed?: string[]; next_two_weeks?: string[] };
+                  setAiSummary({
+                    summary: raw.headline ?? raw.summary,
+                    highlights: raw.key_wins ?? raw.highlights ?? [],
+                    concerns: [...(raw.key_concerns ?? raw.concerns ?? []), ...(raw.decisions_needed?.map(d => `Decision needed: ${d}`) ?? [])],
+                  });
+                  setAiSummaryError(null); setAiSummaryLoading(false);
+                }}
+              >
+                {({ run, loading, error }) => (
+                  <button
+                    onClick={() => { setAiSummaryLoading(true); run(); }}
+                    disabled={loading}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50"
+                  >
+                    {loading || aiSummaryLoading ? "Thinking…" : "✨ Generate Summary"}
+                    {error && <span className="text-red-200 text-xs ml-1">!</span>}
+                  </button>
+                )}
+              </AiButton>
+            </div>
+            {aiSummaryError && <div className="mt-3 text-xs text-red-600">{aiSummaryError}</div>}
+            {aiSummary && (
+              <div className="mt-3 space-y-3 text-sm">
+                {aiSummary.summary && <p className="text-gray-800 dark:text-gray-100">{aiSummary.summary}</p>}
+                <div className="grid grid-cols-2 gap-3">
+                  {aiSummary.highlights?.length ? (
+                    <div className="rounded-lg bg-white/70 dark:bg-card p-3 border border-emerald-200">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1">Highlights</div>
+                      <ul className="list-disc pl-4 text-xs space-y-0.5">{aiSummary.highlights.map((h, i) => <li key={i}>{h}</li>)}</ul>
+                    </div>
+                  ) : null}
+                  {aiSummary.concerns?.length ? (
+                    <div className="rounded-lg bg-white/70 dark:bg-card p-3 border border-rose-200">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-rose-700 mb-1">Concerns</div>
+                      <ul className="list-disc pl-4 text-xs space-y-0.5">{aiSummary.concerns.map((h, i) => <li key={i}>{h}</li>)}</ul>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            )}
+          </div>
           <ProgressTrackingPanel milestones={milestones} tasks={tasks} lastUpdated={lastUpdated} />
           <EffortBurnChart projectId={projectId} />
 

@@ -69,8 +69,14 @@ const STAGE_GATES: Record<string, StageGate> = {
     requiredDocNames: ["Meeting Minutes", "Kickoff Presentation"],
     advanceRoles: ["pm", "pmo"],
   },
-  development: {
+  technical_design: {
     prerequisites: ["kickoff"],
+    blockingChecklistIds: ["td_drafted", "arch_uploaded", "integrations_listed", "security_signed", "td_lead_approved"],
+    requiredDocNames: ["Technical Design Document", "Architecture Diagram", "Security Review"],
+    advanceRoles: ["pm", "pmo", "hod"],
+  },
+  development: {
+    prerequisites: ["technical_design"],
     blockingChecklistIds: ["dev_env_ready", "status_updated"],
     requiredDocNames: ["Build Specifications", "Development Status Report"],
     advanceRoles: ["pm", "pmo"],
@@ -109,7 +115,7 @@ const STAGE_GATES: Record<string, StageGate> = {
 
 const ORDERED_STAGES = [
   "project_case", "urs", "rfp", "vendor_evaluation",
-  "charter", "nfa", "pr_po", "kickoff", "development",
+  "charter", "nfa", "pr_po", "kickoff", "technical_design", "development",
   "implementation_plan", "uat", "go_live", "closure_readiness", "project_closure",
 ];
 

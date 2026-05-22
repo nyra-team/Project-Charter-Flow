@@ -18,6 +18,11 @@ import budgetRouter from "./budget";
 import escalationRouter from "./escalation";
 import scoringRouter from "./scoring";
 import notificationsRouter from "./notifications";
+import aiRouter from "./ai";
+import lessonsRouter from "./lessons";
+import benefitsRouter from "./benefits";
+import changeRequestsRouter from "./change_requests";
+import meetingsRouter from "./meetings";
 
 const router: IRouter = Router();
 
@@ -40,5 +45,10 @@ router.use(budgetRouter);
 router.use(escalationRouter);
 router.use(scoringRouter);
 router.use(notificationsRouter);
+router.use(aiRouter);
+router.use(lessonsRouter);
+router.use(benefitsRouter);
+router.use(changeRequestsRouter);
+router.use(meetingsRouter);
 
 export default router;

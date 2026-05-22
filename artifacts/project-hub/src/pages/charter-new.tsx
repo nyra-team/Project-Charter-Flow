@@ -10,9 +10,11 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ChevronLeft, ChevronRight, Check, FileText, Target, TrendingUp, Users, Hash, Star } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Check, FileText, Target, TrendingUp, Users, Hash, Star, Sparkles } from "lucide-react";
 import { Link } from "wouter";
 import { STRATEGIC_THEMES, FUNCTIONS_LIST } from "../lib/lifecycle-config";
+import { api } from "../lib/extra-api";
+import { useAiStatus } from "../components/ai-button";
 
 const STEPS = [
   { id: "basics", label: "Project Case", icon: Hash },
@@ -66,6 +68,32 @@ function FieldRow({ children, cols = 2 }: { children: React.ReactNode; cols?: nu
     <div className={`grid gap-4 ${cols === 2 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1"}`}>
       {children}
     </div>
+  );
+}
+
+function AiImproveButton({ text, onResult }: { text: string; onResult: (v: string) => void }) {
+  const status = useAiStatus();
+  const [loading, setLoading] = useState(false);
+  if (status && !status.configured) return null;
+  return (
+    <button
+      type="button"
+      disabled={loading || (text?.length ?? 0) < 20}
+      title={(text?.length ?? 0) < 20 ? "Write at least 20 chars first, AI will polish it" : "Polish & expand using AI"}
+      onClick={async () => {
+        setLoading(true);
+        try {
+          const data = await api.post<{ rewritten?: string; improved?: string }>("/api/ai/improve-text", { text, instruction: "expand and add concrete business justification detail", audience: "Corporate steering committee" });
+          const out = data?.rewritten ?? data?.improved;
+          if (out) onResult(out);
+        } catch (e) { console.warn(e); }
+        finally { setLoading(false); }
+      }}
+      className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+    >
+      {loading ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+      AI Improve
+    </button>
   );
 }
 
@@ -287,7 +315,10 @@ export default function NewCharter() {
                     <FormItem>
                       <div className="flex items-center justify-between">
                         <FormLabel className="text-sm font-medium text-gray-700">Business Justification</FormLabel>
-                        <CharCount value={watchedBizJust} min={100} />
+                        <div className="flex items-center gap-3">
+                          <AiImproveButton text={field.value ?? ""} onResult={(v) => field.onChange(v)} />
+                          <CharCount value={watchedBizJust} min={100} />
+                        </div>
                       </div>
                       <FormControl>
                         <Textarea {...field} rows={4} placeholder="Provide a comprehensive business justification for this project. Explain why this initiative is necessary, what problem it solves, and why now..." />
