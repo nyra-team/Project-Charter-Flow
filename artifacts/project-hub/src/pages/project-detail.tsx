@@ -3,7 +3,7 @@ import { useRoute, Link } from "wouter";
 import {
   useGetProject, useListMilestones, useListTasks,
   useGetBurndown, useGetCriticalPath, useListProjectStages, useListUsers,
-  useListIssues, useUpdateProject,
+  useListIssues, useUpdateProject, useListTimelogs,
 } from "@workspace/api-client-react";
 import { formatDate, formatCurrency } from "../lib/format";
 import { StatusBadge } from "../components/status-badge";
@@ -351,6 +351,7 @@ export default function ProjectDetail() {
   const { data: stageRecords = [] } = useListProjectStages(projectId);
   const { data: users = [] } = useListUsers();
   const { data: projectIssues = [] } = useListIssues(projectId);
+  const { data: selectedTaskTimelogs = [] } = useListTimelogs(selectedBoardTaskId ?? 0);
 
   const nfaStatus = useNFAStatus(projectId);
 
@@ -878,6 +879,55 @@ export default function ProjectDetail() {
                             );
                           })}
                         </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Time Logs section */}
+                  {(() => {
+                    const logs = (selectedTaskTimelogs as Array<{
+                      id: number; date: string; hours: number; note?: string | null; userName?: string | null;
+                    }>);
+                    const totalLogged = logs.reduce((s, l) => s + l.hours, 0);
+                    const planned = (t as { plannedEffortHours?: number | null }).plannedEffortHours ?? 0;
+                    return (
+                      <div className="mt-4 pt-4 border-t border-gray-100">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                            <Clock size={10} /> Time Logged
+                          </p>
+                          {totalLogged > 0 && (
+                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                              style={{ background: "#EEF2FF", color: "#4338CA" }}>
+                              {totalLogged.toFixed(1)}h{planned > 0 ? ` / ${planned}h` : ""}
+                            </span>
+                          )}
+                        </div>
+                        {planned > 0 && totalLogged > 0 && (
+                          <div className="w-full rounded-full overflow-hidden mb-2" style={{ background: "#E0E7FF", height: 4 }}>
+                            <div className="h-full rounded-full"
+                              style={{
+                                width: `${Math.min(100, Math.round((totalLogged / planned) * 100))}%`,
+                                background: totalLogged > planned ? "#DC3545" : "#6366F1",
+                              }} />
+                          </div>
+                        )}
+                        {logs.length === 0 ? (
+                          <p className="text-xs text-gray-400 italic">No time logged yet.</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {logs.map(log => (
+                              <div key={log.id} className="flex items-start gap-2 rounded-lg px-2.5 py-2"
+                                style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                                <span className="text-xs font-bold text-indigo-600 flex-shrink-0">{log.hours.toFixed(1)}h</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-xs text-gray-500">{formatDate(log.date)}{log.userName ? ` · ${log.userName}` : ""}</p>
+                                  {log.note && <p className="text-xs text-gray-400 truncate" title={log.note}>{log.note}</p>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })()}

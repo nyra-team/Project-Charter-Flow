@@ -294,6 +294,8 @@ router.get("/tasks/:id/timelogs", async (req, res): Promise<void> => {
 router.post("/tasks/:id/timelogs", async (req, res): Promise<void> => {
   const taskId = parseInt(req.params.id);
   if (isNaN(taskId)) { res.status(400).json({ error: "Invalid task id" }); return; }
+  const [task] = await db.select({ id: tasksTable.id }).from(tasksTable).where(eq(tasksTable.id, taskId)).limit(1);
+  if (!task) { res.status(404).json({ error: "Task not found" }); return; }
   const { date, hours, note, userId } = req.body as { date?: string; hours?: number; note?: string; userId?: number };
   if (!date || !hours || hours < 0.25) { res.status(400).json({ error: "date and hours (≥ 0.25) are required" }); return; }
   const [row] = await db.insert(timelogsTable).values({
