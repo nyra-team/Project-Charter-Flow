@@ -7,10 +7,10 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { KPITile, DashboardCard, useAutoRefresh } from "../../components/dashboard/primitives";
 
 const STATUS_TOKEN: Record<string, string> = {
@@ -177,6 +177,21 @@ export default function GeneralDashboard() {
   const { data: activities, isLoading: loadingActivity } = useGetRecentActivity({ query: { refetchInterval } as never });
   useEffect(() => { if (summary) markRefreshed(); }, [summary]);
 
+  // Portfolio velocity — illustrative 8-week ramp anchored to current counts.
+  // TODO: replace with /api/dashboard/velocity time-series once backend endpoint exists.
+  const velocitySeries = useMemo(() => {
+    const charters = summary?.totalCharters ?? 0;
+    const approvals = summary?.pendingApprovals ?? 0;
+    const active = summary?.activeProjects ?? 0;
+    const ceiling = Math.max(charters, active, approvals, 4);
+    return ["W-7", "W-6", "W-5", "W-4", "W-3", "W-2", "W-1", "Now"].map((name, i) => {
+      const t = (i + 1) / 8;
+      const baseline = ceiling * (0.45 + t * 0.50);
+      const actual = baseline * (1.03 + 0.02 * Math.sin(i * 1.1));
+      return { name, actual: Math.round(actual * 10) / 10, baseline: Math.round(baseline * 10) / 10 };
+    });
+  }, [summary?.totalCharters, summary?.pendingApprovals, summary?.activeProjects]);
+
   if (loadingSummary) {
     return (
       <div className="space-y-6">
@@ -241,6 +256,54 @@ export default function GeneralDashboard() {
           <KPITile label="Approved Budget"  value={formatCurrency(summary?.totalBudgetApproved ?? 0)} tone="success" icon={DollarSign}  sub="Total approved" />
         </div>
       </div>
+
+      {/* Portfolio Velocity — area chart (Command Center cyan area + Atelier amber dashed baseline) */}
+      <DashboardCard
+        title="Portfolio Velocity"
+        subtitle="Illustrative ramp · anchored to current pipeline · awaiting time-series feed"
+        actions={
+          <div className="hidden md:flex items-center gap-4 text-[10px] font-mono uppercase tracking-wider">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-primary" />
+              <span className="text-muted-foreground">Projected</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-px border-t border-dashed border-amber-accent" style={{ borderTopWidth: 2 }} />
+              <span className="text-muted-foreground">Baseline</span>
+            </div>
+            <span className="px-1.5 py-0.5 rounded-sm border border-border bg-muted text-muted-foreground">Preview</span>
+          </div>
+        }
+      >
+        <div className="h-[240px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={velocitySeries} margin={{ top: 10, right: 12, left: -18, bottom: 0 }}>
+              <defs>
+                <linearGradient id="velocityFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.45} />
+                  <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 6" stroke="hsl(var(--border))" vertical={false} />
+              <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} style={{ fontFamily: "var(--app-font-mono)" }} />
+              <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} style={{ fontFamily: "var(--app-font-mono)" }} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: "hsl(var(--popover))",
+                  borderColor: "hsl(var(--popover-border))",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  color: "hsl(var(--popover-foreground))",
+                }}
+                itemStyle={{ color: "hsl(var(--popover-foreground))" }}
+                labelStyle={{ color: "hsl(var(--muted-foreground))", fontFamily: "var(--app-font-mono)" }}
+              />
+              <Area type="monotone" dataKey="actual" stroke="hsl(var(--primary))" strokeWidth={2.2} fill="url(#velocityFill)" />
+              <Area type="monotone" dataKey="baseline" stroke="hsl(var(--amber-accent))" strokeWidth={1.5} strokeDasharray="5 5" fill="none" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </DashboardCard>
 
       {/* Health + Charter status */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-5">
