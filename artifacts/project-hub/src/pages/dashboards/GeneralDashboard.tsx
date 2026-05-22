@@ -172,7 +172,7 @@ function GamificationPanel({ refetchInterval }: { refetchInterval: number | fals
 }
 
 export default function GeneralDashboard() {
-  const { refetchInterval, markRefreshed, IntervalPicker } = useAutoRefresh();
+  const { refetchInterval, markRefreshed, RefreshButton } = useAutoRefresh();
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({ query: { refetchInterval } as never });
   const { data: activities, isLoading: loadingActivity } = useGetRecentActivity({ query: { refetchInterval } as never });
   useEffect(() => { if (summary) markRefreshed(); }, [summary]);
@@ -231,7 +231,7 @@ export default function GeneralDashboard() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <IntervalPicker />
+            <RefreshButton />
             <Link href="/charters/new">
               <button className="flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold bg-cta text-cta-foreground hover:opacity-90 active:scale-[0.98] transition-all glow-cta">
                 <FileText size={14} /> New Charter

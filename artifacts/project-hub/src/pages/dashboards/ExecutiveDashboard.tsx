@@ -77,7 +77,7 @@ const PROJECT_TYPE_OPTS = ["Infrastructure", "Software", "Process", "Compliance"
 const FUNCTION_OPTS = ["IT", "Finance", "Operations", "HR", "Commercial", "Supply Chain", "Legal", "Marketing", "Strategy"].map(v => ({ value: v, label: v }));
 
 export default function ExecutiveDashboard() {
-  const { refetchInterval, lastRefreshed, markRefreshed, IntervalPicker } = useAutoRefresh();
+  const { refetchInterval, lastRefreshed, markRefreshed, RefreshButton } = useAutoRefresh();
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({ query: { refetchInterval } as never });
   const { data: projects, isLoading: loadingProjects } = useListProjects(undefined, { query: { refetchInterval } as never });
   useEffect(() => { if (summary) markRefreshed(); }, [summary]);
@@ -126,7 +126,7 @@ export default function ExecutiveDashboard() {
           <p className="text-sm text-gray-500 mt-0.5">Portfolio-wide view for executive leadership</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          <IntervalPicker />
+          <RefreshButton />
         </div>
       </div>
 

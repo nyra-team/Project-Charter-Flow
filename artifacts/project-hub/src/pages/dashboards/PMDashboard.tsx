@@ -131,7 +131,7 @@ function Metric({ label, value, tone = "default" }: { label: string; value: stri
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PMDashboard() {
-  const { refetchInterval, markRefreshed, IntervalPicker } = useAutoRefresh();
+  const { refetchInterval, markRefreshed, RefreshButton } = useAutoRefresh();
   const { userId } = useUserStore();
   const { data: summary } = useGetDashboardSummary({ query: { refetchInterval } as never });
   const { data: projects, isLoading: loadingProjects } = useListProjects(undefined, { query: { refetchInterval } as never });
@@ -202,7 +202,7 @@ export default function PMDashboard() {
               {" "}<span className="font-mono num-tabular text-destructive font-semibold">{overdueTasks.length}</span> overdue
             </p>
           </div>
-          <IntervalPicker />
+          <RefreshButton />
         </div>
       </div>
 

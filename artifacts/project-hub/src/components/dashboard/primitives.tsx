@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Download, RefreshCw, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 
 // ─── RAG Badge ───────────────────────────────────────────────────────────────
@@ -167,40 +168,43 @@ export function FilterBar({
 
 // ─── Auto-Refresh Hook ────────────────────────────────────────────────────────
 
-const INTERVALS = [
-  { value: 60000, label: "1 min" },
-  { value: 300000, label: "5 min" },
-  { value: 900000, label: "15 min" },
-  { value: 0, label: "Manual" },
-] as const;
+/** Fixed background poll interval shared by every dashboard. 5 minutes is a
+ *  reasonable balance between freshness and API load for a PMO workload. */
+const AUTO_REFRESH_MS = 300000;
 
 export function useAutoRefresh() {
-  const [intervalMs, setIntervalMs] = useState(300000);
+  const qc = useQueryClient();
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
+  const [spinning, setSpinning] = useState(false);
 
   const markRefreshed = useCallback(() => setLastRefreshed(new Date()), []);
 
+  const refreshNow = useCallback(async () => {
+    setSpinning(true);
+    try {
+      await qc.invalidateQueries();
+      setLastRefreshed(new Date());
+    } finally {
+      // brief spin so the user sees feedback even on fast responses
+      setTimeout(() => setSpinning(false), 400);
+    }
+  }, [qc]);
+
   return {
-    intervalMs: intervalMs > 0 ? intervalMs : false as const,
-    refetchInterval: intervalMs > 0 ? intervalMs : false as const,
+    refetchInterval: AUTO_REFRESH_MS,
     lastRefreshed,
     markRefreshed,
-    IntervalPicker: () => (
-      <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
-        <RefreshCw size={11} />
-        <span>
-          {lastRefreshed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </span>
-        <select
-          value={intervalMs}
-          onChange={e => setIntervalMs(Number(e.target.value))}
-          className="text-[11px] font-semibold rounded-md px-2 py-1 bg-cta text-cta-foreground border border-cta hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-cta/40 cursor-pointer transition-opacity"
-        >
-          {INTERVALS.map(i => (
-            <option key={i.value} value={i.value}>{i.label}</option>
-          ))}
-        </select>
-      </div>
+    RefreshButton: () => (
+      <button
+        type="button"
+        onClick={refreshNow}
+        disabled={spinning}
+        title={`Last refreshed ${lastRefreshed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Click to refresh now.`}
+        className="flex items-center gap-2 px-3 h-9 rounded-md text-[12px] font-medium font-mono text-muted-foreground hover:text-card-foreground bg-card/60 hover:bg-card border border-border/60 hover:border-border transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        <RefreshCw size={12} className={spinning ? "animate-spin" : ""} />
+        <span>{lastRefreshed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+      </button>
     ),
   };
 }

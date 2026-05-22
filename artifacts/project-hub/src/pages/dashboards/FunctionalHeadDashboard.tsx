@@ -55,7 +55,7 @@ function useTopRisks(refetchInterval: number | false) {
 const RAG_PIE_COLORS = { green: "#22C55E", amber: "#EAB308", red: "#EF4444" };
 
 export default function FunctionalHeadDashboard() {
-  const { refetchInterval, markRefreshed, IntervalPicker } = useAutoRefresh();
+  const { refetchInterval, markRefreshed, RefreshButton } = useAutoRefresh();
   const { data: summary } = useGetDashboardSummary({ query: { refetchInterval } as never });
   const { data: projects, isLoading: loadingProjects } = useListProjects(undefined, { query: { refetchInterval } as never });
   const { data: capacityData } = useCapacityDemand(refetchInterval);
@@ -111,7 +111,7 @@ export default function FunctionalHeadDashboard() {
           <h2 className="text-xl font-bold text-gray-900">Functional Head Dashboard</h2>
           <p className="text-sm text-gray-500 mt-0.5">Function-level project health, resources, and risks</p>
         </div>
-        <IntervalPicker />
+        <RefreshButton />
       </div>
 
       {/* KPI Row */}

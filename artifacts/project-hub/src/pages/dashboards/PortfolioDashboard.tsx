@@ -113,7 +113,7 @@ function CapacityHeatmap({ data }: { data: ReturnType<typeof useCapacityDemand>[
 }
 
 export default function PortfolioDashboard() {
-  const { refetchInterval, lastRefreshed, markRefreshed, IntervalPicker } = useAutoRefresh();
+  const { refetchInterval, lastRefreshed, markRefreshed, RefreshButton } = useAutoRefresh();
   const { data: summary } = useGetDashboardSummary({ query: { refetchInterval } as never });
   const { data: projects } = useListProjects(undefined, { query: { refetchInterval } as never });
   const { data: scoringData, isLoading: loadingRank } = useScoringRank(refetchInterval);
@@ -177,7 +177,7 @@ export default function PortfolioDashboard() {
           <p className="text-sm text-gray-500 mt-0.5">Portfolio intake, prioritization, and capacity management</p>
         </div>
         <div className="flex items-center gap-3">
-          <IntervalPicker />
+          <RefreshButton />
         </div>
       </div>
 
