@@ -194,7 +194,7 @@ export function useAutoRefresh() {
         <select
           value={intervalMs}
           onChange={e => setIntervalMs(Number(e.target.value))}
-          className="text-[11px] rounded-md px-1.5 py-1 bg-card text-card-foreground border border-border focus:outline-none focus:ring-2 focus:ring-ring/40"
+          className="text-[11px] font-semibold rounded-md px-2 py-1 bg-cta text-cta-foreground border border-cta hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-cta/40 cursor-pointer transition-opacity"
         >
           {INTERVALS.map(i => (
             <option key={i.value} value={i.value}>{i.label}</option>

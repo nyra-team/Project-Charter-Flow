@@ -233,7 +233,7 @@ export default function GeneralDashboard() {
           <div className="flex items-center gap-3">
             <IntervalPicker />
             <Link href="/charters/new">
-              <button className="flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold bg-amber-accent text-amber-accent-foreground hover:opacity-90 active:scale-[0.98] transition-all glow-amber">
+              <button className="flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold bg-cta text-cta-foreground hover:opacity-90 active:scale-[0.98] transition-all glow-cta">
                 <FileText size={14} /> New Charter
               </button>
             </Link>
