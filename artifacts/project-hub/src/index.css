@@ -183,6 +183,7 @@
   --mesh-amber: 35 96% 70%;
   --mesh-purple: 262 80% 72%;
   --mesh-teal: 188 88% 62%;
+  --mesh-pink: 340 95% 82%;
   --glass-bg: rgba(255, 255, 255, 0.75);
   --glass-border: rgba(15, 23, 42, 0.08);
 }
@@ -271,6 +272,7 @@
   --mesh-amber: 35 90% 18%;
   --mesh-purple: 262 60% 22%;
   --mesh-teal: 188 80% 18%;
+  --mesh-pink: 340 70% 22%;
   --glass-bg: rgba(25, 27, 35, 0.45);
   --glass-border: rgba(255, 255, 255, 0.06);
 }
@@ -315,10 +317,10 @@
     box-shadow: 0 8px 32px -4px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06);
   }
 
-  /* ── Ambient radial mesh — amber + purple + teal (Atelier) ── */
+  /* ── Ambient radial mesh — pink (L) + purple (R) + teal (bottom) ── */
   .ambient-mesh {
     background-image:
-      radial-gradient(circle at 10% 18%, hsl(var(--mesh-amber) / 0.85) 0px, transparent 38%),
+      radial-gradient(circle at 10% 18%, hsl(var(--mesh-pink) / 0.95) 0px, transparent 40%),
       radial-gradient(circle at 88% 22%, hsl(var(--mesh-purple) / 0.75) 0px, transparent 42%),
       radial-gradient(circle at 50% 100%, hsl(var(--mesh-teal) / 0.65) 0px, transparent 45%);
     filter: blur(40px);
