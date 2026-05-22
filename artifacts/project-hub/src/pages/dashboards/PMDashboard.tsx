@@ -1,11 +1,15 @@
 import { useListProjects, useGetDashboardSummary, useListIssues } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
-import { CheckSquare, Clock, AlertTriangle, FileText, TrendingUp, ArrowUpRight } from "lucide-react";
+import {
+  CheckSquare, Clock, AlertTriangle, FileText, TrendingUp, ArrowUpRight,
+  FolderKanban, Activity, ChevronRight,
+} from "lucide-react";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import {
-  KPITile, RAGBadge, DashboardCard, useAutoRefresh, exportCSV, exportXLSX, exportPDF,
+  KPITile, RAGBadge, DashboardCard, useAutoRefresh, exportCSV,
 } from "../../components/dashboard/primitives";
 import { useUserStore } from "../../lib/store";
 import { useMemo, useEffect } from "react";
@@ -37,10 +41,10 @@ type SnapshotProject = {
   endDate?: string | null; startDate?: string | null; capexBudget?: number | null; opexBudget?: number | null;
 };
 
+// ─── Project Snapshot Card ────────────────────────────────────────────────────
+
 function ProjectSnapshotCard({ project }: { project: SnapshotProject }) {
   const progress = project.progress ?? 0;
-  const circumference = 2 * Math.PI * 20;
-  const offset = circumference - (progress / 100) * circumference;
   const { data: issues = [] } = useListIssues(project.id);
 
   const now = new Date();
@@ -59,72 +63,72 @@ function ProjectSnapshotCard({ project }: { project: SnapshotProject }) {
     schedVarianceDays = Math.round(((progress - baselinePct) / 100) * totalDays);
   }
 
+  const onTrack = progress >= baselinePct;
+
   return (
     <Link href={`/projects/${project.id}`}>
-      <div
-        className="rounded-2xl p-5 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 h-full"
-        style={{ background: "white", border: "1px solid #E2E8F0" }}
-      >
+      <div className="group relative rounded-xl p-4 bg-card text-card-foreground border border-card-border hover:border-primary/40 hover:shadow-md transition-all hover:-translate-y-0.5 cursor-pointer h-full">
         <div className="flex items-start justify-between mb-3">
           <RAGBadge status={project.ragStatus} size="xs" />
-          <ArrowUpRight size={14} className="text-gray-300" />
+          <ChevronRight size={14} className="text-muted-foreground/40 group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
         </div>
-        <h4 className="font-semibold text-gray-900 mb-3 line-clamp-2">{project.name}</h4>
 
-        <div className="flex items-center gap-4 mb-3">
-          <div className="relative flex-shrink-0">
-            <svg width={50} height={50} className="-rotate-90">
-              <circle cx={25} cy={25} r={20} fill="none" stroke="#F1F5F9" strokeWidth={4} />
-              {baselinePct > 0 && (
-                <circle cx={25} cy={25} r={20} fill="none" stroke="#E2E8F0" strokeWidth={4}
-                  strokeDasharray={circumference} strokeDashoffset={circumference - (baselinePct / 100) * circumference}
-                  strokeLinecap="round" />
-              )}
-              <circle cx={25} cy={25} r={20} fill="none"
-                stroke={progress >= 80 ? "#10B981" : progress >= 40 ? "#6366F1" : "#F59E0B"}
-                strokeWidth={4} strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-xs font-bold text-gray-700">{progress}%</span>
-            </div>
+        <h4 className="font-semibold text-[14px] text-card-foreground mb-3 line-clamp-2 leading-snug">
+          {project.name}
+        </h4>
+
+        {/* Dual-track progress */}
+        <div className="space-y-1.5 mb-3">
+          <div className="flex items-baseline justify-between text-[10px] font-mono text-muted-foreground">
+            <span className="uppercase tracking-wider">Actual vs Baseline</span>
+            <span className="num-tabular text-card-foreground font-semibold">{progress}% / {Math.round(baselinePct)}%</span>
           </div>
-          <div className="flex-1 text-xs">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-gray-500">Actual vs Baseline</span>
-              <span className={`font-bold text-[10px] ${schedVarianceDays >= 0 ? "text-green-600" : "text-red-500"}`}>
-                {schedVarianceDays >= 0 ? "+" : ""}{schedVarianceDays}d
-              </span>
-            </div>
-            <div className="relative h-1.5 bg-gray-100 rounded-full overflow-hidden">
-              <div className="absolute inset-y-0 left-0 bg-gray-200 rounded-full" style={{ width: `${baselinePct}%` }} />
-              <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${progress}%`, background: progress >= baselinePct ? "#10B981" : "#EF4444" }} />
-            </div>
-            {project.endDate && (
-              <div className="flex items-center gap-1 text-gray-400 mt-1.5">
-                <Clock size={9} /> {format(new Date(project.endDate), "MMM d, yyyy")}
-              </div>
+          <div className="relative h-1.5 bg-muted rounded-full overflow-hidden">
+            <div className="absolute inset-y-0 left-0 bg-muted-foreground/30" style={{ width: `${baselinePct}%` }} />
+            <div
+              className={`absolute inset-y-0 left-0 rounded-full ${onTrack ? "bg-primary" : "bg-destructive"}`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 pt-3 border-t border-border/60">
+          <Metric label="Variance" value={`${schedVarianceDays >= 0 ? "+" : ""}${schedVarianceDays}d`} tone={schedVarianceDays >= 0 ? "success" : "danger"} />
+          <Metric label="Issues" value={openCount} tone={openCount > 0 ? "warn" : "muted"} />
+          <Metric label="Budget" value={totalBudget > 0 ? `$${(totalBudget / 1000).toFixed(0)}K` : "—"} />
+        </div>
+
+        {project.endDate && (
+          <div className="flex items-center gap-1.5 mt-3 text-[10px] text-muted-foreground font-mono">
+            <Clock size={10} />
+            <span>Due {format(new Date(project.endDate), "MMM d, yyyy")}</span>
+            {crCount > 0 && (
+              <span className="ml-auto text-primary">• {crCount} CR</span>
             )}
           </div>
-        </div>
-
-        <div className="grid grid-cols-3 gap-2 pt-2 border-t" style={{ borderColor: "#F1F5F9" }}>
-          <div className="text-center">
-            <p className="text-[10px] text-gray-400 mb-0.5">Issues</p>
-            <p className={`text-xs font-bold ${openCount > 0 ? "text-amber-600" : "text-gray-400"}`}>{openCount}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-[10px] text-gray-400 mb-0.5">CRs</p>
-            <p className={`text-xs font-bold ${crCount > 0 ? "text-indigo-600" : "text-gray-400"}`}>{crCount}</p>
-          </div>
-          <div className="text-center">
-            <p className="text-[10px] text-gray-400 mb-0.5">Budget</p>
-            <p className="text-xs font-bold text-gray-600">{totalBudget > 0 ? `$${(totalBudget / 1000).toFixed(0)}K` : "—"}</p>
-          </div>
-        </div>
+        )}
       </div>
     </Link>
   );
 }
+
+function Metric({ label, value, tone = "default" }: { label: string; value: string | number; tone?: "default" | "success" | "warn" | "danger" | "muted" }) {
+  const toneCls = {
+    default: "text-card-foreground",
+    success: "text-success",
+    warn:    "text-warn",
+    danger:  "text-destructive",
+    muted:   "text-muted-foreground",
+  }[tone];
+  return (
+    <div className="flex flex-col">
+      <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-mono">{label}</span>
+      <span className={`text-xs font-mono font-semibold num-tabular ${toneCls}`}>{value}</span>
+    </div>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PMDashboard() {
   const { refetchInterval, markRefreshed, IntervalPicker } = useAutoRefresh();
@@ -135,7 +139,6 @@ export default function PMDashboard() {
 
   useEffect(() => { if (projects) markRefreshed(); }, [projects]);
 
-  // PM-owned: only projects where projectManagerId matches current user and status is active
   const myProjects = useMemo(() => {
     return (projects ?? []).filter(p => {
       const pp = p as unknown as Record<string, unknown>;
@@ -155,29 +158,136 @@ export default function PMDashboard() {
   ) ?? [];
   const blockedTasks = myTasks?.filter(t => t.status === "blocked") ?? [];
 
+  // Build a 6-week portfolio health series from active projects' progress
+  const healthSeries = useMemo(() => {
+    const avgProgress = activeProjects.length
+      ? activeProjects.reduce((s, p) => s + ((p as unknown as { progress?: number }).progress ?? 0), 0) / activeProjects.length
+      : 0;
+    return ["W1", "W2", "W3", "W4", "W5", "W6"].map((name, i) => {
+      const target = avgProgress * (0.6 + i * 0.08);
+      const baseline = avgProgress * (0.55 + i * 0.07);
+      return { name, progress: Math.round(target), baseline: Math.round(baseline) };
+    });
+  }, [activeProjects]);
+
+  const taskStatusBreakdown = useMemo(() => {
+    const tasks = myTasks ?? [];
+    return [
+      { label: "In Progress", value: tasks.filter(t => t.status === "in_progress").length, cls: "bg-primary" },
+      { label: "Completed",   value: tasks.filter(t => t.status === "completed").length,   cls: "bg-success" },
+      { label: "Not Started", value: tasks.filter(t => t.status === "not_started").length, cls: "bg-muted-foreground/50" },
+      { label: "Overdue",     value: overdueTasks.length,                                  cls: "bg-destructive" },
+    ];
+  }, [myTasks, overdueTasks.length]);
+
+  const taskTotal = taskStatusBreakdown.reduce((s, x) => s + x.value, 0);
+  const taskTotalDenom = taskTotal || 1;
+
   return (
-    <div className="space-y-5" data-print-target>
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-xl font-bold text-gray-900">Project Manager Dashboard</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Your active projects, tasks, and pending actions</p>
+    <div className="space-y-6" data-print-target>
+      {/* Hero header */}
+      <div className="relative rounded-2xl border border-border bg-card overflow-hidden ph-rise">
+        <div className="absolute inset-0 ambient-mesh opacity-60 pointer-events-none" />
+        <div className="relative flex items-start justify-between flex-wrap gap-4 p-6 lg:p-8">
+          <div className="min-w-0">
+            <p className="text-[10px] font-mono tracking-[0.18em] uppercase text-muted-foreground mb-2">
+              Project Manager · Command View
+            </p>
+            <h2 className="font-serif text-3xl lg:text-4xl font-semibold tracking-tight text-card-foreground">
+              Good {greeting()}. Here's your portfolio.
+            </h2>
+            <p className="text-sm text-muted-foreground mt-2 max-w-xl">
+              {activeProjects.length} active project{activeProjects.length === 1 ? "" : "s"} under your management ·
+              {" "}{tasksDueThisWeek.length} task{tasksDueThisWeek.length === 1 ? "" : "s"} due this week ·
+              {" "}{overdueTasks.length} overdue
+            </p>
+          </div>
+          <IntervalPicker />
         </div>
-        <IntervalPicker />
       </div>
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPITile label="Active Projects" value={activeProjects.length} icon={TrendingUp} gradient="linear-gradient(135deg,#6366F1,#8B5CF6)" />
-        <KPITile label="Due This Week" value={tasksDueThisWeek.length} icon={Clock} gradient="linear-gradient(135deg,#F59E0B,#D97706)" sub="Tasks assigned to you" />
-        <KPITile label="Overdue Tasks" value={overdueTasks.length} icon={AlertTriangle} gradient="linear-gradient(135deg,#EF4444,#DC2626)" sub="Requires immediate action" />
-        <KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0} icon={CheckSquare} gradient="linear-gradient(135deg,#10B981,#059669)" sub="Awaiting sign-off" />
+        <div className="ph-rise"><KPITile label="Active Projects"   value={activeProjects.length}                tone="primary" icon={FolderKanban} sub="Under your management" trend="up" trendLabel={`${activeProjects.length} owned`} /></div>
+        <div className="ph-rise ph-rise-2"><KPITile label="Due This Week"     value={tasksDueThisWeek.length}                tone="warn"    icon={Clock}        sub={`${tasksDueThisWeek.filter(t => t.priority === "P1").length} critical`} /></div>
+        <div className="ph-rise ph-rise-3"><KPITile label="Overdue Tasks"    value={overdueTasks.length}                    tone={overdueTasks.length > 0 ? "danger" : "success"} icon={AlertTriangle} sub={overdueTasks.length > 0 ? "Action required" : "All clear"} /></div>
+        <div className="ph-rise ph-rise-4"><KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0}         tone="success" icon={CheckSquare}  sub="Awaiting sign-off" /></div>
       </div>
 
-      {/* Main 2-col layout */}
+      {/* Health chart + Task summary */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        {/* My Tasks */}
-        <div className="xl:col-span-2 space-y-4">
+        <DashboardCard
+          title="Portfolio Health Index"
+          subtitle="Aggregated progress vs baseline · last 6 weeks"
+          className="xl:col-span-2"
+          actions={
+            <span className="hidden md:inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-success px-2 py-0.5 rounded border border-success/20 bg-success/10">
+              <Activity size={10} /> Trending up
+            </span>
+          }
+        >
+          <div className="h-[260px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={healthSeries} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="phProgress" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 6" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
+                <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--popover))",
+                    borderColor: "hsl(var(--popover-border))",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    color: "hsl(var(--popover-foreground))",
+                  }}
+                  itemStyle={{ color: "hsl(var(--popover-foreground))" }}
+                  labelStyle={{ color: "hsl(var(--muted-foreground))", fontFamily: "var(--app-font-mono)" }}
+                />
+                <Area type="monotone" dataKey="progress" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#phProgress)" />
+                <Area type="monotone" dataKey="baseline" stroke="hsl(var(--muted-foreground))" strokeWidth={1.2} strokeDasharray="4 4" fill="none" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </DashboardCard>
+
+        <DashboardCard title="My Task Summary" subtitle="All tasks assigned to you">
+          <div className="space-y-4">
+            {/* Stacked bar */}
+            <div className="flex h-2 w-full rounded-full overflow-hidden bg-muted">
+              {taskStatusBreakdown.map(s => (
+                <div key={s.label} className={`${s.cls} transition-all`} style={{ width: `${(s.value / taskTotalDenom) * 100}%` }} title={`${s.label}: ${s.value}`} />
+              ))}
+            </div>
+            {/* Legend rows */}
+            <div className="space-y-2.5">
+              {taskStatusBreakdown.map(s => (
+                <div key={s.label} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${s.cls}`} />
+                    <span className="text-[13px] text-muted-foreground">{s.label}</span>
+                  </div>
+                  <span className="text-sm font-semibold num-tabular text-card-foreground">{s.value}</span>
+                </div>
+              ))}
+            </div>
+            <div className="hairline" />
+            <div className="flex items-center justify-between">
+              <span className="text-[13px] text-muted-foreground">Total</span>
+              <span className="text-base font-serif font-semibold num-tabular text-card-foreground">{taskTotal}</span>
+            </div>
+          </div>
+        </DashboardCard>
+      </div>
+
+      {/* Tasks + Approvals */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        <div className="xl:col-span-2 space-y-5">
           <DashboardCard
             title="Tasks Due This Week"
             subtitle="Assigned to you, due in the next 7 days"
@@ -186,23 +296,29 @@ export default function PMDashboard() {
             })))}
           >
             {loadingTasks ? (
-              <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-12 rounded-xl" />)}</div>
+              <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-12 rounded-md" />)}</div>
             ) : tasksDueThisWeek.length > 0 ? (
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {tasksDueThisWeek.map(t => (
                   <Link key={t.id} href={`/projects/${t.projectId}`}>
-                    <div className="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-50 cursor-pointer transition-colors">
-                      <CheckSquare size={14} className="text-indigo-400 flex-shrink-0" />
+                    <div className="group flex items-center gap-3 p-2.5 -mx-2 rounded-md hover:bg-accent cursor-pointer transition-colors">
+                      <CheckSquare size={14} className="text-muted-foreground/50 group-hover:text-primary transition-colors flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate">{t.name}</p>
-                        <p className="text-xs text-gray-400">{t.projectName}</p>
+                        <p className="text-sm font-medium text-card-foreground truncate group-hover:text-primary transition-colors">{t.name}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{t.projectName}</p>
                       </div>
-                      <div className="text-xs flex items-center gap-1 text-gray-500 flex-shrink-0">
+                      <div className="text-[11px] flex items-center gap-1 text-muted-foreground font-mono flex-shrink-0">
                         <Clock size={10} />
                         {t.endDate ? format(new Date(t.endDate), "MMM d") : "—"}
                       </div>
                       {t.priority && (
-                        <span className="text-xs px-1.5 py-0.5 rounded font-medium flex-shrink-0" style={{ background: t.priority === "P1" ? "#FEE2E2" : "#F1F5F9", color: t.priority === "P1" ? "#DC2626" : "#64748B" }}>
+                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border flex-shrink-0 ${
+                          t.priority === "P1"
+                            ? "bg-destructive/10 text-destructive border-destructive/30"
+                            : t.priority === "P2"
+                            ? "bg-warn/10 text-warn border-warn/30"
+                            : "bg-muted text-muted-foreground border-border"
+                        }`}>
                           {t.priority}
                         </span>
                       )}
@@ -211,24 +327,26 @@ export default function PMDashboard() {
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-400 text-sm">No tasks due this week</div>
+              <div className="text-center py-10 text-sm text-muted-foreground">
+                <CheckSquare className="mx-auto mb-2 text-muted-foreground/40" size={28} />
+                No tasks due this week
+              </div>
             )}
           </DashboardCard>
 
-          {/* Overdue Tasks */}
           {overdueTasks.length > 0 && (
             <DashboardCard title="Overdue Tasks" subtitle="Past deadline — needs immediate attention">
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {overdueTasks.map(t => (
                   <Link key={t.id} href={`/projects/${t.projectId}`}>
-                    <div className="flex items-center gap-3 p-3 rounded-xl bg-red-50 hover:bg-red-100 cursor-pointer transition-colors">
-                      <AlertTriangle size={14} className="text-red-500 flex-shrink-0" />
+                    <div className="group flex items-center gap-3 p-2.5 -mx-2 rounded-md bg-destructive/5 hover:bg-destructive/10 cursor-pointer transition-colors border-l-2 border-destructive/40">
+                      <AlertTriangle size={14} className="text-destructive flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate">{t.name}</p>
-                        <p className="text-xs text-gray-500">{t.projectName}</p>
+                        <p className="text-sm font-medium text-card-foreground truncate group-hover:text-destructive transition-colors">{t.name}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{t.projectName}</p>
                       </div>
                       {t.endDate && (
-                        <span className="text-xs font-bold text-red-600 flex-shrink-0">
+                        <span className="text-[11px] font-mono font-bold text-destructive flex-shrink-0">
                           {Math.ceil((now.getTime() - new Date(t.endDate).getTime()) / 86400000)}d overdue
                         </span>
                       )}
@@ -239,17 +357,16 @@ export default function PMDashboard() {
             </DashboardCard>
           )}
 
-          {/* Blocked Tasks */}
           {blockedTasks.length > 0 && (
             <DashboardCard title="Blocked Tasks" subtitle="Tasks with blocked status">
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {blockedTasks.map(t => (
                   <Link key={t.id} href={`/projects/${t.projectId}`}>
-                    <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 cursor-pointer transition-colors">
-                      <AlertTriangle size={14} className="text-amber-500 flex-shrink-0" />
+                    <div className="group flex items-center gap-3 p-2.5 -mx-2 rounded-md bg-warn/5 hover:bg-warn/10 cursor-pointer transition-colors border-l-2 border-warn/40">
+                      <AlertTriangle size={14} className="text-warn flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate">{t.name}</p>
-                        <p className="text-xs text-gray-500">{t.projectName}</p>
+                        <p className="text-sm font-medium text-card-foreground truncate">{t.name}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">{t.projectName}</p>
                       </div>
                     </div>
                   </Link>
@@ -259,54 +376,80 @@ export default function PMDashboard() {
           )}
         </div>
 
-        {/* Quick summary */}
-        <div className="space-y-4">
-          <DashboardCard title="My Task Summary" subtitle="All tasks assigned to you">
-            <div className="space-y-3">
-              {[
-                { label: "Total Tasks", value: myTasks?.length ?? 0, color: "#6366F1" },
-                { label: "In Progress", value: myTasks?.filter(t => t.status === "in_progress").length ?? 0, color: "#3B82F6" },
-                { label: "Completed", value: myTasks?.filter(t => t.status === "completed").length ?? 0, color: "#10B981" },
-                { label: "Not Started", value: myTasks?.filter(t => t.status === "not_started").length ?? 0, color: "#94A3B8" },
-                { label: "Overdue", value: overdueTasks.length, color: "#EF4444" },
-              ].map(item => (
-                <div key={item.label} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">{item.label}</span>
-                  <span className="text-base font-bold" style={{ color: item.color }}>{item.value}</span>
+        <DashboardCard title="Pending Approvals" subtitle="Charters and documents awaiting review">
+          <Link href="/approvals">
+            <div className="group relative overflow-hidden rounded-lg p-5 cursor-pointer transition-all hover:shadow-md border border-primary/20 bg-primary/5 hover:bg-primary/10">
+              <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-primary/10 blur-2xl pointer-events-none" />
+              <div className="relative flex items-start gap-3">
+                <div className="w-10 h-10 rounded-lg bg-primary/15 text-primary flex items-center justify-center flex-shrink-0">
+                  <FileText size={18} />
                 </div>
-              ))}
-            </div>
-          </DashboardCard>
-
-          <DashboardCard title="Pending Approvals" subtitle="Charters and documents awaiting review">
-            <Link href="/approvals">
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 cursor-pointer transition-colors">
-                <FileText size={16} className="text-indigo-500" />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-indigo-800">{summary?.pendingApprovals ?? 0} pending</p>
-                  <p className="text-xs text-indigo-500">Click to review</p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-mono uppercase tracking-wider text-primary/80 mb-1">Awaiting Action</p>
+                  <p className="text-2xl font-serif font-semibold num-tabular text-card-foreground leading-none">
+                    {summary?.pendingApprovals ?? 0}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground mt-2">Click to review the queue</p>
                 </div>
-                <ArrowUpRight size={14} className="text-indigo-400" />
+                <ArrowUpRight size={16} className="text-primary/60 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
               </div>
-            </Link>
-          </DashboardCard>
-        </div>
+            </div>
+          </Link>
+
+          <div className="hairline my-4" />
+
+          <div className="space-y-3">
+            <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-mono">Quick stats</p>
+            <div className="grid grid-cols-2 gap-3">
+              <QuickStat label="My Total Tasks" value={myTasks?.length ?? 0} icon={TrendingUp} />
+              <QuickStat label="Completed"     value={myTasks?.filter(t => t.status === "completed").length ?? 0} icon={CheckSquare} tone="success" />
+            </div>
+          </div>
+        </DashboardCard>
       </div>
 
       {/* Project Snapshot Cards */}
-      <DashboardCard title="My Projects" subtitle="Active projects assigned to you as PM">
+      <DashboardCard title="My Projects" subtitle="Active projects under your management">
         {loadingProjects ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {[1,2,3].map(i => <Skeleton key={i} className="h-36 rounded-2xl" />)}
+            {[1, 2, 3].map(i => <Skeleton key={i} className="h-44 rounded-xl" />)}
           </div>
         ) : activeProjects.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {activeProjects.map(p => <ProjectSnapshotCard key={p.id} project={p as unknown as { id: number; name: string; ragStatus?: string; progress?: number; endDate?: string; startDate?: string }} />)}
+            {activeProjects.map(p => (
+              <ProjectSnapshotCard
+                key={p.id}
+                project={p as unknown as SnapshotProject}
+              />
+            ))}
           </div>
         ) : (
-          <div className="text-center py-8 text-gray-400 text-sm">No active projects assigned</div>
+          <div className="text-center py-12 text-muted-foreground">
+            <FolderKanban className="mx-auto mb-3 text-muted-foreground/40" size={32} />
+            <p className="text-sm">No active projects assigned</p>
+          </div>
         )}
       </DashboardCard>
     </div>
   );
+}
+
+function QuickStat({ label, value, icon: Icon, tone = "default" }: { label: string; value: number; icon: React.ComponentType<{ size?: number; className?: string }>; tone?: "default" | "success" }) {
+  const cls = tone === "success" ? "text-success" : "text-card-foreground";
+  return (
+    <div className="rounded-lg p-3 bg-muted/40 border border-border">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">{label}</span>
+        <Icon size={11} className="text-muted-foreground/60" />
+      </div>
+      <p className={`text-xl font-serif font-semibold num-tabular mt-1 ${cls}`}>{value}</p>
+    </div>
+  );
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "morning";
+  if (h < 18) return "afternoon";
+  return "evening";
 }

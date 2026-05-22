@@ -35,7 +35,7 @@ export function NotificationBell() {
   const markRead = useMarkNotificationRead();
   const markAll = useMarkAllNotificationsRead();
 
-  const all = (notifications as Notif[]) ?? [];
+  const all: Notif[] = Array.isArray(notifications) ? (notifications as Notif[]) : [];
   const unread = all.filter(n => !n.isRead);
 
   useEffect(() => {
@@ -69,55 +69,50 @@ export function NotificationBell() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen(o => !o)}
-        className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
+        className="relative w-9 h-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
         title="Notifications"
         aria-label="Notifications"
       >
-        <Bell size={18} className="text-gray-600" />
+        <Bell size={16} />
         {unread.length > 0 && (
-          <span
-            className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
-            style={{ background: "linear-gradient(135deg,#F43F5E,#DC2626)" }}
-          >
+          <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold font-mono bg-destructive text-destructive-foreground border border-background">
             {unread.length > 99 ? "99+" : unread.length}
           </span>
         )}
       </button>
 
       {open && (
-        <div
-          className="absolute right-0 top-full mt-2 w-96 max-h-[480px] rounded-2xl overflow-hidden z-50 flex flex-col"
-          style={{ background: "white", border: "1px solid #E2E8F0", boxShadow: "0 12px 40px rgba(0,0,0,0.15)" }}
-        >
-          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <div className="absolute right-0 top-full mt-2 w-96 max-h-[480px] rounded-xl overflow-hidden z-50 flex flex-col bg-popover text-popover-foreground border border-popover-border shadow-xl">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
             <div>
-              <h4 className="text-sm font-bold text-gray-900">Notifications</h4>
-              <p className="text-xs text-gray-400">{unread.length} unread · {all.length} total</p>
+              <h4 className="text-sm font-semibold text-popover-foreground">Notifications</h4>
+              <p className="text-[11px] text-muted-foreground font-mono">{unread.length} unread · {all.length} total</p>
             </div>
             {unread.length > 0 && (
-              <button onClick={handleMarkAll} className="flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-700">
+              <button onClick={handleMarkAll} className="flex items-center gap-1 text-xs font-semibold text-primary hover:opacity-80">
                 <CheckCheck size={12} /> Mark all read
               </button>
             )}
           </div>
 
-          <div className="overflow-y-auto flex-1">
+          <div className="overflow-y-auto flex-1 scrollbar-thin">
             {all.length === 0 ? (
-              <div className="p-8 text-center text-sm text-gray-400">No notifications yet.</div>
+              <div className="p-8 text-center text-sm text-muted-foreground">No notifications yet.</div>
             ) : (
               all.slice(0, 50).map(n => (
                 <button
                   key={n.id}
                   onClick={() => handleClick(n)}
-                  className="w-full text-left px-4 py-3 border-b border-gray-50 hover:bg-indigo-50/40 transition-colors block"
-                  style={{ background: n.isRead ? "transparent" : "#F5F3FF" }}
+                  className={`w-full text-left px-4 py-3 border-b border-border/60 hover:bg-accent transition-colors block ${
+                    n.isRead ? "bg-transparent" : "bg-primary/5"
+                  }`}
                 >
                   <div className="flex items-start gap-2">
-                    {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 flex-shrink-0" />}
+                    {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5 flex-shrink-0" />}
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm ${n.isRead ? "text-gray-600" : "font-semibold text-gray-900"}`}>{n.title}</p>
-                      {n.body && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{n.body}</p>}
-                      <p className="text-[10px] text-gray-400 mt-1">{timeAgo(n.createdAt)} · {n.type.replace(/_/g, " ")}</p>
+                      <p className={`text-sm ${n.isRead ? "text-muted-foreground" : "font-semibold text-popover-foreground"}`}>{n.title}</p>
+                      {n.body && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>}
+                      <p className="text-[10px] text-muted-foreground/70 mt-1 font-mono">{timeAgo(n.createdAt)} · {n.type.replace(/_/g, " ")}</p>
                     </div>
                   </div>
                 </button>

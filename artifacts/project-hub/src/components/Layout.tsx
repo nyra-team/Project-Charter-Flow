@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useUserStore } from "../lib/store";
+import { useTheme } from "../lib/use-theme";
 import {
   BarChart3,
   Briefcase,
@@ -12,6 +13,9 @@ import {
   Search,
   FolderOpen,
   PieChart,
+  Moon,
+  Sun,
+  Command,
 } from "lucide-react";
 import { useState } from "react";
 import { NotificationBell } from "./notification-bell";
@@ -29,7 +33,7 @@ const ROLES = [
   { value: "team_member", label: "Team Member", initials: "TM" },
 ];
 
-type NavItem = { href: string; label: string; icon: React.ComponentType<{ size?: number }> };
+type NavItem = { href: string; label: string; icon: React.ComponentType<{ size?: number; className?: string }> };
 
 const MAIN_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -51,45 +55,52 @@ const ADMIN_ROLES = ["pmo", "executive_director", "chairman"];
 
 function NavSection({ label, items, location }: { label: string; items: NavItem[]; location: string }) {
   return (
-    <>
-      <div className="mt-4 mb-2 px-2">
-        <span className="text-xs font-semibold tracking-widest uppercase" style={{ color: "rgba(148,163,184,0.5)" }}>
+    <div>
+      <div className="mt-5 mb-2 px-3">
+        <span className="text-[10px] font-semibold tracking-[0.18em] uppercase text-sidebar-foreground/40">
           {label}
         </span>
       </div>
-      {items.map((item) => {
-        const isActive = item.href === "/" ? location === "/" : location.startsWith(item.href);
-        const Icon = item.icon;
-        return (
-          <Link key={item.href} href={item.href}>
-            <div
-              className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-all text-sm font-medium group"
-              style={{
-                background: isActive ? "rgba(99,102,241,0.25)" : "transparent",
-                color: isActive ? "#A5B4FC" : "rgba(148,163,184,0.75)",
-                borderLeft: isActive ? "3px solid #6366F1" : "3px solid transparent",
-              }}
-              onMouseEnter={e => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
-                  (e.currentTarget as HTMLElement).style.color = "#E2E8F0";
-                }
-              }}
-              onMouseLeave={e => {
-                if (!isActive) {
-                  (e.currentTarget as HTMLElement).style.background = "transparent";
-                  (e.currentTarget as HTMLElement).style.color = "rgba(148,163,184,0.75)";
-                }
-              }}
-            >
-              <Icon size={17} />
-              <span>{item.label}</span>
-              {isActive && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400" />}
-            </div>
-          </Link>
-        );
-      })}
-    </>
+      <div className="space-y-0.5">
+        {items.map((item) => {
+          const isActive = item.href === "/" ? location === "/" : location.startsWith(item.href);
+          const Icon = item.icon;
+          return (
+            <Link key={item.href} href={item.href}>
+              <div
+                className={`group relative flex items-center gap-3 px-3 py-2 mx-1.5 rounded-md cursor-pointer transition-all text-[13px] font-medium ${
+                  isActive
+                    ? "bg-sidebar-accent text-sidebar-foreground"
+                    : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+                }`}
+              >
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[2px] rounded-r bg-sidebar-primary" />
+                )}
+                <Icon size={16} className={isActive ? "text-sidebar-primary" : ""} />
+                <span className="truncate">{item.label}</span>
+                {isActive && <span className="ml-auto w-1 h-1 rounded-full bg-sidebar-primary" />}
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  return (
+    <button
+      onClick={toggleTheme}
+      title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      aria-label="Toggle color theme"
+      className="relative w-9 h-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+    >
+      <Sun size={16} className={`absolute transition-all ${theme === "dark" ? "rotate-90 scale-0 opacity-0" : "rotate-0 scale-100 opacity-100"}`} />
+      <Moon size={16} className={`absolute transition-all ${theme === "dark" ? "rotate-0 scale-100 opacity-100" : "-rotate-90 scale-0 opacity-0"}`} />
+    </button>
   );
 }
 
@@ -112,64 +123,57 @@ export function Layout({ children }: { children: React.ReactNode }) {
   })();
 
   return (
-    <div className="flex h-screen w-full overflow-hidden" style={{ background: "#F1F5F9" }}>
-      {/* Sidebar */}
-      <aside
-        className="w-64 flex-shrink-0 flex flex-col"
-        style={{
-          background: "linear-gradient(180deg, #0F172A 0%, #1E293B 100%)",
-          boxShadow: "4px 0 24px rgba(0,0,0,0.15)",
-        }}
-      >
+    <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+      {/* Sidebar — premium atelier-dark in both modes */}
+      <aside className="w-60 flex-shrink-0 flex flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border relative">
+        {/* Subtle inner glow */}
+        <div className="pointer-events-none absolute inset-0 ambient-mesh-soft opacity-40" />
+
         {/* Logo */}
-        <div className="h-16 flex items-center gap-3 px-5 border-b" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}>
-            <Briefcase size={16} className="text-white" />
+        <div className="relative h-16 flex items-center gap-3 px-5 border-b border-sidebar-border">
+          <div className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
+            <Command size={15} strokeWidth={2.4} />
           </div>
-          <div>
-            <div className="text-white font-bold text-sm tracking-tight">ProjectHub</div>
-            <div className="text-xs" style={{ color: "rgba(148,163,184,0.8)" }}>Enterprise PMO</div>
+          <div className="leading-tight">
+            <div className="font-semibold text-[15px] tracking-tight text-sidebar-foreground">Project Hub</div>
+            <div className="text-[10px] tracking-[0.16em] uppercase text-sidebar-foreground/40">Enterprise PMO</div>
           </div>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 py-4 px-3 overflow-y-auto scrollbar-thin">
+        <nav className="relative flex-1 py-2 overflow-y-auto scrollbar-thin">
           <NavSection label="Navigation" items={MAIN_NAV} location={location} />
           <NavSection label="Portfolio" items={PORTFOLIO_NAV} location={location} />
           {isAdmin && <NavSection label="Admin" items={ADMIN_NAV} location={location} />}
         </nav>
 
         {/* Role Switcher + User */}
-        <div className="p-4 border-t space-y-3" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-          {/* Role Switcher */}
+        <div className="relative p-3 border-t border-sidebar-border space-y-3">
           <div className="relative">
-            <div className="mb-1.5">
-              <span className="text-xs font-semibold tracking-widest uppercase" style={{ color: "rgba(148,163,184,0.5)" }}>
+            <div className="mb-1.5 px-1">
+              <span className="text-[10px] font-semibold tracking-[0.18em] uppercase text-sidebar-foreground/40">
                 Simulate Role
               </span>
             </div>
             <button
               onClick={() => setShowRoleMenu(!showRoleMenu)}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-all"
-              style={{ background: "rgba(255,255,255,0.06)", color: "#E2E8F0", border: "1px solid rgba(255,255,255,0.1)" }}
+              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-sm bg-sidebar-accent/60 text-sidebar-foreground border border-sidebar-border hover:bg-sidebar-accent transition-colors"
             >
-              <div className="w-6 h-6 rounded-md flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)", color: "white" }}>
+              <div className="w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold flex-shrink-0 bg-sidebar-primary text-sidebar-primary-foreground">
                 {currentRole.initials}
               </div>
-              <span className="flex-1 text-left text-xs font-medium">{currentRole.label}</span>
-              <ChevronDown size={13} className={`transition-transform ${showRoleMenu ? "rotate-180" : ""}`} />
+              <span className="flex-1 text-left text-xs font-medium truncate">{currentRole.label}</span>
+              <ChevronDown size={12} className={`transition-transform ${showRoleMenu ? "rotate-180" : ""}`} />
             </button>
 
             {showRoleMenu && (
-              <div
-                className="absolute bottom-full left-0 right-0 mb-1 rounded-lg py-1 z-50"
-                style={{ background: "#1E293B", border: "1px solid rgba(255,255,255,0.1)", boxShadow: "0 -8px 30px rgba(0,0,0,0.3)", maxHeight: "280px", overflowY: "auto" }}
-              >
+              <div className="absolute bottom-full left-0 right-0 mb-1 rounded-md py-1 z-50 bg-popover text-popover-foreground border border-popover-border shadow-lg max-h-[280px] overflow-y-auto scrollbar-thin">
                 {ROLES.map(r => (
                   <button
                     key={r.value}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left transition-colors"
-                    style={{ color: r.value === role ? "#A5B4FC" : "rgba(148,163,184,0.8)", background: r.value === role ? "rgba(99,102,241,0.15)" : "transparent" }}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left transition-colors ${
+                      r.value === role ? "bg-accent text-primary" : "hover:bg-accent/60"
+                    }`}
                     onClick={() => {
                       setRole(r.value);
                       setShowRoleMenu(false);
@@ -180,14 +184,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         body: JSON.stringify({ role: r.value }),
                       }).catch(() => {});
                     }}
-                    onMouseEnter={e => { if (r.value !== role) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)"; }}
-                    onMouseLeave={e => { if (r.value !== role) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                   >
-                    <div className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold flex-shrink-0" style={{ background: r.value === role ? "rgba(99,102,241,0.5)" : "rgba(255,255,255,0.1)", color: "white" }}>
+                    <div className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+                      r.value === role ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                    }`}>
                       {r.initials}
                     </div>
                     {r.label}
-                    {r.value === role && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-400" />}
+                    {r.value === role && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-primary" />}
                   </button>
                 ))}
               </div>
@@ -196,17 +200,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
           {/* User Info */}
           <div className="flex items-center gap-3 px-1">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ background: "linear-gradient(135deg, #10B981, #059669)", color: "white" }}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-sm">
               JD
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-semibold text-white truncate">John Doe</div>
-              <div className="text-xs capitalize truncate" style={{ color: "rgba(148,163,184,0.6)" }}>{role.replace(/_/g, " ")}</div>
+              <div className="text-sm font-semibold text-sidebar-foreground truncate">John Doe</div>
+              <div className="text-[11px] capitalize truncate text-sidebar-foreground/50">{role.replace(/_/g, " ")}</div>
             </div>
-            <button className="p-1.5 rounded-lg transition-colors" style={{ color: "rgba(148,163,184,0.5)" }}
-              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = "#94A3B8"}
-              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "rgba(148,163,184,0.5)"}
-            >
+            <button className="p-1.5 rounded-md text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
               <LogOut size={14} />
             </button>
           </div>
@@ -216,30 +217,34 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         {/* Header */}
-        <header className="h-16 flex-shrink-0 flex items-center justify-between px-6 z-10" style={{ background: "white", borderBottom: "1px solid #E2E8F0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-          <div className="flex items-center gap-4">
-            <div>
-              <h1 className="font-bold text-gray-900 text-lg">{pageTitle}</h1>
-            </div>
+        <header className="h-16 flex-shrink-0 flex items-center justify-between px-6 z-10 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70 border-b border-border">
+          <div className="flex items-center gap-3 min-w-0">
+            <h1 className="font-serif text-[22px] font-semibold text-foreground tracking-tight truncate">{pageTitle}</h1>
+            <span className="hidden md:inline-flex items-center gap-1.5 text-[10px] font-mono tracking-wider uppercase text-muted-foreground px-2 py-0.5 rounded border border-border/60">
+              <span className="w-1.5 h-1.5 rounded-full bg-success pulse-ring" />
+              Live
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", color: "#64748B" }}>
+          <div className="flex items-center gap-1.5">
+            <button className="hidden sm:flex items-center gap-2 px-3 h-9 rounded-md text-sm font-medium bg-muted text-muted-foreground border border-border hover:text-foreground transition-colors min-w-[220px]">
               <Search size={14} />
-              <span className="hidden sm:inline">Search...</span>
-              <kbd className="hidden sm:inline text-xs px-1.5 py-0.5 rounded" style={{ background: "#E2E8F0", fontFamily: "monospace" }}>⌘K</kbd>
+              <span className="text-xs">Search portfolios, projects…</span>
+              <kbd className="ml-auto text-[10px] px-1.5 py-0.5 rounded border border-border bg-background font-mono text-muted-foreground">⌘K</kbd>
             </button>
+            <ThemeToggle />
             <NotificationBell />
             <Link href="/admin/scoring">
-              <button className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors" style={{ color: "#64748B" }} title="Scoring Configuration">
-                <Settings size={17} />
+              <button className="w-9 h-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Scoring Configuration">
+                <Settings size={16} />
               </button>
             </Link>
           </div>
         </header>
 
         {/* Page Content */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin" style={{ background: "#F1F5F9" }}>
-          <div className="max-w-7xl mx-auto p-6">
+        <div className="flex-1 overflow-y-auto scrollbar-thin bg-background">
+          <div className="absolute inset-0 ambient-mesh-soft pointer-events-none opacity-50" style={{ position: "fixed", zIndex: 0 }} />
+          <div className="relative max-w-[1600px] mx-auto p-6 lg:p-8">
             {children}
           </div>
         </div>
