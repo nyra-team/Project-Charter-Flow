@@ -233,8 +233,9 @@ export default function GeneralDashboard() {
           <div className="flex items-center gap-3">
             <RefreshButton />
             <Link href="/charters/new">
-              <button className="flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold bg-cta/80 hover:bg-cta text-cta-foreground backdrop-blur-md border border-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_8px_24px_-8px_rgba(60,30,10,0.45)] active:scale-[0.98] transition-all glow-cta">
-                <FileText size={14} /> New Charter
+              <button className="btn-glossy-cta flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold">
+                <FileText size={14} />
+                <span>New Charter</span>
               </button>
             </Link>
           </div>

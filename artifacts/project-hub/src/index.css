@@ -319,6 +319,90 @@
     box-shadow: 0 8px 32px -4px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06);
   }
 
+  /* ── Glassmorphic CTA pill — translucent, frosted, with a glossy top sheen
+        and a faint diagonal highlight. Sits gracefully over any background. ── */
+  .btn-glossy-cta {
+    position: relative;
+    isolation: isolate;
+    border-radius: 9999px;
+    color: hsl(var(--card-foreground));
+    background:
+      linear-gradient(180deg,
+        rgba(255, 255, 255, 0.45) 0%,
+        rgba(255, 255, 255, 0.18) 50%,
+        rgba(255, 255, 255, 0.08) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(14px) saturate(160%);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.65),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.10),
+      0 8px 22px -8px rgba(15, 23, 42, 0.30),
+      0 2px 6px -2px rgba(15, 23, 42, 0.18);
+    overflow: hidden;
+    transition: transform .12s ease, box-shadow .2s ease, background .2s ease;
+  }
+  .dark .btn-glossy-cta {
+    color: hsl(var(--card-foreground));
+    background:
+      linear-gradient(180deg,
+        rgba(255, 255, 255, 0.18) 0%,
+        rgba(255, 255, 255, 0.06) 55%,
+        rgba(255, 255, 255, 0.02) 100%);
+    border-color: rgba(255, 255, 255, 0.18);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+      0 10px 28px -10px rgba(0, 0, 0, 0.65),
+      0 2px 6px -2px rgba(0, 0, 0, 0.40);
+  }
+  .btn-glossy-cta::before {
+    /* top half glossy mirror sheen */
+    content: "";
+    position: absolute;
+    inset: 1px 1px 55% 1px;
+    border-radius: 9999px;
+    background: linear-gradient(180deg,
+      rgba(255, 255, 255, 0.55) 0%,
+      rgba(255, 255, 255, 0.15) 70%,
+      rgba(255, 255, 255, 0) 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .btn-glossy-cta::after {
+    /* soft diagonal shine streak */
+    content: "";
+    position: absolute;
+    top: -40%;
+    left: -10%;
+    width: 45%;
+    height: 180%;
+    transform: rotate(22deg);
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.28) 50%,
+      transparent 100%);
+    filter: blur(6px);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .btn-glossy-cta > * { position: relative; z-index: 1; }
+  .btn-glossy-cta:hover {
+    background:
+      linear-gradient(180deg,
+        rgba(255, 255, 255, 0.55) 0%,
+        rgba(255, 255, 255, 0.25) 50%,
+        rgba(255, 255, 255, 0.12) 100%);
+  }
+  .dark .btn-glossy-cta:hover {
+    background:
+      linear-gradient(180deg,
+        rgba(255, 255, 255, 0.24) 0%,
+        rgba(255, 255, 255, 0.10) 55%,
+        rgba(255, 255, 255, 0.04) 100%);
+  }
+  .btn-glossy-cta:active { transform: translateY(1px) scale(0.99); }
+
   /* ── Glossy sidebar — keeps the Atelier navy/near-black but adds a subtle
         top-to-bottom sheen, a soft inner top highlight, and a faint specular
         line down the right edge for a lacquered, premium feel. ── */
