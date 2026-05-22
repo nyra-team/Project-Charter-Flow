@@ -19,10 +19,15 @@ import {
   Plus, CheckCircle2, Clock, AlertTriangle, Flag,
   ChevronDown, ChevronRight, Layers, XCircle,
   LayoutGrid, Kanban, Table2, Star, Users, DollarSign, FileText,
+  Shield, AlertCircle, UserCheck, Zap,
 } from "lucide-react";
 import { ResourceTab } from "../components/resource-tab";
 import { BudgetTab } from "../components/budget-tab";
 import { DocumentsTab } from "../components/documents-tab";
+import { RiskTab } from "../components/risk-tab";
+import { IssuesTab } from "../components/issues-tab";
+import { RaciTab } from "../components/raci-tab";
+import { EscalationRulesTab } from "../components/escalation-rules-tab";
 import { StageProgressBar } from "../components/stage-progress-bar";
 import { StagePanel } from "../components/stage-panel";
 import { getCurrentStageKey, LIFECYCLE_STAGES } from "../lib/lifecycle-config";
@@ -335,7 +340,7 @@ export default function ProjectDetail() {
   const { role } = useUserStore();
   const projectId = parseInt(params?.id || "0");
 
-  const [activeTab, setActiveTab] = useState<"lifecycle" | "grid" | "gantt" | "board" | "resources" | "budget" | "documents" | "analytics" | "scoring">("lifecycle");
+  const [activeTab, setActiveTab] = useState<"lifecycle" | "grid" | "gantt" | "board" | "resources" | "budget" | "documents" | "risks" | "issues" | "raci" | "escalation" | "analytics" | "scoring">("lifecycle");
   const [gridSubTab, setGridSubTab] = useState<"tasks" | "milestones">("tasks");
   const [selectedStageKey, setSelectedStageKey] = useState<string | undefined>(undefined);
   const [nfaDismissed, setNfaDismissed] = useState(false);
@@ -422,6 +427,10 @@ export default function ProjectDetail() {
     { id: "resources" as const, label: "Resources", icon: Users },
     { id: "budget" as const, label: "Budget", icon: DollarSign },
     { id: "documents" as const, label: "Documents", icon: FileText },
+    { id: "risks" as const, label: "Risks", icon: Shield },
+    { id: "issues" as const, label: "Issues", icon: AlertCircle },
+    { id: "raci" as const, label: "RACI", icon: UserCheck },
+    { id: "escalation" as const, label: "Escalation", icon: Zap },
     { id: "analytics" as const, label: "Analytics", icon: LayoutGrid },
     { id: "scoring" as const, label: "Scoring", icon: Star },
   ];
@@ -970,6 +979,26 @@ export default function ProjectDetail() {
       {/* ── Documents Tab ────────────────────────────────────────────── */}
       {activeTab === "documents" && (
         <DocumentsTab projectId={projectId} />
+      )}
+
+      {/* ── Risks Tab ────────────────────────────────────────────────── */}
+      {activeTab === "risks" && (
+        <RiskTab projectId={projectId} charterId={(project as { charterId?: number }).charterId ?? null} />
+      )}
+
+      {/* ── Issues Tab ───────────────────────────────────────────────── */}
+      {activeTab === "issues" && (
+        <IssuesTab projectId={projectId} />
+      )}
+
+      {/* ── RACI Tab ─────────────────────────────────────────────────── */}
+      {activeTab === "raci" && (
+        <RaciTab projectId={projectId} />
+      )}
+
+      {/* ── Escalation Rules Tab ─────────────────────────────────────── */}
+      {activeTab === "escalation" && (
+        <EscalationRulesTab projectId={projectId} />
       )}
 
       {/* ── Analytics Tab ────────────────────────────────────────────── */}

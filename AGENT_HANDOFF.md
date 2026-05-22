@@ -209,7 +209,20 @@ Extended the database with the full FRS-compliant schema:
 
 ## 7. Tasks In Progress
 
-### 🔄 Task #5 — Risk Register, RAID & Escalation Management (IN PROGRESS)
+### ✅ Task #5 — Risk Register, RAID & Escalation Management (COMPLETE)
+
+**Built (frontend tabs wired into `project-detail.tsx`):**
+- `risk-tab.tsx` — Risk Register table + 5×5 heat map (probability × impact), click-to-filter zones, severity badge for score ≥ 15, "Add Risk" modal. Maps text levels (`very_low|low|medium|high|very_high`) ↔ numeric 1–5.
+- `issues-tab.tsx` — Aggregated project issues with status tiles + filters (status/owner/dept), inline status updates, delete.
+- `raci-tab.tsx` — Tasks × users matrix with R/A/C/I selects, CSV export, over-allocation warning (>5 R+A). Note: backend has no PATCH endpoint → cell update = delete-then-create (small race risk on rapid edits).
+- `escalation-rules-tab.tsx` — PMO/ED/Chairman-only; create/toggle/delete rules with trigger types (rag_change / budget_overrun_pct / schedule_slip_days / risk_score / issue_open_days).
+
+**Deferred / Out of scope:**
+- **Action Items tab** — Skipped. Schema for meetings/meeting_items exists but no API routes/hooks → would require backend work first.
+- **Escalation rules server-side authorization** — Frontend gates by role, but API has no role enforcement (consistent with the rest of the codebase, no auth model yet). Add when system-wide auth is introduced.
+- **Risk update/delete** — No PATCH/DELETE endpoint for risks in spec; register is currently add-only on the UI.
+
+**Original spec (for reference):**
 
 **What to build:**
 - **Risk Register tab** on project detail: sortable table (Risk ID, Description, Category, Probability 1–5, Impact 1–5, Risk Score P×I, Owner, Mitigation Plan, Mitigation Due Date, Status)
