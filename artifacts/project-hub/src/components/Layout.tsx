@@ -18,6 +18,8 @@ import {
   Moon,
   Sun,
   Command,
+  Menu,
+  X,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { NotificationBell } from "./notification-bell";
@@ -135,11 +137,24 @@ export function Layout({ children }: { children: React.ReactNode }) {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
   });
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
     setShowRoleMenu(false);
   }, [collapsed]);
+
+  // Close mobile drawer on route change
+  useEffect(() => { setMobileOpen(false); }, [location]);
+
+  // Lock body scroll when mobile drawer is open
+  useEffect(() => {
+    if (mobileOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = prev; };
+    }
+  }, [mobileOpen]);
 
   useEffect(() => {
     if (!showRoleMenu) return;
@@ -172,14 +187,34 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
+      {/* Mobile backdrop — only when drawer open on small screens */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden
+        />
+      )}
+
       {/* Sidebar — premium atelier-dark in both modes.
-          Expanded: docked 240px. Collapsed: floating compact 68px rail
-          with detached margin, rounded edges, glass shadow. */}
+          Desktop: docked 240px (or collapsed 68px floating rail).
+          Mobile: off-canvas drawer, slides in from the left. */}
       <aside
-        className={`${collapsed ? "w-[68px] my-3 ml-3 rounded-2xl shadow-2xl" : "w-60 rounded-none shadow-none"}
-          relative flex-shrink-0 flex flex-col sidebar-glossy bg-sidebar text-sidebar-foreground border border-sidebar-border
-          transition-[width,margin,border-radius] duration-300 ease-[cubic-bezier(.16,1,.3,1)]`}
+        className={`${collapsed ? "md:w-[68px] md:my-3 md:ml-3 md:rounded-2xl md:shadow-2xl" : "md:w-60 md:rounded-none md:shadow-none"}
+          fixed md:relative inset-y-0 left-0 z-50 md:z-auto
+          w-[260px] md:flex-shrink-0 flex flex-col sidebar-glossy bg-sidebar text-sidebar-foreground border border-sidebar-border
+          shadow-2xl md:shadow-none
+          transition-[width,margin,border-radius,transform] duration-300 ease-[cubic-bezier(.16,1,.3,1)]
+          ${mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
       >
+        {/* Mobile close button */}
+        <button
+          onClick={() => setMobileOpen(false)}
+          aria-label="Close menu"
+          className="md:hidden absolute top-3 right-3 z-30 w-8 h-8 rounded-md flex items-center justify-center text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+        >
+          <X size={16} />
+        </button>
         {/* Subtle inner glow — clipped to the rail */}
         <div className={`pointer-events-none absolute inset-0 ambient-mesh-soft opacity-40 ${collapsed ? "rounded-2xl" : ""} overflow-hidden`} />
 
@@ -196,12 +231,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
         </div>
 
-        {/* Collapse toggle — sits on the right edge */}
+        {/* Collapse toggle — desktop only; sits on the right edge */}
         <button
           onClick={() => setCollapsed(c => !c)}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="absolute top-[52px] -right-3 z-30 w-6 h-6 rounded-full flex items-center justify-center bg-sidebar text-sidebar-foreground/70 hover:text-sidebar-foreground border border-sidebar-border shadow-md hover:scale-110 transition-all"
+          className="hidden md:flex absolute top-[52px] -right-3 z-30 w-6 h-6 rounded-full items-center justify-center bg-sidebar text-sidebar-foreground/70 hover:text-sidebar-foreground border border-sidebar-border shadow-md hover:scale-110 transition-all"
         >
           {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
         </button>
@@ -311,33 +346,45 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content */}
-      <main className={`flex-1 flex flex-col min-w-0 h-screen overflow-hidden transition-[padding] duration-300 ease-[cubic-bezier(.16,1,.3,1)] ${collapsed ? "pl-3" : ""}`}>
-        {/* Header — docked when sidebar expanded; floating pill when collapsed */}
+      <main className={`flex-1 flex flex-col min-w-0 h-screen overflow-hidden transition-[padding] duration-300 ease-[cubic-bezier(.16,1,.3,1)] ${collapsed ? "md:pl-3" : ""}`}>
+        {/* Header — docked when sidebar expanded; floating pill when collapsed (desktop only) */}
         <header
-          className={`relative h-16 flex-shrink-0 flex items-center justify-between z-10
+          className={`relative h-16 flex-shrink-0 flex items-center justify-between z-10 gap-2
             bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70
             transition-[margin,border-radius,box-shadow,padding] duration-300 ease-[cubic-bezier(.16,1,.3,1)]
-            ${collapsed
-              ? "mx-3 mt-3 px-5 rounded-2xl border border-border shadow-xl"
-              : "px-6 border-b border-border"}`}
+            px-4 sm:px-6 border-b border-border
+            ${collapsed ? "md:mx-3 md:mt-3 md:px-5 md:rounded-2xl md:border md:border-border md:shadow-xl md:border-b-0" : ""}`}
         >
-          <div key={pageTitle} className="flex items-center gap-3 min-w-0 ph-rise">
-            <h1 className="text-[20px] font-bold tracking-tight truncate text-gradient-primary">{pageTitle}</h1>
-            <span className="hidden md:inline-flex items-center gap-1.5 text-[10px] font-mono tracking-wider uppercase text-muted-foreground px-2 py-0.5 rounded border border-border/60">
-              <span className="w-1.5 h-1.5 rounded-full bg-success pulse-ring" />
-              Live
-            </span>
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {/* Mobile hamburger */}
+            <button
+              onClick={() => setMobileOpen(true)}
+              aria-label="Open menu"
+              className="md:hidden w-9 h-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors flex-shrink-0"
+            >
+              <Menu size={18} />
+            </button>
+            <div key={pageTitle} className="flex items-center gap-3 min-w-0 ph-rise">
+              <h1 className="text-[17px] sm:text-[20px] font-bold tracking-tight truncate text-gradient-primary">{pageTitle}</h1>
+              <span className="hidden md:inline-flex items-center gap-1.5 text-[10px] font-mono tracking-wider uppercase text-muted-foreground px-2 py-0.5 rounded border border-border/60">
+                <span className="w-1.5 h-1.5 rounded-full bg-success pulse-ring" />
+                Live
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <button className="group hidden sm:flex items-center gap-2 px-3 h-9 rounded-md text-sm font-medium bg-muted/70 text-muted-foreground border border-border hover:text-foreground hover:border-foreground/30 hover:bg-muted transition-all duration-200 min-w-[220px]">
+          <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0">
+            <button className="group hidden lg:flex items-center gap-2 px-3 h-9 rounded-md text-sm font-medium bg-muted/70 text-muted-foreground border border-border hover:text-foreground hover:border-foreground/30 hover:bg-muted transition-all duration-200 min-w-[220px]">
               <Search size={14} className="transition-transform duration-200 group-hover:scale-110" />
               <span className="text-xs">Search portfolios, projects…</span>
               <kbd className="ml-auto text-[10px] px-1.5 py-0.5 rounded border border-border bg-background font-mono text-muted-foreground">⌘K</kbd>
             </button>
+            <button className="lg:hidden w-9 h-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" aria-label="Search">
+              <Search size={16} />
+            </button>
             <ThemeToggle />
             <NotificationBell />
             <Link href="/admin/scoring">
-              <button className="w-9 h-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-200" title="Scoring Configuration">
+              <button className="hidden sm:flex w-9 h-9 rounded-md items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-200" title="Scoring Configuration">
                 <Settings size={16} />
               </button>
             </Link>
@@ -351,7 +398,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* Page Content */}
         <div className="relative flex-1 overflow-y-auto scrollbar-thin bg-background">
           <div className="page-ambient" />
-          <div key={location} className="relative max-w-[1600px] mx-auto p-6 lg:p-8 ph-rise">
+          <div key={location} className="relative max-w-[1600px] mx-auto p-4 sm:p-6 lg:p-8 ph-rise">
             {children}
           </div>
         </div>

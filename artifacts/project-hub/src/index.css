@@ -409,7 +409,6 @@
         top-to-bottom sheen, a soft inner top highlight, and a faint specular
         line down the right edge for a lacquered, premium feel. ── */
   .sidebar-glossy {
-    position: relative;
     background-image:
       linear-gradient(180deg,
         hsl(230 22% 11%) 0%,
