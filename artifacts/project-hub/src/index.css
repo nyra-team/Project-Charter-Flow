@@ -326,14 +326,14 @@
     isolation: isolate;
     border-radius: 9999px;
     color: hsl(var(--card-foreground));
-    /* Tinted with a warm espresso brown at low alpha to match the perceived
-       sidebar warmth (its amber ambient wash). */
+    /* Tinted with a warm espresso brown to match the perceived sidebar
+       warmth — alpha kept high enough that the brown actually reads. */
     background:
       linear-gradient(180deg,
-        hsl(26 55% 22% / 0.22) 0%,
-        hsl(26 55% 22% / 0.14) 50%,
-        hsl(26 55% 22% / 0.10) 100%);
-    border: 1px solid hsl(26 55% 22% / 0.30);
+        hsl(26 60% 20% / 0.62) 0%,
+        hsl(26 60% 18% / 0.50) 50%,
+        hsl(26 60% 14% / 0.42) 100%);
+    border: 1px solid hsl(26 55% 30% / 0.55);
     backdrop-filter: blur(8px) saturate(140%);
     -webkit-backdrop-filter: blur(8px) saturate(140%);
     box-shadow:
@@ -392,9 +392,9 @@
   .btn-glossy-cta:hover {
     background:
       linear-gradient(180deg,
-        hsl(26 55% 22% / 0.32) 0%,
-        hsl(26 55% 22% / 0.22) 50%,
-        hsl(26 55% 22% / 0.16) 100%);
+        hsl(26 65% 24% / 0.75) 0%,
+        hsl(26 65% 20% / 0.62) 50%,
+        hsl(26 65% 16% / 0.52) 100%);
   }
   .dark .btn-glossy-cta:hover {
     background:
