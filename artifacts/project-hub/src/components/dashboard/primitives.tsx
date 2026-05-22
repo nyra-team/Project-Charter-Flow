@@ -199,11 +199,11 @@ export function useAutoRefresh() {
         type="button"
         onClick={refreshNow}
         disabled={spinning}
-        title={`Last refreshed ${lastRefreshed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Click to refresh now.`}
-        className="flex items-center gap-2 px-3 h-9 rounded-md text-[12px] font-medium font-mono text-muted-foreground hover:text-card-foreground bg-card/60 hover:bg-card border border-border/60 hover:border-border transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+        aria-label="Refresh dashboard"
+        title="Refresh dashboard"
+        className="inline-flex items-center justify-center w-9 h-9 rounded-md text-muted-foreground hover:text-card-foreground bg-card/60 hover:bg-card border border-border/60 hover:border-border transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
       >
-        <RefreshCw size={12} className={spinning ? "animate-spin" : ""} />
-        <span>{lastRefreshed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+        <RefreshCw size={14} className={spinning ? "animate-spin" : ""} />
       </button>
     ),
   };
