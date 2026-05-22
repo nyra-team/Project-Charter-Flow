@@ -89,24 +89,24 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .07);
 
-  /* Clean near-white surface, deep ink */
-  --background: 220 22% 98%;
-  --foreground: 224 28% 10%;
+  /* Cool-tinted off-white surface (less sterile), deep ink */
+  --background: 215 32% 96%;
+  --foreground: 224 32% 9%;
 
-  --border: 222 14% 90%;
-  --input: 222 14% 90%;
-  --ring: 190 78% 38%;
+  --border: 220 18% 88%;
+  --input: 220 18% 88%;
+  --ring: 190 85% 38%;
 
   --card: 0 0% 100%;
-  --card-foreground: 224 28% 10%;
-  --card-border: 222 14% 91%;
+  --card-foreground: 224 32% 9%;
+  --card-border: 220 18% 89%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 224 28% 10%;
-  --popover-border: 222 14% 90%;
+  --popover-foreground: 224 32% 9%;
+  --popover-border: 220 18% 88%;
 
-  /* Sharp cyan (Command Center primary) — slightly deeper for AA on light */
-  --primary: 190 82% 35%;
+  /* Sharp cyan (Command Center primary) — vibrant + AA on light */
+  --primary: 190 88% 38%;
   --primary-foreground: 0 0% 100%;
 
   --secondary: 220 16% 95%;
@@ -171,12 +171,12 @@
   --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
-  /* Mesh / ambient — kept very subtle in light */
-  --mesh-amber: 35 92% 92%;
-  --mesh-purple: 262 70% 94%;
-  --mesh-teal: 188 80% 92%;
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(15, 23, 42, 0.06);
+  /* Mesh / ambient — saturated washes that are actually visible on near-white */
+  --mesh-amber: 35 96% 70%;
+  --mesh-purple: 262 80% 72%;
+  --mesh-teal: 188 88% 62%;
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(15, 23, 42, 0.08);
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -280,16 +280,17 @@
     pointer-events: none;
   }
 
-  /* ── Atelier glass surface (active in dark; falls back to card in light) ── */
+  /* ── Atelier glass surface — translucent in BOTH modes so ambient mesh bleeds through ── */
   .glass-surface {
-    background-color: hsl(var(--card));
-    border: 1px solid hsl(var(--card-border));
+    background-color: var(--glass-bg);
+    backdrop-filter: blur(16px) saturate(120%);
+    -webkit-backdrop-filter: blur(16px) saturate(120%);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.6) inset, 0 4px 14px -6px rgba(15, 23, 42, 0.08);
   }
   .dark .glass-surface {
-    background-color: var(--glass-bg);
     backdrop-filter: blur(20px) saturate(140%);
     -webkit-backdrop-filter: blur(20px) saturate(140%);
-    border: 1px solid var(--glass-border);
     box-shadow: 0 4px 24px -4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
   }
   .glass-surface-hover {
@@ -324,13 +325,13 @@
     z-index: 0;
     pointer-events: none;
     background-image:
-      radial-gradient(circle at 12% 14%, hsl(var(--mesh-amber) / 0.55), transparent 35%),
-      radial-gradient(circle at 88% 38%, hsl(var(--mesh-purple) / 0.55), transparent 38%),
-      radial-gradient(circle at 38% 92%, hsl(var(--mesh-teal) / 0.45), transparent 38%);
-    filter: blur(60px);
-    opacity: 0.65;
+      radial-gradient(circle at 12% 14%, hsl(var(--mesh-amber) / 0.45), transparent 38%),
+      radial-gradient(circle at 88% 32%, hsl(var(--mesh-purple) / 0.40), transparent 40%),
+      radial-gradient(circle at 50% 95%, hsl(var(--mesh-teal) / 0.35), transparent 42%);
+    filter: blur(80px);
+    opacity: 0.80;
   }
-  .dark .page-ambient { opacity: 0.55; }
+  .dark .page-ambient { opacity: 0.55; filter: blur(60px); }
 
   /* ── Hairline divider ── */
   .hairline {
