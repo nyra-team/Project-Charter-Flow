@@ -1042,6 +1042,25 @@ export interface UploadUrlResponse {
   objectPath: string;
 }
 
+export interface Timelog {
+  id: number;
+  taskId: number;
+  userId?: number | null;
+  userName?: string | null;
+  date: string;
+  hours: number;
+  note?: string | null;
+  createdAt: string;
+}
+
+export interface CreateTimelogBody {
+  userId?: number | null;
+  date: string;
+  /** @minimum 0.25 */
+  hours: number;
+  note?: string | null;
+}
+
 export type ListChartersParams = {
   status?: string;
   submittedBy?: number;

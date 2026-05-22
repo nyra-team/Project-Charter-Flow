@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable, approvalsTable } from "@workspace/db";
-import { eq, desc, inArray, and } from "drizzle-orm";
+import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable, approvalsTable, timelogsTable } from "@workspace/db";
+import { eq, desc, inArray, and, sql } from "drizzle-orm";
 import {
   CreateProjectBody,
   GetProjectParams,
@@ -272,6 +272,47 @@ router.delete("/tasks/:id", async (req, res): Promise<void> => {
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   await db.delete(tasksTable).where(eq(tasksTable.id, params.data.id));
   res.sendStatus(204);
+});
+
+// Timelogs
+router.get("/tasks/:id/timelogs", async (req, res): Promise<void> => {
+  const taskId = parseInt(req.params.id);
+  if (isNaN(taskId)) { res.status(400).json({ error: "Invalid task id" }); return; }
+  const rows = await db.select().from(timelogsTable).where(eq(timelogsTable.taskId, taskId)).orderBy(desc(timelogsTable.date));
+  const userIds = [...new Set(rows.filter(r => r.userId).map(r => r.userId as number))];
+  const users = userIds.length
+    ? await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(inArray(usersTable.id, userIds))
+    : [];
+  const userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
+  res.json(rows.map(r => ({
+    ...r,
+    hours: Number(r.hours),
+    userName: r.userId ? (userMap[r.userId] ?? null) : null,
+  })));
+});
+
+router.post("/tasks/:id/timelogs", async (req, res): Promise<void> => {
+  const taskId = parseInt(req.params.id);
+  if (isNaN(taskId)) { res.status(400).json({ error: "Invalid task id" }); return; }
+  const { date, hours, note, userId } = req.body as { date?: string; hours?: number; note?: string; userId?: number };
+  if (!date || !hours || hours < 0.25) { res.status(400).json({ error: "date and hours (≥ 0.25) are required" }); return; }
+  const [row] = await db.insert(timelogsTable).values({
+    taskId,
+    userId: userId ?? null,
+    date,
+    hours: String(hours),
+    note: note ?? "",
+  }).returning();
+
+  // Sync actualHours on the task with the running sum of all timelogs
+  const allLogs = await db.select({ hours: timelogsTable.hours }).from(timelogsTable).where(eq(timelogsTable.taskId, taskId));
+  const totalHours = allLogs.reduce((s, l) => s + Number(l.hours), 0);
+  await db.update(tasksTable).set({ actualHours: sql`${totalHours}` }).where(eq(tasksTable.id, taskId));
+
+  const userName = userId
+    ? (await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, userId)).limit(1))[0]?.name ?? null
+    : null;
+  res.status(201).json({ ...row, hours: Number(row.hours), userName });
 });
 
 // Critical path

@@ -1096,6 +1096,41 @@ export const DeleteTaskParams = zod.object({
 });
 
 /**
+ * @summary List time log entries for a task
+ */
+export const ListTimelogsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListTimelogsResponseItem = zod.object({
+  id: zod.number(),
+  taskId: zod.number(),
+  userId: zod.number().nullish(),
+  userName: zod.string().nullish(),
+  date: zod.string(),
+  hours: zod.number(),
+  note: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+export const ListTimelogsResponse = zod.array(ListTimelogsResponseItem);
+
+/**
+ * @summary Log time against a task
+ */
+export const CreateTimelogParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const createTimelogBodyHoursMin = 0.25;
+
+export const CreateTimelogBody = zod.object({
+  userId: zod.number().nullish(),
+  date: zod.string(),
+  hours: zod.number().min(createTimelogBodyHoursMin),
+  note: zod.string().nullish(),
+});
+
+/**
  * @summary Get the critical path for a project
  */
 export const GetCriticalPathParams = zod.object({

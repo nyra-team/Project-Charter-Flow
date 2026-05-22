@@ -43,6 +43,7 @@ import type {
   CreateScoringCriteriaBody,
   CreateSquadMemberBody,
   CreateTaskBody,
+  CreateTimelogBody,
   CreateUserBody,
   CreateVendorBody,
   CreateWorkstreamBody,
@@ -79,6 +80,7 @@ import type {
   SquadMember,
   StageAdvanceResult,
   Task,
+  Timelog,
   UpdateBudgetLineBody,
   UpdateCharterBody,
   UpdateDocumentBody,
@@ -3022,6 +3024,180 @@ export const useDeleteTask = <
   TContext
 > => {
   return useMutation(getDeleteTaskMutationOptions(options));
+};
+
+/**
+ * @summary List time log entries for a task
+ */
+export const getListTimelogsUrl = (id: number) => {
+  return `/api/tasks/${id}/timelogs`;
+};
+
+export const listTimelogs = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Timelog[]> => {
+  return customFetch<Timelog[]>(getListTimelogsUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListTimelogsQueryKey = (id: number) => {
+  return [`/api/tasks/${id}/timelogs`] as const;
+};
+
+export const getListTimelogsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listTimelogs>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listTimelogs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListTimelogsQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listTimelogs>>> = ({
+    signal,
+  }) => listTimelogs(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listTimelogs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListTimelogsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listTimelogs>>
+>;
+export type ListTimelogsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List time log entries for a task
+ */
+
+export function useListTimelogs<
+  TData = Awaited<ReturnType<typeof listTimelogs>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listTimelogs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListTimelogsQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Log time against a task
+ */
+export const getCreateTimelogUrl = (id: number) => {
+  return `/api/tasks/${id}/timelogs`;
+};
+
+export const createTimelog = async (
+  id: number,
+  createTimelogBody: CreateTimelogBody,
+  options?: RequestInit,
+): Promise<Timelog> => {
+  return customFetch<Timelog>(getCreateTimelogUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createTimelogBody),
+  });
+};
+
+export const getCreateTimelogMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createTimelog>>,
+    TError,
+    { id: number; data: BodyType<CreateTimelogBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createTimelog>>,
+  TError,
+  { id: number; data: BodyType<CreateTimelogBody> },
+  TContext
+> => {
+  const mutationKey = ["createTimelog"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createTimelog>>,
+    { id: number; data: BodyType<CreateTimelogBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createTimelog(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateTimelogMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createTimelog>>
+>;
+export type CreateTimelogMutationBody = BodyType<CreateTimelogBody>;
+export type CreateTimelogMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Log time against a task
+ */
+export const useCreateTimelog = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createTimelog>>,
+    TError,
+    { id: number; data: BodyType<CreateTimelogBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createTimelog>>,
+  TError,
+  { id: number; data: BodyType<CreateTimelogBody> },
+  TContext
+> => {
+  return useMutation(getCreateTimelogMutationOptions(options));
 };
 
 /**

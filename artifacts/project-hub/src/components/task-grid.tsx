@@ -3,10 +3,11 @@ import {
 } from "react";
 import { useUpdateTask, useCreateTask, useListIssues } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronRight, ChevronDown, Plus, AlertTriangle, ArrowUpDown, Layers } from "lucide-react";
+import { ChevronRight, ChevronDown, Plus, AlertTriangle, ArrowUpDown, Layers, Clock } from "lucide-react";
 import { RagDot, StatusSelect, PrioritySelect } from "./task-status-chip";
 import { fmtVariance, DEPARTMENTS } from "../lib/task-constants";
 import { IssueRaiseModal } from "./issue-raise-modal";
+import { LogTimeModal } from "./log-time-modal";
 
 export interface GridTask {
   id: number;
@@ -31,6 +32,7 @@ export interface GridTask {
   predecessorIds?: number[] | string | null;
   estimatedHours?: number | null;
   plannedEffortHours?: number | null;
+  actualHours?: number | null;
   isCritical?: boolean;
 }
 
@@ -255,6 +257,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [issueModal, setIssueModal] = useState<{ taskId: number; taskName: string } | null>(null);
+  const [timelogModal, setTimelogModal] = useState<{ taskId: number; taskName: string; plannedEffortHours?: number | null } | null>(null);
   const [addingSubtask, setAddingSubtask] = useState<number | null>(null);
   const [newSubtaskName, setNewSubtaskName] = useState("");
 
@@ -567,6 +570,22 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
           />
         </td>
 
+        {/* Actual Effort (logged hours) */}
+        <td className="px-1 text-center" style={{ minWidth: 70 }}>
+          <button
+            onClick={() => setTimelogModal({ taskId: task.id, taskName: task.name, plannedEffortHours: d.plannedEffortHours ?? d.estimatedHours })}
+            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full w-full justify-center"
+            style={{
+              background: d.actualHours && d.actualHours > 0 ? "#EEF2FF" : "#F1F5F9",
+              color: d.actualHours && d.actualHours > 0 ? "#4338CA" : "#94A3B8",
+            }}
+            title="Log time / view effort"
+          >
+            <Clock size={9} />
+            {d.actualHours != null && d.actualHours > 0 ? `${d.actualHours}h` : "+"}
+          </button>
+        </td>
+
         {/* Issues */}
         <td className="px-1 text-center" style={{ width: 60 }}>
           <button
@@ -634,22 +653,23 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
               <th style={{ minWidth: 125 }} className={thCls}>CFT Team (≤2) <SortBtn col="cftDept" /></th>
               <th style={{ minWidth: 105 }} className={thCls}>CFT Owner</th>
               <th style={{ minWidth: 65 }} className={thCls}>Effort <SortBtn col="plannedEffortHours" /></th>
+              <th style={{ minWidth: 70 }} className={thCls}>Actual hrs</th>
               <th style={{ width: 60 }} className={thCls}>Issues</th>
               <th style={{ width: 32 }} className={thCls}></th>
             </tr>
           </thead>
           <tbody>
             {/* Top virtual spacer */}
-            {topPad > 0 && <tr aria-hidden style={{ height: topPad }}><td colSpan={19} /></tr>}
+            {topPad > 0 && <tr aria-hidden style={{ height: topPad }}><td colSpan={20} /></tr>}
 
             {flatRows.length === 0 && (
-              <tr><td colSpan={19} className="text-center py-16 text-gray-400 text-sm">No tasks found.</td></tr>
+              <tr><td colSpan={20} className="text-center py-16 text-gray-400 text-sm">No tasks found.</td></tr>
             )}
 
             {visibleRows.map((row, i) => renderFlatRow(row, startIdx + i))}
 
             {/* Bottom virtual spacer */}
-            {bottomPad > 0 && <tr aria-hidden style={{ height: bottomPad }}><td colSpan={19} /></tr>}
+            {bottomPad > 0 && <tr aria-hidden style={{ height: bottomPad }}><td colSpan={20} /></tr>}
           </tbody>
         </table>
       </div>
@@ -661,6 +681,16 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
           projectId={projectId}
           taskId={issueModal.taskId}
           taskName={issueModal.taskName}
+        />
+      )}
+
+      {timelogModal && (
+        <LogTimeModal
+          open={true}
+          onClose={() => setTimelogModal(null)}
+          taskId={timelogModal.taskId}
+          taskName={timelogModal.taskName}
+          plannedEffortHours={timelogModal.plannedEffortHours}
         />
       )}
     </>

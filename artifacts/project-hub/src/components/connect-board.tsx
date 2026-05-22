@@ -13,7 +13,8 @@ import {
 import { useUpdateTask, useUpdateMilestone } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { TASK_STATUSES, getStatusMeta, getPriorityMeta, getRagColor } from "../lib/task-constants";
-import { Calendar, Layers } from "lucide-react";
+import { Calendar, Clock, Layers } from "lucide-react";
+import { LogTimeModal } from "./log-time-modal";
 
 export interface BoardTask {
   id: number;
@@ -60,11 +61,13 @@ function TaskCard({
   isDragging,
   isMilestone,
   onClick,
+  onLogTime,
 }: {
   task: { id: number; name: string; status: string; priority: string; rag?: string | null; assigneeName?: string | null; endDate?: string | null; dueDate?: string | null; isCritical?: boolean; subtaskCount?: number; isSubtask?: boolean };
   isDragging?: boolean;
   isMilestone?: boolean;
   onClick?: () => void;
+  onLogTime?: (taskId: number, taskName: string) => void;
 }) {
   const priMeta = getPriorityMeta(task.priority);
   const ragColor = getRagColor(task.rag ?? "green");
@@ -157,12 +160,24 @@ function TaskCard({
         ) : (
           <span className="text-gray-300 text-xs">—</span>
         )}
-        {dueDate && (
-          <span className="flex items-center gap-0.5 flex-shrink-0">
-            <Calendar size={9} />
-            {new Date(dueDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
-          </span>
-        )}
+        <div className="flex items-center gap-1.5">
+          {dueDate && (
+            <span className="flex items-center gap-0.5 flex-shrink-0">
+              <Calendar size={9} />
+              {new Date(dueDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+            </span>
+          )}
+          {!isMilestone && onLogTime && (
+            <button
+              onClick={e => { e.stopPropagation(); onLogTime(task.id, task.name); }}
+              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs transition-colors hover:bg-indigo-100"
+              style={{ color: "#6366F1", fontSize: 9 }}
+              title="Log time"
+            >
+              <Clock size={9} /> Log
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -223,11 +238,13 @@ function DraggableCard({
   task,
   isMilestone,
   onTaskClick,
+  onLogTime,
 }: {
   dragId: string;
   task: Parameters<typeof TaskCard>[0]["task"];
   isMilestone?: boolean;
   onTaskClick?: (id: number) => void;
+  onLogTime?: (taskId: number, taskName: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: dragId });
 
@@ -242,6 +259,7 @@ function DraggableCard({
         task={task}
         isMilestone={isMilestone}
         onClick={!isMilestone ? () => onTaskClick?.(task.id) : undefined}
+        onLogTime={onLogTime}
       />
     </div>
   );
@@ -252,6 +270,7 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
   const updateTask = useUpdateTask();
   const updateMilestone = useUpdateMilestone();
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null);
+  const [timelogModal, setTimelogModal] = useState<{ taskId: number; taskName: string } | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -341,6 +360,7 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
                   dragId={encodeId("task", task.id)}
                   task={{ ...task, isSubtask: !!task.parentTaskId }}
                   onTaskClick={onTaskClick}
+                  onLogTime={(id, name) => setTimelogModal({ taskId: id, taskName: name })}
                 />
               ))}
               {msItems.map(ms => (
@@ -369,6 +389,15 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
           }
         })()}
       </DragOverlay>
+
+      {timelogModal && (
+        <LogTimeModal
+          open={true}
+          onClose={() => setTimelogModal(null)}
+          taskId={timelogModal.taskId}
+          taskName={timelogModal.taskName}
+        />
+      )}
     </DndContext>
   );
 }

@@ -773,6 +773,50 @@ paths:
         "204":
           description: Deleted
 
+  /tasks/{id}/timelogs:
+    get:
+      operationId: listTimelogs
+      tags: [tasks]
+      summary: List time log entries for a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of timelogs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Timelog"
+    post:
+      operationId: createTimelog
+      tags: [tasks]
+      summary: Log time against a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTimelogBody"
+      responses:
+        "201":
+          description: Created timelog entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Timelog"
+
   /projects/{id}/critical-path:
     get:
       operationId: getCriticalPath
@@ -4130,3 +4174,41 @@ components:
         objectPath:
           type: string
           description: Normalized object path (e.g. /objects/uploads/uuid). Store this in the database.
+    Timelog:
+      type: object
+      required: [id, taskId, date, hours, createdAt]
+      properties:
+        id:
+          type: integer
+        taskId:
+          type: integer
+        userId:
+          type: integer
+          nullable: true
+        userName:
+          type: string
+          nullable: true
+        date:
+          type: string
+        hours:
+          type: number
+        note:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+    CreateTimelogBody:
+      type: object
+      required: [date, hours]
+      properties:
+        userId:
+          type: integer
+          nullable: true
+        date:
+          type: string
+        hours:
+          type: number
+          minimum: 0.25
+        note:
+          type: string
+          nullable: true
