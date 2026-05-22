@@ -68,18 +68,25 @@ function NavSection({ label, items, location }: { label: string; items: NavItem[
           return (
             <Link key={item.href} href={item.href}>
               <div
-                className={`group relative flex items-center gap-3 px-3 py-2 mx-1.5 rounded-md cursor-pointer transition-all text-[13px] font-medium ${
+                data-active={isActive}
+                className={`nav-pill group relative flex items-center gap-3 px-3 py-2 mx-1.5 rounded-md cursor-pointer text-[13px] font-medium ${
                   isActive
                     ? "bg-sidebar-accent text-sidebar-foreground"
                     : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
                 }`}
               >
+                <Icon
+                  size={16}
+                  className={`transition-all duration-300 ${
+                    isActive
+                      ? "text-sidebar-primary scale-110"
+                      : "group-hover:text-sidebar-foreground group-hover:translate-x-0.5"
+                  }`}
+                />
+                <span className="truncate transition-transform duration-300 group-hover:translate-x-0.5">{item.label}</span>
                 {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[2px] rounded-r bg-sidebar-primary" />
+                  <span className="ml-auto w-1.5 h-1.5 rounded-full bg-sidebar-primary shadow-[0_0_8px_hsl(var(--sidebar-primary))]" />
                 )}
-                <Icon size={16} className={isActive ? "text-sidebar-primary" : ""} />
-                <span className="truncate">{item.label}</span>
-                {isActive && <span className="ml-auto w-1 h-1 rounded-full bg-sidebar-primary" />}
               </div>
             </Link>
           );
@@ -217,34 +224,36 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         {/* Header */}
-        <header className="h-16 flex-shrink-0 flex items-center justify-between px-6 z-10 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70 border-b border-border">
-          <div className="flex items-center gap-3 min-w-0">
-            <h1 className="text-[20px] font-bold text-foreground tracking-tight truncate">{pageTitle}</h1>
+        <header className="relative h-16 flex-shrink-0 flex items-center justify-between px-6 z-10 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70 border-b border-border">
+          <div key={pageTitle} className="flex items-center gap-3 min-w-0 ph-rise">
+            <h1 className="text-[20px] font-bold tracking-tight truncate text-gradient-primary">{pageTitle}</h1>
             <span className="hidden md:inline-flex items-center gap-1.5 text-[10px] font-mono tracking-wider uppercase text-muted-foreground px-2 py-0.5 rounded border border-border/60">
               <span className="w-1.5 h-1.5 rounded-full bg-success pulse-ring" />
               Live
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <button className="hidden sm:flex items-center gap-2 px-3 h-9 rounded-md text-sm font-medium bg-muted text-muted-foreground border border-border hover:text-foreground transition-colors min-w-[220px]">
-              <Search size={14} />
+            <button className="group hidden sm:flex items-center gap-2 px-3 h-9 rounded-md text-sm font-medium bg-muted/70 text-muted-foreground border border-border hover:text-foreground hover:border-foreground/30 hover:bg-muted transition-all duration-200 min-w-[220px]">
+              <Search size={14} className="transition-transform duration-200 group-hover:scale-110" />
               <span className="text-xs">Search portfolios, projects…</span>
               <kbd className="ml-auto text-[10px] px-1.5 py-0.5 rounded border border-border bg-background font-mono text-muted-foreground">⌘K</kbd>
             </button>
             <ThemeToggle />
             <NotificationBell />
             <Link href="/admin/scoring">
-              <button className="w-9 h-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" title="Scoring Configuration">
+              <button className="w-9 h-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-200" title="Scoring Configuration">
                 <Settings size={16} />
               </button>
             </Link>
           </div>
+          {/* Bottom hairline glow */}
+          <span aria-hidden className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
         </header>
 
         {/* Page Content */}
         <div className="relative flex-1 overflow-y-auto scrollbar-thin bg-background">
           <div className="page-ambient" />
-          <div className="relative max-w-[1600px] mx-auto p-6 lg:p-8">
+          <div key={location} className="relative max-w-[1600px] mx-auto p-6 lg:p-8 ph-rise">
             {children}
           </div>
         </div>
