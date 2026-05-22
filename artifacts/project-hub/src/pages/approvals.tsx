@@ -62,16 +62,14 @@ function DecisionPanel({
       <div className="flex gap-2 mt-3">
         <button
           onClick={() => setAction("reject")}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-          style={{ background: "#FEF2F2", color: "#991B1B", border: "1px solid #FCA5A5" }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/15"
         >
           <XCircle size={13} />
           Reject
         </button>
         <button
           onClick={() => setAction("approve")}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-          style={{ background: "#ECFDF5", color: "#065F46", border: "1px solid #6EE7B7" }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors bg-success/10 text-success border border-success/30 hover:bg-success/15"
         >
           <CheckCircle2 size={13} />
           Approve
@@ -80,37 +78,40 @@ function DecisionPanel({
     );
   }
 
+  const isApprove = action === "approve";
+  const toneClasses = isApprove
+    ? "bg-success/10 border-success/30 text-success"
+    : "bg-destructive/10 border-destructive/30 text-destructive";
+
   return (
-    <div className="mt-3 p-3 rounded-xl" style={{ background: action === "approve" ? "#ECFDF5" : "#FEF2F2" }}>
-      <p className="text-xs font-semibold mb-2" style={{ color: action === "approve" ? "#065F46" : "#991B1B" }}>
-        {action === "approve" ? "Add a comment (optional):" : "Reason for rejection (required):"}
+    <div className={`mt-3 p-3 rounded-xl border ${toneClasses}`}>
+      <p className="text-xs font-semibold mb-2">
+        {isApprove ? "Add a comment (optional):" : "Reason for rejection (required):"}
       </p>
       <textarea
         value={comments}
         onChange={e => setComments(e.target.value)}
-        placeholder={action === "approve" ? "e.g. Looks good, approved." : "Explain why this is being rejected..."}
+        placeholder={isApprove ? "e.g. Looks good, approved." : "Explain why this is being rejected..."}
         rows={2}
-        className="w-full text-sm p-2 rounded-lg outline-none resize-none"
-        style={{
-          background: "white",
-          border: `1px solid ${action === "approve" ? "#6EE7B7" : "#FCA5A5"}`,
-        }}
+        className={`w-full text-sm p-2 rounded-lg outline-none resize-none bg-background border text-foreground placeholder:text-muted-foreground/70 focus:ring-2 ${
+          isApprove ? "border-success/40 focus:ring-success/30" : "border-destructive/40 focus:ring-destructive/30"
+        }`}
       />
       <div className="flex gap-2 mt-2">
         <button
           onClick={() => setAction(null)}
-          className="px-3 py-1.5 rounded-lg text-xs font-medium"
-          style={{ background: "white", color: "#64748B", border: "1px solid #E2E8F0" }}
+          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-background border border-border text-muted-foreground hover:text-foreground transition-colors"
         >
           Cancel
         </button>
         <button
-          onClick={() => handleDecide(action === "approve" ? "approved" : "rejected")}
-          disabled={decideMutation.isPending || (action === "reject" && !comments.trim())}
-          className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white transition-all disabled:opacity-50"
-          style={{ background: action === "approve" ? "#10B981" : "#EF4444" }}
+          onClick={() => handleDecide(isApprove ? "approved" : "rejected")}
+          disabled={decideMutation.isPending || (!isApprove && !comments.trim())}
+          className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-semibold text-white transition-all disabled:opacity-50 ${
+            isApprove ? "bg-success hover:bg-success/90" : "bg-destructive hover:bg-destructive/90"
+          }`}
         >
-          {decideMutation.isPending ? "Saving..." : action === "approve" ? "Confirm Approval" : "Confirm Rejection"}
+          {decideMutation.isPending ? "Saving..." : isApprove ? "Confirm Approval" : "Confirm Rejection"}
         </button>
       </div>
     </div>
@@ -129,28 +130,24 @@ export default function ApprovalsList() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start justify-between gap-4 ph-rise">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Pending Approvals</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Items awaiting your review as <span className="font-semibold capitalize">{role.replace(/_/g, " ")}</span></p>
+          <h2 className="text-xl font-bold text-foreground">Pending Approvals</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Items awaiting your review as <span className="font-semibold capitalize text-foreground">{role.replace(/_/g, " ")}</span>
+          </p>
         </div>
-        <div
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl"
-          style={{ background: "#EEF2FF", border: "1px solid #C7D2FE" }}
-        >
-          <Clock size={13} className="text-indigo-500" />
-          <span className="text-xs font-semibold text-indigo-700">{filteredApprovals.length} pending</span>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20">
+          <Clock size={13} className="text-primary" />
+          <span className="text-xs font-semibold text-primary">{filteredApprovals.length} pending</span>
         </div>
       </div>
 
       {/* Role context info */}
       {roleDesc && (
-        <div
-          className="flex items-start gap-3 p-4 rounded-xl"
-          style={{ background: "#FFFBEB", border: "1px solid #FDE68A" }}
-        >
-          <AlertCircle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-800">{roleDesc}</p>
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-warn/10 border border-warn/30 ph-rise ph-rise-2">
+          <AlertCircle size={16} className="text-warn flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-foreground/90">{roleDesc}</p>
         </div>
       )}
 
@@ -160,39 +157,33 @@ export default function ApprovalsList() {
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-28 rounded-2xl" />)}
         </div>
       ) : filteredApprovals.length > 0 ? (
-        <div className="space-y-3">
+        <div className="space-y-3 stagger-children">
           {filteredApprovals.map(approval => {
             const isOpen = expanded === approval.id;
             return (
               <div
                 key={approval.id}
-                className="rounded-2xl p-4 transition-all"
-                style={{ background: "white", border: "1px solid #E2E8F0", boxShadow: isOpen ? "0 4px 20px rgba(0,0,0,0.06)" : "none" }}
+                className={`glass-surface lift-card rounded-2xl p-4 transition-all ${isOpen ? "ring-1 ring-primary/30 shadow-lg" : ""}`}
               >
                 <div className="flex items-start gap-3">
-                  {/* Icon */}
-                  <div
-                    className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ background: "linear-gradient(135deg, #FFFBEB, #FEF3C7)" }}
-                  >
-                    <FileText size={18} className="text-amber-500" />
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-warn/10 border border-warn/30">
+                    <FileText size={18} className="text-warn" />
                   </div>
 
-                  {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <Link href={`/charters/${approval.charterId}`}>
-                          <h3 className="font-semibold text-gray-900 hover:text-indigo-600 transition-colors">
+                          <h3 className="font-semibold text-foreground hover:text-primary transition-colors">
                             {(approval as unknown as Record<string, unknown>).charterTitle as string || `Charter #${approval.charterId}`}
                           </h3>
                         </Link>
                         <div className="flex items-center gap-3 mt-1">
-                          <span className="text-xs text-gray-400 flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground/80 flex items-center gap-1">
                             <CheckSquare size={11} />
                             {STAGE_LABELS[approval.stage ?? ""] ?? (approval.stage ?? "Review")}
                           </span>
-                          <span className="text-xs text-gray-400 flex items-center gap-1">
+                          <span className="text-xs text-muted-foreground/80 flex items-center gap-1">
                             <Clock size={11} />
                             Awaiting your review
                           </span>
@@ -200,8 +191,7 @@ export default function ApprovalsList() {
                       </div>
                       <button
                         onClick={() => setExpanded(isOpen ? null : approval.id)}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex-shrink-0"
-                        style={{ background: "#F1F5F9", color: "#475569" }}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground flex-shrink-0"
                       >
                         <MessageSquare size={12} />
                         Review
@@ -222,16 +212,13 @@ export default function ApprovalsList() {
           })}
         </div>
       ) : (
-        <div
-          className="rounded-2xl p-12 text-center"
-          style={{ background: "white", border: "1px solid #E2E8F0" }}
-        >
-          <CheckCircle2 size={36} className="text-emerald-300 mx-auto mb-3" />
-          <p className="font-semibold text-gray-600 mb-1">All caught up!</p>
-          <p className="text-sm text-gray-400">
+        <div className="glass-surface rounded-2xl p-12 text-center ph-rise ph-rise-3">
+          <CheckCircle2 size={36} className="text-success/70 mx-auto mb-3" />
+          <p className="font-semibold text-foreground mb-1">All caught up!</p>
+          <p className="text-sm text-muted-foreground">
             No pending approvals for your current role ({role.replace(/_/g, " ")}).
           </p>
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-muted-foreground/70 mt-1">
             Switch roles using the sidebar dropdown to view other approval queues.
           </p>
         </div>

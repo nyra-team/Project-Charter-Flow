@@ -68,10 +68,10 @@ export default function PortfolioView() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-3 ph-rise">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Department Portfolio View</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Filter and drill into projects across departments and portfolios</p>
+          <h2 className="text-xl font-bold text-foreground">Department Portfolio View</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">Filter and drill into projects across departments and portfolios</p>
         </div>
         <button
           onClick={() => exportCSV("portfolio-export.csv", filteredProjects.map(p => ({
@@ -80,15 +80,14 @@ export default function PortfolioView() {
             Department: ((p as unknown as Record<string, unknown>).function as string) ?? "",
             StartDate: p.startDate ?? "", EndDate: p.endDate ?? "",
           })))}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors"
-          style={{ background: "white", border: "1px solid #E2E8F0", color: "#64748B" }}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors glass-surface lift-card text-muted-foreground hover:text-foreground"
         >
           Export CSV
         </button>
       </div>
 
       {/* Filter Bar */}
-      <div className="rounded-2xl p-4 space-y-3" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+      <div className="glass-surface rounded-2xl p-4 space-y-3 ph-rise ph-rise-2">
         <FilterBar
           filters={[
             { key: "portfolio", label: "Portfolio", options: portfolioOptions },
@@ -100,31 +99,29 @@ export default function PortfolioView() {
           onChange={handleFilter}
         />
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Date Range</span>
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date Range</span>
           <div className="flex items-center gap-1.5">
-            <label className="text-xs text-gray-500">From</label>
+            <label className="text-xs text-muted-foreground">From</label>
             <input
               type="date"
               value={dateFrom}
               onChange={e => setDateFrom(e.target.value)}
-              className="text-xs border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              style={{ borderColor: "#E2E8F0" }}
+              className="text-xs rounded-lg px-2 py-1 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40"
             />
           </div>
           <div className="flex items-center gap-1.5">
-            <label className="text-xs text-gray-500">To</label>
+            <label className="text-xs text-muted-foreground">To</label>
             <input
               type="date"
               value={dateTo}
               onChange={e => setDateTo(e.target.value)}
-              className="text-xs border rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              style={{ borderColor: "#E2E8F0" }}
+              className="text-xs rounded-lg px-2 py-1 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40"
             />
           </div>
           {(dateFrom || dateTo) && (
             <button
               onClick={() => { setDateFrom(""); setDateTo(""); }}
-              className="text-xs text-indigo-500 hover:text-indigo-700 font-medium"
+              className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
             >
               Clear dates
             </button>
@@ -164,14 +161,14 @@ export default function PortfolioView() {
                 {ragPieData.map(d => (
                   <div key={d.name} className="flex items-center gap-1.5 text-xs">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ background: d.color }} />
-                    <span className="text-gray-500">{d.name}</span>
-                    <span className="font-bold text-gray-700">({d.value})</span>
+                    <span className="text-muted-foreground">{d.name}</span>
+                    <span className="font-bold text-foreground">({d.value})</span>
                   </div>
                 ))}
               </div>
             </>
           ) : (
-            <div className="text-center py-8 text-gray-400 text-sm">No projects match the current filters</div>
+            <div className="text-center py-8 text-muted-foreground/70 text-sm">No projects match the current filters</div>
           )}
         </DashboardCard>
 
@@ -192,7 +189,7 @@ export default function PortfolioView() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="text-center py-8 text-gray-400 text-sm">No budget data</div>
+              <div className="text-center py-8 text-muted-foreground/70 text-sm">No budget data</div>
             )}
           </DashboardCard>
         </div>
@@ -203,7 +200,7 @@ export default function PortfolioView() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-xs text-gray-400 uppercase tracking-wider border-b" style={{ borderColor: "#F1F5F9" }}>
+              <tr className="text-xs text-muted-foreground/80 uppercase tracking-wider border-b border-border/60">
                 <th className="pb-3 text-left font-semibold">Project</th>
                 <th className="pb-3 text-left font-semibold hidden sm:table-cell">Status</th>
                 <th className="pb-3 text-left font-semibold">RAG</th>
@@ -214,53 +211,58 @@ export default function PortfolioView() {
                 <th className="pb-3 text-right font-semibold">View</th>
               </tr>
             </thead>
-            <tbody className="divide-y" style={{ borderColor: "#F8FAFC" }}>
+            <tbody className="divide-y divide-border/40">
               {isLoading ? (
                 [1,2,3,4,5].map(i => (
                   <tr key={i}><td colSpan={8} className="py-3"><Skeleton className="h-6 w-full" /></td></tr>
                 ))
               ) : filteredProjects.length > 0 ? filteredProjects.map(p => (
-                <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={p.id} className="hover:bg-muted/40 transition-colors">
                   <td className="py-3 pr-4">
-                    <div className="font-medium text-gray-900">{p.name}</div>
+                    <div className="font-medium text-foreground">{p.name}</div>
                     {!!(p as unknown as Record<string, unknown>).function && (
-                      <div className="text-xs text-gray-400">{String((p as unknown as Record<string, unknown>).function)}</div>
+                      <div className="text-xs text-muted-foreground/80">{String((p as unknown as Record<string, unknown>).function)}</div>
                     )}
                   </td>
                   <td className="py-3 pr-4 hidden sm:table-cell">
-                    <span className="text-xs px-2 py-0.5 rounded-full font-medium capitalize" style={{ background: p.status === "active" ? "#ECFDF5" : "#F1F5F9", color: p.status === "active" ? "#16A34A" : "#64748B" }}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
+                      p.status === "active"
+                        ? "bg-success/10 text-success border border-success/20"
+                        : "bg-muted text-muted-foreground border border-border"
+                    }`}>
                       {p.status.replace(/_/g, " ")}
                     </span>
                   </td>
                   <td className="py-3 pr-4"><RAGBadge status={p.ragStatus} size="xs" /></td>
                   <td className="py-3 pr-4 hidden md:table-cell">
-                    <span className="text-xs px-2 py-0.5 rounded font-bold" style={{
-                      background: p.priority === "P1" ? "#FEE2E2" : p.priority === "P2" ? "#FFFBEB" : "#F1F5F9",
-                      color: p.priority === "P1" ? "#DC2626" : p.priority === "P2" ? "#D97706" : "#64748B",
-                    }}>
+                    <span className={`text-xs px-2 py-0.5 rounded font-bold border ${
+                      p.priority === "P1" ? "bg-destructive/10 text-destructive border-destructive/20" :
+                      p.priority === "P2" ? "bg-warn/10 text-warn border-warn/20" :
+                      "bg-muted text-muted-foreground border-border"
+                    }`}>
                       {p.priority ?? "P3"}
                     </span>
                   </td>
                   <td className="py-3 pr-4 hidden lg:table-cell">
-                    <span className="text-xs text-gray-600">{formatCurrency((p.capexBudget ?? 0) + (p.opexBudget ?? 0))}</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">{formatCurrency((p.capexBudget ?? 0) + (p.opexBudget ?? 0))}</span>
                   </td>
                   <td className="py-3 pr-4 hidden xl:table-cell">
                     <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden min-w-[50px]">
-                        <div className="h-full rounded-full" style={{ width: `${p.progress ?? 0}%`, background: "linear-gradient(90deg,#6366F1,#8B5CF6)" }} />
+                      <div className="flex-1 h-1.5 bg-muted/60 rounded-full overflow-hidden min-w-[50px]">
+                        <div className="h-full rounded-full bg-primary" style={{ width: `${p.progress ?? 0}%` }} />
                       </div>
-                      <span className="text-xs font-bold text-gray-600 w-8">{p.progress ?? 0}%</span>
+                      <span className="text-xs font-bold text-foreground w-8 tabular-nums">{p.progress ?? 0}%</span>
                     </div>
                   </td>
                   <td className="py-3 pr-4 hidden lg:table-cell">
-                    <span className="text-xs text-gray-400 flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground/80 flex items-center gap-1">
                       {p.endDate ? <><Calendar size={10} />{format(new Date(p.endDate), "MMM d, yyyy")}</> : "—"}
                     </span>
                   </td>
                   <td className="py-3 text-right">
                     <Link href={`/projects/${p.id}`}>
-                      <button className="p-1.5 rounded-lg hover:bg-indigo-50 transition-colors">
-                        <ArrowUpRight size={14} className="text-indigo-400" />
+                      <button className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors">
+                        <ArrowUpRight size={14} className="text-primary" />
                       </button>
                     </Link>
                   </td>
@@ -268,8 +270,8 @@ export default function PortfolioView() {
               )) : (
                 <tr>
                   <td colSpan={8} className="py-12 text-center">
-                    <BarChart2 size={28} className="text-gray-200 mx-auto mb-2" />
-                    <p className="text-sm text-gray-400">No projects match the current filters</p>
+                    <BarChart2 size={28} className="text-muted-foreground/40 mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground/80">No projects match the current filters</p>
                   </td>
                 </tr>
               )}

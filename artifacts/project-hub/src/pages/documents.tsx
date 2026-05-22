@@ -20,28 +20,27 @@ export default function DocumentsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl p-6" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+      <div className="glass-surface lift-card rounded-2xl p-6 ph-rise">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "#EEF2FF" }}>
-            <FileText size={18} className="text-indigo-500" />
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 border border-primary/20">
+            <FileText size={18} className="text-primary" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Document Repository</h1>
-            <p className="text-xs text-gray-400 mt-0.5">All project documents, organised by lifecycle stage. Includes versioning, check-out locking, access controls, and tags.</p>
+            <h1 className="text-xl font-bold text-foreground">Document Repository</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">All project documents, organised by lifecycle stage. Includes versioning, check-out locking, access controls, and tags.</p>
           </div>
         </div>
       </div>
 
       {sorted.length === 0 ? (
-        <div className="rounded-2xl p-10 text-center text-sm text-gray-400" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+        <div className="glass-surface rounded-2xl p-10 text-center text-sm text-muted-foreground ph-rise ph-rise-2">
           No projects yet.
         </div>
       ) : (
         <div className="grid grid-cols-12 gap-4">
-          {/* Project sidebar */}
-          <div className="col-span-12 md:col-span-3">
-            <div className="rounded-2xl p-3" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-wide px-2 py-1.5">Projects</p>
+          <div className="col-span-12 md:col-span-3 ph-rise ph-rise-2">
+            <div className="glass-surface rounded-2xl p-3">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide px-2 py-1.5">Projects</p>
               <div className="space-y-1">
                 {sorted.map(p => {
                   const isSel = selected?.id === p.id;
@@ -49,11 +48,11 @@ export default function DocumentsPage() {
                     <button
                       key={p.id}
                       onClick={() => setSelectedId(p.id)}
-                      className="w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left transition-colors"
-                      style={{
-                        background: isSel ? "#EEF2FF" : "transparent",
-                        color: isSel ? "#4338CA" : "#475569",
-                      }}
+                      className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left transition-colors ${
+                        isSel
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                      }`}
                     >
                       <Folder size={13} className="flex-shrink-0" />
                       <span className="text-sm font-medium truncate flex-1">{p.name}</span>
@@ -65,16 +64,15 @@ export default function DocumentsPage() {
             </div>
           </div>
 
-          {/* Documents for selected project */}
-          <div className="col-span-12 md:col-span-9">
+          <div className="col-span-12 md:col-span-9 ph-rise ph-rise-3">
             {selected && (
               <>
                 <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold text-gray-700">
-                    Documents in <span className="text-indigo-600">{selected.name}</span>
+                  <h2 className="text-sm font-semibold text-foreground">
+                    Documents in <span className="text-primary">{selected.name}</span>
                   </h2>
                   <Link href={`/projects/${selected.id}`}>
-                    <button className="text-xs font-semibold text-indigo-600 hover:text-indigo-800">
+                    <button className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors">
                       Open project →
                     </button>
                   </Link>

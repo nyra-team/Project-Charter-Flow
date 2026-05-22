@@ -40,16 +40,13 @@ export default function ChartersList() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between ph-rise">
         <div>
-          <h2 className="text-xl font-bold text-gray-900">Project Charters</h2>
-          <p className="text-sm text-gray-500 mt-0.5">Manage and track all project charter requests</p>
+          <h2 className="text-xl font-bold text-foreground">Project Charters</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">Manage and track all project charter requests</p>
         </div>
         <Link href="/charters/new">
-          <button
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 active:scale-95"
-            style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}
-          >
+          <button className="btn-glossy-cta flex items-center gap-2 px-4 py-2 text-sm font-semibold">
             <Plus size={14} />
             New Charter
           </button>
@@ -57,47 +54,40 @@ export default function ChartersList() {
       </div>
 
       {/* Filter + Search bar */}
-      <div
-        className="rounded-2xl p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center"
-        style={{ background: "white", border: "1px solid #E2E8F0" }}
-      >
-        {/* Status filter tabs */}
+      <div className="glass-surface lift-card rounded-2xl p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center ph-rise ph-rise-2">
         <div className="flex gap-1 flex-wrap">
-          {filterTabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setFilterStatus(tab.id)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-              style={{
-                background: filterStatus === tab.id ? "linear-gradient(135deg, #6366F1, #8B5CF6)" : "#F1F5F9",
-                color: filterStatus === tab.id ? "white" : "#64748B",
-              }}
-            >
-              {tab.label}
-              {tab.count > 0 && (
-                <span
-                  className="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
-                  style={{
-                    background: filterStatus === tab.id ? "rgba(255,255,255,0.25)" : "#E2E8F0",
-                    color: filterStatus === tab.id ? "white" : "#475569",
-                  }}
-                >
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          ))}
+          {filterTabs.map(tab => {
+            const isActive = filterStatus === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setFilterStatus(tab.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  isActive
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                {tab.label}
+                {tab.count > 0 && (
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                    isActive ? "bg-primary-foreground/20 text-primary-foreground" : "bg-background/70 text-foreground/70"
+                  }`}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Search */}
         <div className="relative sm:ml-auto w-full sm:w-64">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/70" />
           <input
             placeholder="Search charters..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm rounded-xl outline-none focus:ring-2 focus:ring-indigo-300 transition-all"
-            style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}
+            className="w-full pl-9 pr-3 py-2 text-sm rounded-xl outline-none bg-muted/40 border border-border focus:border-primary/50 focus:ring-2 focus:ring-primary/20 text-foreground placeholder:text-muted-foreground/70 transition-all"
           />
         </div>
       </div>
@@ -108,28 +98,20 @@ export default function ChartersList() {
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-2xl" />)}
         </div>
       ) : filteredCharters && filteredCharters.length > 0 ? (
-        <div className="space-y-3">
+        <div className="space-y-3 stagger-children">
           {filteredCharters.map(charter => (
             <Link key={charter.id} href={`/charters/${charter.id}`}>
-              <div
-                className="rounded-2xl p-4 flex items-center gap-4 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5"
-                style={{ background: "white", border: "1px solid #E2E8F0" }}
-              >
-                {/* Icon */}
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: "linear-gradient(135deg, #EEF2FF, #F5F3FF)" }}
-                >
-                  <FileText size={18} className="text-indigo-500" />
+              <div className="glass-surface lift-card rounded-2xl p-4 flex items-center gap-4 cursor-pointer">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-primary/10 border border-primary/20">
+                  <FileText size={18} className="text-primary" />
                 </div>
 
-                {/* Main info */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <h3 className="font-semibold text-gray-900 truncate">{charter.title}</h3>
+                    <h3 className="font-semibold text-foreground truncate">{charter.title}</h3>
                     <StatusBadge status={charter.status} />
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-gray-400">
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground/80">
                     <span className="flex items-center gap-1">
                       <DollarSign size={11} />
                       {formatCurrency(charter.tentativeBudget)}
@@ -144,29 +126,23 @@ export default function ChartersList() {
                   </div>
                 </div>
 
-                <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
+                <ChevronRight size={16} className="text-muted-foreground/50 flex-shrink-0" />
               </div>
             </Link>
           ))}
         </div>
       ) : (
-        <div
-          className="rounded-2xl p-12 text-center"
-          style={{ background: "white", border: "1px solid #E2E8F0" }}
-        >
-          <FileText size={32} className="text-gray-200 mx-auto mb-3" />
-          <p className="font-medium text-gray-500 mb-1">
+        <div className="glass-surface rounded-2xl p-12 text-center ph-rise ph-rise-3">
+          <FileText size={32} className="text-muted-foreground/40 mx-auto mb-3" />
+          <p className="font-medium text-muted-foreground mb-1">
             {search ? `No charters found for "${search}"` : "No charters yet"}
           </p>
-          <p className="text-sm text-gray-400 mb-4">
+          <p className="text-sm text-muted-foreground/70 mb-4">
             {search ? "Try a different search term" : "Create your first project charter to get started."}
           </p>
           {!search && (
             <Link href="/charters/new">
-              <button
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-                style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}
-              >
+              <button className="btn-glossy-cta inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold">
                 <Plus size={14} />
                 New Charter
               </button>
