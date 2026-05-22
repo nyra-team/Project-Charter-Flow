@@ -326,14 +326,14 @@
     isolation: isolate;
     border-radius: 9999px;
     color: hsl(var(--card-foreground));
-    /* Tinted with a warm espresso brown to match the perceived sidebar
-       warmth — alpha kept high enough that the brown actually reads. */
+    /* Soft warm cream wash — a gentle champagne tint so the button feels
+       in the same warm family as the sidebar without going muddy. */
     background:
       linear-gradient(180deg,
-        hsl(26 60% 20% / 0.62) 0%,
-        hsl(26 60% 18% / 0.50) 50%,
-        hsl(26 60% 14% / 0.42) 100%);
-    border: 1px solid hsl(26 55% 30% / 0.55);
+        hsl(32 55% 88% / 0.38) 0%,
+        hsl(28 45% 80% / 0.22) 50%,
+        hsl(26 40% 72% / 0.14) 100%);
+    border: 1px solid hsl(28 40% 55% / 0.35);
     backdrop-filter: blur(8px) saturate(140%);
     -webkit-backdrop-filter: blur(8px) saturate(140%);
     box-shadow:
@@ -392,9 +392,9 @@
   .btn-glossy-cta:hover {
     background:
       linear-gradient(180deg,
-        hsl(26 65% 24% / 0.75) 0%,
-        hsl(26 65% 20% / 0.62) 50%,
-        hsl(26 65% 16% / 0.52) 100%);
+        hsl(32 60% 90% / 0.55) 0%,
+        hsl(28 50% 82% / 0.34) 50%,
+        hsl(26 45% 74% / 0.22) 100%);
   }
   .dark .btn-glossy-cta:hover {
     background:
