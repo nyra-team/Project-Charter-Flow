@@ -134,9 +134,9 @@
   --amber-accent: 35 92% 50%;
   --amber-accent-foreground: 224 28% 10%;
 
-  /* Signature CTA — light pink with deep plum text for contrast. */
-  --cta: 340 90% 80%;
-  --cta-foreground: 340 55% 18%;
+  /* Signature CTA — light blue with deep navy text for contrast. */
+  --cta: 208 92% 80%;
+  --cta-foreground: 218 60% 20%;
 
   --chart-1: 190 82% 40%;
   --chart-2: 158 65% 42%;
