@@ -183,7 +183,7 @@
   --mesh-amber: 35 96% 70%;
   --mesh-purple: 262 80% 72%;
   --mesh-teal: 188 88% 62%;
-  --mesh-pink: 340 95% 82%;
+  --mesh-pink: 155 60% 78%;
   --glass-bg: rgba(255, 255, 255, 0.75);
   --glass-border: rgba(15, 23, 42, 0.08);
 }
@@ -272,7 +272,7 @@
   --mesh-amber: 35 90% 18%;
   --mesh-purple: 262 60% 22%;
   --mesh-teal: 188 80% 18%;
-  --mesh-pink: 340 70% 22%;
+  --mesh-pink: 155 55% 22%;
   --glass-bg: rgba(25, 27, 35, 0.45);
   --glass-border: rgba(255, 255, 255, 0.06);
 }
