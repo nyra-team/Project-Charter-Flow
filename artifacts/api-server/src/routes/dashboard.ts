@@ -1,11 +1,26 @@
 import { Router, type IRouter } from "express";
-import { db, chartersTable, approvalsTable, projectsTable, tasksTable, usersTable } from "@workspace/db";
-import { eq, ne } from "drizzle-orm";
+import { db, chartersTable, approvalsTable, projectsTable, tasksTable, usersTable, risksTable, scoringCriteriaTable, projectScoresTable, resourceAllocationsTable } from "@workspace/db";
+import { eq, ne, desc } from "drizzle-orm";
 import { getRecentActivityWithUsers } from "./activity";
 
 const router: IRouter = Router();
 
-router.get("/dashboard/summary", async (_req, res): Promise<void> => {
+// Map each role to which charter stages count as "their" pending action
+const ROLE_STAGE_MAP: Record<string, string[]> = {
+  hod: ["parallel_review"],
+  executive_director: ["parallel_review"],
+  cfo: ["parallel_review"],
+  scm: ["scm_review"],
+  chairman: ["chairman_review"],
+  finance: ["finance_review"],
+  pmo: ["pmo_review"],
+  // pm and team_member have no charter approval responsibilities — pending count is 0
+  pm: [],
+  team_member: [],
+  initiator: [],
+};
+
+router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const charters = await db.select().from(chartersTable);
   const projects = await db.select().from(projectsTable);
   const allTasks = await db.select().from(tasksTable);
@@ -80,14 +95,44 @@ router.get("/dashboard/summary", async (_req, res): Promise<void> => {
     }
   }
 
+  // Role-scoped pending count: each role only sees stages relevant to them
+  const sessionRole = req.session?.simulatedRole ?? "initiator";
+  const relevantStages = ROLE_STAGE_MAP[sessionRole];
+  const rolePendingCount = relevantStages
+    ? charters.filter(c => relevantStages.includes(c.status)).length
+    : pendingApprovals.length;
+
+  // Intake cycle time: average days from submission to approval for completed charters
+  const approvedCharter2 = charters.filter(c => c.status === "approved" || c.status === "active");
+  const avgCycleTimeDays = approvedCharter2.length > 0
+    ? Math.round(approvedCharter2.reduce((sum, c) => {
+        const created = new Date(c.createdAt).getTime();
+        const updated = new Date(c.updatedAt).getTime();
+        return sum + (updated - created) / 86400000;
+      }, 0) / approvedCharter2.length)
+    : null;
+
+  // Stage-gate funnel: count of charters per stage
+  const stageGateFunnel = [
+    "submitted", "parallel_review", "scm_review", "chairman_review",
+    "finance_review", "pmo_review", "approved",
+  ].map(stage => ({
+    stage,
+    count: charters.filter(c => c.status === stage).length,
+  }));
+
   res.json({
     totalCharters: charters.length,
-    pendingApprovals: pendingApprovals.length,
+    pendingApprovals: rolePendingCount,
+    totalPendingApprovals: pendingApprovals.length,
     activeProjects: projects.filter(p => p.status === "active").length,
     completedProjects: projects.filter(p => p.status === "completed").length,
     chartersByStatus: Object.entries(chartersByStatus).map(([status, count]) => ({ status, count })),
     totalBudgetApproved,
     projectHealth,
+    roleContext: sessionRole,
+    avgCycleTimeDays,
+    stageGateFunnel,
   });
 });
 
@@ -154,6 +199,69 @@ router.get("/dashboard/gamification", async (_req, res): Promise<void> => {
     .slice(0, 10);
 
   res.json({ leaderboard });
+});
+
+// Portfolio health — 12-week RAG trend derived from current project rag_status
+router.get("/dashboard/portfolio-health", async (_req, res): Promise<void> => {
+  const projects = await db.select({
+    id: projectsTable.id,
+    ragStatus: projectsTable.ragStatus,
+    status: projectsTable.status,
+    createdAt: projectsTable.createdAt,
+  }).from(projectsTable);
+
+  const now = new Date();
+  const weeks = Array.from({ length: 12 }, (_, i) => {
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - (11 - i) * 7);
+    return { week: `W${i + 1}`, date: weekStart.toISOString().split("T")[0] };
+  });
+
+  // For each week, count projects that existed and their rag status
+  // Simplification: use current rag_status for all weeks a project was active
+  const trend = weeks.map(w => {
+    const weekDate = new Date(w.date);
+    const activeProjects = projects.filter(p =>
+      p.status === "active" && new Date(p.createdAt) <= weekDate
+    );
+    const green = activeProjects.filter(p => (p.ragStatus ?? "green") === "green").length;
+    const amber = activeProjects.filter(p => p.ragStatus === "amber").length;
+    const red = activeProjects.filter(p => p.ragStatus === "red").length;
+    return { week: w.week, date: w.date, green, amber, red, total: activeProjects.length };
+  });
+
+  res.json({ trend });
+});
+
+// Capacity vs demand heatmap — resource_allocations aggregated by function/month
+router.get("/dashboard/capacity-demand", async (_req, res): Promise<void> => {
+  const allocations = await db.select().from(resourceAllocationsTable);
+  const users = await db.select().from(usersTable);
+  const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+
+  const now = new Date();
+  const months = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, label: d.toLocaleString("default", { month: "short", year: "2-digit" }) };
+  });
+
+  const functions = [...new Set(users.map(u => u.department || "General"))].sort();
+
+  const cells = functions.flatMap(fn => {
+    const fnUsers = users.filter(u => (u.department || "General") === fn);
+    return months.map(m => {
+      const fnAllocs = allocations.filter(a => {
+        const u = userMap[a.userId ?? 0];
+        return u && (u.department || "General") === fn && a.startDate && a.endDate &&
+          a.startDate.substring(0, 7) <= m.key && a.endDate.substring(0, 7) >= m.key;
+      });
+      const demand = fnAllocs.reduce((sum, a) => sum + Number(a.allocationPct ?? 0), 0);
+      const capacity = fnUsers.length * 100;
+      return { function: fn, month: m.label, monthKey: m.key, demand, capacity, utilization: capacity > 0 ? Math.round(demand / capacity * 100) : 0 };
+    });
+  });
+
+  res.json({ functions, months: months.map(m => m.label), cells });
 });
 
 export default router;

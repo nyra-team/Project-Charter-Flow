@@ -3,14 +3,14 @@ import { useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useCreateCharter, useListUsers } from "@workspace/api-client-react";
+import { useCreateCharter, useListUsers, useListScoringCriteria } from "@workspace/api-client-react";
 import { useUserStore } from "../lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ChevronLeft, ChevronRight, Check, FileText, Target, TrendingUp, Users, Hash } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Check, FileText, Target, TrendingUp, Users, Hash, Star } from "lucide-react";
 import { Link } from "wouter";
 import { STRATEGIC_THEMES, FUNCTIONS_LIST } from "../lib/lifecycle-config";
 
@@ -19,6 +19,7 @@ const STEPS = [
   { id: "scope", label: "Scope & Deliverables", icon: Target },
   { id: "benefits", label: "Business Benefits", icon: TrendingUp },
   { id: "team", label: "Team & Budget", icon: Users },
+  { id: "scoring", label: "Strategic Scoring", icon: Star },
 ];
 
 const charterSchema = z.object({
@@ -131,6 +132,8 @@ export default function NewCharter() {
   });
 
   const createCharter = useCreateCharter();
+  const { data: scoringCriteria = [] } = useListScoringCriteria();
+  const [previewScores, setPreviewScores] = useState<Record<number, number>>({});
 
   function onSubmit(values: FormValues) {
     // Persist all fields into available columns:
@@ -189,6 +192,7 @@ export default function NewCharter() {
       ["scope", "deliverables"],
       [],
       ["tentativeBudget"],
+      [],
     ];
     const valid = await form.trigger(stepFields[step] as (keyof FormValues)[]);
     if (valid) setStep(s => Math.min(s + 1, STEPS.length - 1));
@@ -605,6 +609,118 @@ export default function NewCharter() {
               </SectionCard>
             </div>
           )}
+
+          {/* Step 4: Strategic Scoring Preview */}
+          {step === 4 && (() => {
+            const criteria = scoringCriteria as Array<{ id: number; name: string; weightPct: number; description?: string | null }>;
+            const weightedTotal = criteria.reduce((sum, c) => {
+              const s = previewScores[c.id] ?? 0;
+              return sum + (s * Number(c.weightPct)) / 100;
+            }, 0);
+            const maxPossible = criteria.reduce((sum, c) => sum + (5 * Number(c.weightPct)) / 100, 0);
+            const pct = maxPossible > 0 ? Math.round((weightedTotal / maxPossible) * 100) : 0;
+            const rank = pct >= 80 ? "High Priority" : pct >= 50 ? "Medium Priority" : pct > 0 ? "Low Priority" : "Not scored";
+            const rankColor = pct >= 80 ? "#10B981" : pct >= 50 ? "#F59E0B" : "#64748B";
+            return (
+              <div className="space-y-4">
+                <div className="rounded-xl p-4" style={{ background: "linear-gradient(135deg, #EEF2FF, #F5F3FF)", border: "1px solid #C7D2FE" }}>
+                  <h3 className="font-semibold text-indigo-900 text-sm">Strategic Scoring Preview</h3>
+                  <p className="text-xs text-indigo-600 mt-1">
+                    Rate this project against PMO criteria to see its preliminary strategic score. This helps prioritise intake before the formal approval process.
+                  </p>
+                </div>
+
+                {criteria.length === 0 ? (
+                  <SectionCard title="No Scoring Criteria Configured" subtitle="An admin will configure scoring criteria in the Admin panel.">
+                    <div className="text-center py-4">
+                      <Star size={28} className="text-gray-300 mx-auto mb-2" />
+                      <p className="text-sm text-gray-400">Scoring criteria are managed by PMO admins. You can submit the charter without scoring.</p>
+                    </div>
+                  </SectionCard>
+                ) : (
+                  <>
+                    {/* Score summary */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="rounded-xl p-4 text-center" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+                        <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-1">Weighted Score</p>
+                        <p className="text-2xl font-bold text-indigo-600">{weightedTotal.toFixed(1)}</p>
+                        <p className="text-xs text-gray-400">of {maxPossible.toFixed(1)} max</p>
+                      </div>
+                      <div className="rounded-xl p-4 text-center" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+                        <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-1">Score %</p>
+                        <p className="text-2xl font-bold text-gray-800">{pct}%</p>
+                        <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: rankColor }} />
+                        </div>
+                      </div>
+                      <div className="rounded-xl p-4 text-center" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+                        <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-1">Rank</p>
+                        <p className="text-base font-bold" style={{ color: rankColor }}>{rank}</p>
+                      </div>
+                    </div>
+
+                    {/* Per-criterion scoring */}
+                    <SectionCard title="Criteria Scoring" subtitle="Rate 1–5 per criterion (optional — can be updated by PMO later)">
+                      <div className="space-y-4">
+                        {criteria.map(c => {
+                          const currentScore = previewScores[c.id] ?? 0;
+                          const contrib = (currentScore * Number(c.weightPct)) / 100;
+                          return (
+                            <div key={c.id} className="rounded-xl p-4" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                              <div className="flex items-start justify-between mb-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-sm font-semibold text-gray-900">{c.name}</p>
+                                    <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: "#EEF2FF", color: "#6366F1" }}>
+                                      {c.weightPct}%
+                                    </span>
+                                  </div>
+                                  {c.description && <p className="text-xs text-gray-400 mt-0.5">{c.description}</p>}
+                                </div>
+                                <div className="text-right ml-4 flex-shrink-0">
+                                  <p className="text-xs text-gray-400">Contribution</p>
+                                  <p className="text-sm font-bold text-gray-700">{contrib.toFixed(2)}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-400 w-12">Score:</span>
+                                <div className="flex gap-1.5">
+                                  {[1,2,3,4,5].map(v => (
+                                    <button
+                                      key={v}
+                                      type="button"
+                                      onClick={() => setPreviewScores(prev => ({ ...prev, [c.id]: v }))}
+                                      className="w-8 h-8 rounded-lg text-sm font-bold transition-all"
+                                      style={{
+                                        background: currentScore === v ? "#6366F1" : "#E2E8F0",
+                                        color: currentScore === v ? "white" : "#64748B",
+                                      }}
+                                    >
+                                      {v}
+                                    </button>
+                                  ))}
+                                  {currentScore > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setPreviewScores(prev => { const n = { ...prev }; delete n[c.id]; return n; })}
+                                      className="w-8 h-8 rounded-lg text-xs font-bold transition-all"
+                                      style={{ background: "#FEE2E2", color: "#DC2626" }}
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </SectionCard>
+                  </>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Navigation */}
           <div className="flex items-center justify-between mt-6">

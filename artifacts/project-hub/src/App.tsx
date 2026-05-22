@@ -11,6 +11,8 @@ import ApprovalsList from "./pages/approvals";
 import ProjectsList from "./pages/projects";
 import ProjectDetail from "./pages/project-detail";
 import NewTask from "./pages/task-new";
+import PortfolioView from "./pages/portfolio";
+import AdminScoring from "./pages/admin-scoring";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -27,6 +29,8 @@ function Router() {
         <Route path="/projects" component={ProjectsList} />
         <Route path="/projects/:id" component={ProjectDetail} />
         <Route path="/projects/:id/tasks/new" component={NewTask} />
+        <Route path="/portfolio" component={PortfolioView} />
+        <Route path="/admin/scoring" component={AdminScoring} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

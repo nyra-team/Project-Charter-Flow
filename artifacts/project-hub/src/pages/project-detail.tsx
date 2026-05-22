@@ -4,6 +4,7 @@ import {
   useGetProject, useListMilestones, useListTasks,
   useGetBurndown, useGetCriticalPath, useListProjectStages, useListUsers,
   useListIssues, useUpdateProject, useListTimelogs,
+  useListScoringCriteria, useListProjectScores, useCreateProjectScore, useUpdateProjectScore,
 } from "@workspace/api-client-react";
 import { formatDate, formatCurrency } from "../lib/format";
 import { StatusBadge } from "../components/status-badge";
@@ -17,7 +18,7 @@ import {
   ChevronLeft, BarChart2, List, Milestone as MilestoneIcon,
   Plus, CheckCircle2, Clock, AlertTriangle, Flag,
   ChevronDown, ChevronRight, Layers, XCircle,
-  LayoutGrid, Kanban, Table2,
+  LayoutGrid, Kanban, Table2, Star,
 } from "lucide-react";
 import { StageProgressBar } from "../components/stage-progress-bar";
 import { StagePanel } from "../components/stage-panel";
@@ -331,7 +332,7 @@ export default function ProjectDetail() {
   const { role } = useUserStore();
   const projectId = parseInt(params?.id || "0");
 
-  const [activeTab, setActiveTab] = useState<"lifecycle" | "grid" | "gantt" | "board" | "analytics">("lifecycle");
+  const [activeTab, setActiveTab] = useState<"lifecycle" | "grid" | "gantt" | "board" | "analytics" | "scoring">("lifecycle");
   const [gridSubTab, setGridSubTab] = useState<"tasks" | "milestones">("tasks");
   const [selectedStageKey, setSelectedStageKey] = useState<string | undefined>(undefined);
   const [nfaDismissed, setNfaDismissed] = useState(false);
@@ -352,6 +353,10 @@ export default function ProjectDetail() {
   const { data: users = [] } = useListUsers();
   const { data: projectIssues = [] } = useListIssues(projectId);
   const { data: selectedTaskTimelogs = [] } = useListTimelogs(selectedBoardTaskId ?? 0);
+  const { data: scoringCriteria = [] } = useListScoringCriteria();
+  const { data: projectScores = [], refetch: refetchScores } = useListProjectScores(projectId);
+  const createScore = useCreateProjectScore();
+  const updateScore = useUpdateProjectScore();
 
   const nfaStatus = useNFAStatus(projectId);
 
@@ -412,6 +417,7 @@ export default function ProjectDetail() {
     { id: "gantt" as const, label: "Gantt", icon: BarChart2 },
     { id: "board" as const, label: "Board", icon: Kanban },
     { id: "analytics" as const, label: "Analytics", icon: LayoutGrid },
+    { id: "scoring" as const, label: "Scoring", icon: Star },
   ];
 
   return (
@@ -1008,6 +1014,104 @@ export default function ProjectDetail() {
           </div>
         </div>
       )}
+
+      {/* ── Scoring Tab ───────────────────────────────────────────────── */}
+      {activeTab === "scoring" && (() => {
+        const isPMORole = ["pmo", "executive_director", "chairman"].includes(role);
+        const criteria = scoringCriteria as Array<{ id: number; name: string; weightPct: number; description?: string | null }>;
+        const scores = projectScores as Array<{ id: number; criterionId: number; score: number; weightedScore: number }>;
+        const scoreMap = Object.fromEntries(scores.map(s => [s.criterionId, s]));
+        const weightedTotal = scores.reduce((sum, s) => sum + Number(s.weightedScore ?? 0), 0);
+
+        async function handleSaveScore(criterionId: number, score: number) {
+          const existing = scoreMap[criterionId];
+          if (existing) {
+            await updateScore.mutateAsync({ id: existing.id, data: { score } });
+          } else {
+            await createScore.mutateAsync({ id: projectId, data: { criterionId, score } });
+          }
+          refetchScores();
+        }
+
+        return (
+          <div className="space-y-4">
+            <div className="rounded-2xl p-5 flex items-center justify-between" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+              <div>
+                <h3 className="font-semibold text-gray-900">Project Scoring</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Rate this project 1–5 against each weighted criterion</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1">Weighted Score</p>
+                <p className="text-3xl font-bold text-indigo-600">{weightedTotal.toFixed(1)}</p>
+              </div>
+            </div>
+
+            {criteria.length === 0 ? (
+              <div className="rounded-2xl p-10 text-center" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+                <Star size={32} className="text-gray-300 mx-auto mb-3" />
+                <p className="text-sm text-gray-500">No scoring criteria configured.</p>
+                <p className="text-xs text-gray-400 mt-1">A PMO admin can add criteria in <strong>Admin → Scoring</strong>.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {criteria.map(c => {
+                  const existing = scoreMap[c.id];
+                  const currentScore = existing?.score ?? 0;
+                  const weightedContrib = existing ? Number(existing.weightedScore) : 0;
+                  return (
+                    <div key={c.id} className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+                      <div className="flex items-start justify-between gap-4 mb-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-gray-900 truncate">{c.name}</p>
+                            <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: "#EEF2FF", color: "#6366F1" }}>
+                              {c.weightPct}%
+                            </span>
+                          </div>
+                          {c.description && <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{c.description}</p>}
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-xs text-gray-400">Contribution</p>
+                          <p className="text-lg font-bold text-gray-700">{weightedContrib.toFixed(2)}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-gray-400 w-8">Score:</span>
+                        <div className="flex gap-2">
+                          {[1,2,3,4,5].map(v => (
+                            <button
+                              key={v}
+                              disabled={!isPMORole}
+                              onClick={() => { void handleSaveScore(c.id, v); }}
+                              className="w-8 h-8 rounded-lg text-sm font-bold transition-all"
+                              style={{
+                                background: currentScore === v ? "#6366F1" : "#F1F5F9",
+                                color: currentScore === v ? "white" : "#64748B",
+                                cursor: isPMORole ? "pointer" : "default",
+                                border: currentScore === v ? "none" : "1px solid #E2E8F0",
+                              }}
+                            >
+                              {v}
+                            </button>
+                          ))}
+                        </div>
+                        {currentScore > 0 && (
+                          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden ml-2">
+                            <div className="h-full rounded-full" style={{ width: `${(currentScore / 5) * 100}%`, background: "linear-gradient(90deg,#6366F1,#8B5CF6)" }} />
+                          </div>
+                        )}
+                        {!isPMORole && (
+                          <span className="text-xs text-gray-400 italic ml-auto">View only — PMO role can score</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

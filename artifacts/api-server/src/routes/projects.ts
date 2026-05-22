@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable, approvalsTable, timelogsTable } from "@workspace/db";
+import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable, approvalsTable, timelogsTable, scoringCriteriaTable, projectScoresTable } from "@workspace/db";
 import { eq, desc, inArray, and, sql } from "drizzle-orm";
 import {
   CreateProjectBody,
@@ -64,6 +64,40 @@ router.post("/projects", async (req, res): Promise<void> => {
   await db.update(chartersTable).set({ projectId: project.id, status: "active" }).where(eq(chartersTable.id, parsed.data.charterId));
   await logActivity("project_created", `Project "${project.name}" created`, project.id, "project");
   res.status(201).json(formatProject(project as unknown as Record<string, unknown>));
+});
+
+// IMPORTANT: This route must appear before /projects/:id to avoid being shadowed by the wildcard
+router.get("/projects/scoring-rank", async (_req, res): Promise<void> => {
+  const projects = await db.select().from(projectsTable);
+  const allScores = await db.select().from(projectScoresTable);
+  const criteria = await db.select().from(scoringCriteriaTable);
+
+  const criterionScoresByProject: Record<number, Array<{ criterionId: number; rawScore: number }>> = {};
+  const weightedTotalByProject: Record<number, number> = {};
+  for (const s of allScores) {
+    if (!criterionScoresByProject[s.projectId]) criterionScoresByProject[s.projectId] = [];
+    criterionScoresByProject[s.projectId].push({ criterionId: s.criterionId, rawScore: Number(s.score) });
+    weightedTotalByProject[s.projectId] = (weightedTotalByProject[s.projectId] ?? 0) + Number(s.weightedScore ?? 0);
+  }
+
+  const ranked = projects
+    .map(p => ({
+      id: p.id,
+      name: p.name,
+      scoringTotal: weightedTotalByProject[p.id] != null ? weightedTotalByProject[p.id] : (p.scoringTotal != null ? Number(p.scoringTotal) : null),
+      criterionScores: criterionScoresByProject[p.id] ?? [],
+      ragStatus: p.ragStatus,
+      strategicTheme: p.strategicTheme,
+      priority: p.priority,
+      status: p.status,
+      function: p.function,
+      projectManagerId: p.projectManagerId ?? null,
+    }))
+    .filter(p => p.scoringTotal != null)
+    .sort((a, b) => (b.scoringTotal ?? 0) - (a.scoringTotal ?? 0))
+    .map((p, idx) => ({ ...p, rank: idx + 1 }));
+
+  res.json({ ranked, criteriaCount: criteria.length });
 });
 
 router.get("/projects/:id", async (req, res): Promise<void> => {
