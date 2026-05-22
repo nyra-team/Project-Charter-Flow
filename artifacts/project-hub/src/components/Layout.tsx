@@ -138,6 +138,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
   });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState<boolean>(() =>
+    typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
+  // Collapsed (icon-only) layout is desktop-only. On mobile the drawer is always full-width.
+  const effectiveCollapsed = isDesktop && collapsed;
 
   useEffect(() => {
     window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
@@ -216,14 +229,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <X size={16} />
         </button>
         {/* Subtle inner glow — clipped to the rail */}
-        <div className={`pointer-events-none absolute inset-0 ambient-mesh-soft opacity-40 ${collapsed ? "rounded-2xl" : ""} overflow-hidden`} />
+        <div className={`pointer-events-none absolute inset-0 ambient-mesh-soft opacity-40 ${effectiveCollapsed ? "rounded-2xl" : ""} overflow-hidden`} />
 
         {/* Logo */}
-        <div className={`relative h-16 flex items-center border-b border-sidebar-border ${collapsed ? "px-0 justify-center" : "gap-3 px-5"}`}>
+        <div className={`relative h-16 flex items-center border-b border-sidebar-border ${effectiveCollapsed ? "px-0 justify-center" : "gap-3 px-5"}`}>
           <div className="w-8 h-8 rounded-md flex items-center justify-center flex-shrink-0 bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
             <Command size={15} strokeWidth={2.4} />
           </div>
-          {!collapsed && (
+          {!effectiveCollapsed && (
             <div className="leading-tight min-w-0">
               <div className="font-semibold text-[15px] tracking-tight text-sidebar-foreground truncate">Project Hub</div>
               <div className="text-[10px] tracking-[0.16em] uppercase text-sidebar-foreground/40">Enterprise PMO</div>
@@ -243,22 +256,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Navigation */}
         <nav className="relative flex-1 py-2 overflow-y-auto scrollbar-thin">
-          <NavSection label="Navigation" items={MAIN_NAV} location={location} collapsed={collapsed} />
-          <NavSection label="Portfolio" items={PORTFOLIO_NAV} location={location} collapsed={collapsed} />
-          {isAdmin && <NavSection label="Admin" items={ADMIN_NAV} location={location} collapsed={collapsed} />}
+          <NavSection label="Navigation" items={MAIN_NAV} location={location} collapsed={effectiveCollapsed} />
+          <NavSection label="Portfolio" items={PORTFOLIO_NAV} location={location} collapsed={effectiveCollapsed} />
+          {isAdmin && <NavSection label="Admin" items={ADMIN_NAV} location={location} collapsed={effectiveCollapsed} />}
         </nav>
 
         {/* Role Switcher + User */}
-        <div className={`relative border-t border-sidebar-border ${collapsed ? "p-2 space-y-2" : "p-3 space-y-3"}`}>
+        <div className={`relative border-t border-sidebar-border ${effectiveCollapsed ? "p-2 space-y-2" : "p-3 space-y-3"}`}>
           <div className="relative" ref={roleMenuRef}>
-            {!collapsed && (
+            {!effectiveCollapsed && (
               <div className="mb-1.5 px-1">
                 <span className="text-[10px] font-semibold tracking-[0.18em] uppercase text-sidebar-foreground/40">
                   Simulate Role
                 </span>
               </div>
             )}
-            {!collapsed ? (
+            {!effectiveCollapsed ? (
               <button
                 onClick={() => setShowRoleMenu(!showRoleMenu)}
                 aria-haspopup="menu"
@@ -290,7 +303,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <div
                 role="menu"
                 className={`absolute bottom-0 rounded-md py-1 z-50 bg-popover text-popover-foreground border border-popover-border shadow-lg max-h-[280px] w-56 overflow-y-auto scrollbar-thin ${
-                  collapsed ? "left-full ml-3" : "left-0 right-0 mb-1 bottom-full w-auto"
+                  effectiveCollapsed ? "left-full ml-3" : "left-0 right-0 mb-1 bottom-full w-auto"
                 }`}
               >
                 {ROLES.map(r => (
@@ -326,11 +339,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* User Info */}
-          <div className={`flex items-center ${collapsed ? "justify-center" : "gap-3 px-1"}`}>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-sm" title={collapsed ? "John Doe" : undefined}>
+          <div className={`flex items-center ${effectiveCollapsed ? "justify-center" : "gap-3 px-1"}`}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-sm" title={effectiveCollapsed ? "John Doe" : undefined}>
               JD
             </div>
-            {!collapsed && (
+            {!effectiveCollapsed && (
               <>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-semibold text-sidebar-foreground truncate">John Doe</div>
@@ -390,7 +403,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </Link>
           </div>
           {/* Bottom hairline glow — only on docked header */}
-          {!collapsed && (
+          {!effectiveCollapsed && (
             <span aria-hidden className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
           )}
         </header>
