@@ -311,9 +311,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        {/* Header */}
-        <header className="relative h-16 flex-shrink-0 flex items-center justify-between px-6 z-10 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70 border-b border-border">
+      <main className={`flex-1 flex flex-col min-w-0 h-screen overflow-hidden transition-[padding] duration-300 ease-[cubic-bezier(.16,1,.3,1)] ${collapsed ? "pl-3" : ""}`}>
+        {/* Header — docked when sidebar expanded; floating pill when collapsed */}
+        <header
+          className={`relative h-16 flex-shrink-0 flex items-center justify-between z-10
+            bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70
+            transition-[margin,border-radius,box-shadow,padding] duration-300 ease-[cubic-bezier(.16,1,.3,1)]
+            ${collapsed
+              ? "mx-3 mt-3 px-5 rounded-2xl border border-border shadow-xl"
+              : "px-6 border-b border-border"}`}
+        >
           <div key={pageTitle} className="flex items-center gap-3 min-w-0 ph-rise">
             <h1 className="text-[20px] font-bold tracking-tight truncate text-gradient-primary">{pageTitle}</h1>
             <span className="hidden md:inline-flex items-center gap-1.5 text-[10px] font-mono tracking-wider uppercase text-muted-foreground px-2 py-0.5 rounded border border-border/60">
@@ -335,8 +342,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </button>
             </Link>
           </div>
-          {/* Bottom hairline glow */}
-          <span aria-hidden className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
+          {/* Bottom hairline glow — only on docked header */}
+          {!collapsed && (
+            <span aria-hidden className="pointer-events-none absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/20 to-transparent" />
+          )}
         </header>
 
         {/* Page Content */}
