@@ -125,7 +125,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
       {/* Sidebar — premium atelier-dark in both modes */}
-      <aside className="w-60 flex-shrink-0 flex flex-col bg-sidebar text-sidebar-foreground border-r border-sidebar-border relative">
+      <aside className="w-60 flex-shrink-0 flex flex-col sidebar-glossy bg-sidebar text-sidebar-foreground border-r border-sidebar-border relative">
         {/* Subtle inner glow */}
         <div className="pointer-events-none absolute inset-0 ambient-mesh-soft opacity-40" />
 
