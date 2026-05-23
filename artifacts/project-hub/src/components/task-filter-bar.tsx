@@ -49,22 +49,19 @@ export function TaskFilterBar({ filters, onChange, owners, ownerFilter, onOwnerC
   }
 
   return (
-    <div
-      className="flex flex-wrap items-center gap-2 py-2 px-1"
-      style={{ position: "sticky", top: 0, zIndex: 10, background: "white" }}
-    >
+    <div className="flex flex-wrap items-center gap-2 py-1">
       <div className="relative flex-1 min-w-[180px]">
-        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <input
           value={searchInput}
           onChange={e => setSearchInput(e.target.value)}
           placeholder="Search tasks..."
-          className="w-full pl-8 pr-2 text-xs border rounded-lg py-1.5 h-8 outline-none focus:border-indigo-400"
+          className="w-full pl-8 pr-2 text-xs border border-input bg-background text-foreground rounded-lg py-1.5 h-8 outline-none focus:ring-2 focus:ring-ring/40"
         />
         {searchInput && (
           <button
             onClick={() => setSearchInput("")}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground"
           >
             <X size={11} />
           </button>
@@ -106,22 +103,22 @@ export function TaskFilterBar({ filters, onChange, owners, ownerFilter, onOwnerC
       </Select>
 
       <div className="flex items-center gap-1">
-        <span className="text-xs text-gray-400 whitespace-nowrap">From</span>
+        <span className="text-xs text-muted-foreground whitespace-nowrap">From</span>
         <input
           type="date"
           value={filters.dateFrom}
           onChange={e => onChange({ ...filters, dateFrom: e.target.value })}
-          className="text-xs border rounded px-1.5 py-1 h-8 outline-none"
+          className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-1 h-8 outline-none focus:ring-2 focus:ring-ring/40"
           style={{ maxWidth: 128 }}
         />
       </div>
       <div className="flex items-center gap-1">
-        <span className="text-xs text-gray-400 whitespace-nowrap">To</span>
+        <span className="text-xs text-muted-foreground whitespace-nowrap">To</span>
         <input
           type="date"
           value={filters.dateTo}
           onChange={e => onChange({ ...filters, dateTo: e.target.value })}
-          className="text-xs border rounded px-1.5 py-1 h-8 outline-none"
+          className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-1 h-8 outline-none focus:ring-2 focus:ring-ring/40"
           style={{ maxWidth: 128 }}
         />
       </div>
@@ -129,7 +126,7 @@ export function TaskFilterBar({ filters, onChange, owners, ownerFilter, onOwnerC
       {hasAny && (
         <button
           onClick={clear}
-          className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded-lg hover:bg-gray-100 transition-colors"
+          className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-accent/40 transition-colors"
         >
           <X size={12} /> Clear
         </button>
