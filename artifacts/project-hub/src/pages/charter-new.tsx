@@ -10,7 +10,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, ChevronLeft, ChevronRight, Check, FileText, Target, TrendingUp, Users, Hash, Star, Sparkles } from "lucide-react";
+import { Loader2, ChevronLeft, ChevronRight, Check, Target, TrendingUp, Users, Hash, Star, Sparkles } from "lucide-react";
 import { Link } from "wouter";
 import { STRATEGIC_THEMES, FUNCTIONS_LIST } from "../lib/lifecycle-config";
 import { api } from "../lib/extra-api";
@@ -53,10 +53,10 @@ type FormValues = z.infer<typeof charterSchema>;
 
 function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl p-6" style={{ background: "white", border: "1px solid #E2E8F0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+    <div className="glass-surface lift-card ph-rise rounded-2xl p-6">
       <div className="mb-5">
-        <h3 className="text-base font-semibold text-gray-900">{title}</h3>
-        {subtitle && <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>}
+        <h3 className="text-base font-semibold text-foreground tracking-tight">{title}</h3>
+        {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
       </div>
       <div className="space-y-4">{children}</div>
     </div>
@@ -89,7 +89,7 @@ function AiImproveButton({ text, onResult }: { text: string; onResult: (v: strin
         } catch (e) { console.warn(e); }
         finally { setLoading(false); }
       }}
-      className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 disabled:opacity-50"
+      className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 disabled:opacity-50"
     >
       {loading ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
       AI Improve
@@ -101,26 +101,32 @@ function CharCount({ value, min }: { value: string; min: number }) {
   const len = value?.length ?? 0;
   const ok = len >= min;
   return (
-    <span className={`text-xs font-medium ${ok ? "text-emerald-600" : "text-gray-400"}`}>
+    <span className={`text-xs font-medium ${ok ? "text-success" : "text-muted-foreground"}`}>
       {len}/{min} chars{ok ? " ✓" : ""}
     </span>
   );
 }
 
 function BenefitCard({
-  label, description, icon, color, children,
+  label, description, icon, accent, children,
 }: {
-  label: string; description: string; icon: React.ReactNode; color: string; children: React.ReactNode;
+  label: string; description: string; icon: React.ReactNode; accent: "success" | "primary" | "warn" | "accent"; children: React.ReactNode;
 }) {
+  const accentMap: Record<string, string> = {
+    success: "bg-success/15 text-success border-success/30",
+    primary: "bg-primary/15 text-primary border-primary/30",
+    warn:    "bg-warn/15 text-warn border-warn/30",
+    accent:  "bg-accent/40 text-accent-foreground border-accent",
+  };
   return (
-    <div className="rounded-xl border p-5" style={{ borderColor: "#E2E8F0" }}>
+    <div className="glass-surface lift-card ph-rise rounded-2xl p-5">
       <div className="flex items-start gap-3 mb-3">
-        <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: color }}>
+        <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 border ${accentMap[accent]}`}>
           {icon}
         </div>
         <div>
-          <div className="font-semibold text-gray-900 text-sm">{label}</div>
-          <div className="text-xs text-gray-400 mt-0.5">{description}</div>
+          <div className="font-semibold text-foreground text-sm tracking-tight">{label}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">{description}</div>
         </div>
       </div>
       {children}
@@ -164,15 +170,8 @@ export default function NewCharter() {
   const [previewScores, setPreviewScores] = useState<Record<number, number>>({});
 
   function onSubmit(values: FormValues) {
-    // Persist all fields into available columns:
-    // - description = business justification + expected outcomes
-    // - scope = scope summary header + detailed scope body
-    // - strategicAlignmentTags = [PC_ID, FUNCTION:<dept>, ...themes]
-    // - scoringWeights = { capexAmount, opexAmount } (JSONB)
     const description = `${values.businessJustification}\n\n**Expected Outcomes:**\n${values.expectedOutcomes}`;
     const scope = `**Scope Summary:** ${values.scopeSummary}\n\n${values.scope}`;
-    // Do NOT include a PC_ID: tag here — the server generates the canonical
-    // PC-YYYY-XXXXX reference from the DB primary key and stores it authoritatively.
     const strategicAlignmentTags = [
       `FUNCTION:${values.function}`,
       ...values.strategicThemes,
@@ -201,7 +200,6 @@ export default function NewCharter() {
       },
       {
         onSuccess: (charter) => {
-          // Use server-generated canonical PC ID if returned; fall back to charter id
           const serverPcId = (charter as unknown as { pcId?: string }).pcId
             ?? `PC-${new Date().getFullYear()}-${String(charter.id).padStart(5, "0")}`;
           toast({ title: `Charter created! Reference: ${serverPcId}` });
@@ -234,58 +232,62 @@ export default function NewCharter() {
     <div className="max-w-3xl mx-auto">
       <div className="mb-5">
         <Link href="/charters">
-          <button className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+          <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ChevronLeft size={15} />
             Back to Charters
           </button>
         </Link>
       </div>
 
-      <div className="mb-6">
-        <div className="flex items-start justify-between">
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 mb-6 relative overflow-hidden">
+        <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+        <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">New Project Case</h2>
-            <p className="text-gray-500 text-sm mt-1">Complete the project case to initiate the approval workflow.</p>
+            <h2 className="text-2xl font-bold text-foreground tracking-tight">New Project Case</h2>
+            <p className="text-muted-foreground text-sm mt-1">Complete the project case to initiate the approval workflow.</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-gray-400 font-medium">Reference ID</p>
-            <p className="text-sm font-bold text-indigo-600 font-mono">Pending assignment</p>
+            <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Reference ID</p>
+            <p className="text-sm font-bold text-primary font-mono">Pending assignment</p>
           </div>
         </div>
       </div>
 
       {/* Step indicator */}
-      <div className="flex items-center gap-0 mb-8">
-        {STEPS.map((s, i) => {
-          const Icon = s.icon;
-          const isActive = i === step;
-          const isDone = i < step;
-          return (
-            <div key={s.id} className="flex items-center flex-1">
-              <button onClick={() => isDone && setStep(i)} className="flex items-center gap-2" disabled={!isDone}>
-                <div
-                  className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold transition-all"
-                  style={{
-                    background: isActive
-                      ? "linear-gradient(135deg, #6366F1, #8B5CF6)"
-                      : isDone
-                        ? "linear-gradient(135deg, #10B981, #059669)"
-                        : "#E2E8F0",
-                    color: isActive || isDone ? "white" : "#94A3B8",
-                  }}
-                >
-                  {isDone ? <Check size={13} /> : <Icon size={13} />}
-                </div>
-                <span className={`text-xs font-medium hidden sm:block ${isActive ? "text-indigo-600" : isDone ? "text-green-600" : "text-gray-400"}`}>
-                  {s.label}
-                </span>
-              </button>
-              {i < STEPS.length - 1 && (
-                <div className="flex-1 h-0.5 mx-2" style={{ background: i < step ? "#10B981" : "#E2E8F0" }} />
-              )}
-            </div>
-          );
-        })}
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-4 mb-6">
+        <div className="flex items-center gap-0">
+          {STEPS.map((s, i) => {
+            const Icon = s.icon;
+            const isActive = i === step;
+            const isDone = i < step;
+            const circleCls = isActive
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : isDone
+                ? "bg-success text-primary-foreground"
+                : "bg-muted text-muted-foreground";
+            const labelCls = isActive
+              ? "text-primary"
+              : isDone
+                ? "text-success"
+                : "text-muted-foreground";
+            const connectorCls = i < step ? "bg-success" : "bg-border";
+            return (
+              <div key={s.id} className="flex items-center flex-1">
+                <button onClick={() => isDone && setStep(i)} className="flex items-center gap-2" disabled={!isDone}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold transition-all ${circleCls}`}>
+                    {isDone ? <Check size={13} /> : <Icon size={13} />}
+                  </div>
+                  <span className={`text-xs font-semibold hidden sm:block ${labelCls}`}>
+                    {s.label}
+                  </span>
+                </button>
+                {i < STEPS.length - 1 && (
+                  <div className={`flex-1 h-0.5 mx-2 rounded ${connectorCls}`} />
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <Form {...form}>
@@ -299,7 +301,7 @@ export default function NewCharter() {
                   name="title"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">Project Title</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Project Title</FormLabel>
                       <FormControl>
                         <Input {...field} placeholder="e.g. ERP System Upgrade 2026" className="h-10" />
                       </FormControl>
@@ -314,7 +316,7 @@ export default function NewCharter() {
                   render={({ field }) => (
                     <FormItem>
                       <div className="flex items-center justify-between">
-                        <FormLabel className="text-sm font-medium text-gray-700">Business Justification</FormLabel>
+                        <FormLabel className="text-sm font-medium text-foreground">Business Justification</FormLabel>
                         <div className="flex items-center gap-3">
                           <AiImproveButton text={field.value ?? ""} onResult={(v) => field.onChange(v)} />
                           <CharCount value={watchedBizJust} min={100} />
@@ -334,7 +336,7 @@ export default function NewCharter() {
                   render={({ field }) => (
                     <FormItem>
                       <div className="flex items-center justify-between">
-                        <FormLabel className="text-sm font-medium text-gray-700">Scope Summary</FormLabel>
+                        <FormLabel className="text-sm font-medium text-foreground">Scope Summary</FormLabel>
                         <CharCount value={watchedScopeSummary} min={50} />
                       </div>
                       <FormControl>
@@ -350,7 +352,7 @@ export default function NewCharter() {
                   name="expectedOutcomes"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">Expected Outcomes</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Expected Outcomes</FormLabel>
                       <FormControl>
                         <Textarea {...field} rows={2} placeholder="What measurable outcomes will be achieved upon project completion?" />
                       </FormControl>
@@ -366,7 +368,7 @@ export default function NewCharter() {
                   name="function"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">Function / Department</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Function / Department</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger className="h-10">
@@ -389,10 +391,13 @@ export default function NewCharter() {
                   name="strategicThemes"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">Strategic Themes</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Strategic Themes</FormLabel>
                       <div className="flex flex-wrap gap-2 mt-1">
                         {STRATEGIC_THEMES.map(theme => {
                           const selected = watchedStrategicThemes.includes(theme);
+                          const themeCls = selected
+                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                            : "bg-muted text-muted-foreground border-border hover:bg-accent hover:text-accent-foreground";
                           return (
                             <button
                               key={theme}
@@ -405,12 +410,7 @@ export default function NewCharter() {
                                   field.onChange([...current, theme]);
                                 }
                               }}
-                              className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
-                              style={{
-                                background: selected ? "linear-gradient(135deg,#6366F1,#8B5CF6)" : "#F1F5F9",
-                                color: selected ? "white" : "#64748B",
-                                border: selected ? "none" : "1px solid #E2E8F0",
-                              }}
+                              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${themeCls}`}
                             >
                               {theme}
                             </button>
@@ -434,7 +434,7 @@ export default function NewCharter() {
                   name="scope"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">Detailed Scope Statement</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Detailed Scope Statement</FormLabel>
                       <FormControl>
                         <Textarea {...field} rows={5} placeholder="Clearly define the full boundaries and detailed scope of this project, including what is in scope and what is explicitly excluded..." />
                       </FormControl>
@@ -449,7 +449,7 @@ export default function NewCharter() {
                   name="deliverables"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">Key Deliverables</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Key Deliverables</FormLabel>
                       <FormControl>
                         <Textarea {...field} rows={4} placeholder="List the tangible outcomes, reports, systems or products..." />
                       </FormControl>
@@ -462,7 +462,7 @@ export default function NewCharter() {
                   name="solutionComparison"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">Solution / Vendor Comparison</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Solution / Vendor Comparison</FormLabel>
                       <FormControl>
                         <Textarea {...field} rows={3} placeholder="Compare alternative approaches or vendor solutions considered..." />
                       </FormControl>
@@ -477,12 +477,12 @@ export default function NewCharter() {
           {/* Step 2: Business Benefits */}
           {step === 2 && (
             <div className="space-y-4">
-              <div className="rounded-xl p-4 mb-2" style={{ background: "linear-gradient(135deg, #EEF2FF, #F5F3FF)", border: "1px solid #C7D2FE" }}>
-                <h3 className="font-semibold text-indigo-900 text-sm">Business Benefits Assessment</h3>
-                <p className="text-xs text-indigo-600 mt-1">Quantify and describe the expected business value. All fields are optional but strengthen the approval case.</p>
+              <div className="rounded-2xl p-4 mb-2 bg-primary/10 border border-primary/20">
+                <h3 className="font-semibold text-primary text-sm tracking-tight">Business Benefits Assessment</h3>
+                <p className="text-xs text-primary/80 mt-1">Quantify and describe the expected business value. All fields are optional but strengthen the approval case.</p>
               </div>
 
-              <BenefitCard label="Topline Improvement" description="Revenue growth, new market opportunities, sales uplift" color="linear-gradient(135deg, #10B981, #059669)" icon={<TrendingUp size={16} className="text-white" />}>
+              <BenefitCard label="Topline Improvement" description="Revenue growth, new market opportunities, sales uplift" accent="success" icon={<TrendingUp size={16} />}>
                 <FormField control={form.control} name="toplineImprovement" render={({ field }) => (
                   <FormItem>
                     <FormControl>
@@ -492,7 +492,7 @@ export default function NewCharter() {
                 )} />
               </BenefitCard>
 
-              <BenefitCard label="Bottom Line Optimization" description="Cost reduction, efficiency gains, operational savings" color="linear-gradient(135deg, #3B82F6, #1D4ED8)" icon={<svg className="text-white" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>}>
+              <BenefitCard label="Bottom Line Optimization" description="Cost reduction, efficiency gains, operational savings" accent="primary" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>}>
                 <FormField control={form.control} name="bottomLineOptimization" render={({ field }) => (
                   <FormItem>
                     <FormControl>
@@ -502,7 +502,7 @@ export default function NewCharter() {
                 )} />
               </BenefitCard>
 
-              <BenefitCard label="Compliance Benefits" description="Regulatory adherence, risk reduction, audit readiness" color="linear-gradient(135deg, #F59E0B, #D97706)" icon={<svg className="text-white" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>}>
+              <BenefitCard label="Compliance Benefits" description="Regulatory adherence, risk reduction, audit readiness" accent="warn" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>}>
                 <FormField control={form.control} name="complianceBenefits" render={({ field }) => (
                   <FormItem>
                     <FormControl>
@@ -512,7 +512,7 @@ export default function NewCharter() {
                 )} />
               </BenefitCard>
 
-              <BenefitCard label="Productivity Improvement" description="Time savings, faster processes, better employee experience" color="linear-gradient(135deg, #8B5CF6, #7C3AED)" icon={<svg className="text-white" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>}>
+              <BenefitCard label="Productivity Improvement" description="Time savings, faster processes, better employee experience" accent="accent" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>}>
                 <FormField control={form.control} name="productivityImprovement" render={({ field }) => (
                   <FormItem>
                     <FormControl>
@@ -533,7 +533,7 @@ export default function NewCharter() {
                   name="tentativeBudget"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">Total Tentative Budget (USD)</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Total Tentative Budget (USD)</FormLabel>
                       <FormControl>
                         <Input {...field} type="number" min={0} placeholder="1000000" className="h-10" />
                       </FormControl>
@@ -547,7 +547,7 @@ export default function NewCharter() {
                     name="capexAmount"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-sm font-medium text-gray-700">CapEx Amount (USD)</FormLabel>
+                        <FormLabel className="text-sm font-medium text-foreground">CapEx Amount (USD)</FormLabel>
                         <FormControl>
                           <Input {...field} type="number" min={0} placeholder="600000" className="h-10" />
                         </FormControl>
@@ -560,7 +560,7 @@ export default function NewCharter() {
                     name="opexAmount"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-sm font-medium text-gray-700">OpEx Amount (USD)</FormLabel>
+                        <FormLabel className="text-sm font-medium text-foreground">OpEx Amount (USD)</FormLabel>
                         <FormControl>
                           <Input {...field} type="number" min={0} placeholder="400000" className="h-10" />
                         </FormControl>
@@ -572,14 +572,14 @@ export default function NewCharter() {
                 <FieldRow>
                   <FormField control={form.control} name="startDate" render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">Start Date</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Start Date</FormLabel>
                       <FormControl><Input {...field} type="date" className="h-10" /></FormControl>
                       <FormMessage />
                     </FormItem>
                   )} />
                   <FormField control={form.control} name="endDate" render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">End Date</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">End Date</FormLabel>
                       <FormControl><Input {...field} type="date" className="h-10" /></FormControl>
                       <FormMessage />
                     </FormItem>
@@ -587,7 +587,7 @@ export default function NewCharter() {
                 </FieldRow>
                 <FormField control={form.control} name="durationDays" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-medium text-gray-700">Duration (Days)</FormLabel>
+                    <FormLabel className="text-sm font-medium text-foreground">Duration (Days)</FormLabel>
                     <FormControl><Input {...field} type="number" min={0} placeholder="90" className="h-10" /></FormControl>
                     <FormMessage />
                   </FormItem>
@@ -598,7 +598,7 @@ export default function NewCharter() {
                 <FieldRow>
                   <FormField control={form.control} name="projectSponsorId" render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">Project Sponsor</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Project Sponsor</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value?.toString() || ""}>
                         <FormControl>
                           <SelectTrigger className="h-10">
@@ -608,7 +608,7 @@ export default function NewCharter() {
                         <SelectContent>
                           {users?.map(u => (
                             <SelectItem key={u.id} value={u.id.toString()}>
-                              {u.name} <span className="text-gray-400 capitalize">· {u.role}</span>
+                              {u.name} <span className="text-muted-foreground capitalize">· {u.role}</span>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -618,7 +618,7 @@ export default function NewCharter() {
                   )} />
                   <FormField control={form.control} name="projectOwnerId" render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-gray-700">Project Owner</FormLabel>
+                      <FormLabel className="text-sm font-medium text-foreground">Project Owner</FormLabel>
                       <Select onValueChange={field.onChange} value={field.value?.toString() || ""}>
                         <FormControl>
                           <SelectTrigger className="h-10">
@@ -628,7 +628,7 @@ export default function NewCharter() {
                         <SelectContent>
                           {users?.map(u => (
                             <SelectItem key={u.id} value={u.id.toString()}>
-                              {u.name} <span className="text-gray-400 capitalize">· {u.role}</span>
+                              {u.name} <span className="text-muted-foreground capitalize">· {u.role}</span>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -651,12 +651,13 @@ export default function NewCharter() {
             const maxPossible = criteria.reduce((sum, c) => sum + (5 * Number(c.weightPct)) / 100, 0);
             const pct = maxPossible > 0 ? Math.round((weightedTotal / maxPossible) * 100) : 0;
             const rank = pct >= 80 ? "High Priority" : pct >= 50 ? "Medium Priority" : pct > 0 ? "Low Priority" : "Not scored";
-            const rankColor = pct >= 80 ? "#10B981" : pct >= 50 ? "#F59E0B" : "#64748B";
+            const rankCls = pct >= 80 ? "text-success" : pct >= 50 ? "text-warn" : "text-muted-foreground";
+            const barCls = pct >= 80 ? "bg-success" : pct >= 50 ? "bg-warn" : "bg-muted-foreground";
             return (
               <div className="space-y-4">
-                <div className="rounded-xl p-4" style={{ background: "linear-gradient(135deg, #EEF2FF, #F5F3FF)", border: "1px solid #C7D2FE" }}>
-                  <h3 className="font-semibold text-indigo-900 text-sm">Strategic Scoring Preview</h3>
-                  <p className="text-xs text-indigo-600 mt-1">
+                <div className="rounded-2xl p-4 bg-primary/10 border border-primary/20">
+                  <h3 className="font-semibold text-primary text-sm tracking-tight">Strategic Scoring Preview</h3>
+                  <p className="text-xs text-primary/80 mt-1">
                     Rate this project against PMO criteria to see its preliminary strategic score. This helps prioritise intake before the formal approval process.
                   </p>
                 </div>
@@ -664,29 +665,29 @@ export default function NewCharter() {
                 {criteria.length === 0 ? (
                   <SectionCard title="No Scoring Criteria Configured" subtitle="An admin will configure scoring criteria in the Admin panel.">
                     <div className="text-center py-4">
-                      <Star size={28} className="text-gray-300 mx-auto mb-2" />
-                      <p className="text-sm text-gray-400">Scoring criteria are managed by PMO admins. You can submit the charter without scoring.</p>
+                      <Star size={28} className="text-muted-foreground/40 mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Scoring criteria are managed by PMO admins. You can submit the charter without scoring.</p>
                     </div>
                   </SectionCard>
                 ) : (
                   <>
                     {/* Score summary */}
                     <div className="grid grid-cols-3 gap-3">
-                      <div className="rounded-xl p-4 text-center" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-                        <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-1">Weighted Score</p>
-                        <p className="text-2xl font-bold text-indigo-600">{weightedTotal.toFixed(1)}</p>
-                        <p className="text-xs text-gray-400">of {maxPossible.toFixed(1)} max</p>
+                      <div className="glass-surface lift-card ph-rise rounded-2xl p-4 text-center">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Weighted Score</p>
+                        <p className="text-2xl font-bold text-primary">{weightedTotal.toFixed(1)}</p>
+                        <p className="text-xs text-muted-foreground">of {maxPossible.toFixed(1)} max</p>
                       </div>
-                      <div className="rounded-xl p-4 text-center" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-                        <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-1">Score %</p>
-                        <p className="text-2xl font-bold text-gray-800">{pct}%</p>
-                        <div className="mt-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                          <div className="h-full rounded-full" style={{ width: `${pct}%`, background: rankColor }} />
+                      <div className="glass-surface lift-card ph-rise rounded-2xl p-4 text-center">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Score %</p>
+                        <p className="text-2xl font-bold text-foreground">{pct}%</p>
+                        <div className="mt-1 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${barCls}`} style={{ width: `${pct}%` }} />
                         </div>
                       </div>
-                      <div className="rounded-xl p-4 text-center" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-                        <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-1">Rank</p>
-                        <p className="text-base font-bold" style={{ color: rankColor }}>{rank}</p>
+                      <div className="glass-surface lift-card ph-rise rounded-2xl p-4 text-center">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wider font-semibold mb-1">Rank</p>
+                        <p className={`text-base font-bold ${rankCls}`}>{rank}</p>
                       </div>
                     </div>
 
@@ -697,45 +698,47 @@ export default function NewCharter() {
                           const currentScore = previewScores[c.id] ?? 0;
                           const contrib = (currentScore * Number(c.weightPct)) / 100;
                           return (
-                            <div key={c.id} className="rounded-xl p-4" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                            <div key={c.id} className="rounded-xl p-4 bg-muted/40 border border-border">
                               <div className="flex items-start justify-between mb-2">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2">
-                                    <p className="text-sm font-semibold text-gray-900">{c.name}</p>
-                                    <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: "#EEF2FF", color: "#6366F1" }}>
+                                    <p className="text-sm font-semibold text-foreground">{c.name}</p>
+                                    <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-primary/10 text-primary border border-primary/20">
                                       {c.weightPct}%
                                     </span>
                                   </div>
-                                  {c.description && <p className="text-xs text-gray-400 mt-0.5">{c.description}</p>}
+                                  {c.description && <p className="text-xs text-muted-foreground mt-0.5">{c.description}</p>}
                                 </div>
                                 <div className="text-right ml-4 flex-shrink-0">
-                                  <p className="text-xs text-gray-400">Contribution</p>
-                                  <p className="text-sm font-bold text-gray-700">{contrib.toFixed(2)}</p>
+                                  <p className="text-xs text-muted-foreground">Contribution</p>
+                                  <p className="text-sm font-bold text-foreground">{contrib.toFixed(2)}</p>
                                 </div>
                               </div>
                               <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-400 w-12">Score:</span>
+                                <span className="text-xs text-muted-foreground w-12">Score:</span>
                                 <div className="flex gap-1.5">
-                                  {[1,2,3,4,5].map(v => (
-                                    <button
-                                      key={v}
-                                      type="button"
-                                      onClick={() => setPreviewScores(prev => ({ ...prev, [c.id]: v }))}
-                                      className="w-8 h-8 rounded-lg text-sm font-bold transition-all"
-                                      style={{
-                                        background: currentScore === v ? "#6366F1" : "#E2E8F0",
-                                        color: currentScore === v ? "white" : "#64748B",
-                                      }}
-                                    >
-                                      {v}
-                                    </button>
-                                  ))}
+                                  {[1,2,3,4,5].map(v => {
+                                    const active = currentScore === v;
+                                    return (
+                                      <button
+                                        key={v}
+                                        type="button"
+                                        onClick={() => setPreviewScores(prev => ({ ...prev, [c.id]: v }))}
+                                        className={`w-8 h-8 rounded-lg text-sm font-bold transition-all ${
+                                          active
+                                            ? "bg-primary text-primary-foreground shadow-sm"
+                                            : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                        }`}
+                                      >
+                                        {v}
+                                      </button>
+                                    );
+                                  })}
                                   {currentScore > 0 && (
                                     <button
                                       type="button"
                                       onClick={() => setPreviewScores(prev => { const n = { ...prev }; delete n[c.id]; return n; })}
-                                      className="w-8 h-8 rounded-lg text-xs font-bold transition-all"
-                                      style={{ background: "#FEE2E2", color: "#DC2626" }}
+                                      className="w-8 h-8 rounded-lg text-xs font-bold transition-all bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20"
                                     >
                                       ✕
                                     </button>
@@ -759,8 +762,7 @@ export default function NewCharter() {
               type="button"
               onClick={() => setStep(s => Math.max(s - 1, 0))}
               disabled={step === 0}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: "#F1F5F9", color: "#475569", border: "1px solid #E2E8F0" }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed bg-muted text-muted-foreground border border-border hover:bg-accent hover:text-accent-foreground"
             >
               <ChevronLeft size={15} />
               Previous
@@ -770,8 +772,7 @@ export default function NewCharter() {
               <button
                 type="button"
                 onClick={handleNext}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90"
-                style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
               >
                 Next Step
                 <ChevronRight size={15} />
@@ -780,8 +781,7 @@ export default function NewCharter() {
               <button
                 type="submit"
                 disabled={createCharter.isPending}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-60"
-                style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}
+                className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-60"
               >
                 {createCharter.isPending && <Loader2 size={14} className="animate-spin" />}
                 Submit Project Case
