@@ -95,7 +95,7 @@ function InlineDateCell({ value, onSave }: { value?: string | null; onSave: (v: 
         if (e.key === "Enter") { setEditing(false); onSave(local); }
         if (e.key === "Escape") setEditing(false);
       }}
-      className="text-xs border rounded px-1 py-0.5 w-full outline-none"
+      className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-0.5 w-full outline-none focus:ring-2 focus:ring-ring/40"
       style={{ maxWidth: 110 }}
     />
   );
@@ -130,7 +130,7 @@ function InlineNumberCell({ value, onSave, suffix = "h" }: { value?: number | nu
       onChange={e => setLocal(e.target.value)}
       onBlur={commit}
       onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-      className="text-xs border rounded px-1 py-0.5 w-full outline-none text-center"
+      className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-0.5 w-full outline-none focus:ring-2 focus:ring-ring/40 text-center"
       style={{ maxWidth: 65 }}
       min={0}
     />
@@ -306,7 +306,7 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
     <>
       {/* Comprehensive filter bar */}
       <div
-        className="flex flex-wrap items-center gap-2 py-2 mb-2 px-1 bg-card"
+        className="glass-surface lift-card ph-rise rounded-2xl flex flex-wrap items-center gap-2 py-2 px-3 mb-2"
         style={{ position: "sticky", top: 0, zIndex: 10 }}
       >
         <div className="relative flex-1 min-w-[150px]">
@@ -315,21 +315,21 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
             placeholder="Search milestones..."
-            className="w-full pl-8 text-xs border rounded-lg px-2 py-1.5 outline-none h-8"
+            className="w-full pl-8 text-xs border border-input bg-background text-foreground rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-ring/40 h-8"
           />
         </div>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs border rounded-lg px-2 py-1.5 h-8 outline-none" style={{ minWidth: 120 }}>
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="text-xs border border-input bg-background text-foreground rounded-lg px-2 py-1.5 h-8 outline-none focus:ring-2 focus:ring-ring/40" style={{ minWidth: 120 }}>
           <option value="">All Statuses</option>
           {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
-        <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} className="text-xs border rounded-lg px-2 py-1.5 h-8 outline-none" style={{ minWidth: 110 }}>
+        <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} className="text-xs border border-input bg-background text-foreground rounded-lg px-2 py-1.5 h-8 outline-none focus:ring-2 focus:ring-ring/40" style={{ minWidth: 110 }}>
           <option value="">All Priorities</option>
           {TASK_PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
         </select>
-        <select value={filterRag} onChange={e => setFilterRag(e.target.value)} className="text-xs border rounded-lg px-2 py-1.5 h-8 outline-none" style={{ minWidth: 95 }}>
+        <select value={filterRag} onChange={e => setFilterRag(e.target.value)} className="text-xs border border-input bg-background text-foreground rounded-lg px-2 py-1.5 h-8 outline-none focus:ring-2 focus:ring-ring/40" style={{ minWidth: 95 }}>
           {RAG_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <select value={filterGate} onChange={e => setFilterGate(e.target.value)} className="text-xs border rounded-lg px-2 py-1.5 h-8 outline-none" style={{ minWidth: 110 }}>
+        <select value={filterGate} onChange={e => setFilterGate(e.target.value)} className="text-xs border border-input bg-background text-foreground rounded-lg px-2 py-1.5 h-8 outline-none focus:ring-2 focus:ring-ring/40" style={{ minWidth: 110 }}>
           <option value="">All Gates</option>
           <option value="go">Go</option>
           <option value="no_go">No-Go</option>
@@ -337,11 +337,11 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
         </select>
         <div className="flex items-center gap-1">
           <span className="text-xs text-muted-foreground">Due from</span>
-          <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="text-xs border rounded px-1.5 py-1 h-8 outline-none" style={{ maxWidth: 120 }} />
+          <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-1 h-8 outline-none focus:ring-2 focus:ring-ring/40" style={{ maxWidth: 120 }} />
         </div>
         <div className="flex items-center gap-1">
           <span className="text-xs text-muted-foreground">to</span>
-          <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="text-xs border rounded px-1.5 py-1 h-8 outline-none" style={{ maxWidth: 120 }} />
+          <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-1 h-8 outline-none focus:ring-2 focus:ring-ring/40" style={{ maxWidth: 120 }} />
         </div>
         {hasFilters && (
           <button
@@ -354,7 +354,7 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
         <span className="text-xs text-muted-foreground ml-2">{sorted.length} / {milestones.length}</span>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-border">
+      <div className="glass-surface lift-card ph-rise overflow-x-auto rounded-2xl">
         <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 1400 }}>
           <thead>
             <tr>
@@ -450,7 +450,7 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
                     <select
                       value={d.gateDecision ?? ""}
                       onChange={e => patch(ms.id, { gateDecision: e.target.value || null })}
-                      className="text-xs border rounded px-1.5 py-0.5 w-full outline-none"
+                      className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-0.5 w-full outline-none focus:ring-2 focus:ring-ring/40"
                     >
                       {GATE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>

@@ -180,7 +180,7 @@ function InlineNumberCell({ value, onSave }: { value: number | null | undefined;
       onChange={e => setLocal(e.target.value)}
       onBlur={commit}
       onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-      className="text-xs border rounded px-1 py-0.5 w-full outline-none text-center" style={{ maxWidth: 65 }}
+      className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-0.5 w-full outline-none focus:ring-2 focus:ring-ring/40 text-center" style={{ maxWidth: 65 }}
       min={0} step={0.5} />
   );
 }
@@ -215,7 +215,7 @@ function InlineCell({ type, value, options, onSave, placeholder, displayLabel }:
       <input type="date" autoFocus value={local}
         onChange={e => setLocal(e.target.value)} onBlur={commit}
         onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-        className="text-xs border rounded px-1 py-0.5 w-full outline-none" style={{ maxWidth: 115 }} />
+        className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-0.5 w-full outline-none focus:ring-2 focus:ring-ring/40" style={{ maxWidth: 115 }} />
     );
   }
 
@@ -224,7 +224,7 @@ function InlineCell({ type, value, options, onSave, placeholder, displayLabel }:
       <select autoFocus value={local}
         onChange={e => setLocal(e.target.value)}
         onBlur={() => { setEditing(false); onSave(local); }}
-        className="text-xs border rounded px-1 py-0.5 w-full outline-none">
+        className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-0.5 w-full outline-none focus:ring-2 focus:ring-ring/40">
         <option value="">—</option>
         {options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
@@ -235,7 +235,7 @@ function InlineCell({ type, value, options, onSave, placeholder, displayLabel }:
     <input autoFocus type="text" value={local}
       onChange={e => setLocal(e.target.value)} onBlur={commit}
       onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-      className="text-xs border rounded px-1 py-0.5 w-full outline-none" />
+      className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-0.5 w-full outline-none focus:ring-2 focus:ring-ring/40" />
   );
 }
 
@@ -401,7 +401,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
             <div className="flex items-center gap-2">
               <input autoFocus type="text" value={newSubtaskName}
                 onChange={e => setNewSubtaskName(e.target.value)} placeholder="Subtask name..."
-                className="flex-1 text-xs border rounded px-2 py-1 outline-none"
+                className="flex-1 text-xs border border-input bg-background text-foreground rounded-md px-2 py-1 outline-none focus:ring-2 focus:ring-ring/40"
                 onKeyDown={e => {
                   if (e.key === "Enter") addSubtask(row.parentId);
                   if (e.key === "Escape") { setAddingSubtask(null); setNewSubtaskName(""); }
@@ -635,7 +635,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
       <div
         ref={scrollRef}
         onScroll={e => setScrollTop(e.currentTarget.scrollTop)}
-        className="overflow-x-auto overflow-y-auto rounded-2xl border border-border"
+        className="glass-surface lift-card ph-rise overflow-x-auto overflow-y-auto rounded-2xl"
         style={{ height: VIEWPORT_H, position: "relative" }}
       >
         <table className="border-collapse" style={{ tableLayout: "auto", minWidth: 1750 }}>
