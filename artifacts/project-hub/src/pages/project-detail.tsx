@@ -463,23 +463,20 @@ export default function ProjectDetail() {
 
       {/* NFA Budget Overrun Alert */}
       {nfaStatus?.triggered && !nfaDismissed && (
-        <div
-          className="rounded-2xl p-4 flex items-start gap-3"
-          style={{ background: "#FFF7ED", border: "1px solid #FDBA74" }}
-        >
-          <AlertTriangle size={18} className="text-orange-500 flex-shrink-0 mt-0.5" />
+        <div className="glass-surface rounded-2xl p-4 flex items-start gap-3 ph-rise border-warn/30 bg-warn/5">
+          <AlertTriangle size={18} className="text-warn flex-shrink-0 mt-0.5" />
           <div className="flex-1">
-            <p className="text-sm font-bold text-orange-800">NFA Budget Overrun Triggered</p>
-            <p className="text-xs text-orange-700 mt-1">
-              Actual budget has exceeded the baseline by <strong>{nfaStatus.overrunPct.toFixed(1)}%</strong>
+            <p className="text-sm font-semibold text-foreground tracking-tight">NFA Budget Overrun Triggered</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Actual budget has exceeded the baseline by <strong className="text-warn">{nfaStatus.overrunPct.toFixed(1)}%</strong>
               {" "}(threshold: {nfaStatus.threshold}%).
               An NFA approval workflow has been automatically triggered.
-              Routing to: {nfaStatus.nfaChain.join(" → ")}.
+              Routing to: <span className="font-mono text-foreground">{nfaStatus.nfaChain.join(" → ")}</span>.
             </p>
           </div>
           <button
             onClick={() => setNfaDismissed(true)}
-            className="text-orange-400 hover:text-orange-600 flex-shrink-0"
+            className="text-muted-foreground hover:text-foreground flex-shrink-0 transition-colors"
           >
             <XCircle size={16} />
           </button>
@@ -487,22 +484,20 @@ export default function ProjectDetail() {
       )}
 
       {/* Header */}
-      <div className="rounded-2xl p-6" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+      <div className="glass-surface lift-card rounded-2xl p-6 ph-rise relative overflow-hidden">
+        <span aria-hidden className="pointer-events-none absolute bottom-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
         <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{project.name}</h1>
-            <div className="flex items-center gap-3 mt-2 flex-wrap">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">{project.name}</h1>
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
               <StatusBadge status={project.status} />
               {project.startDate && (
-                <span className="text-xs text-gray-400">
+                <span className="text-[11px] font-mono text-muted-foreground">
                   {formatDate(project.startDate)} — {formatDate(project.endDate)}
                 </span>
               )}
               {project.stage && (
-                <span
-                  className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                  style={{ background: "#EEF2FF", color: "#4F46E5" }}
-                >
+                <span className="inline-flex items-center text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-sm border bg-primary/10 text-primary border-primary/20 font-semibold">
                   {LIFECYCLE_STAGES.find(s => s.key === currentStageKey)?.label ?? currentStageKey}
                 </span>
               )}
@@ -520,7 +515,7 @@ export default function ProjectDetail() {
                           { onSuccess: () => refetchProject() }
                         );
                       }}
-                      className="text-xs font-bold px-2 py-0.5 rounded-full border-0 outline-none appearance-none cursor-pointer pr-5"
+                      className="text-[10px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded-sm border-0 outline-none appearance-none cursor-pointer pr-5"
                       style={{ background: priMeta.bg, color: priMeta.color }}
                       title="Project priority"
                     >
@@ -528,20 +523,17 @@ export default function ProjectDetail() {
                         <option key={p.value} value={p.value}>{p.label}</option>
                       ))}
                     </select>
-                    <span className="pointer-events-none absolute right-1.5 text-gray-400" style={{ fontSize: 9 }}>▾</span>
+                    <span className="pointer-events-none absolute right-1.5 opacity-60" style={{ fontSize: 9 }}>▾</span>
                   </div>
                 );
               })()}
             </div>
             {project.description && (
-              <p className="text-sm text-gray-500 mt-2 max-w-xl">{project.description}</p>
+              <p className="text-sm text-muted-foreground mt-2 max-w-2xl leading-relaxed">{project.description}</p>
             )}
           </div>
           <Link href={`/projects/${project.id}/tasks/new`}>
-            <button
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white flex-shrink-0"
-              style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}
-            >
+            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm flex-shrink-0">
               <Plus size={14} />
               Add Task
             </button>
@@ -549,19 +541,27 @@ export default function ProjectDetail() {
         </div>
 
         {/* Quick stats */}
-        <div className="grid grid-cols-4 gap-3 mt-4">
-          {[
-            { label: "Total Tasks", value: totalTasks, icon: List, color: "#6366F1", bg: "#EEF2FF" },
-            { label: "Completed", value: completedTasks, icon: CheckCircle2, color: "#10B981", bg: "#ECFDF5" },
-            { label: "In Progress", value: inProgressTasks, icon: Clock, color: "#3B82F6", bg: "#EFF6FF" },
-            { label: "At Risk/Delayed", value: blockedTasks, icon: AlertTriangle, color: "#F59E0B", bg: "#FFFBEB" },
-          ].map(s => {
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-5 stagger-children">
+          {([
+            { label: "Total Tasks",     value: totalTasks,      icon: List,          tone: "primary" as const },
+            { label: "Completed",       value: completedTasks,  icon: CheckCircle2,  tone: "success" as const },
+            { label: "In Progress",     value: inProgressTasks, icon: Clock,         tone: "info"    as const },
+            { label: "At Risk/Delayed", value: blockedTasks,    icon: AlertTriangle, tone: "warn"    as const },
+          ]).map(s => {
             const Icon = s.icon;
+            const toneClasses = {
+              primary: { wrap: "bg-primary/10 border-primary/20",         text: "text-primary"     },
+              success: { wrap: "bg-success/10 border-success/20",         text: "text-success"     },
+              info:    { wrap: "bg-sky-500/10 border-sky-500/20",         text: "text-sky-600 dark:text-sky-400" },
+              warn:    { wrap: "bg-warn/10 border-warn/20",               text: "text-warn"        },
+            }[s.tone];
             return (
-              <div key={s.label} className="rounded-xl p-3 text-center" style={{ background: s.bg }}>
-                <div className="flex justify-center mb-1"><Icon size={14} style={{ color: s.color }} /></div>
-                <div className="text-lg font-bold" style={{ color: s.color }}>{s.value}</div>
-                <div className="text-xs" style={{ color: s.color, opacity: 0.75 }}>{s.label}</div>
+              <div key={s.label} className={`rounded-xl p-3 border ${toneClasses.wrap}`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <Icon size={14} className={toneClasses.text} />
+                  <span className={`text-[10px] font-mono uppercase tracking-wider font-semibold opacity-80 ${toneClasses.text}`}>{s.label}</span>
+                </div>
+                <div className={`text-2xl font-semibold font-mono num-tabular tracking-tight ${toneClasses.text}`}>{s.value}</div>
               </div>
             );
           })}
@@ -569,20 +569,20 @@ export default function ProjectDetail() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex items-center gap-2">
-        <div className="flex gap-1 p-1 rounded-xl" style={{ background: "#F1F5F9" }}>
+      <div className="flex items-center gap-2 overflow-x-auto scrollbar-thin">
+        <div className="flex gap-1 p-1 rounded-xl bg-muted/60 border border-border backdrop-blur-sm">
           {TABS.map(tab => {
             const Icon = tab.icon;
+            const active = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
-                style={{
-                  background: activeTab === tab.id ? "white" : "transparent",
-                  color: activeTab === tab.id ? "#4338CA" : "#64748B",
-                  boxShadow: activeTab === tab.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+                  active
+                    ? "bg-card text-primary shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
               >
                 <Icon size={14} />
                 {tab.label}
@@ -613,9 +613,18 @@ export default function ProjectDetail() {
           />
 
           {/* All stages quick nav */}
-          <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-            <h4 className="text-sm font-bold text-gray-700 mb-3">All Lifecycle Stages</h4>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
+          <div className="glass-surface lift-card rounded-2xl p-5 ph-rise relative overflow-hidden">
+            <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 border border-primary/20">
+                <Layers size={18} className="text-primary" />
+              </div>
+              <div>
+                <h4 className="text-[14px] font-semibold text-foreground tracking-tight">All Lifecycle Stages</h4>
+                <p className="text-[11px] text-muted-foreground mt-0.5">15-stage governance flow · click to inspect</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2 stagger-children">
               {LIFECYCLE_STAGES.map((stage, idx) => {
                 const stageRecord = (stageRecords as Array<{ stage: string; status: string }>)
                   .find(r => r.stage === stage.key);
@@ -627,30 +636,32 @@ export default function ProjectDetail() {
                   <button
                     key={stage.key}
                     onClick={() => handleStageClick(stage.key)}
-                    className="flex items-center gap-3 p-3 rounded-xl text-left transition-all hover:shadow-sm"
-                    style={{
-                      background: isSelected ? `${stage.color}12` : "#F8FAFC",
-                      border: `1px solid ${isSelected ? stage.color + "40" : "#E2E8F0"}`,
-                    }}
+                    className={`flex items-center gap-3 p-3 rounded-xl text-left transition-all border ${
+                      isSelected
+                        ? "bg-primary/5 border-primary/30 shadow-sm"
+                        : "bg-muted/40 border-border hover:bg-accent/40 hover:border-border"
+                    }`}
                   >
                     <div
-                      className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                      style={{
-                        background: isComplete ? "#10B981" : isActive ? stage.color : "#E2E8F0",
-                        color: isComplete || isActive ? "white" : "#94A3B8",
-                      }}
+                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold font-mono flex-shrink-0 ${
+                        isComplete
+                          ? "bg-success text-white"
+                          : isActive
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground border border-border"
+                      }`}
                     >
                       {isComplete ? "✓" : idx + 1}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-800 truncate">{stage.label}</p>
-                      <p className="text-xs text-gray-400 truncate">{stage.description.substring(0, 40)}...</p>
+                      <p className="text-xs font-semibold text-foreground truncate">{stage.label}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{stage.description.substring(0, 40)}...</p>
                     </div>
                     {isActive && (
-                      <span className="text-xs font-bold px-1.5 py-0.5 rounded flex-shrink-0" style={{ background: "#EEF2FF", color: "#4F46E5" }}>Active</span>
+                      <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-primary/10 text-primary border-primary/20 flex-shrink-0">Active</span>
                     )}
                     {isComplete && !isActive && (
-                      <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
+                      <CheckCircle2 size={14} className="text-success flex-shrink-0" />
                     )}
                   </button>
                 );
@@ -665,26 +676,26 @@ export default function ProjectDetail() {
         <div className="space-y-4">
           {/* Grid sub-tab: Tasks vs Milestones */}
           <div className="flex items-center gap-3">
-            <div className="flex gap-1 p-1 rounded-xl" style={{ background: "#F1F5F9" }}>
+            <div className="flex gap-1 p-1 rounded-xl bg-muted/60 border border-border backdrop-blur-sm">
               {([
                 { id: "tasks" as const, label: "Tasks & Subtasks" },
                 { id: "milestones" as const, label: "Milestones" },
-              ]).map(sub => (
-                <button
-                  key={sub.id}
-                  onClick={() => setGridSubTab(sub.id)}
-                  className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
-                  style={{
-                    background: gridSubTab === sub.id ? "white" : "transparent",
-                    color: gridSubTab === sub.id ? "#4338CA" : "#64748B",
-                    boxShadow: gridSubTab === sub.id ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
-                  }}
-                >
-                  {sub.label}
-                </button>
-              ))}
+              ]).map(sub => {
+                const active = gridSubTab === sub.id;
+                return (
+                  <button
+                    key={sub.id}
+                    onClick={() => setGridSubTab(sub.id)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                      active ? "bg-card text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {sub.label}
+                  </button>
+                );
+              })}
             </div>
-            <span className="text-xs text-gray-400 ml-2">
+            <span className="text-[11px] text-muted-foreground font-mono">
               {gridSubTab === "tasks"
                 ? `${filteredTasks.length} task${filteredTasks.length !== 1 ? "s" : ""}`
                 : `${milestones.length} milestone${milestones.length !== 1 ? "s" : ""}`}
@@ -692,7 +703,7 @@ export default function ProjectDetail() {
           </div>
 
           {/* Filter bar */}
-          <div className="rounded-xl px-4 py-2" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+          <div className="glass-surface rounded-xl px-4 py-2">
             <TaskFilterBar
               filters={taskFilters}
               onChange={setTaskFilters}
@@ -729,9 +740,9 @@ export default function ProjectDetail() {
 
       {/* ── Gantt Tab ────────────────────────────────────────────────── */}
       {activeTab === "gantt" && (
-        <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-          <div className="flex items-center gap-5 px-4 py-2.5 border-b border-gray-100" style={{ background: "#F8FAFC" }}>
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Gantt Legend</span>
+        <div className="glass-surface lift-card rounded-2xl overflow-hidden ph-rise">
+          <div className="flex items-center gap-5 px-4 py-2.5 border-b border-border/60 bg-muted/40 flex-wrap">
+            <span className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-wider">Gantt Legend</span>
             {[
               { color: "#6366F1", label: "Task" },
               { color: "#EF4444", label: "Critical Path" },
@@ -739,21 +750,21 @@ export default function ProjectDetail() {
             ].map(l => (
               <div key={l.label} className="flex items-center gap-1.5">
                 <div className="w-8 h-3 rounded" style={{ background: l.color }} />
-                <span className="text-xs text-gray-500">{l.label}</span>
+                <span className="text-[11px] text-muted-foreground">{l.label}</span>
               </div>
             ))}
             <div className="flex items-center gap-1.5">
-              <div className="w-4 h-4 rotate-45" style={{ background: "#4F46E5" }} />
-              <span className="text-xs text-gray-500">Milestone</span>
+              <div className="w-4 h-4 rotate-45 bg-primary" />
+              <span className="text-[11px] text-muted-foreground">Milestone</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="w-6 h-0.5 border-t-2 border-dashed border-red-400" />
-              <span className="text-xs text-gray-500">Today</span>
+              <div className="w-6 h-0.5 border-t-2 border-dashed border-destructive/70" />
+              <span className="text-[11px] text-muted-foreground">Today</span>
             </div>
           </div>
 
           {milestones.length === 0 && tasks.length === 0 ? (
-            <div className="p-12 text-center text-gray-400 text-sm">
+            <div className="p-12 text-center text-muted-foreground text-sm">
               Add tasks with start/end dates to see the Gantt chart.
             </div>
           ) : (
@@ -765,10 +776,10 @@ export default function ProjectDetail() {
       {/* ── Board Tab ────────────────────────────────────────────────── */}
       {activeTab === "board" && (
         <div className="space-y-4">
-          <div className="rounded-xl px-4 py-2" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+          <div className="glass-surface rounded-xl px-4 py-2">
             <div className="flex items-center justify-between py-1">
-              <p className="text-xs text-gray-500">Drag cards between columns to update status. Milestones shown as <span className="font-semibold">[M]</span> cards.</p>
-              <span className="text-xs text-gray-400">{tasks.filter(t => !t.parentTaskId).length + milestones.length} items</span>
+              <p className="text-[11px] text-muted-foreground">Drag cards between columns to update status. Milestones shown as <span className="font-semibold text-foreground">[M]</span> cards.</p>
+              <span className="text-[11px] text-muted-foreground font-mono">{tasks.filter(t => !t.parentTaskId).length + milestones.length} items</span>
             </div>
           </div>
           <ConnectBoard
@@ -1090,57 +1101,65 @@ export default function ProjectDetail() {
           <ProgressTrackingPanel milestones={milestones} tasks={tasks} lastUpdated={lastUpdated} />
           <EffortBurnChart projectId={projectId} />
 
-          <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-            <div className="mb-4">
-              <h3 className="font-semibold text-gray-900">Burndown Chart</h3>
-              <p className="text-xs text-gray-400 mt-0.5">Ideal vs actual remaining work</p>
+          <div className="glass-surface lift-card rounded-2xl p-5 ph-rise relative overflow-hidden">
+            <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 border border-primary/20">
+                <TrendingUp size={18} className="text-primary" />
+              </div>
+              <div>
+                <h3 className="text-[14px] font-semibold text-foreground tracking-tight">Burndown Chart</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Ideal vs actual remaining work</p>
+              </div>
             </div>
             <div style={{ height: 300 }}>
               {burndown?.dataPoints && burndown.dataPoints.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={burndown.dataPoints} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                    <XAxis dataKey="date" tickFormatter={(v) => formatDate(v)} tick={{ fontSize: 11, fill: "#94A3B8" }} />
-                    <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="date" tickFormatter={(v) => formatDate(v)} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                    <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
                     <Tooltip
-                      contentStyle={{ background: "#1E293B", border: "none", borderRadius: "8px", color: "white", fontSize: "12px" }}
+                      contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--popover-border))", borderRadius: "8px", color: "hsl(var(--popover-foreground))", fontSize: "12px" }}
                       labelFormatter={(v) => formatDate(v)}
                     />
                     <Legend wrapperStyle={{ fontSize: "12px" }} />
-                    <Line type="monotone" dataKey="ideal" stroke="#CBD5E1" strokeDasharray="5 5" name="Ideal" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="remaining" stroke="#6366F1" name="Actual" strokeWidth={2.5} dot={{ r: 3, fill: "#6366F1" }} />
+                    <Line type="monotone" dataKey="ideal" stroke="hsl(var(--muted-foreground))" strokeDasharray="5 5" name="Ideal" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="remaining" stroke="hsl(var(--primary))" name="Actual" strokeWidth={2.5} dot={{ r: 3, fill: "hsl(var(--primary))" }} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-full flex items-center justify-center text-gray-400 text-sm">
+                <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
                   No burndown data available yet.
                 </div>
               )}
             </div>
           </div>
 
-          <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-            <div className="mb-4">
-              <h3 className="font-semibold text-gray-900">Critical Path</h3>
-              <p className="text-xs text-gray-400 mt-0.5">Tasks that directly impact the project end date</p>
+          <div className="glass-surface lift-card rounded-2xl p-5 ph-rise relative overflow-hidden">
+            <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-destructive/40 to-transparent" />
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-destructive/10 border border-destructive/20">
+                <Zap size={18} className="text-destructive" />
+              </div>
+              <div>
+                <h3 className="text-[14px] font-semibold text-foreground tracking-tight">Critical Path</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Tasks that directly impact the project end date</p>
+              </div>
             </div>
             {criticalPath?.criticalTasks?.length ? (
-              <div className="space-y-2">
+              <div className="space-y-2 stagger-children">
                 {criticalPath.criticalTasks.map((t: TaskRaw, idx: number) => (
                   <div
                     key={t.id}
-                    className="flex items-center gap-3 p-3 rounded-xl"
-                    style={{ background: "#FEF2F2", border: "1px solid #FCA5A5" }}
+                    className="flex items-center gap-3 p-3 rounded-xl bg-destructive/5 border border-destructive/20"
                   >
-                    <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                      style={{ background: "#EF4444" }}
-                    >
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold font-mono text-white flex-shrink-0 bg-destructive">
                       {idx + 1}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-red-800">{t.name}</p>
-                      <p className="text-xs text-red-500">
+                      <p className="text-sm font-semibold text-foreground truncate">{t.name}</p>
+                      <p className="text-[11px] text-muted-foreground font-mono">
                         {formatDate(t.startDate)} — {formatDate(t.endDate)}
                         {t.estimatedHours != null && ` · ${t.estimatedHours}h`}
                       </p>
@@ -1150,7 +1169,7 @@ export default function ProjectDetail() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-400">No critical path computed yet.</p>
+              <p className="text-sm text-muted-foreground">No critical path computed yet.</p>
             )}
           </div>
         </div>
@@ -1176,69 +1195,76 @@ export default function ProjectDetail() {
 
         return (
           <div className="space-y-4">
-            <div className="rounded-2xl p-5 flex items-center justify-between" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-              <div>
-                <h3 className="font-semibold text-gray-900">Project Scoring</h3>
-                <p className="text-xs text-gray-400 mt-0.5">Rate this project 1–5 against each weighted criterion</p>
+            <div className="glass-surface lift-card rounded-2xl p-5 flex items-center justify-between ph-rise relative overflow-hidden">
+              <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 border border-primary/20">
+                  <Star size={18} className="text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-[14px] font-semibold text-foreground tracking-tight">Project Scoring</h3>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">Rate this project 1–5 against each weighted criterion</p>
+                </div>
               </div>
               <div className="text-right">
-                <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold mb-1">Weighted Score</p>
-                <p className="text-3xl font-bold text-indigo-600">{weightedTotal.toFixed(1)}</p>
+                <p className="text-[10px] font-mono uppercase tracking-wider font-semibold text-muted-foreground mb-1">Weighted Score</p>
+                <p className="text-3xl font-semibold font-mono num-tabular tracking-tight text-primary">{weightedTotal.toFixed(1)}</p>
               </div>
             </div>
 
             {criteria.length === 0 ? (
-              <div className="rounded-2xl p-10 text-center" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-                <Star size={32} className="text-gray-300 mx-auto mb-3" />
-                <p className="text-sm text-gray-500">No scoring criteria configured.</p>
-                <p className="text-xs text-gray-400 mt-1">A PMO admin can add criteria in <strong>Admin → Scoring</strong>.</p>
+              <div className="glass-surface rounded-2xl p-10 text-center ph-rise">
+                <Star size={32} className="text-muted-foreground/40 mx-auto mb-3" />
+                <p className="text-sm text-foreground">No scoring criteria configured.</p>
+                <p className="text-xs text-muted-foreground mt-1">A PMO admin can add criteria in <strong className="text-foreground">Admin → Scoring</strong>.</p>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3 stagger-children">
                 {criteria.map(c => {
                   const existing = scoreMap[c.id];
                   const currentScore = existing?.score ?? 0;
                   const weightedContrib = existing ? Number(existing.weightedScore) : 0;
                   return (
-                    <div key={c.id} className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+                    <div key={c.id} className="glass-surface lift-card rounded-2xl p-5">
                       <div className="flex items-start justify-between gap-4 mb-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <p className="font-semibold text-gray-900 truncate">{c.name}</p>
-                            <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: "#EEF2FF", color: "#6366F1" }}>
+                            <p className="font-semibold text-foreground truncate tracking-tight">{c.name}</p>
+                            <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded-sm border bg-primary/10 text-primary border-primary/20">
                               {c.weightPct}%
                             </span>
                           </div>
-                          {c.description && <p className="text-xs text-gray-400 mt-0.5 line-clamp-2">{c.description}</p>}
+                          {c.description && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{c.description}</p>}
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <p className="text-xs text-gray-400">Contribution</p>
-                          <p className="text-lg font-bold text-gray-700">{weightedContrib.toFixed(2)}</p>
+                          <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Contribution</p>
+                          <p className="text-lg font-semibold font-mono num-tabular text-foreground">{weightedContrib.toFixed(2)}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="text-xs text-gray-400 w-8">Score:</span>
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground w-10">Score</span>
                         <div className="flex gap-2">
-                          {[1,2,3,4,5].map(v => (
-                            <button
-                              key={v}
-                              disabled={!isPMORole}
-                              onClick={() => { void handleSaveScore(c.id, v); }}
-                              className="w-8 h-8 rounded-lg text-sm font-bold transition-all"
-                              style={{
-                                background: currentScore === v ? "#6366F1" : "#F1F5F9",
-                                color: currentScore === v ? "white" : "#64748B",
-                                cursor: isPMORole ? "pointer" : "default",
-                                border: currentScore === v ? "none" : "1px solid #E2E8F0",
-                              }}
-                            >
-                              {v}
-                            </button>
-                          ))}
+                          {[1,2,3,4,5].map(v => {
+                            const active = currentScore === v;
+                            return (
+                              <button
+                                key={v}
+                                disabled={!isPMORole}
+                                onClick={() => { void handleSaveScore(c.id, v); }}
+                                className={`w-8 h-8 rounded-lg text-sm font-semibold font-mono transition-all border ${
+                                  active
+                                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                    : "bg-muted/40 text-muted-foreground border-border hover:bg-accent/40 hover:text-foreground"
+                                } ${isPMORole ? "cursor-pointer" : "cursor-default opacity-70"}`}
+                              >
+                                {v}
+                              </button>
+                            );
+                          })}
                         </div>
                         {currentScore > 0 && (
-                          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden ml-2">
-                            <div className="h-full rounded-full" style={{ width: `${(currentScore / 5) * 100}%`, background: "linear-gradient(90deg,#6366F1,#8B5CF6)" }} />
+                          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden ml-2">
+                            <div className="h-full rounded-full bg-primary" style={{ width: `${(currentScore / 5) * 100}%` }} />
                           </div>
                         )}
                         {!isPMORole && (
