@@ -101,7 +101,18 @@ export function ResourceTab({
     return row;
   });
 
-  const STACK_COLORS = ["#6366F1", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4", "#EC4899", "#14B8A6", "#F97316", "#84CC16"];
+  const STACK_COLORS = [
+    "hsl(var(--primary))",
+    "hsl(var(--success))",
+    "hsl(var(--warn))",
+    "hsl(var(--destructive))",
+    "hsl(var(--primary) / 0.7)",
+    "hsl(var(--success) / 0.7)",
+    "hsl(var(--warn) / 0.7)",
+    "hsl(var(--destructive) / 0.7)",
+    "hsl(var(--primary) / 0.4)",
+    "hsl(var(--muted-foreground))",
+  ];
 
   function handleSubmit() {
     if (!form.userId) { toast({ title: "Select a user", variant: "destructive" }); return; }
@@ -139,41 +150,40 @@ export function ResourceTab({
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="rounded-2xl p-5 flex items-center justify-between" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 flex items-center justify-between">
         <div>
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <Users size={16} className="text-indigo-500" /> Resource Allocation
+          <h3 className="font-semibold text-foreground flex items-center gap-2">
+            <Users size={16} className="text-primary" /> Resource Allocation
           </h3>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {allocations.length} allocation{allocations.length !== 1 ? "s" : ""} across {allocUsers.length} member{allocUsers.length !== 1 ? "s" : ""}
           </p>
         </div>
         <button
           onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-          style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90"
         >
           <Plus size={14} /> Add Resource
         </button>
       </div>
 
       {/* Allocation grid */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-        <div className="px-5 py-3 border-b border-gray-100">
-          <h4 className="text-sm font-bold text-gray-700">Monthly Allocation Grid</h4>
-          <p className="text-xs text-gray-400 mt-0.5">Cells show total allocation % per member per month. Amber = over 100%.</p>
+      <div className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-border/60">
+          <h4 className="text-sm font-bold text-foreground">Monthly Allocation Grid</h4>
+          <p className="text-xs text-muted-foreground mt-0.5">Cells show total allocation % per member per month. Amber = over 100%.</p>
         </div>
         {allocUsers.length === 0 ? (
-          <div className="p-10 text-center text-sm text-gray-400">No resources allocated yet. Click "Add Resource" to start.</div>
+          <div className="p-10 text-center text-sm text-muted-foreground">No resources allocated yet. Click "Add Resource" to start.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead style={{ background: "#F8FAFC" }}>
+              <thead style={{ background: "hsl(var(--muted) / 0.40)" }}>
                 <tr>
-                  <th className="text-left px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-wide">Member</th>
-                  <th className="text-left px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-wide">Role / Skill</th>
+                  <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Member</th>
+                  <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Role / Skill</th>
                   {months.map(mo => (
-                    <th key={monthKey(mo)} className="text-center px-3 py-2 text-xs font-bold text-gray-500 uppercase tracking-wide">
+                    <th key={monthKey(mo)} className="text-center px-3 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">
                       {monthLabel(mo)}
                     </th>
                   ))}
@@ -184,14 +194,14 @@ export function ResourceTab({
                 {allocUsers.map(u => {
                   const userAllocs = allocations.filter(a => a.userId === u.id);
                   return (
-                    <tr key={u.id} className="border-t border-gray-100 hover:bg-indigo-50/30">
+                    <tr key={u.id} className="border-t border-border/60 hover:bg-primary/10/30">
                       <td className="px-4 py-2.5">
-                        <p className="text-sm font-semibold text-gray-900">{u.name}</p>
-                        {u.department && <p className="text-xs text-gray-400">{u.department}</p>}
+                        <p className="text-sm font-semibold text-foreground">{u.name}</p>
+                        {u.department && <p className="text-xs text-muted-foreground">{u.department}</p>}
                       </td>
                       <td className="px-4 py-2.5">
                         {userAllocs.map(a => (
-                          <div key={a.id} className="text-xs text-gray-600">
+                          <div key={a.id} className="text-xs text-foreground">
                             {a.role || "—"}{a.skill ? ` · ${a.skill}` : ""}
                           </div>
                         ))}
@@ -206,13 +216,13 @@ export function ResourceTab({
                               <span
                                 className="inline-block text-xs font-bold px-2 py-1 rounded-md"
                                 style={{
-                                  background: over ? "#FEF3C7" : "#EEF2FF",
-                                  color: over ? "#B45309" : "#4338CA",
+                                  background: over ? "hsl(var(--warn) / 0.15)" : "hsl(var(--primary) / 0.10)",
+                                  color: over ? "hsl(var(--warn))" : "hsl(var(--primary))",
                                 }}
                               >
                                 {pct}%
                               </span>
-                            ) : <span className="text-xs text-gray-300">—</span>}
+                            ) : <span className="text-xs text-muted-foreground/60">—</span>}
                           </td>
                         );
                       })}
@@ -221,7 +231,7 @@ export function ResourceTab({
                           <button
                             key={a.id}
                             onClick={() => handleDelete(a.id)}
-                            className="text-gray-300 hover:text-red-500 transition-colors"
+                            className="text-muted-foreground/60 hover:text-destructive transition-colors"
                             title="Remove allocation"
                           >
                             <Trash2 size={14} />
@@ -248,11 +258,11 @@ export function ResourceTab({
         }
         if (conflicts.length === 0) return null;
         return (
-          <div className="rounded-2xl p-4 flex items-start gap-3" style={{ background: "#FFF7ED", border: "1px solid #FDBA74" }}>
-            <AlertTriangle size={16} className="text-orange-500 mt-0.5 flex-shrink-0" />
+          <div className="glass-surface lift-card ph-rise rounded-2xl p-4 flex items-start gap-3" style={{ background: "hsl(var(--warn) / 0.10)", border: "1px solid hsl(var(--warn) / 0.30)" }}>
+            <AlertTriangle size={16} className="text-warn mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-sm font-bold text-orange-800">Capacity over-allocation detected</p>
-              <ul className="text-xs text-orange-700 mt-1 space-y-0.5">
+              <p className="text-sm font-bold text-warn">Capacity over-allocation detected</p>
+              <ul className="text-xs text-warn mt-1 space-y-0.5">
                 {conflicts.slice(0, 6).map((c, i) => (
                   <li key={i}>• <b>{c.user}</b> is at <b>{c.pct}%</b> in {c.month}</li>
                 ))}
@@ -264,19 +274,19 @@ export function ResourceTab({
       })()}
 
       {/* Capacity Forecast chart */}
-      <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-        <h4 className="text-sm font-bold text-gray-700">Capacity Forecast</h4>
-        <p className="text-xs text-gray-400 mt-0.5 mb-4">Total allocation % per month, stacked by member.</p>
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5">
+        <h4 className="text-sm font-bold text-foreground">Capacity Forecast</h4>
+        <p className="text-xs text-muted-foreground mt-0.5 mb-4">Total allocation % per month, stacked by member.</p>
         <div style={{ height: 280 }}>
           {allocUsers.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-sm text-gray-400">No data to chart yet.</div>
+            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">No data to chart yet.</div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94A3B8" }} />
-                <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} unit="%" />
-                <Tooltip contentStyle={{ background: "#1E293B", border: "none", borderRadius: 8, color: "white", fontSize: 12 }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} unit="%" />
+                <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--popover-border))", borderRadius: 8, color: "hsl(var(--popover-foreground))", fontSize: 12 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 {allocUsers.map((u, idx) => (
                   <Bar key={u.id} dataKey={u.name} stackId="cap" fill={STACK_COLORS[idx % STACK_COLORS.length]} />
@@ -291,15 +301,15 @@ export function ResourceTab({
       <Dialog open={showAdd} onOpenChange={v => { if (!v) setShowAdd(false); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Users size={16} className="text-indigo-500" /> Add Resource</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><Users size={16} className="text-primary" /> Add Resource</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-semibold text-gray-500">Member</label>
+              <label className="text-xs font-semibold text-muted-foreground">Member</label>
               <select
                 value={form.userId}
                 onChange={e => setForm({ ...form, userId: e.target.value })}
-                className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mt-1"
+                className="w-full text-sm border border-border rounded-lg px-3 py-2 mt-1"
               >
                 <option value="">Select member…</option>
                 {usersArr.map(u => <option key={u.id} value={u.id}>{u.name}{u.role ? ` (${u.role})` : ""}</option>)}
@@ -307,31 +317,31 @@ export function ResourceTab({
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-gray-500">Role</label>
+                <label className="text-xs font-semibold text-muted-foreground">Role</label>
                 <Input value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} placeholder="e.g. Tech Lead" />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500">Skill</label>
+                <label className="text-xs font-semibold text-muted-foreground">Skill</label>
                 <Input value={form.skill} onChange={e => setForm({ ...form, skill: e.target.value })} placeholder="e.g. React" />
               </div>
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500">Allocation %</label>
+              <label className="text-xs font-semibold text-muted-foreground">Allocation %</label>
               <Input type="number" min={1} max={200} value={form.allocationPct} onChange={e => setForm({ ...form, allocationPct: e.target.value })} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-gray-500">Start</label>
+                <label className="text-xs font-semibold text-muted-foreground">Start</label>
                 <Input type="date" value={form.startDate} onChange={e => setForm({ ...form, startDate: e.target.value })} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500">End</label>
+                <label className="text-xs font-semibold text-muted-foreground">End</label>
                 <Input type="date" value={form.endDate} onChange={e => setForm({ ...form, endDate: e.target.value })} />
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">Cancel</button>
-              <button onClick={handleSubmit} className="px-4 py-2 text-sm font-semibold text-white rounded-lg" style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}>
+              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted/40">Cancel</button>
+              <button onClick={handleSubmit} className="px-4 py-2 text-sm font-semibold text-primary-foreground rounded-lg bg-primary hover:bg-primary/90">
                 Allocate
               </button>
             </div>

@@ -72,24 +72,24 @@ export function EscalationRulesTab({ projectId }: { projectId: number }) {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl p-5 flex items-center justify-between" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 flex items-center justify-between">
         <div>
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <Zap size={16} className="text-amber-500" /> Escalation Rules
+          <h3 className="font-semibold text-foreground flex items-center gap-2">
+            <Zap size={16} className="text-warn" /> Escalation Rules
           </h3>
-          <p className="text-xs text-gray-400 mt-0.5">
+          <p className="text-xs text-muted-foreground mt-0.5">
             {canEdit ? "Configure automatic notifications when project metrics breach thresholds." : "Read-only — only PMO/ED/Chairman roles can edit."}
           </p>
         </div>
         {canEdit && (
-          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: "linear-gradient(135deg, #F59E0B, #DC2626)" }}>
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90">
             <Plus size={14} /> New Rule
           </button>
         )}
       </div>
 
       {rulesArr.length === 0 ? (
-        <div className="rounded-2xl p-10 text-center text-sm text-gray-400" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+        <div className="glass-surface lift-card ph-rise rounded-2xl p-10 text-center text-sm text-muted-foreground">
           No escalation rules configured for this project.
         </div>
       ) : (
@@ -97,17 +97,17 @@ export function EscalationRulesTab({ projectId }: { projectId: number }) {
           {rulesArr.map(r => {
             const trigger = TRIGGERS.find(t => t.value === r.triggerType);
             return (
-              <div key={r.id} className="rounded-2xl p-4 flex items-center gap-4" style={{ background: "white", border: "1px solid #E2E8F0", opacity: r.isActive ? 1 : 0.55 }}>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: r.isActive ? "#FEF3C7" : "#F1F5F9" }}>
-                  <Bell size={15} className={r.isActive ? "text-amber-600" : "text-gray-400"} />
+              <div key={r.id} className="glass-surface lift-card ph-rise rounded-2xl p-4 flex items-center gap-4" style={{ opacity: r.isActive ? 1 : 0.55 }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: r.isActive ? "hsl(var(--warn) / 0.15)" : "hsl(var(--border))" }}>
+                  <Bell size={15} className={r.isActive ? "text-warn" : "text-muted-foreground"} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-900">{trigger?.label ?? r.triggerType}</p>
-                  <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-500">
+                  <p className="text-sm font-semibold text-foreground">{trigger?.label ?? r.triggerType}</p>
+                  <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-muted-foreground">
                     {Number(r.thresholdValue) > 0 && <span>Threshold: <b>{Number(r.thresholdValue)}</b></span>}
                     <span>Notify:</span>
                     {(r.notifyUserIds ?? []).map(uid => (
-                      <span key={uid} className="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 font-semibold">{userName(uid)}</span>
+                      <span key={uid} className="px-1.5 py-0.5 rounded bg-primary/10 text-primary font-semibold">{userName(uid)}</span>
                     ))}
                   </div>
                 </div>
@@ -117,13 +117,13 @@ export function EscalationRulesTab({ projectId }: { projectId: number }) {
                       onClick={() => toggle(r)}
                       className="text-xs font-semibold px-2.5 py-1 rounded"
                       style={{
-                        background: r.isActive ? "#ECFDF5" : "#F1F5F9",
-                        color: r.isActive ? "#15803D" : "#64748B",
+                        background: r.isActive ? "hsl(var(--success) / 0.10)" : "hsl(var(--border))",
+                        color: r.isActive ? "hsl(var(--success))" : "hsl(var(--muted-foreground))",
                       }}
                     >
                       {r.isActive ? "● Active" : "○ Inactive"}
                     </button>
-                    <button onClick={() => handleDelete(r.id)} className="p-1.5 rounded hover:bg-red-50 text-gray-400 hover:text-red-500">
+                    <button onClick={() => handleDelete(r.id)} className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive">
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -137,22 +137,22 @@ export function EscalationRulesTab({ projectId }: { projectId: number }) {
       <Dialog open={showAdd} onOpenChange={v => { if (!v) setShowAdd(false); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Zap size={16} className="text-amber-500" /> New Escalation Rule</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><Zap size={16} className="text-warn" /> New Escalation Rule</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-semibold text-gray-500">Trigger</label>
-              <select value={form.triggerType} onChange={e => setForm({ ...form, triggerType: e.target.value })} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mt-1">
+              <label className="text-xs font-semibold text-muted-foreground">Trigger</label>
+              <select value={form.triggerType} onChange={e => setForm({ ...form, triggerType: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-2 mt-1">
                 {TRIGGERS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500">Threshold value</label>
+              <label className="text-xs font-semibold text-muted-foreground">Threshold value</label>
               <Input type="number" value={form.thresholdValue} onChange={e => setForm({ ...form, thresholdValue: e.target.value })} placeholder="e.g. 10 (= 10% or 10 days)" />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500">Notify these users</label>
-              <div className="grid grid-cols-2 gap-1.5 mt-1 max-h-48 overflow-y-auto p-2 border border-gray-200 rounded-lg">
+              <label className="text-xs font-semibold text-muted-foreground">Notify these users</label>
+              <div className="grid grid-cols-2 gap-1.5 mt-1 max-h-48 overflow-y-auto p-2 border border-border rounded-lg">
                 {usersArr.map(u => {
                   const on = form.notifyUserIds.includes(u.id);
                   return (
@@ -161,9 +161,9 @@ export function EscalationRulesTab({ projectId }: { projectId: number }) {
                       type="button"
                       onClick={() => setForm({ ...form, notifyUserIds: on ? form.notifyUserIds.filter(x => x !== u.id) : [...form.notifyUserIds, u.id] })}
                       className="flex items-center gap-2 px-2 py-1.5 text-xs rounded text-left"
-                      style={{ background: on ? "#EEF2FF" : "transparent", color: on ? "#4338CA" : "#475569" }}
+                      style={{ background: on ? "hsl(var(--primary) / 0.10)" : "transparent", color: on ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))" }}
                     >
-                      <span className="w-3 h-3 rounded border flex-shrink-0" style={{ background: on ? "#4338CA" : "white", borderColor: on ? "#4338CA" : "#CBD5E1" }} />
+                      <span className="w-3 h-3 rounded border flex-shrink-0" style={{ background: on ? "hsl(var(--primary))" : "hsl(var(--card))", borderColor: on ? "hsl(var(--primary))" : "hsl(var(--border))" }} />
                       <span className="truncate">{u.name}</span>
                     </button>
                   );
@@ -171,8 +171,8 @@ export function EscalationRulesTab({ projectId }: { projectId: number }) {
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">Cancel</button>
-              <button onClick={handleAdd} className="px-4 py-2 text-sm font-semibold text-white rounded-lg" style={{ background: "linear-gradient(135deg, #F59E0B, #DC2626)" }}>Create Rule</button>
+              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted/40">Cancel</button>
+              <button onClick={handleAdd} className="px-4 py-2 text-sm font-semibold text-primary-foreground rounded-lg bg-primary hover:bg-primary/90">Create Rule</button>
             </div>
           </div>
         </DialogContent>

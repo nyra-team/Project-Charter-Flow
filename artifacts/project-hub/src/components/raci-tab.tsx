@@ -10,10 +10,10 @@ type Entry = { id: number; projectId: number; taskId?: number | null; workstream
 
 const RACI_OPTS = ["R", "A", "C", "I"] as const;
 const RACI_META: Record<string, { color: string; bg: string; label: string }> = {
-  R: { color: "#4338CA", bg: "#EEF2FF", label: "Responsible" },
-  A: { color: "#15803D", bg: "#ECFDF5", label: "Accountable" },
-  C: { color: "#B45309", bg: "#FFFBEB", label: "Consulted" },
-  I: { color: "#64748B", bg: "#F1F5F9", label: "Informed" },
+  R: { color: "hsl(var(--primary))", bg: "hsl(var(--primary) / 0.10)", label: "Responsible" },
+  A: { color: "hsl(var(--success))", bg: "hsl(var(--success) / 0.10)", label: "Accountable" },
+  C: { color: "hsl(var(--warn))", bg: "hsl(var(--warn) / 0.10)", label: "Consulted" },
+  I: { color: "hsl(var(--muted-foreground))", bg: "hsl(var(--border))", label: "Informed" },
 };
 
 export function RaciTab({ projectId }: { projectId: number }) {
@@ -95,12 +95,12 @@ export function RaciTab({ projectId }: { projectId: number }) {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <UserCheck size={16} className="text-indigo-500" /> RACI Matrix
+          <h3 className="font-semibold text-foreground flex items-center gap-2">
+            <UserCheck size={16} className="text-primary" /> RACI Matrix
           </h3>
-          <p className="text-xs text-gray-400 mt-0.5">{tasksArr.length} tasks × {cols.length} member{cols.length !== 1 ? "s" : ""}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{tasksArr.length} tasks × {cols.length} member{cols.length !== 1 ? "s" : ""}</p>
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -109,20 +109,20 @@ export function RaciTab({ projectId }: { projectId: number }) {
               const id = parseInt(e.target.value);
               if (id && !selectedUserIds.includes(id)) setSelectedUserIds([...selectedUserIds, id]);
             }}
-            className="text-sm border border-gray-200 rounded-lg px-3 py-2"
+            className="text-sm border border-border rounded-lg px-3 py-2"
           >
             <option value="">+ Add member column…</option>
             {usersArr.filter(u => !userIds.includes(u.id)).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
           </select>
-          <button onClick={exportCsv} className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-lg border border-gray-200 hover:bg-gray-50">
+          <button onClick={exportCsv} className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-lg border border-border hover:bg-muted/40">
             <Download size={13} /> CSV
           </button>
         </div>
       </div>
 
       {/* Legend */}
-      <div className="rounded-2xl p-3 flex items-center gap-3 flex-wrap" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-        <span className="text-xs font-semibold text-gray-500">LEGEND:</span>
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-3 flex items-center gap-3 flex-wrap">
+        <span className="text-xs font-semibold text-muted-foreground">LEGEND:</span>
         {RACI_OPTS.map(k => (
           <span key={k} className="text-xs flex items-center gap-1.5">
             <span className="w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center" style={{ background: RACI_META[k].bg, color: RACI_META[k].color }}>{k}</span>
@@ -132,25 +132,25 @@ export function RaciTab({ projectId }: { projectId: number }) {
       </div>
 
       {tasksArr.length === 0 || cols.length === 0 ? (
-        <div className="rounded-2xl p-10 text-center text-sm text-gray-400" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+        <div className="glass-surface lift-card ph-rise rounded-2xl p-10 text-center text-sm text-muted-foreground">
           {tasksArr.length === 0 ? "No tasks in this project yet." : "Add member columns to start assigning RACI."}
         </div>
       ) : (
-        <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+        <div className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead style={{ background: "#F8FAFC" }}>
+              <thead style={{ background: "hsl(var(--muted) / 0.40)" }}>
                 <tr>
-                  <th className="text-left px-4 py-2 text-xs font-bold text-gray-500 uppercase sticky left-0 z-10" style={{ background: "#F8FAFC" }}>Task</th>
+                  <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase sticky left-0 z-10" style={{ background: "hsl(var(--muted) / 0.40)" }}>Task</th>
                   {cols.map(u => {
                     const cnt = responsibilityCount[u.id] ?? { R: 0, A: 0 };
                     const over = cnt.R + cnt.A > overThreshold;
                     return (
-                      <th key={u.id} className="text-center px-2 py-2 text-xs font-bold text-gray-500 uppercase">
+                      <th key={u.id} className="text-center px-2 py-2 text-xs font-bold text-muted-foreground uppercase">
                         <div className="flex flex-col items-center">
                           <span>{u.name.split(" ").map(p => p[0]).join("")}</span>
-                          <span className="text-[10px] font-normal normal-case text-gray-400 truncate max-w-[80px]">{u.name}</span>
-                          {over && <span title="Over-allocated (R+A > 5)"><AlertTriangle size={10} className="text-orange-500 mt-0.5" /></span>}
+                          <span className="text-[10px] font-normal normal-case text-muted-foreground truncate max-w-[80px]">{u.name}</span>
+                          {over && <span title="Over-allocated (R+A > 5)"><AlertTriangle size={10} className="text-warn mt-0.5" /></span>}
                         </div>
                       </th>
                     );
@@ -159,8 +159,8 @@ export function RaciTab({ projectId }: { projectId: number }) {
               </thead>
               <tbody>
                 {tasksArr.map(t => (
-                  <tr key={t.id} className="border-t border-gray-100">
-                    <td className="px-4 py-2 text-sm text-gray-700 sticky left-0 bg-white max-w-xs truncate" style={{ background: "white" }}>{t.title}</td>
+                  <tr key={t.id} className="border-t border-border/60">
+                    <td className="px-4 py-2 text-sm text-foreground sticky left-0 bg-card max-w-xs truncate">{t.title}</td>
                     {cols.map(u => {
                       const v = cell[`${t.id}-${u.id}`]?.raciType ?? "";
                       const m = v ? RACI_META[v] : null;
@@ -171,9 +171,9 @@ export function RaciTab({ projectId }: { projectId: number }) {
                             onChange={e => setCell(t.id, u.id, e.target.value)}
                             className="w-12 h-7 text-xs font-bold rounded text-center border"
                             style={{
-                              background: m?.bg ?? "white",
-                              color: m?.color ?? "#94A3B8",
-                              borderColor: m?.color ? `${m.color}33` : "#E2E8F0",
+                              background: m?.bg ?? "hsl(var(--card))",
+                              color: m?.color ?? "hsl(var(--muted-foreground))",
+                              borderColor: m?.color ?? "hsl(var(--border))",
                             }}
                           >
                             <option value="">—</option>

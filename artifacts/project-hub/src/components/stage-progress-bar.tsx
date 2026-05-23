@@ -46,7 +46,7 @@ export function StageProgressBar({ currentStageKey, stageRecords, onStageClick, 
             const isClickable = status === "complete" || status === "active" || status === "available";
 
             const dotClass =
-              status === "complete"  ? "bg-success text-white border-success"
+              status === "complete"  ? "bg-success text-primary-foreground border-success"
               : status === "active"  ? "bg-primary text-primary-foreground border-primary"
               : status === "available" ? "bg-muted text-primary border-border"
               : "bg-muted/60 text-muted-foreground border-border";

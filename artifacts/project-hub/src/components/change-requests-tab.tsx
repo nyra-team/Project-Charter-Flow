@@ -87,7 +87,7 @@ export function ChangeRequestsTab({ projectId, currentStage }: { projectId: numb
 
   return (
     <div className="space-y-4">
-      <div className="glass-surface lift-card rounded-2xl p-5 ph-rise relative overflow-hidden">
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 relative overflow-hidden">
         <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -119,7 +119,7 @@ export function ChangeRequestsTab({ projectId, currentStage }: { projectId: numb
       {loading ? (
         <div className="text-center py-8 text-muted-foreground"><Loader2 className="animate-spin inline mr-2" size={14} /> Loading…</div>
       ) : crs.length === 0 ? (
-        <div className="glass-surface rounded-2xl p-10 text-center ph-rise ph-rise-2">
+        <div className="glass-surface lift-card ph-rise rounded-2xl p-10 text-center">
           <GitBranch size={28} className="text-muted-foreground/40 mx-auto mb-2" />
           <p className="text-sm text-muted-foreground">No change requests raised yet.</p>
         </div>
@@ -132,7 +132,7 @@ export function ChangeRequestsTab({ projectId, currentStage }: { projectId: numb
             return (
               <div key={cr.id}
                    onClick={() => setViewing(cr)}
-                   className="glass-surface lift-card rounded-xl p-4 cursor-pointer group">
+                   className="glass-surface lift-card ph-rise rounded-2xl p-4 cursor-pointer group">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1.5">
@@ -232,7 +232,7 @@ function CrDetail({ cr, onClose, canDecide, onDecide }: { cr: CR; onClose: () =>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Decision notes (optional)" rows={2} className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/40" />
             <div className="flex justify-end gap-2">
               <button onClick={() => void onDecide(cr, "rejected", notes)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/15 transition-colors"><XCircle size={14} /> Reject</button>
-              <button onClick={() => void onDecide(cr, "approved", notes)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-success text-white hover:bg-success/90 transition-colors shadow-sm"><CheckCircle size={14} /> Approve</button>
+              <button onClick={() => void onDecide(cr, "approved", notes)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-success text-primary-foreground hover:bg-success/90 transition-colors shadow-sm"><CheckCircle size={14} /> Approve</button>
             </div>
           </div>
         )}

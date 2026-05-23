@@ -36,9 +36,9 @@ function zoneOf(score: number): "green" | "amber" | "red" {
   return "green";
 }
 const ZONE_META: Record<string, { bg: string; color: string; label: string }> = {
-  green: { bg: "#ECFDF5", color: "#15803D", label: "Low" },
-  amber: { bg: "#FFFBEB", color: "#B45309", label: "Medium" },
-  red:   { bg: "#FEE2E2", color: "#991B1B", label: "High" },
+  green: { bg: "hsl(var(--success) / 0.10)", color: "hsl(var(--success))", label: "Low" },
+  amber: { bg: "hsl(var(--warn) / 0.10)", color: "hsl(var(--warn))", label: "Medium" },
+  red:   { bg: "hsl(var(--destructive) / 0.10)", color: "hsl(var(--destructive))", label: "High" },
 };
 
 export function RiskTab({ projectId, charterId }: { projectId: number; charterId: number | null }) {
@@ -101,7 +101,7 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
   }
 
   if (!charterId) {
-    return <div className="rounded-2xl p-10 text-center text-sm text-gray-400" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+    return <div className="glass-surface lift-card ph-rise rounded-2xl p-10 text-center text-sm text-muted-foreground">
       This project is not linked to a charter. Risks are managed at the charter level.
     </div>;
   }
@@ -111,12 +111,12 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="rounded-2xl p-5 flex items-center justify-between" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 flex items-center justify-between">
         <div>
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <Shield size={16} className="text-rose-500" /> Risk Register & Heat Map
+          <h3 className="font-semibold text-foreground flex items-center gap-2">
+            <Shield size={16} className="text-destructive" /> Risk Register & Heat Map
           </h3>
-          <p className="text-xs text-gray-400 mt-0.5">{risksArr.length} risk{risksArr.length !== 1 ? "s" : ""} · {severe} severe (score ≥ 15)</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{risksArr.length} risk{risksArr.length !== 1 ? "s" : ""} · {severe} severe (score ≥ 15)</p>
         </div>
         <div className="flex items-center gap-2">
           <AiButton
@@ -127,7 +127,7 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
           >
             {({ run, loading, result, error }) => (
               <div className="flex flex-col items-end gap-2">
-                <button onClick={run} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 disabled:opacity-50">
+                <button onClick={run} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-primary bg-primary/10 border border-primary/20 hover:bg-primary/15 disabled:opacity-50">
                   ✨ Suggest Risks (AI)
                 </button>
                 {(loading || error || result) && (
@@ -136,12 +136,12 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
                     return (
                       <div className="space-y-2 text-xs max-h-[260px] overflow-y-auto">
                         {suggestions.map((s, i) => (
-                          <div key={i} className="rounded border border-indigo-100 bg-white p-2">
-                            <div className="font-semibold text-gray-900">{s.title}</div>
+                          <div key={i} className="rounded border border-primary/20 bg-card p-2">
+                            <div className="font-semibold text-foreground">{s.title}</div>
                             <div className="text-muted-foreground">{s.description}</div>
                             <div className="flex gap-2 mt-1 items-center">
-                              <span className="text-[10px] uppercase px-1 py-0.5 rounded bg-rose-50 text-rose-700">{s.impact}/{s.likelihood}</span>
-                              <button onClick={() => addRisk.mutate({ id: charterId, data: { title: s.title, description: s.description, impact: s.impact, likelihood: s.likelihood, mitigation: s.mitigation, status: "open", priority: "medium" } }, { onSuccess: () => { toast({ title: "Risk added from AI suggestion" }); refetch(); } })} className="text-[10px] font-semibold text-indigo-600 hover:underline ml-auto">+ Add to register</button>
+                              <span className="text-[10px] uppercase px-1 py-0.5 rounded bg-destructive/10 text-destructive">{s.impact}/{s.likelihood}</span>
+                              <button onClick={() => addRisk.mutate({ id: charterId, data: { title: s.title, description: s.description, impact: s.impact, likelihood: s.likelihood, mitigation: s.mitigation, status: "open", priority: "medium" } }, { onSuccess: () => { toast({ title: "Risk added from AI suggestion" }); refetch(); } })} className="text-[10px] font-semibold text-primary hover:underline ml-auto">+ Add to register</button>
                             </div>
                           </div>
                         ))}
@@ -153,30 +153,30 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
               </div>
             )}
           </AiButton>
-          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}>
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90">
             <Plus size={14} /> Add Risk
           </button>
         </div>
       </div>
 
       {/* Heat Map */}
-      <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-        <h4 className="text-sm font-bold text-gray-700">5 × 5 Risk Heat Map</h4>
-        <p className="text-xs text-gray-400 mt-0.5 mb-3">Likelihood (rows) × Impact (cols). Click a cell to filter table below.</p>
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5">
+        <h4 className="text-sm font-bold text-foreground">5 × 5 Risk Heat Map</h4>
+        <p className="text-xs text-muted-foreground mt-0.5 mb-3">Likelihood (rows) × Impact (cols). Click a cell to filter table below.</p>
         <div className="flex gap-3">
           {/* Y axis label */}
           <div className="flex items-center justify-center" style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}>
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Likelihood →</span>
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Likelihood →</span>
           </div>
           <div className="flex-1">
             <div className="grid grid-cols-6 gap-1.5">
               <div></div>
               {[1,2,3,4,5].map(c => (
-                <div key={c} className="text-center text-[10px] font-bold text-gray-400">{c}</div>
+                <div key={c} className="text-center text-[10px] font-bold text-muted-foreground">{c}</div>
               ))}
               {[5,4,3,2,1].map(row => (
                 <>
-                  <div key={`lbl-${row}`} className="text-right text-[10px] font-bold text-gray-400 self-center">{row}</div>
+                  <div key={`lbl-${row}`} className="text-right text-[10px] font-bold text-muted-foreground self-center">{row}</div>
                   {[1,2,3,4,5].map(col => {
                     const score = row * col;
                     const z = zoneOf(score);
@@ -199,11 +199,11 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
                 </>
               ))}
             </div>
-            <div className="text-center text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-2">Impact →</div>
+            <div className="text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-2">Impact →</div>
           </div>
         </div>
         <div className="flex items-center gap-3 mt-4 text-xs">
-          <span className="text-gray-400">Legend:</span>
+          <span className="text-muted-foreground">Legend:</span>
           {(["green","amber","red"] as const).map(z => (
             <button
               key={z}
@@ -216,7 +216,7 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
             </button>
           ))}
           {filterZone !== "all" && (
-            <button onClick={() => setFilterZone("all")} className="text-xs text-indigo-500 hover:underline flex items-center gap-1">
+            <button onClick={() => setFilterZone("all")} className="text-xs text-primary hover:underline flex items-center gap-1">
               <X size={10} /> clear filter
             </button>
           )}
@@ -224,32 +224,32 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-          <h4 className="text-sm font-bold text-gray-700">
-            Risk Register {filterZone !== "all" && <span className="text-xs font-normal text-gray-400 ml-2">(filtered: {ZONE_META[filterZone].label})</span>}
+      <div className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-border/60 flex items-center justify-between">
+          <h4 className="text-sm font-bold text-foreground">
+            Risk Register {filterZone !== "all" && <span className="text-xs font-normal text-muted-foreground ml-2">(filtered: {ZONE_META[filterZone].label})</span>}
           </h4>
-          <select value={sortKey} onChange={e => setSortKey(e.target.value as "score" | "status" | "owner")} className="text-xs border border-gray-200 rounded px-2 py-1">
+          <select value={sortKey} onChange={e => setSortKey(e.target.value as "score" | "status" | "owner")} className="text-xs border border-border rounded px-2 py-1">
             <option value="score">Sort: Score</option>
             <option value="status">Sort: Status</option>
             <option value="owner">Sort: Owner</option>
           </select>
         </div>
         {filtered.length === 0 ? (
-          <div className="p-10 text-center text-sm text-gray-400">{risksArr.length === 0 ? "No risks yet. Click 'Add Risk'." : "No risks match this filter."}</div>
+          <div className="p-10 text-center text-sm text-muted-foreground">{risksArr.length === 0 ? "No risks yet. Click 'Add Risk'." : "No risks match this filter."}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead style={{ background: "#F8FAFC" }}>
+              <thead style={{ background: "hsl(var(--muted) / 0.40)" }}>
                 <tr>
-                  <th className="text-left px-4 py-2 text-xs font-bold text-gray-500 uppercase">#</th>
-                  <th className="text-left px-4 py-2 text-xs font-bold text-gray-500 uppercase">Risk</th>
-                  <th className="text-center px-3 py-2 text-xs font-bold text-gray-500 uppercase">Likelihood</th>
-                  <th className="text-center px-3 py-2 text-xs font-bold text-gray-500 uppercase">Impact</th>
-                  <th className="text-center px-3 py-2 text-xs font-bold text-gray-500 uppercase">Score</th>
-                  <th className="text-left px-4 py-2 text-xs font-bold text-gray-500 uppercase">Owner</th>
-                  <th className="text-left px-4 py-2 text-xs font-bold text-gray-500 uppercase">Mitigation</th>
-                  <th className="text-center px-3 py-2 text-xs font-bold text-gray-500 uppercase">Status</th>
+                  <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase">#</th>
+                  <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase">Risk</th>
+                  <th className="text-center px-3 py-2 text-xs font-bold text-muted-foreground uppercase">Likelihood</th>
+                  <th className="text-center px-3 py-2 text-xs font-bold text-muted-foreground uppercase">Impact</th>
+                  <th className="text-center px-3 py-2 text-xs font-bold text-muted-foreground uppercase">Score</th>
+                  <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase">Owner</th>
+                  <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase">Mitigation</th>
+                  <th className="text-center px-3 py-2 text-xs font-bold text-muted-foreground uppercase">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -258,24 +258,24 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
                   const z = zoneOf(sc);
                   const meta = ZONE_META[z];
                   return (
-                    <tr key={r.id} className="border-t border-gray-100 hover:bg-rose-50/30">
-                      <td className="px-4 py-2.5 text-xs text-gray-400 font-mono">R-{r.id}</td>
+                    <tr key={r.id} className="border-t border-border/60 hover:bg-destructive/5">
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground font-mono">R-{r.id}</td>
                       <td className="px-4 py-2.5">
-                        <p className="text-sm font-semibold text-gray-900">{r.title}</p>
-                        <p className="text-xs text-gray-500 line-clamp-1">{r.description}</p>
+                        <p className="text-sm font-semibold text-foreground">{r.title}</p>
+                        <p className="text-xs text-muted-foreground line-clamp-1">{r.description}</p>
                       </td>
-                      <td className="px-3 py-2.5 text-center text-xs text-gray-700">{levelNum(r.likelihood)}</td>
-                      <td className="px-3 py-2.5 text-center text-xs text-gray-700">{levelNum(r.impact)}</td>
+                      <td className="px-3 py-2.5 text-center text-xs text-foreground">{levelNum(r.likelihood)}</td>
+                      <td className="px-3 py-2.5 text-center text-xs text-foreground">{levelNum(r.impact)}</td>
                       <td className="px-3 py-2.5 text-center">
                         <span className="inline-block text-xs font-bold px-2 py-0.5 rounded" style={{ background: meta.bg, color: meta.color }}>
                           {sc}
                           {sc >= 15 && <AlertTriangle size={9} className="inline ml-1 -mt-0.5" />}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 text-xs text-gray-700">{r.owner || "—"}</td>
-                      <td className="px-4 py-2.5 text-xs text-gray-600 max-w-xs truncate">{r.mitigation || "—"}</td>
+                      <td className="px-4 py-2.5 text-xs text-foreground">{r.owner || "—"}</td>
+                      <td className="px-4 py-2.5 text-xs text-foreground max-w-xs truncate">{r.mitigation || "—"}</td>
                       <td className="px-3 py-2.5 text-center">
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: r.status === "closed" ? "#ECFDF5" : "#EEF2FF", color: r.status === "closed" ? "#15803D" : "#4338CA" }}>
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded" style={{ background: r.status === "closed" ? "hsl(var(--success) / 0.10)" : "hsl(var(--primary) / 0.10)", color: r.status === "closed" ? "hsl(var(--success))" : "hsl(var(--primary))" }}>
                           {r.status}
                         </span>
                       </td>
@@ -292,45 +292,45 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
       <Dialog open={showAdd} onOpenChange={v => { if (!v) setShowAdd(false); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Shield size={16} className="text-rose-500" /> Add Risk</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><Shield size={16} className="text-destructive" /> Add Risk</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-semibold text-gray-500">Title</label>
+              <label className="text-xs font-semibold text-muted-foreground">Title</label>
               <Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. Vendor dependency on key resource" />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500">Description</label>
+              <label className="text-xs font-semibold text-muted-foreground">Description</label>
               <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} rows={2} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-gray-500">Likelihood (1-5)</label>
-                <select value={form.likelihood} onChange={e => setForm({ ...form, likelihood: e.target.value })} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mt-1">
+                <label className="text-xs font-semibold text-muted-foreground">Likelihood (1-5)</label>
+                <select value={form.likelihood} onChange={e => setForm({ ...form, likelihood: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-2 mt-1">
                   {[1,2,3,4,5].map(n => <option key={n} value={NUM_TO_LEVEL[n]}>{n} — {LEVEL_DISPLAY[NUM_TO_LEVEL[n]]}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500">Impact (1-5)</label>
-                <select value={form.impact} onChange={e => setForm({ ...form, impact: e.target.value })} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mt-1">
+                <label className="text-xs font-semibold text-muted-foreground">Impact (1-5)</label>
+                <select value={form.impact} onChange={e => setForm({ ...form, impact: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-2 mt-1">
                   {[1,2,3,4,5].map(n => <option key={n} value={NUM_TO_LEVEL[n]}>{n} — {LEVEL_DISPLAY[NUM_TO_LEVEL[n]]}</option>)}
                 </select>
               </div>
             </div>
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-muted-foreground">
               Current score: <b style={{ color: ZONE_META[zoneOf(levelNum(form.impact) * levelNum(form.likelihood))].color }}>
                 {levelNum(form.impact) * levelNum(form.likelihood)}
               </b>
-              {levelNum(form.impact) * levelNum(form.likelihood) >= 15 && <span className="ml-2 text-rose-600 font-semibold">⚠ Severe — escalation will notify PM + sponsor</span>}
+              {levelNum(form.impact) * levelNum(form.likelihood) >= 15 && <span className="ml-2 text-destructive font-semibold">⚠ Severe — escalation will notify PM + sponsor</span>}
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-gray-500">Owner</label>
+                <label className="text-xs font-semibold text-muted-foreground">Owner</label>
                 <Input value={form.owner} onChange={e => setForm({ ...form, owner: e.target.value })} placeholder="Person responsible" />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500">Status</label>
-                <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mt-1">
+                <label className="text-xs font-semibold text-muted-foreground">Status</label>
+                <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-2 mt-1">
                   <option value="open">Open</option>
                   <option value="mitigating">Mitigating</option>
                   <option value="closed">Closed</option>
@@ -338,12 +338,12 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
               </div>
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500">Mitigation Plan</label>
+              <label className="text-xs font-semibold text-muted-foreground">Mitigation Plan</label>
               <Textarea value={form.mitigation} onChange={e => setForm({ ...form, mitigation: e.target.value })} rows={2} placeholder="How will this risk be reduced?" />
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">Cancel</button>
-              <button onClick={handleAdd} className="px-4 py-2 text-sm font-semibold text-white rounded-lg" style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}>Add Risk</button>
+              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted/40">Cancel</button>
+              <button onClick={handleAdd} className="px-4 py-2 text-sm font-semibold text-primary-foreground rounded-lg bg-primary hover:bg-primary/90">Add Risk</button>
             </div>
           </div>
         </DialogContent>

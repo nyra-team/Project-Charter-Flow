@@ -56,7 +56,7 @@ export function BenefitsTab({ projectId }: { projectId: number }) {
 
   return (
     <div className="space-y-4">
-      <div className="glass-surface lift-card rounded-2xl p-5 ph-rise relative overflow-hidden">
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 relative overflow-hidden">
         <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3">
@@ -82,7 +82,7 @@ export function BenefitsTab({ projectId }: { projectId: number }) {
       {loading ? (
         <div className="text-center py-8 text-muted-foreground"><Loader2 className="animate-spin inline mr-2" size={14} /> Loading…</div>
       ) : reviews.length === 0 ? (
-        <div className="glass-surface rounded-2xl p-10 text-center ph-rise ph-rise-2">
+        <div className="glass-surface lift-card ph-rise rounded-2xl p-10 text-center">
           <Calendar size={28} className="text-muted-foreground/40 mx-auto mb-2" />
           <p className="text-sm text-muted-foreground">No benefits reviews scheduled. Pick the Go-Live date above to initialise the 3/6/12-month review cycle.</p>
         </div>
@@ -92,7 +92,7 @@ export function BenefitsTab({ projectId }: { projectId: number }) {
             const overdue = new Date(r.scheduledDate) < new Date() && r.status !== "completed";
             const pill = RAG_PILL[r.rag] ?? RAG_PILL.amber;
             return (
-              <div key={r.id} className="glass-surface lift-card rounded-xl p-4 group">
+              <div key={r.id} className="glass-surface lift-card ph-rise rounded-2xl p-4 group">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-2xl font-semibold font-mono num-tabular tracking-tight text-primary">+{r.reviewPeriod}</span>
                   <span className={`inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-sm border ${pill}`}>

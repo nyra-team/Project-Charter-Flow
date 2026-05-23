@@ -136,7 +136,7 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
     const Icon = meta.icon;
     const isLocked = d.approvalStatus === "checked_out";
     return (
-      <div className="glass-surface lift-card rounded-xl p-3 group">
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-3 group">
         <div className="flex items-start gap-3">
           <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-primary/10 border border-primary/20">
             <FileText size={16} className="text-primary" />
@@ -193,7 +193,7 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="glass-surface lift-card rounded-2xl p-4 flex flex-wrap items-center gap-3 ph-rise">
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 flex-1 min-w-[200px]">
           <Search size={14} className="text-muted-foreground" />
           <Input
@@ -235,7 +235,7 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
       </div>
 
       {filtered.length === 0 ? (
-        <div className="glass-surface rounded-2xl p-10 text-center text-sm text-muted-foreground ph-rise ph-rise-2">
+        <div className="glass-surface lift-card ph-rise rounded-2xl p-10 text-center text-sm text-muted-foreground">
           {allDocs.length === 0 ? "No documents yet. Click 'Upload Document' to add one." : "No documents match your filters."}
         </div>
       ) : view === "folder" ? (
@@ -245,7 +245,7 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
             if (stageDocs.length === 0) return null;
             const expanded = expandedStages.has(s.key);
             return (
-              <div key={s.key} className="glass-surface rounded-2xl overflow-hidden">
+              <div key={s.key} className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
                 <button
                   onClick={() => toggleStage(s.key)}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors"
@@ -264,7 +264,7 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
             );
           })}
           {(docsByStage["__unstaged__"] ?? []).length > 0 && (
-            <div className="glass-surface rounded-2xl overflow-hidden">
+            <div className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
               <button onClick={() => toggleStage("__unstaged__")} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors">
                 {expandedStages.has("__unstaged__") ? <ChevronDown size={14} className="text-muted-foreground" /> : <ChevronRight size={14} className="text-muted-foreground" />}
                 <Folder size={14} className="text-muted-foreground" />

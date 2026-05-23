@@ -102,8 +102,8 @@ export function BudgetTab({
 
   function varBadge(pct: number) {
     const positive = pct > 0;
-    const color = pct > budgetThresholdPct ? "#DC2626" : pct > 0 ? "#F59E0B" : "#10B981";
-    const bg = pct > budgetThresholdPct ? "#FEE2E2" : pct > 0 ? "#FFFBEB" : "#ECFDF5";
+    const color = pct > budgetThresholdPct ? "hsl(var(--destructive))" : pct > 0 ? "hsl(var(--warn))" : "hsl(var(--success))";
+    const bg = pct > budgetThresholdPct ? "hsl(var(--destructive) / 0.10)" : pct > 0 ? "hsl(var(--warn) / 0.10)" : "hsl(var(--success) / 0.10)";
     return (
       <span className="inline-block text-xs font-bold px-2 py-0.5 rounded-md" style={{ background: bg, color }}>
         {positive ? "+" : ""}{pct.toFixed(1)}%
@@ -114,13 +114,13 @@ export function BudgetTab({
   return (
     <div className="space-y-5">
       {/* Header & summary */}
-      <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-              <DollarSign size={16} className="text-emerald-500" /> Budget Management
+            <h3 className="font-semibold text-foreground flex items-center gap-2">
+              <DollarSign size={16} className="text-success" /> Budget Management
             </h3>
-            <p className="text-xs text-gray-400 mt-0.5">CapEx & OpEx baseline vs forecast vs actual.</p>
+            <p className="text-xs text-muted-foreground mt-0.5">CapEx & OpEx baseline vs forecast vs actual.</p>
           </div>
           <div className="flex items-center gap-2">
             <AiButton
@@ -131,7 +131,7 @@ export function BudgetTab({
             >
               {({ run, loading, result, error }) => (
                 <div className="flex flex-col items-end gap-2">
-                  <button onClick={run} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 disabled:opacity-50">
+                  <button onClick={run} disabled={loading} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-primary bg-primary/10 border border-primary/20 hover:bg-primary/15 disabled:opacity-50">
                     ✨ Budget Insights (AI)
                   </button>
                   {(loading || error || result != null) && (
@@ -151,7 +151,7 @@ export function BudgetTab({
                       };
                       return (
                         <div className="space-y-2 text-xs">
-                          {d.overall_status && <div className="font-bold uppercase text-[10px] tracking-wider text-indigo-700">{d.overall_status}</div>}
+                          {d.overall_status && <div className="font-bold uppercase text-[10px] tracking-wider text-primary">{d.overall_status}</div>}
                           {d.summary && <p>{d.summary}</p>}
                           {d.over_utilized?.length ? <div><strong>Over-utilized:</strong> {d.over_utilized.join(", ")}</div> : null}
                           {d.under_utilized?.length ? <div><strong>Under-utilized:</strong> {d.under_utilized.join(", ")}</div> : null}
@@ -165,8 +165,7 @@ export function BudgetTab({
             </AiButton>
             <button
               onClick={() => setShowAdd(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-            style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90"
           >
             <Plus size={14} /> Add Budget Line
           </button>
@@ -176,10 +175,10 @@ export function BudgetTab({
         {/* Summary tiles */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: "Total Baseline", value: totals.baseline, color: "#6366F1", bg: "#EEF2FF" },
-            { label: "Total Forecast", value: totals.forecast, color: "#8B5CF6", bg: "#F5F3FF" },
-            { label: "Total Actual", value: totals.actual, color: "#10B981", bg: "#ECFDF5" },
-            { label: "Variance", value: totals.variance, color: totals.variance > 0 ? "#DC2626" : "#10B981", bg: totals.variance > 0 ? "#FEE2E2" : "#ECFDF5", pct: totalVarPct },
+            { label: "Total Baseline", value: totals.baseline, color: "hsl(var(--primary))", bg: "hsl(var(--primary) / 0.10)" },
+            { label: "Total Forecast", value: totals.forecast, color: "hsl(var(--primary))", bg: "hsl(var(--primary) / 0.10)" },
+            { label: "Total Actual", value: totals.actual, color: "hsl(var(--success))", bg: "hsl(var(--success) / 0.10)" },
+            { label: "Variance", value: totals.variance, color: totals.variance > 0 ? "hsl(var(--destructive))" : "hsl(var(--success))", bg: totals.variance > 0 ? "hsl(var(--destructive) / 0.10)" : "hsl(var(--success) / 0.10)", pct: totalVarPct },
           ].map(s => (
             <div key={s.label} className="rounded-xl p-3" style={{ background: s.bg }}>
               <p className="text-xs font-semibold" style={{ color: s.color, opacity: 0.8 }}>{s.label}</p>
@@ -192,9 +191,9 @@ export function BudgetTab({
         </div>
 
         {isOverThreshold && (
-          <div className="mt-4 rounded-xl p-3 flex items-start gap-2" style={{ background: "#FEF2F2", border: "1px solid #FCA5A5" }}>
-            <AlertTriangle size={14} className="text-red-500 mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-red-700">
+          <div className="mt-4 rounded-xl p-3 flex items-start gap-2" style={{ background: "hsl(var(--destructive) / 0.10)", border: "1px solid hsl(var(--destructive) / 0.30)" }}>
+            <AlertTriangle size={14} className="text-destructive mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-destructive">
               Total actual exceeds baseline by <b>{totalVarPct.toFixed(1)}%</b> (threshold {budgetThresholdPct}%). NFA approval workflow is auto-triggered.
             </p>
           </div>
@@ -202,24 +201,24 @@ export function BudgetTab({
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-        <div className="px-5 py-3 border-b border-gray-100">
-          <h4 className="text-sm font-bold text-gray-700">Budget Lines</h4>
+      <div className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
+        <div className="px-5 py-3 border-b border-border/60">
+          <h4 className="text-sm font-bold text-foreground">Budget Lines</h4>
         </div>
         {budgetLines.length === 0 ? (
-          <div className="p-10 text-center text-sm text-gray-400">No budget lines yet. Click "Add Budget Line" to start.</div>
+          <div className="p-10 text-center text-sm text-muted-foreground">No budget lines yet. Click "Add Budget Line" to start.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead style={{ background: "#F8FAFC" }}>
+              <thead style={{ background: "hsl(var(--muted) / 0.40)" }}>
                 <tr>
-                  <th className="text-left px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-wide">Category</th>
-                  <th className="text-left px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-wide">Description</th>
-                  <th className="text-right px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-wide">Baseline</th>
-                  <th className="text-right px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-wide">Forecast</th>
-                  <th className="text-right px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-wide">Actual</th>
-                  <th className="text-right px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-wide">Variance</th>
-                  <th className="text-center px-4 py-2 text-xs font-bold text-gray-500 uppercase tracking-wide">Var %</th>
+                  <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Category</th>
+                  <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Description</th>
+                  <th className="text-right px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Baseline</th>
+                  <th className="text-right px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Forecast</th>
+                  <th className="text-right px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Actual</th>
+                  <th className="text-right px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Variance</th>
+                  <th className="text-center px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Var %</th>
                   <th className="px-3 py-2"></th>
                 </tr>
               </thead>
@@ -227,34 +226,34 @@ export function BudgetTab({
                 {budgetLines.map(l => {
                   const editing = editId === l.id;
                   return (
-                    <tr key={l.id} className="border-t border-gray-100 hover:bg-indigo-50/30">
+                    <tr key={l.id} className="border-t border-border/60 hover:bg-primary/10/30">
                       <td className="px-4 py-2.5">
                         <span className="text-xs font-bold px-2 py-0.5 rounded-md" style={{
-                          background: l.category === "CapEx" ? "#EEF2FF" : "#F0FDF4",
-                          color: l.category === "CapEx" ? "#4338CA" : "#15803D",
+                          background: l.category === "CapEx" ? "hsl(var(--primary) / 0.10)" : "hsl(var(--success) / 0.10)",
+                          color: l.category === "CapEx" ? "hsl(var(--primary))" : "hsl(var(--success))",
                         }}>{l.category}</span>
                       </td>
                       <td className="px-4 py-2.5">
-                        <p className="text-sm text-gray-900">{l.description || "—"}</p>
-                        {l.period && <p className="text-xs text-gray-400">{l.period}</p>}
+                        <p className="text-sm text-foreground">{l.description || "—"}</p>
+                        {l.period && <p className="text-xs text-muted-foreground">{l.period}</p>}
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         {editing
                           ? <Input type="number" value={editVals.baseline} onChange={e => setEditVals({ ...editVals, baseline: e.target.value })} className="text-right h-8 w-28 ml-auto" />
-                          : <span className="text-sm text-gray-700">{formatCurrency(l.baselineAmount)}</span>}
+                          : <span className="text-sm text-foreground">{formatCurrency(l.baselineAmount)}</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         {editing
                           ? <Input type="number" value={editVals.forecast} onChange={e => setEditVals({ ...editVals, forecast: e.target.value })} className="text-right h-8 w-28 ml-auto" />
-                          : <span className="text-sm text-gray-700">{formatCurrency(l.forecastAmount)}</span>}
+                          : <span className="text-sm text-foreground">{formatCurrency(l.forecastAmount)}</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         {editing
                           ? <Input type="number" value={editVals.actual} onChange={e => setEditVals({ ...editVals, actual: e.target.value })} className="text-right h-8 w-28 ml-auto" />
-                          : <span className="text-sm font-semibold text-gray-900">{formatCurrency(l.actualAmount)}</span>}
+                          : <span className="text-sm font-semibold text-foreground">{formatCurrency(l.actualAmount)}</span>}
                       </td>
                       <td className="px-4 py-2.5 text-right">
-                        <span className="text-sm" style={{ color: l.varianceAmount > 0 ? "#DC2626" : "#10B981" }}>
+                        <span className="text-sm" style={{ color: l.varianceAmount > 0 ? "hsl(var(--destructive))" : "hsl(var(--success))" }}>
                           {l.varianceAmount > 0 ? "+" : ""}{formatCurrency(l.varianceAmount)}
                         </span>
                       </td>
@@ -263,13 +262,13 @@ export function BudgetTab({
                         <div className="flex items-center justify-end gap-1">
                           {editing ? (
                             <>
-                              <button onClick={saveEdit} className="text-emerald-500 hover:text-emerald-700"><Check size={14} /></button>
-                              <button onClick={() => setEditId(null)} className="text-gray-400 hover:text-gray-700"><X size={14} /></button>
+                              <button onClick={saveEdit} className="text-success hover:text-success/80"><Check size={14} /></button>
+                              <button onClick={() => setEditId(null)} className="text-muted-foreground hover:text-foreground"><X size={14} /></button>
                             </>
                           ) : (
                             <>
-                              <button onClick={() => startEdit(l)} className="text-gray-300 hover:text-indigo-500" title="Edit"><Pencil size={13} /></button>
-                              <button onClick={() => handleDelete(l.id)} className="text-gray-300 hover:text-red-500" title="Delete"><Trash2 size={14} /></button>
+                              <button onClick={() => startEdit(l)} className="text-muted-foreground/60 hover:text-primary" title="Edit"><Pencil size={13} /></button>
+                              <button onClick={() => handleDelete(l.id)} className="text-muted-foreground/60 hover:text-destructive" title="Delete"><Trash2 size={14} /></button>
                             </>
                           )}
                         </div>
@@ -278,13 +277,13 @@ export function BudgetTab({
                   );
                 })}
                 {/* Totals row */}
-                <tr style={{ background: "#F8FAFC" }} className="border-t-2 border-gray-200">
-                  <td className="px-4 py-3 text-xs font-bold text-gray-700 uppercase">Total</td>
+                <tr style={{ background: "hsl(var(--muted) / 0.40)" }} className="border-t-2 border-border">
+                  <td className="px-4 py-3 text-xs font-bold text-foreground uppercase">Total</td>
                   <td className="px-4 py-3"></td>
-                  <td className="px-4 py-3 text-right text-sm font-bold text-gray-900">{formatCurrency(totals.baseline)}</td>
-                  <td className="px-4 py-3 text-right text-sm font-bold text-gray-900">{formatCurrency(totals.forecast)}</td>
-                  <td className="px-4 py-3 text-right text-sm font-bold text-gray-900">{formatCurrency(totals.actual)}</td>
-                  <td className="px-4 py-3 text-right text-sm font-bold" style={{ color: totals.variance > 0 ? "#DC2626" : "#10B981" }}>
+                  <td className="px-4 py-3 text-right text-sm font-bold text-foreground">{formatCurrency(totals.baseline)}</td>
+                  <td className="px-4 py-3 text-right text-sm font-bold text-foreground">{formatCurrency(totals.forecast)}</td>
+                  <td className="px-4 py-3 text-right text-sm font-bold text-foreground">{formatCurrency(totals.actual)}</td>
+                  <td className="px-4 py-3 text-right text-sm font-bold" style={{ color: totals.variance > 0 ? "hsl(var(--destructive))" : "hsl(var(--success))" }}>
                     {totals.variance > 0 ? "+" : ""}{formatCurrency(totals.variance)}
                   </td>
                   <td className="px-4 py-3 text-center">{varBadge(totalVarPct)}</td>
@@ -297,27 +296,27 @@ export function BudgetTab({
       </div>
 
       {/* Chart */}
-      <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-        <h4 className="text-sm font-bold text-gray-700">Budget Lines — Baseline vs Forecast vs Actual</h4>
-        <p className="text-xs text-gray-400 mt-0.5 mb-4">Red bars indicate Actual exceeds Baseline by more than {budgetThresholdPct}% (NFA threshold).</p>
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5">
+        <h4 className="text-sm font-bold text-foreground">Budget Lines — Baseline vs Forecast vs Actual</h4>
+        <p className="text-xs text-muted-foreground mt-0.5 mb-4">Red bars indicate Actual exceeds Baseline by more than {budgetThresholdPct}% (NFA threshold).</p>
         <div style={{ height: 320 }}>
           {chartData.length === 0 ? (
-            <div className="h-full flex items-center justify-center text-sm text-gray-400">No data to chart.</div>
+            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">No data to chart.</div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} margin={{ top: 5, right: 20, left: 0, bottom: 50 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#94A3B8" }} angle={-25} textAnchor="end" height={60} />
-                <YAxis tick={{ fontSize: 11, fill: "#94A3B8" }} tickFormatter={v => formatCurrency(v as number)} />
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} angle={-25} textAnchor="end" height={60} />
+                <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickFormatter={v => formatCurrency(v as number)} />
                 <Tooltip
-                  contentStyle={{ background: "#1E293B", border: "none", borderRadius: 8, color: "white", fontSize: 12 }}
+                  contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--popover-border))", borderRadius: 8, color: "hsl(var(--popover-foreground))", fontSize: 12 }}
                   formatter={v => formatCurrency(v as number)}
                 />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar dataKey="Baseline" fill="#6366F1" />
-                <Bar dataKey="Forecast" fill="#8B5CF6" />
+                <Bar dataKey="Baseline" fill="hsl(var(--primary))" />
+                <Bar dataKey="Forecast" fill="hsl(var(--primary))" />
                 <Bar dataKey="Actual">
-                  {chartData.map((d, i) => <Cell key={i} fill={d.over ? "#DC2626" : "#10B981"} />)}
+                  {chartData.map((d, i) => <Cell key={i} fill={d.over ? "hsl(var(--destructive))" : "hsl(var(--success))"} />)}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -329,43 +328,43 @@ export function BudgetTab({
       <Dialog open={showAdd} onOpenChange={v => { if (!v) setShowAdd(false); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><DollarSign size={16} className="text-emerald-500" /> Add Budget Line</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><DollarSign size={16} className="text-success" /> Add Budget Line</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-gray-500">Category</label>
-                <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mt-1">
+                <label className="text-xs font-semibold text-muted-foreground">Category</label>
+                <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="w-full text-sm border border-border rounded-lg px-3 py-2 mt-1">
                   <option value="OpEx">OpEx</option>
                   <option value="CapEx">CapEx</option>
                 </select>
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500">Period</label>
+                <label className="text-xs font-semibold text-muted-foreground">Period</label>
                 <Input value={form.period} onChange={e => setForm({ ...form, period: e.target.value })} placeholder="e.g. FY26 Q2" />
               </div>
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500">Description</label>
+              <label className="text-xs font-semibold text-muted-foreground">Description</label>
               <Input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Line item description" />
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="text-xs font-semibold text-gray-500">Baseline</label>
+                <label className="text-xs font-semibold text-muted-foreground">Baseline</label>
                 <Input type="number" value={form.baselineAmount} onChange={e => setForm({ ...form, baselineAmount: e.target.value })} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500">Forecast</label>
+                <label className="text-xs font-semibold text-muted-foreground">Forecast</label>
                 <Input type="number" value={form.forecastAmount} onChange={e => setForm({ ...form, forecastAmount: e.target.value })} />
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500">Actual</label>
+                <label className="text-xs font-semibold text-muted-foreground">Actual</label>
                 <Input type="number" value={form.actualAmount} onChange={e => setForm({ ...form, actualAmount: e.target.value })} />
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">Cancel</button>
-              <button onClick={handleAdd} className="px-4 py-2 text-sm font-semibold text-white rounded-lg" style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}>
+              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted/40">Cancel</button>
+              <button onClick={handleAdd} className="px-4 py-2 text-sm font-semibold text-primary-foreground rounded-lg bg-primary hover:bg-primary/90">
                 Add Line
               </button>
             </div>

@@ -306,8 +306,8 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
     <>
       {/* Comprehensive filter bar */}
       <div
-        className="flex flex-wrap items-center gap-2 py-2 mb-2 px-1"
-        style={{ position: "sticky", top: 0, zIndex: 10, background: "white" }}
+        className="flex flex-wrap items-center gap-2 py-2 mb-2 px-1 bg-card"
+        style={{ position: "sticky", top: 0, zIndex: 10 }}
       >
         <div className="relative flex-1 min-w-[150px]">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />

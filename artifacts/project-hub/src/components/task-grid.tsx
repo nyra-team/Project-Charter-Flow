@@ -128,7 +128,7 @@ function MultiDeptSelect({ value, onChange }: { value: string; onChange: (v: str
           : <span className="text-muted-foreground/60 italic">CFT Team</span>}
       </button>
       {open && (
-        <div className="absolute z-50 bg-white border rounded-lg shadow-xl p-1 min-w-36" style={{ top: "100%", left: 0 }}>
+        <div className="absolute z-50 bg-popover text-popover-foreground border border-popover-border rounded-lg shadow-xl p-1 min-w-36" style={{ top: "100%", left: 0 }}>
           <p className="text-xs text-muted-foreground px-2 py-1">Select up to 2 departments</p>
           {DEPARTMENTS.map(d => {
             const checked = selected.includes(d);
@@ -144,7 +144,7 @@ function MultiDeptSelect({ value, onChange }: { value: string; onChange: (v: str
           })}
           {selected.length > 0 && (
             <button onClick={() => { onChange(""); setOpen(false); }}
-              className="w-full text-left text-xs text-red-400 hover:text-red-600 px-2 py-1 mt-1 border-t border-border/60">
+              className="w-full text-left text-xs text-destructive/70 hover:text-destructive px-2 py-1 mt-1 border-t border-border/60">
               Clear
             </button>
           )}
@@ -406,7 +406,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
                   if (e.key === "Enter") addSubtask(row.parentId);
                   if (e.key === "Escape") { setAddingSubtask(null); setNewSubtaskName(""); }
                 }} />
-              <button onClick={() => addSubtask(row.parentId)} className="text-xs px-2 py-1 rounded bg-primary text-white font-medium">Add</button>
+              <button onClick={() => addSubtask(row.parentId)} className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground hover:bg-primary/90 font-medium">Add</button>
               <button onClick={() => { setAddingSubtask(null); setNewSubtaskName(""); }} className="text-xs px-2 py-1 rounded bg-muted text-foreground">Cancel</button>
             </div>
           </td>

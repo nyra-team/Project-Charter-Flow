@@ -81,7 +81,7 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
 
   return (
     <div className="space-y-4">
-      <div className="glass-surface lift-card rounded-2xl p-5 ph-rise relative overflow-hidden">
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 relative overflow-hidden">
         <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
@@ -102,7 +102,7 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
       {loading ? (
         <div className="text-center py-8 text-muted-foreground"><Loader2 className="animate-spin inline mr-2" size={14} /> Loading…</div>
       ) : meetings.length === 0 ? (
-        <div className="glass-surface rounded-2xl p-10 text-center ph-rise ph-rise-2">
+        <div className="glass-surface lift-card ph-rise rounded-2xl p-10 text-center">
           <Calendar size={28} className="text-muted-foreground/40 mx-auto mb-2" />
           <p className="text-sm text-muted-foreground">No meetings recorded yet.</p>
         </div>
@@ -110,7 +110,7 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
         <div className="space-y-2 stagger-children">
           {meetings.map(m => (
             <div key={m.id} onClick={() => setSelected(m)}
-                 className="glass-surface lift-card rounded-xl p-4 cursor-pointer group">
+                 className="glass-surface lift-card ph-rise rounded-2xl p-4 cursor-pointer group">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <h4 className="font-semibold text-foreground tracking-tight group-hover:text-primary transition-colors">{m.title}</h4>
@@ -165,7 +165,7 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
             <textarea value={selected.notes ?? ""} onChange={e => setSelected({ ...selected, notes: e.target.value })} placeholder="Meeting notes / transcript — paste here so AI can extract action items" rows={6} className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring/40" />
             <div className="flex justify-between items-center">
               <button onClick={() => void handleSaveNotes()} className="px-3 py-1.5 rounded-md text-sm font-medium text-foreground bg-muted hover:bg-accent transition-colors">Save Notes</button>
-              <button onClick={() => void handleExtract()} disabled={aiLoading} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 shadow-sm transition-all">
+              <button onClick={() => void handleExtract()} disabled={aiLoading} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all">
                 {aiLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
                 Extract Action Items
               </button>

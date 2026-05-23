@@ -58,9 +58,9 @@ export function AiButton({ label = "AI Insights", endpoint, payload, onResult, c
   const base = "inline-flex items-center gap-1.5 font-semibold rounded-md transition-all";
   const sizes = size === "sm" ? "px-2.5 py-1 text-xs" : "px-3 py-1.5 text-sm";
   const variants = {
-    primary: "bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:from-indigo-600 hover:to-purple-600 shadow-sm",
-    ghost: "text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950",
-    subtle: "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-100 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-900",
+    primary: "bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm",
+    ghost: "text-primary hover:bg-primary/10",
+    subtle: "bg-primary/10 text-primary hover:bg-primary/15 border border-primary/20",
   }[variant];
 
   const disabled = loading || (status != null && !status.configured);
@@ -76,7 +76,7 @@ export function AiButton({ label = "AI Insights", endpoint, payload, onResult, c
     >
       {loading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
       {label}
-      {error && <AlertCircle size={12} className="text-red-500" />}
+      {error && <AlertCircle size={12} className="text-destructive" />}
     </button>
   );
 }
@@ -87,15 +87,15 @@ export function AiResultPanel({ title, loading, error, result, render }: {
 }) {
   if (!loading && !error && !result) return null;
   return (
-    <div className="mt-3 rounded-lg border border-indigo-200 dark:border-indigo-900 bg-gradient-to-br from-indigo-50/60 to-purple-50/40 dark:from-indigo-950/30 dark:to-purple-950/20 p-3">
-      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 mb-2">
+    <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 p-3">
+      <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-primary mb-2">
         <Sparkles size={11} /> {title ?? "AI Insights"}
       </div>
-      {loading && <div className="text-xs text-indigo-700 dark:text-indigo-300">Thinking…</div>}
-      {error && <div className="text-xs text-red-600">{error}</div>}
+      {loading && <div className="text-xs text-primary">Thinking…</div>}
+      {error && <div className="text-xs text-destructive">{error}</div>}
       {result != null && !loading && !error && (
         render ? render(result) : (
-          <pre className="text-xs whitespace-pre-wrap text-gray-700 dark:text-gray-200">
+          <pre className="text-xs whitespace-pre-wrap text-foreground">
             {typeof result === "string" ? result : JSON.stringify(result, null, 2)}
           </pre>
         )

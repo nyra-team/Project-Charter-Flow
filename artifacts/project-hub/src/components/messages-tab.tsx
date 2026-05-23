@@ -57,37 +57,36 @@ export function MessagesTab({ projectId }: { projectId: number }) {
   function renderBody(text: string) {
     return text.split(/(@\w+)/g).map((part, i) =>
       part.startsWith("@")
-        ? <span key={i} className="font-semibold text-indigo-600">{part}</span>
+        ? <span key={i} className="font-semibold text-primary">{part}</span>
         : <span key={i}>{part}</span>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-        <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-          <MessageSquare size={16} className="text-indigo-500" /> Project Discussion
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <MessageSquare size={16} className="text-primary" /> Project Discussion
         </h3>
-        <p className="text-xs text-gray-400 mt-0.5">Use @name to mention a team member · {msgs.length} message{msgs.length !== 1 ? "s" : ""}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">Use @name to mention a team member · {msgs.length} message{msgs.length !== 1 ? "s" : ""}</p>
       </div>
 
       {/* Composer */}
-      <div className="rounded-2xl p-4 space-y-2" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-4 space-y-2">
         <textarea
           value={body}
           onChange={e => setBody(e.target.value)}
           onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") handleSend(); }}
           placeholder="Type a message… use @name to mention. Cmd+Enter to send."
           rows={3}
-          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-200"
+          className="w-full text-sm border border-border rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
         <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-400 flex items-center gap-1"><AtSign size={11} /> Tagged: {parseTaggedUsers(body, usersArr).map(userName).join(", ") || "none"}</span>
+          <span className="text-xs text-muted-foreground flex items-center gap-1"><AtSign size={11} /> Tagged: {parseTaggedUsers(body, usersArr).map(userName).join(", ") || "none"}</span>
           <button
             onClick={handleSend}
             disabled={!body.trim() || createMsg.isPending}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-50"
-            style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-colors"
           >
             <Send size={13} /> {createMsg.isPending ? "Sending..." : "Send"}
           </button>
@@ -96,7 +95,7 @@ export function MessagesTab({ projectId }: { projectId: number }) {
 
       {/* Message list */}
       {msgs.length === 0 ? (
-        <div className="rounded-2xl p-10 text-center text-sm text-gray-400" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+        <div className="glass-surface lift-card ph-rise rounded-2xl p-10 text-center text-sm text-muted-foreground">
           No messages yet. Start the conversation!
         </div>
       ) : (
@@ -104,21 +103,20 @@ export function MessagesTab({ projectId }: { projectId: number }) {
           {msgs.map(m => {
             const name = userName(m.senderId);
             return (
-              <div key={m.id} className="rounded-2xl p-4 flex gap-3" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                  style={{ background: "linear-gradient(135deg,#6366F1,#8B5CF6)" }}>
+              <div key={m.id} className="glass-surface lift-card ph-rise rounded-2xl p-4 flex gap-3">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold bg-primary text-primary-foreground flex-shrink-0">
                   {initials(name)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold text-gray-900">{name}</p>
-                    <p className="text-xs text-gray-400">{timeAgo(m.createdAt)}</p>
+                    <p className="text-sm font-semibold text-foreground">{name}</p>
+                    <p className="text-xs text-muted-foreground">{timeAgo(m.createdAt)}</p>
                   </div>
-                  <p className="text-sm text-gray-700 mt-0.5 whitespace-pre-wrap">{renderBody(m.body)}</p>
+                  <p className="text-sm text-foreground mt-0.5 whitespace-pre-wrap">{renderBody(m.body)}</p>
                   {m.taggedUserIds && m.taggedUserIds.length > 0 && (
                     <div className="flex items-center gap-1 mt-1.5 flex-wrap">
                       {m.taggedUserIds.map(uid => (
-                        <span key={uid} className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700">@{userName(uid)}</span>
+                        <span key={uid} className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">@{userName(uid)}</span>
                       ))}
                     </div>
                   )}

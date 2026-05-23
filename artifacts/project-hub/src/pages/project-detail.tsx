@@ -247,7 +247,7 @@ function GanttChart({
             <g>
               <line x1={todayX} y1={0} x2={todayX} y2={svgH} stroke="hsl(var(--destructive))" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />
               <rect x={todayX - 16} y={2} width={32} height={14} rx={3} fill="hsl(var(--destructive))" opacity={0.9} />
-              <text x={todayX} y={12} textAnchor="middle" fontSize={8} fill="white" fontWeight={700}>TODAY</text>
+              <text x={todayX} y={12} textAnchor="middle" fontSize={8} fill="hsl(var(--primary-foreground))" fontWeight={700}>TODAY</text>
             </g>
           )}
           <defs>
@@ -291,7 +291,7 @@ function GanttChart({
               <g key={`bar-${i}`}>
                 <rect x={bx} y={by} width={bw} height={barH} rx={4} fill={barFill} opacity={isDone ? 0.6 : 0.85} />
                 {bw > 40 && (
-                  <text x={bx + 6} y={by + 12} fontSize={9} fill="white" fontWeight={600}>
+                  <text x={bx + 6} y={by + 12} fontSize={9} fill="hsl(var(--primary-foreground))" fontWeight={600}>
                     {row.item.name.substring(0, Math.floor(bw / 8))}
                   </text>
                 )}
@@ -468,7 +468,7 @@ export default function ProjectDetail() {
 
       {/* NFA Budget Overrun Alert */}
       {nfaStatus?.triggered && !nfaDismissed && (
-        <div className="glass-surface rounded-2xl p-4 flex items-start gap-3 ph-rise border-warn/30 bg-warn/5">
+        <div className="glass-surface lift-card ph-rise rounded-2xl p-4 flex items-start gap-3 border-warn/30 bg-warn/5">
           <AlertTriangle size={18} className="text-warn flex-shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="text-sm font-semibold text-foreground tracking-tight">NFA Budget Overrun Triggered</p>
@@ -489,7 +489,7 @@ export default function ProjectDetail() {
       )}
 
       {/* Header */}
-      <div className="glass-surface lift-card rounded-2xl p-6 ph-rise relative overflow-hidden">
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-6 relative overflow-hidden">
         <span aria-hidden className="pointer-events-none absolute bottom-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -557,7 +557,7 @@ export default function ProjectDetail() {
             const toneClasses = {
               primary: { wrap: "bg-primary/10 border-primary/20",         text: "text-primary"     },
               success: { wrap: "bg-success/10 border-success/20",         text: "text-success"     },
-              info:    { wrap: "bg-sky-500/10 border-sky-500/20",         text: "text-sky-600 dark:text-sky-400" },
+              info:    { wrap: "bg-primary/10 border-primary/20",         text: "text-primary"     },
               warn:    { wrap: "bg-warn/10 border-warn/20",               text: "text-warn"        },
             }[s.tone];
             return (
@@ -650,7 +650,7 @@ export default function ProjectDetail() {
                     <div
                       className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold font-mono flex-shrink-0 ${
                         isComplete
-                          ? "bg-success text-white"
+                          ? "bg-success text-primary-foreground"
                           : isActive
                           ? "bg-primary text-primary-foreground"
                           : "bg-muted text-muted-foreground border border-border"
@@ -708,7 +708,7 @@ export default function ProjectDetail() {
           </div>
 
           {/* Filter bar */}
-          <div className="glass-surface rounded-xl px-4 py-2">
+          <div className="glass-surface lift-card ph-rise rounded-2xl px-4 py-2">
             <TaskFilterBar
               filters={taskFilters}
               onChange={setTaskFilters}
@@ -781,7 +781,7 @@ export default function ProjectDetail() {
       {/* ── Board Tab ────────────────────────────────────────────────── */}
       {activeTab === "board" && (
         <div className="space-y-4">
-          <div className="glass-surface rounded-xl px-4 py-2">
+          <div className="glass-surface lift-card ph-rise rounded-2xl px-4 py-2">
             <div className="flex items-center justify-between py-1">
               <p className="text-[11px] text-muted-foreground">Drag cards between columns to update status. Milestones shown as <span className="font-semibold text-foreground">[M]</span> cards.</p>
               <span className="text-[11px] text-muted-foreground font-mono">{tasks.filter(t => !t.parentTaskId).length + milestones.length} items</span>
@@ -1073,7 +1073,7 @@ export default function ProjectDetail() {
                   >
                     <Sparkles size={12} />
                     {loading || aiSummaryLoading ? "Thinking…" : "Generate Summary"}
-                    {error && <span className="text-red-200 text-xs ml-1">!</span>}
+                    {error && <span className="text-primary-foreground/70 text-xs ml-1">!</span>}
                   </button>
                 )}
               </AiButton>
@@ -1155,7 +1155,7 @@ export default function ProjectDetail() {
                     key={t.id}
                     className="flex items-center gap-3 p-3 rounded-xl bg-destructive/5 border border-destructive/20"
                   >
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold font-mono text-white flex-shrink-0 bg-destructive">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-semibold font-mono text-primary-foreground flex-shrink-0 bg-destructive">
                       {idx + 1}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -1214,7 +1214,7 @@ export default function ProjectDetail() {
             </div>
 
             {criteria.length === 0 ? (
-              <div className="glass-surface rounded-2xl p-10 text-center ph-rise">
+              <div className="glass-surface lift-card ph-rise rounded-2xl p-10 text-center">
                 <Star size={32} className="text-muted-foreground/40 mx-auto mb-3" />
                 <p className="text-sm text-foreground">No scoring criteria configured.</p>
                 <p className="text-xs text-muted-foreground mt-1">A PMO admin can add criteria in <strong className="text-foreground">Admin → Scoring</strong>.</p>
@@ -1226,7 +1226,7 @@ export default function ProjectDetail() {
                   const currentScore = existing?.score ?? 0;
                   const weightedContrib = existing ? Number(existing.weightedScore) : 0;
                   return (
-                    <div key={c.id} className="glass-surface lift-card rounded-2xl p-5">
+                    <div key={c.id} className="glass-surface lift-card ph-rise rounded-2xl p-5">
                       <div className="flex items-start justify-between gap-4 mb-3">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
