@@ -74,12 +74,12 @@ function InlineDateCell({ value, onSave }: { value?: string | null; onSave: (v: 
   if (!editing) {
     return (
       <span
-        className="text-xs text-gray-600 cursor-pointer hover:bg-indigo-50 px-1 rounded block truncate"
+        className="text-xs text-foreground cursor-pointer hover:bg-primary/10 px-1 rounded block truncate"
         onClick={() => { setLocal(value ?? ""); setEditing(true); }}
       >
         {value
           ? new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" })
-          : <span className="text-gray-300 italic">—</span>}
+          : <span className="text-muted-foreground/60 italic">—</span>}
       </span>
     );
   }
@@ -114,10 +114,10 @@ function InlineNumberCell({ value, onSave, suffix = "h" }: { value?: number | nu
   if (!editing) {
     return (
       <span
-        className="text-xs text-gray-600 cursor-pointer hover:bg-indigo-50 px-1 rounded block text-center"
+        className="text-xs text-foreground cursor-pointer hover:bg-primary/10 px-1 rounded block text-center"
         onClick={() => { setLocal(value?.toString() ?? ""); setEditing(true); }}
       >
-        {value != null ? `${value}${suffix}` : <span className="text-gray-300">—</span>}
+        {value != null ? `${value}${suffix}` : <span className="text-muted-foreground/60">—</span>}
       </span>
     );
   }
@@ -300,7 +300,7 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
 
   const hasFilters = searchText || filterStatus || filterPriority || filterRag || filterGate || filterDateFrom || filterDateTo;
 
-  const thCls = "text-left text-xs font-bold text-gray-500 uppercase tracking-wide py-2.5 px-2 border-b border-gray-100 bg-gray-50 whitespace-nowrap sticky top-0 z-10";
+  const thCls = "text-left text-xs font-bold text-muted-foreground uppercase tracking-wide py-2.5 px-2 border-b border-border/60 bg-muted/40 whitespace-nowrap sticky top-0 z-10";
 
   return (
     <>
@@ -310,7 +310,7 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
         style={{ position: "sticky", top: 0, zIndex: 10, background: "white" }}
       >
         <div className="relative flex-1 min-w-[150px]">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             value={searchText}
             onChange={e => setSearchText(e.target.value)}
@@ -336,25 +336,25 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
           <option value="conditional">Conditional</option>
         </select>
         <div className="flex items-center gap-1">
-          <span className="text-xs text-gray-400">Due from</span>
+          <span className="text-xs text-muted-foreground">Due from</span>
           <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)} className="text-xs border rounded px-1.5 py-1 h-8 outline-none" style={{ maxWidth: 120 }} />
         </div>
         <div className="flex items-center gap-1">
-          <span className="text-xs text-gray-400">to</span>
+          <span className="text-xs text-muted-foreground">to</span>
           <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)} className="text-xs border rounded px-1.5 py-1 h-8 outline-none" style={{ maxWidth: 120 }} />
         </div>
         {hasFilters && (
           <button
             onClick={() => { setSearchText(""); setFilterStatus(""); setFilterPriority(""); setFilterRag(""); setFilterGate(""); setFilterDateFrom(""); setFilterDateTo(""); }}
-            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded-lg hover:bg-gray-100 flex items-center gap-1"
+            className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-lg hover:bg-accent/60 flex items-center gap-1"
           >
             ✕ Clear
           </button>
         )}
-        <span className="text-xs text-gray-400 ml-2">{sorted.length} / {milestones.length}</span>
+        <span className="text-xs text-muted-foreground ml-2">{sorted.length} / {milestones.length}</span>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl" style={{ border: "1px solid #E2E8F0" }}>
+      <div className="overflow-x-auto rounded-2xl border border-border">
         <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 1400 }}>
           <thead>
             <tr>
@@ -378,7 +378,7 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
           <tbody>
             {sorted.length === 0 && (
               <tr>
-                <td colSpan={15} className="text-center py-12 text-gray-400 text-sm">No milestones found.</td>
+                <td colSpan={15} className="text-center py-12 text-muted-foreground text-sm">No milestones found.</td>
               </tr>
             )}
             {sorted.map(ms => {
@@ -393,10 +393,10 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
               return (
                 <tr
                   key={ms.id}
-                  className="border-b border-gray-50 hover:bg-indigo-50/20 transition-colors text-xs"
+                  className="border-b border-border/40 hover:bg-primary/10 transition-colors text-xs"
                 >
                   <td className="py-2.5 px-2">
-                    <span className="font-semibold text-gray-800 truncate block" title={d.name}>{d.name}</span>
+                    <span className="font-semibold text-foreground truncate block" title={d.name}>{d.name}</span>
                   </td>
                   <td className="py-2 px-2">
                     <StatusSelect value={d.status} onChange={v => patch(ms.id, { status: v })} />
@@ -404,7 +404,7 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
                   <td className="py-2 px-2">
                     <ConsolidatedStatusPill tasks={msTasks} />
                     {msTasks.length > 0 && (
-                      <span className="text-gray-400 text-xs ml-1">({msTasks.length})</span>
+                      <span className="text-muted-foreground text-xs ml-1">({msTasks.length})</span>
                     )}
                   </td>
                   <td className="py-2 px-2 text-center">
@@ -414,18 +414,18 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
                     <PrioritySelect value={d.priority} onChange={v => patch(ms.id, { priority: v })} />
                   </td>
                   <td className="py-2 px-2">
-                    <span className="text-xs text-gray-600 block truncate" title={derivedOwner}>{derivedOwner}</span>
-                    <span className="text-gray-400" style={{ fontSize: 9 }}>tasks</span>
+                    <span className="text-xs text-foreground block truncate" title={derivedOwner}>{derivedOwner}</span>
+                    <span className="text-muted-foreground" style={{ fontSize: 9 }}>tasks</span>
                   </td>
                   <td className="py-2 px-2">
-                    <span className="text-xs text-gray-600 block truncate">{derivedManager}</span>
-                    <span className="text-gray-400" style={{ fontSize: 9 }}>tasks</span>
+                    <span className="text-xs text-foreground block truncate">{derivedManager}</span>
+                    <span className="text-muted-foreground" style={{ fontSize: 9 }}>tasks</span>
                   </td>
                   <td className="py-2 px-2">
-                    <span className="text-xs text-gray-600 block">
+                    <span className="text-xs text-foreground block">
                       {derivedStart
                         ? new Date(derivedStart).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" })
-                        : <span className="text-gray-300">—</span>}
+                        : <span className="text-muted-foreground/60">—</span>}
                     </span>
                   </td>
                   <td className="py-2 px-2">
@@ -458,8 +458,11 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
                   <td className="py-2 px-2 text-center">
                     <button
                       onClick={() => setIssueModal({ milestoneId: ms.id, name: d.name })}
-                      className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
-                      style={{ background: issueCount > 0 ? "#FDEDEE" : "#F1F5F9", color: issueCount > 0 ? "#DC3545" : "#94A3B8" }}
+                      className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${
+                        issueCount > 0
+                          ? "bg-destructive/10 text-destructive border-destructive/20"
+                          : "bg-muted text-muted-foreground border-border"
+                      }`}
                     >
                       <AlertTriangle size={10} />
                       {issueCount > 0 ? issueCount : "+"}

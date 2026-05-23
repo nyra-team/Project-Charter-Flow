@@ -75,16 +75,16 @@ function TaskCard({
 
   return (
     <div
-      className="rounded-xl p-3 space-y-2 select-none"
-      style={{
-        background: task.isSubtask ? "#FAFBFF" : "white",
-        border: `1px solid ${isDragging ? "#6366F1" : isMilestone ? "#E0E7FF" : task.isSubtask ? "#C7D2FE" : "#E2E8F0"}`,
-        boxShadow: isDragging ? "0 8px 25px rgba(99,102,241,0.2)" : "0 1px 3px rgba(0,0,0,0.06)",
-        opacity: isDragging ? 0.85 : 1,
-        transform: isDragging ? "rotate(2deg)" : undefined,
-        cursor: isDragging ? "grabbing" : "grab",
-        marginLeft: task.isSubtask ? 8 : 0,
-      }}
+      className={`rounded-xl p-3 space-y-2 select-none border transition-all ${
+        isDragging
+          ? "border-primary shadow-[0_8px_25px_hsl(var(--primary)/0.25)] opacity-90 rotate-1 cursor-grabbing"
+          : task.isSubtask
+          ? "bg-primary/5 border-primary/20 cursor-grab"
+          : isMilestone
+          ? "bg-card border-primary/20 cursor-grab"
+          : "bg-card border-border cursor-grab shadow-sm hover:border-primary/30"
+      }`}
+      style={{ marginLeft: task.isSubtask ? 8 : 0 }}
       onClick={!isDragging ? onClick : undefined}
     >
       <div className="flex items-start gap-2">
@@ -93,29 +93,20 @@ function TaskCard({
           style={{ background: ragColor, minHeight: 14, minWidth: 3, width: 3 }}
         />
         {isMilestone && (
-          <span
-            className="text-xs px-1 py-0 rounded font-bold flex-shrink-0"
-            style={{ background: "#EEF2FF", color: "#4F46E5", fontSize: 9 }}
-          >
+          <span className="text-[9px] font-mono uppercase tracking-wider px-1 py-0 rounded-sm border bg-primary/10 text-primary border-primary/20 font-semibold flex-shrink-0">
             M
           </span>
         )}
         {task.isSubtask && (
-          <span
-            className="text-xs px-1 py-0 rounded font-bold flex-shrink-0"
-            style={{ background: "#EDE9FE", color: "#7C3AED", fontSize: 9 }}
-          >
+          <span className="text-[9px] font-mono uppercase tracking-wider px-1 py-0 rounded-sm border bg-primary/10 text-primary border-primary/20 font-semibold flex-shrink-0">
             Sub
           </span>
         )}
-        <p className="text-xs font-semibold text-gray-800 flex-1 leading-4" style={{ wordBreak: "break-word" }}>
+        <p className="text-xs font-semibold text-foreground flex-1 leading-4" style={{ wordBreak: "break-word" }}>
           {task.name}
         </p>
         {task.isCritical && !isMilestone && (
-          <span
-            className="text-xs px-1 rounded font-bold flex-shrink-0"
-            style={{ background: "#FEE2E2", color: "#991B1B", fontSize: 9 }}
-          >
+          <span className="text-[9px] font-mono uppercase tracking-wider px-1 rounded-sm border bg-destructive/10 text-destructive border-destructive/20 font-semibold flex-shrink-0">
             CP
           </span>
         )}
@@ -123,17 +114,14 @@ function TaskCard({
 
       <div className="flex items-center justify-between gap-2">
         <span
-          className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-bold"
-          style={{ background: priMeta.bg, color: priMeta.color, fontSize: 9 }}
+          className="inline-flex items-center px-1.5 py-0.5 rounded-sm text-[9px] font-mono uppercase tracking-wider font-semibold border"
+          style={{ background: priMeta.bg, color: priMeta.color, borderColor: priMeta.color }}
         >
           {priMeta.value}
         </span>
         <div className="flex items-center gap-1.5">
           {(task.subtaskCount ?? 0) > 0 && (
-            <span
-              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs"
-              style={{ background: "#EEF2FF", color: "#4F46E5", fontSize: 9 }}
-            >
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[9px] font-mono border bg-primary/10 text-primary border-primary/20">
               <Layers size={8} />
               {task.subtaskCount}
             </span>
@@ -146,23 +134,20 @@ function TaskCard({
         </div>
       </div>
 
-      <div className="flex items-center justify-between text-xs text-gray-400">
+      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
         {task.assigneeName ? (
           <span className="flex items-center gap-1 truncate">
-            <div
-              className="w-4 h-4 rounded-full bg-indigo-100 flex items-center justify-center font-bold flex-shrink-0"
-              style={{ fontSize: 8, color: "#4F46E5" }}
-            >
+            <div className="w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold font-mono flex-shrink-0 text-[8px]">
               {task.assigneeName.charAt(0).toUpperCase()}
             </div>
             <span className="truncate max-w-[70px]">{task.assigneeName}</span>
           </span>
         ) : (
-          <span className="text-gray-300 text-xs">—</span>
+          <span className="text-muted-foreground/50">—</span>
         )}
         <div className="flex items-center gap-1.5">
           {dueDate && (
-            <span className="flex items-center gap-0.5 flex-shrink-0">
+            <span className="flex items-center gap-0.5 flex-shrink-0 font-mono">
               <Calendar size={9} />
               {new Date(dueDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
             </span>
@@ -170,8 +155,7 @@ function TaskCard({
           {!isMilestone && onLogTime && (
             <button
               onClick={e => { e.stopPropagation(); onLogTime(task.id, task.name); }}
-              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs transition-colors hover:bg-indigo-100"
-              style={{ color: "#6366F1", fontSize: 9 }}
+              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[9px] font-mono uppercase tracking-wider text-primary hover:bg-primary/10 transition-colors"
               title="Log time"
             >
               <Clock size={9} /> Log
@@ -201,30 +185,28 @@ function DroppableColumn({
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
-    <div className="flex flex-col flex-shrink-0" style={{ minWidth: 220, width: 220 }}>
+    <div className="flex flex-col flex-shrink-0 glass-surface rounded-xl overflow-hidden" style={{ minWidth: 220, width: 220 }}>
       <div
-        className="rounded-t-xl px-3 py-2.5 flex items-center gap-2"
-        style={{ background: bg, borderBottom: `2px solid ${color}` }}
+        className="px-3 py-2.5 flex items-center gap-2 border-b-2"
+        style={{ background: bg, borderBottomColor: color }}
       >
         <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
-        <span className="text-xs font-bold flex-1" style={{ color }}>
+        <span className="text-[11px] font-mono uppercase tracking-wider font-semibold flex-1" style={{ color }}>
           {label}
         </span>
         <span
-          className="text-xs font-bold px-1.5 py-0.5 rounded-full"
-          style={{ background: color + "20", color }}
+          className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-sm border"
+          style={{ background: bg, color, borderColor: color }}
         >
           {count}
         </span>
       </div>
       <div
         ref={setNodeRef}
-        className="flex-1 p-2 space-y-2 rounded-b-xl transition-colors"
+        className={`flex-1 p-2 space-y-2 transition-colors border-t-0 border ${isOver ? "border-primary/40" : "border-border"}`}
         style={{
-          background: isOver ? bg : "#F8FAFC",
+          background: isOver ? bg : undefined,
           minHeight: 120,
-          border: `1px solid ${isOver ? color : "#E2E8F0"}`,
-          borderTop: "none",
         }}
       >
         {children}

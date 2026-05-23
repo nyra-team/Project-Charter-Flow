@@ -16,7 +16,7 @@ function ProgressRing({ pct, color, size = 80, stroke = 8, label, sublabel }: {
   return (
     <div className="flex flex-col items-center gap-1">
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#E2E8F0" strokeWidth={stroke} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(var(--border))" strokeWidth={stroke} />
         <circle
           cx={size / 2} cy={size / 2} r={r}
           fill="none"
@@ -31,15 +31,15 @@ function ProgressRing({ pct, color, size = 80, stroke = 8, label, sublabel }: {
           x={size / 2} y={size / 2 + 5}
           textAnchor="middle"
           fontSize={size * 0.2}
-          fontWeight={700}
+          fontWeight={600}
           fill={color}
-          style={{ transform: `rotate(90deg) translateX(0px)`, transformOrigin: `${size / 2}px ${size / 2}px` }}
+          style={{ transform: `rotate(90deg) translateX(0px)`, transformOrigin: `${size / 2}px ${size / 2}px`, fontFamily: "var(--font-mono, ui-monospace, monospace)" }}
         >
           {Math.round(pct)}%
         </text>
       </svg>
-      <p className="text-xs font-semibold text-gray-700 text-center">{label}</p>
-      <p className="text-xs text-gray-400 text-center">{sublabel}</p>
+      <p className="text-xs font-semibold text-foreground text-center tracking-tight">{label}</p>
+      <p className="text-[11px] text-muted-foreground text-center">{sublabel}</p>
     </div>
   );
 }
@@ -77,35 +77,36 @@ export function ProgressTrackingPanel({ milestones, tasks, lastUpdated }: Progre
   }, [milestones, tasks]);
 
   return (
-    <div className="rounded-2xl p-5" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+    <div className="glass-surface lift-card rounded-2xl p-5 ph-rise relative overflow-hidden">
+      <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-sm font-bold text-gray-800">Progress Tracking</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Milestone · Task · Overall (weighted 40/60)</p>
+          <h3 className="text-[14px] font-semibold text-foreground tracking-tight">Progress Tracking</h3>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Milestone · Task · Overall (weighted 40/60)</p>
         </div>
         {lastUpdated && (
-          <span className="text-xs text-gray-400">
+          <span className="text-[11px] text-muted-foreground font-mono">
             Updated {fmtTimeAgo(lastUpdated)}
           </span>
         )}
       </div>
 
-      <div className="flex justify-around gap-4">
+      <div className="flex justify-around gap-4 flex-wrap">
         <ProgressRing
           pct={stats.milestonePct}
-          color="#6366F1"
+          color="hsl(var(--primary))"
           label="Milestone Completion"
           sublabel={`${stats.completedMilestones} / ${stats.totalMilestones}`}
         />
         <ProgressRing
           pct={stats.taskPct}
-          color="#10B981"
+          color="hsl(var(--success))"
           label="Task Completion Rate"
           sublabel={`${stats.completedTasks} / ${stats.totalTasks}`}
         />
         <ProgressRing
           pct={stats.overallPct}
-          color="#F59E0B"
+          color="hsl(var(--warn))"
           size={96}
           stroke={10}
           label="Overall Progress"
@@ -115,20 +116,20 @@ export function ProgressTrackingPanel({ milestones, tasks, lastUpdated }: Progre
 
       {/* Summary bars */}
       <div className="mt-5 space-y-2">
-        {[
-          { label: "Milestones", pct: stats.milestonePct, color: "#6366F1" },
-          { label: "Tasks", pct: stats.taskPct, color: "#10B981" },
-          { label: "Overall", pct: stats.overallPct, color: "#F59E0B" },
-        ].map(item => (
+        {([
+          { label: "Milestones", pct: stats.milestonePct, bar: "bg-primary" },
+          { label: "Tasks",      pct: stats.taskPct,      bar: "bg-success" },
+          { label: "Overall",    pct: stats.overallPct,   bar: "bg-warn" },
+        ] as const).map(item => (
           <div key={item.label} className="flex items-center gap-3">
-            <span className="text-xs text-gray-500 w-20 text-right">{item.label}</span>
-            <div className="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden">
+            <span className="text-[11px] text-muted-foreground w-20 text-right font-mono">{item.label}</span>
+            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
               <div
-                className="h-full rounded-full transition-all duration-700"
-                style={{ width: `${Math.min(item.pct, 100)}%`, background: item.color }}
+                className={`h-full rounded-full transition-all duration-700 ${item.bar}`}
+                style={{ width: `${Math.min(item.pct, 100)}%` }}
               />
             </div>
-            <span className="text-xs font-semibold text-gray-600 w-9 text-right">
+            <span className="text-[11px] font-semibold font-mono num-tabular text-foreground w-9 text-right">
               {Math.round(item.pct)}%
             </span>
           </div>

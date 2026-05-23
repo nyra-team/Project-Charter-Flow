@@ -98,8 +98,8 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
 
   if (!stageConfig) {
     return (
-      <div className="rounded-2xl p-8 text-center" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-        <p className="text-gray-400 text-sm">Stage information not available.</p>
+      <div className="glass-surface rounded-2xl p-8 text-center ph-rise">
+        <p className="text-muted-foreground text-sm">Stage information not available.</p>
       </div>
     );
   }
@@ -199,44 +199,35 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
   ];
 
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+    <div className="glass-surface lift-card rounded-2xl overflow-hidden ph-rise">
       {/* Stage Header */}
-      <div
-        className="px-5 py-4"
-        style={{
-          background: `linear-gradient(135deg, ${stageConfig.color}18, ${stageConfig.color}08)`,
-          borderBottom: `1px solid ${stageConfig.color}30`,
-        }}
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span
-                className="text-xs font-bold px-2 py-0.5 rounded-full"
-                style={{ background: `${stageConfig.color}20`, color: stageConfig.color }}
-              >
+      <div className="px-5 py-4 bg-primary/5 border-b border-primary/20">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded-sm border bg-primary/10 text-primary border-primary/20">
                 Stage {displayStageIdx + 1} of {LIFECYCLE_STAGES.length}
               </span>
               {isCompletedStage && (
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#ECFDF5", color: "#065F46" }}>
+                <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded-sm border bg-success/10 text-success border-success/20">
                   ✓ Completed
                 </span>
               )}
               {isLockedStage && (
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#F1F5F9", color: "#64748B" }}>
+                <span className="inline-flex items-center text-[10px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded-sm border bg-muted text-muted-foreground border-border">
                   <Lock size={10} className="inline mr-1" />Locked
                 </span>
               )}
               {isCurrentStage && !isCompletedStage && (
-                <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#EEF2FF", color: "#4F46E5" }}>
+                <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded-sm border bg-primary/10 text-primary border-primary/20">
                   Active
                 </span>
               )}
             </div>
-            <h3 className="text-lg font-bold text-gray-900">{stageConfig.label}</h3>
-            <p className="text-sm text-gray-500 mt-0.5">{stageConfig.description}</p>
+            <h3 className="text-lg font-semibold text-foreground tracking-tight">{stageConfig.label}</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">{stageConfig.description}</p>
             {stageRecord?.enteredAt && (
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-[11px] text-muted-foreground mt-1 font-mono">
                 Started {formatDate(stageRecord.enteredAt)}
                 {stageRecord.completedAt && ` · Completed ${formatDate(stageRecord.completedAt)}`}
               </p>
@@ -244,16 +235,15 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
           </div>
           <div className="flex flex-col items-end gap-2 flex-shrink-0">
             {stageConfig.prerequisites.length > 0 && (
-              <div className="text-xs text-gray-400 text-right">
-                <p className="font-semibold mb-0.5">Prerequisites</p>
+              <div className="text-[11px] text-muted-foreground text-right">
+                <p className="text-[10px] font-mono uppercase tracking-wider font-semibold mb-1">Prerequisites</p>
                 {stageConfig.prerequisites.map((p) => {
                   const prereqComplete = isStageComplete(p, stageRecords as Array<{ stage: string; status: string }>);
                   const prereqConfig = getStageConfig(p);
                   return (
                     <span
                       key={p}
-                      className="flex items-center gap-1 text-xs"
-                      style={{ color: prereqComplete ? "#10B981" : "#EF4444" }}
+                      className={`flex items-center gap-1 text-[11px] ${prereqComplete ? "text-success" : "text-destructive"}`}
                     >
                       {prereqComplete ? <CheckCircle2 size={11} /> : <XCircle size={11} />}
                       {prereqConfig?.label ?? p}
@@ -267,21 +257,23 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
       </div>
 
       {/* Tab Bar */}
-      <div className="flex gap-0 border-b border-gray-100" style={{ background: "#F8FAFC" }}>
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className="px-4 py-2.5 text-xs font-semibold transition-all border-b-2"
-            style={{
-              borderColor: activeTab === tab.id ? stageConfig.color : "transparent",
-              color: activeTab === tab.id ? stageConfig.color : "#64748B",
-              background: "transparent",
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="flex gap-0 border-b border-border/60 bg-muted/40 overflow-x-auto scrollbar-thin">
+        {TABS.map((tab) => {
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2.5 text-xs font-semibold transition-all border-b-2 whitespace-nowrap ${
+                active
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Tab Content */}
@@ -289,24 +281,23 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
         {activeTab === "overview" && (
           <div className="space-y-4">
             {isLockedStage && (
-              <div className="rounded-xl p-4 flex items-center gap-3" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-                <Lock size={18} className="text-gray-400 flex-shrink-0" />
+              <div className="rounded-xl p-4 flex items-center gap-3 bg-muted/40 border border-border">
+                <Lock size={18} className="text-muted-foreground flex-shrink-0" />
                 <div>
-                  <p className="text-sm font-semibold text-gray-600">Stage Locked</p>
-                  <p className="text-xs text-gray-400">Complete the current active stage to unlock {stageConfig.label}.</p>
+                  <p className="text-sm font-semibold text-foreground">Stage Locked</p>
+                  <p className="text-xs text-muted-foreground">Complete the current active stage to unlock {stageConfig.label}.</p>
                 </div>
               </div>
             )}
 
             {!stageRecord && isCurrentStage && (
-              <div className="rounded-xl p-4" style={{ background: "#EEF2FF", border: "1px solid #C7D2FE" }}>
-                <p className="text-sm font-semibold text-indigo-800 mb-2">Stage not yet started</p>
-                <p className="text-xs text-indigo-600 mb-3">Initialize this stage to begin tracking progress.</p>
+              <div className="rounded-xl p-4 bg-primary/5 border border-primary/20">
+                <p className="text-sm font-semibold text-foreground mb-2">Stage not yet started</p>
+                <p className="text-xs text-muted-foreground mb-3">Initialize this stage to begin tracking progress.</p>
                 <button
                   onClick={handleInitializeStage}
                   disabled={createStageMutation.isPending}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold text-white"
-                  style={{ background: "linear-gradient(135deg,#6366F1,#8B5CF6)" }}
+                  className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-50"
                 >
                   Initialize Stage
                 </button>
@@ -324,26 +315,26 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
             {stageHas(stageConfig, "isClosureStage") && <ClosureReport projectId={projectId} />}
 
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl p-3" style={{ background: "#F0FDF4" }}>
-                <p className="text-xs text-emerald-700 font-semibold mb-1">Documents</p>
-                <p className="text-xl font-bold text-emerald-800">
-                  {stageDocs.length}<span className="text-xs text-emerald-600 font-normal">/{stageConfig.requiredDocs.length}</span>
+              <div className="rounded-xl p-3 bg-success/10 border border-success/20">
+                <p className="text-[10px] font-mono uppercase tracking-wider text-success font-semibold mb-1">Documents</p>
+                <p className="text-xl font-semibold font-mono num-tabular text-success">
+                  {stageDocs.length}<span className="text-xs text-success/70 font-normal">/{stageConfig.requiredDocs.length}</span>
                 </p>
-                <p className="text-xs text-emerald-600">uploaded</p>
+                <p className="text-[11px] text-success/80">uploaded</p>
               </div>
-              <div className="rounded-xl p-3" style={{ background: "#EEF2FF" }}>
-                <p className="text-xs text-indigo-700 font-semibold mb-1">Checklist</p>
-                <p className="text-xl font-bold text-indigo-800">
+              <div className="rounded-xl p-3 bg-primary/10 border border-primary/20">
+                <p className="text-[10px] font-mono uppercase tracking-wider text-primary font-semibold mb-1">Checklist</p>
+                <p className="text-xl font-semibold font-mono num-tabular text-primary">
                   {stageConfig.checklistItems.filter((i) => checklist[i.id]).length}
-                  <span className="text-xs text-indigo-600 font-normal">/{stageConfig.checklistItems.length}</span>
+                  <span className="text-xs text-primary/70 font-normal">/{stageConfig.checklistItems.length}</span>
                 </p>
-                <p className="text-xs text-indigo-600">complete</p>
+                <p className="text-[11px] text-primary/80">complete</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 text-xs text-gray-500">
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
               <Users size={12} />
-              <span>Can advance: {stageConfig.advanceRoles.join(", ")}</span>
+              <span>Can advance: <span className="font-mono text-foreground">{stageConfig.advanceRoles.join(", ")}</span></span>
             </div>
           </div>
         )}
@@ -365,12 +356,12 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
             })}
             {stageDocs.length > stageConfig.requiredDocs.length && (
               <div className="mt-3">
-                <p className="text-xs font-semibold text-gray-500 mb-2">Additional Documents</p>
+                <p className="text-[10px] font-mono uppercase tracking-wider font-semibold text-muted-foreground mb-2">Additional Documents</p>
                 {stageDocs
                   .filter((d) => !stageConfig.requiredDocs.some((rd) => rd.name === d.name))
                   .map((d) => (
-                    <div key={d.id} className="flex items-center gap-2 py-1.5 text-sm text-gray-600">
-                      <FileText size={13} className="text-gray-400" />
+                    <div key={d.id} className="flex items-center gap-2 py-1.5 text-sm text-foreground">
+                      <FileText size={13} className="text-muted-foreground" />
                       <span className="flex-1">{d.name}</span>
                       <DocStatusBadge status={d.approvalStatus} />
                     </div>
@@ -381,7 +372,7 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
         )}
 
         {activeTab === "checklist" && (
-          <div className="space-y-2">
+          <div className="space-y-2 stagger-children">
             {stageConfig.checklistItems.map((item) => {
               const done = !!checklist[item.id];
               return (
@@ -389,19 +380,22 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
                   key={item.id}
                   onClick={() => toggleChecklist(item.id)}
                   disabled={isCompletedStage || isLockedStage}
-                  className="w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all hover:opacity-90 disabled:cursor-default"
-                  style={{ background: done ? "#F0FDF4" : "#F8FAFC", border: `1px solid ${done ? "#86EFAC" : "#E2E8F0"}` }}
+                  className={`w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all disabled:cursor-default border ${
+                    done
+                      ? "bg-success/10 border-success/30"
+                      : "bg-muted/40 border-border hover:bg-accent/40"
+                  }`}
                 >
                   {done ? (
-                    <CheckSquare size={16} className="text-emerald-500 flex-shrink-0 mt-0.5" />
+                    <CheckSquare size={16} className="text-success flex-shrink-0 mt-0.5" />
                   ) : (
-                    <Square size={16} className="text-gray-300 flex-shrink-0 mt-0.5" />
+                    <Square size={16} className="text-muted-foreground/60 flex-shrink-0 mt-0.5" />
                   )}
-                  <span className={`text-sm flex-1 ${done ? "text-emerald-800 line-through" : "text-gray-700"}`}>
+                  <span className={`text-sm flex-1 ${done ? "text-foreground line-through opacity-70" : "text-foreground"}`}>
                     {item.label}
                   </span>
                   {item.blocking && !done && (
-                    <span className="text-xs px-1.5 py-0.5 rounded font-bold flex-shrink-0" style={{ background: "#FEE2E2", color: "#991B1B" }}>
+                    <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-destructive/10 text-destructive border-destructive/20 flex-shrink-0">
                       Required
                     </span>
                   )}
@@ -409,7 +403,7 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
               );
             })}
             {!allBlockingComplete && (
-              <div className="mt-2 flex items-center gap-2 text-xs text-amber-700 p-2 rounded-lg" style={{ background: "#FFFBEB" }}>
+              <div className="mt-2 flex items-center gap-2 text-xs text-warn p-2 rounded-lg bg-warn/10 border border-warn/20">
                 <AlertTriangle size={12} />
                 <span>Complete all required checklist items to enable stage advancement.</span>
               </div>
@@ -418,23 +412,29 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
         )}
 
         {activeTab === "approvals" && (
-          <div className="space-y-2">
+          <div className="space-y-2 stagger-children">
             {(approvals as Array<{ id: number; approverRole?: string; approverName?: string; status: string; decidedAt?: string | null; comments?: string | null }>).length === 0 ? (
-              <p className="text-sm text-gray-400 text-center py-6">No approval records yet for this project.</p>
+              <p className="text-sm text-muted-foreground text-center py-6">No approval records yet for this project.</p>
             ) : (
               (approvals as Array<{ id: number; approverRole?: string; approverName?: string; status: string; decidedAt?: string | null; comments?: string | null }>).map((a) => (
-                <div key={a.id} className="flex items-start gap-3 p-3 rounded-xl" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                <div key={a.id} className="flex items-start gap-3 p-3 rounded-xl bg-muted/40 border border-border">
                   <ApprovalStatusIcon status={a.status} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-gray-800">{a.approverName ?? "—"}</span>
-                      <span className="text-xs capitalize text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{a.approverRole}</span>
-                      <span className={`text-xs font-bold capitalize px-1.5 py-0.5 rounded ${a.status === "approved" ? "text-emerald-700 bg-emerald-50" : a.status === "rejected" ? "text-red-700 bg-red-50" : "text-amber-700 bg-amber-50"}`}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-semibold text-foreground">{a.approverName ?? "—"}</span>
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground bg-muted px-1.5 py-0.5 rounded-sm border border-border">{a.approverRole}</span>
+                      <span className={`text-[10px] font-mono uppercase tracking-wider font-semibold capitalize px-1.5 py-0.5 rounded-sm border ${
+                        a.status === "approved"
+                          ? "text-success bg-success/10 border-success/20"
+                          : a.status === "rejected"
+                          ? "text-destructive bg-destructive/10 border-destructive/20"
+                          : "text-warn bg-warn/10 border-warn/20"
+                      }`}>
                         {a.status}
                       </span>
                     </div>
-                    {a.comments && <p className="text-xs text-gray-500 mt-1">{a.comments}</p>}
-                    {a.decidedAt && <p className="text-xs text-gray-400 mt-0.5">{formatDate(a.decidedAt)}</p>}
+                    {a.comments && <p className="text-xs text-muted-foreground mt-1">{a.comments}</p>}
+                    {a.decidedAt && <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">{formatDate(a.decidedAt)}</p>}
                   </div>
                 </div>
               ))
@@ -445,16 +445,16 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
 
       {/* Action Footer */}
       {(canAdvance || isLockedStage || isCompletedStage) && (
-        <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between gap-3" style={{ background: "#F8FAFC" }}>
-          <div className="text-xs text-gray-400">
+        <div className="px-5 py-4 border-t border-border/60 flex items-center justify-between gap-3 bg-muted/40">
+          <div className="text-[11px] text-muted-foreground">
             {isCompletedStage && (
-              <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+              <span className="flex items-center gap-1 text-success font-semibold">
                 <CheckCircle2 size={12} />
                 Stage completed
               </span>
             )}
             {isLockedStage && (
-              <span className="flex items-center gap-1 text-gray-500">
+              <span className="flex items-center gap-1 text-muted-foreground">
                 <Lock size={12} />
                 Complete current stage to unlock
               </span>
@@ -473,8 +473,11 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
             <button
               onClick={handleAdvance}
               disabled={!canAdvanceNow || advancing}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ background: canAdvanceNow ? `linear-gradient(135deg, ${stageConfig.color}, ${stageConfig.color}CC)` : "#CBD5E1" }}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-colors disabled:cursor-not-allowed shadow-sm ${
+                canAdvanceNow
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : "bg-muted text-muted-foreground opacity-60"
+              }`}
             >
               {stageConfig.advanceLabel}
               <ArrowRight size={14} />

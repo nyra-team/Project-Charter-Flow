@@ -194,34 +194,33 @@ function GanttChart({
   }
 
   return (
-    <div className="flex" style={{ height: svgH + 2, overflow: "hidden" }}>
-      <div className="flex-shrink-0 border-r border-gray-100" style={{ width: LEFT_W, minWidth: LEFT_W, height: svgH }}>
-        <div className="flex items-center px-4 border-b border-gray-100" style={{ height: 56, background: "#F8FAFC" }}>
-          <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Task / Milestone</span>
+    <div className="flex bg-card text-foreground" style={{ height: svgH + 2, overflow: "hidden" }}>
+      <div className="flex-shrink-0 border-r border-border/60" style={{ width: LEFT_W, minWidth: LEFT_W, height: svgH }}>
+        <div className="flex items-center px-4 border-b border-border/60 bg-muted/40" style={{ height: 56 }}>
+          <span className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-wider">Task / Milestone</span>
         </div>
         {rows.map((row, i) => (
           <div
             key={`${row.type}-${row.item.id}`}
-            className="flex items-center border-b border-gray-50"
-            style={{ height: ROW_H, paddingLeft: row.type === "task" ? 28 : 12, background: i % 2 === 0 ? "white" : "#FAFBFC" }}
+            className={`flex items-center border-b border-border/30 ${i % 2 === 0 ? "bg-card" : "bg-muted/20"}`}
+            style={{ height: ROW_H, paddingLeft: row.type === "task" ? 28 : 12 }}
           >
             {row.type === "milestone" ? (
               <div className="flex items-center gap-1.5">
-                <Flag size={12} className="text-indigo-500 flex-shrink-0" />
-                <span className="text-xs font-bold text-gray-800 truncate">{row.item.name}</span>
+                <Flag size={12} className="text-primary flex-shrink-0" />
+                <span className="text-xs font-semibold text-foreground truncate">{row.item.name}</span>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 w-full">
                 <div
-                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                  style={{
-                    background: criticalIds.has((row.item as TaskRaw).id) ? "#EF4444"
-                      : row.item.status === "completed" ? "#10B981" : "#6366F1",
-                  }}
+                  className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                    criticalIds.has((row.item as TaskRaw).id) ? "bg-destructive"
+                    : row.item.status === "completed" ? "bg-success" : "bg-primary"
+                  }`}
                 />
-                <span className="text-xs text-gray-700 truncate">{row.item.name}</span>
+                <span className="text-xs text-foreground truncate">{row.item.name}</span>
                 {(row.item as TaskRaw).assigneeName && (
-                  <span className="text-xs text-gray-400 ml-auto pr-2 flex-shrink-0 hidden xl:block">
+                  <span className="text-[11px] text-muted-foreground ml-auto pr-2 flex-shrink-0 hidden xl:block font-mono">
                     {(row.item as TaskRaw).assigneeName}
                   </span>
                 )}
@@ -234,32 +233,32 @@ function GanttChart({
       <div className="flex-1 overflow-x-auto">
         <svg width={svgW} height={svgH} style={{ display: "block" }}>
           {rows.map((row, i) => (
-            <rect key={`bg-${i}`} x={0} y={56 + i * ROW_H} width={svgW} height={ROW_H} fill={i % 2 === 0 ? "white" : "#FAFBFC"} />
+            <rect key={`bg-${i}`} x={0} y={56 + i * ROW_H} width={svgW} height={ROW_H} fill={i % 2 === 0 ? "hsl(var(--card))" : "hsl(var(--muted) / 0.25)"} />
           ))}
           {weeks.map((w, i) => (
             <g key={i}>
-              <rect x={w.x} y={0} width={w.w} height={56} fill={i % 2 === 0 ? "#F8FAFC" : "#F1F5F9"} />
-              <line x1={w.x} y1={0} x2={w.x} y2={svgH} stroke="#E2E8F0" strokeWidth={1} />
-              <text x={w.x + w.w / 2} y={34} textAnchor="middle" fontSize={10} fill="#94A3B8" fontWeight={600}>{w.label}</text>
+              <rect x={w.x} y={0} width={w.w} height={56} fill={i % 2 === 0 ? "hsl(var(--muted) / 0.4)" : "hsl(var(--muted) / 0.6)"} />
+              <line x1={w.x} y1={0} x2={w.x} y2={svgH} stroke="hsl(var(--border))" strokeWidth={1} />
+              <text x={w.x + w.w / 2} y={34} textAnchor="middle" fontSize={10} fill="hsl(var(--muted-foreground))" fontWeight={600}>{w.label}</text>
             </g>
           ))}
-          <line x1={0} y1={56} x2={svgW} y2={56} stroke="#E2E8F0" strokeWidth={1} />
+          <line x1={0} y1={56} x2={svgW} y2={56} stroke="hsl(var(--border))" strokeWidth={1} />
           {todayX >= 0 && todayX <= svgW && (
             <g>
-              <line x1={todayX} y1={0} x2={todayX} y2={svgH} stroke="#EF4444" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />
-              <rect x={todayX - 16} y={2} width={32} height={14} rx={3} fill="#EF4444" opacity={0.9} />
+              <line x1={todayX} y1={0} x2={todayX} y2={svgH} stroke="hsl(var(--destructive))" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />
+              <rect x={todayX - 16} y={2} width={32} height={14} rx={3} fill="hsl(var(--destructive))" opacity={0.9} />
               <text x={todayX} y={12} textAnchor="middle" fontSize={8} fill="white" fontWeight={700}>TODAY</text>
             </g>
           )}
           <defs>
             <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-              <path d="M0,0 L6,3 L0,6 Z" fill="#94A3B8" />
+              <path d="M0,0 L6,3 L0,6 Z" fill="hsl(var(--muted-foreground))" />
             </marker>
           </defs>
           {arrows.map((a, i) => {
             const mx = (a.x1 + a.x2) / 2;
             const dPath = `M${a.x1},${a.y1} C${mx},${a.y1} ${mx},${a.y2} ${a.x2},${a.y2}`;
-            return <path key={i} d={dPath} fill="none" stroke="#94A3B8" strokeWidth={1.5} markerEnd="url(#arrowhead)" opacity={0.6} />;
+            return <path key={i} d={dPath} fill="none" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} markerEnd="url(#arrowhead)" opacity={0.6} />;
           })}
           {rows.map((row, i) => {
             const bp = rowBarProps(row);
@@ -273,7 +272,7 @@ function GanttChart({
                 <g key={`bar-${i}`}>
                   <polygon
                     points={`${bp.cx},${y + ROW_H / 2 - size} ${bp.cx + size},${y + ROW_H / 2} ${bp.cx},${y + ROW_H / 2 + size} ${bp.cx - size},${y + ROW_H / 2}`}
-                    fill="#4F46E5" opacity={0.9}
+                    fill="hsl(var(--primary))" opacity={0.9}
                   />
                 </g>
               );
@@ -281,7 +280,13 @@ function GanttChart({
             const { x: bx, w: bw } = bp as { x: number; w: number; type: "task" };
             const barH = 18;
             const by = y + (ROW_H - barH) / 2;
-            const barFill = isDone ? "#10B981" : isCritical ? "#EF4444" : row.item.status === "blocked" ? "#F59E0B" : "#6366F1";
+            const barFill = isDone
+              ? "hsl(var(--success))"
+              : isCritical
+              ? "hsl(var(--destructive))"
+              : row.item.status === "blocked"
+              ? "hsl(var(--warn))"
+              : "hsl(var(--primary))";
             return (
               <g key={`bar-${i}`}>
                 <rect x={bx} y={by} width={bw} height={barH} rx={4} fill={barFill} opacity={isDone ? 0.6 : 0.85} />
@@ -290,7 +295,7 @@ function GanttChart({
                     {row.item.name.substring(0, Math.floor(bw / 8))}
                   </text>
                 )}
-                {isCritical && <rect x={bx} y={by + barH - 3} width={bw} height={3} rx={0} fill="#B91C1C" />}
+                {isCritical && <rect x={bx} y={by + barH - 3} width={bw} height={3} rx={0} fill="hsl(var(--destructive))" opacity={0.8} />}
               </g>
             );
           })}
@@ -428,7 +433,7 @@ export default function ProjectDetail() {
       </div>
     );
   }
-  if (!project) return <div className="text-center py-16 text-gray-400">Project not found</div>;
+  if (!project) return <div className="text-center py-16 text-muted-foreground">Project not found</div>;
 
   const TABS = [
     { id: "lifecycle" as const, label: "Lifecycle", icon: Layers },
@@ -455,7 +460,7 @@ export default function ProjectDetail() {
     <div className="space-y-5">
       {/* Back */}
       <Link href="/projects">
-        <button className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+        <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ChevronLeft size={15} />
           Back to Projects
         </button>
@@ -744,12 +749,12 @@ export default function ProjectDetail() {
           <div className="flex items-center gap-5 px-4 py-2.5 border-b border-border/60 bg-muted/40 flex-wrap">
             <span className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-wider">Gantt Legend</span>
             {[
-              { color: "#6366F1", label: "Task" },
-              { color: "#EF4444", label: "Critical Path" },
-              { color: "#10B981", label: "Completed" },
+              { cls: "bg-primary",     label: "Task" },
+              { cls: "bg-destructive", label: "Critical Path" },
+              { cls: "bg-success",     label: "Completed" },
             ].map(l => (
               <div key={l.label} className="flex items-center gap-1.5">
-                <div className="w-8 h-3 rounded" style={{ background: l.color }} />
+                <div className={`w-8 h-3 rounded ${l.cls}`} />
                 <span className="text-[11px] text-muted-foreground">{l.label}</span>
               </div>
             ))}
@@ -804,66 +809,65 @@ export default function ProjectDetail() {
                 onClick={() => setSelectedBoardTaskId(null)}
               >
                 <div
-                  className="relative w-full max-w-sm bg-white h-full shadow-2xl overflow-y-auto"
-                  style={{ borderLeft: "1px solid #E2E8F0" }}
+                  className="relative w-full max-w-sm bg-card h-full shadow-2xl overflow-y-auto border-l border-border"
                   onClick={e => e.stopPropagation()}
                 >
-                  <div className="px-5 py-4 border-b border-gray-100 flex items-start gap-3">
+                  <div className="px-5 py-4 border-b border-border/60 flex items-start gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-1">Task Detail</p>
-                      <h2 className="font-bold text-gray-900 text-base leading-tight">{t.name}</h2>
+                      <p className="text-xs font-semibold text-primary uppercase tracking-wider mb-1">Task Detail</p>
+                      <h2 className="font-bold text-foreground text-base leading-tight">{t.name}</h2>
                     </div>
                     <button
                       onClick={() => setSelectedBoardTaskId(null)}
-                      className="text-gray-400 hover:text-gray-700 flex-shrink-0 mt-0.5"
+                      className="text-muted-foreground hover:text-foreground flex-shrink-0 mt-0.5"
                     >
                       <XCircle size={18} />
                     </button>
                   </div>
                   <div className="px-5 py-4 space-y-3 text-sm">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-gray-500 w-20">Status</span>
+                      <span className="text-xs font-semibold text-muted-foreground w-20">Status</span>
                       <span className="text-xs px-2 py-0.5 rounded-full font-semibold" style={{
                         background: getStatusMeta(t.status).bg, color: getStatusMeta(t.status).color
                       }}>{getStatusMeta(t.status).label}</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-gray-500 w-20">Priority</span>
-                      <span className="text-xs text-gray-700">{t.priority}</span>
+                      <span className="text-xs font-semibold text-muted-foreground w-20">Priority</span>
+                      <span className="text-xs text-foreground">{t.priority}</span>
                     </div>
                     {ownerName && (
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-gray-500 w-20">Owner</span>
-                        <span className="text-xs text-gray-700">{ownerName}</span>
+                        <span className="text-xs font-semibold text-muted-foreground w-20">Owner</span>
+                        <span className="text-xs text-foreground">{ownerName}</span>
                       </div>
                     )}
                     {managerName && (
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-gray-500 w-20">Manager</span>
-                        <span className="text-xs text-gray-700">{managerName}</span>
+                        <span className="text-xs font-semibold text-muted-foreground w-20">Manager</span>
+                        <span className="text-xs text-foreground">{managerName}</span>
                       </div>
                     )}
                     {t.startDate && (
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-gray-500 w-20">Start</span>
-                        <span className="text-xs text-gray-700">{formatDate(t.startDate)}</span>
+                        <span className="text-xs font-semibold text-muted-foreground w-20">Start</span>
+                        <span className="text-xs text-foreground">{formatDate(t.startDate)}</span>
                       </div>
                     )}
                     {t.endDate && (
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-gray-500 w-20">Due</span>
-                        <span className="text-xs text-gray-700">{formatDate(t.endDate)}</span>
+                        <span className="text-xs font-semibold text-muted-foreground w-20">Due</span>
+                        <span className="text-xs text-foreground">{formatDate(t.endDate)}</span>
                       </div>
                     )}
                     {t.cftDept && (
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-gray-500 w-20">CFT Team</span>
-                        <span className="text-xs text-gray-700">{t.cftDept}</span>
+                        <span className="text-xs font-semibold text-muted-foreground w-20">CFT Team</span>
+                        <span className="text-xs text-foreground">{t.cftDept}</span>
                       </div>
                     )}
                     {t.scheduleVarianceDays != null && t.scheduleVarianceDays !== 0 && (
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold text-gray-500 w-20">Variance</span>
+                        <span className="text-xs font-semibold text-muted-foreground w-20">Variance</span>
                         <span className="text-xs font-semibold" style={{ color: fmtVariance(t.scheduleVarianceDays).color }}>
                           {fmtVariance(t.scheduleVarianceDays).text}
                         </span>
@@ -871,7 +875,7 @@ export default function ProjectDetail() {
                     )}
                     {t.isCritical && (
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold px-2 py-0.5 rounded-full" style={{ background: "#FEE2E2", color: "#991B1B" }}>
+                        <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded-sm border bg-destructive/10 text-destructive border-destructive/20">
                           Critical Path
                         </span>
                       </div>
@@ -890,8 +894,8 @@ export default function ProjectDetail() {
                     }>).filter(i => i.taskId === selectedBoardTaskId);
                     if (!taskIssues.length) return null;
                     return (
-                      <div className="mt-4 pt-4 border-t border-gray-100">
-                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                      <div className="mt-4 pt-4 border-t border-border/60">
+                        <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">
                           Issues ({taskIssues.length})
                         </p>
                         <div className="space-y-2">
@@ -901,26 +905,26 @@ export default function ProjectDetail() {
                             return (
                               <div
                                 key={issue.id}
-                                className="rounded-lg p-2.5 space-y-1"
-                                style={{ background: isOpen ? "#FFF8F5" : "#F0FFF4", border: `1px solid ${isOpen ? "#FDBA74" : "#86EFAC"}` }}
+                                className={`rounded-lg p-2.5 space-y-1 border ${
+                                  isOpen
+                                    ? "bg-warn/10 border-warn/30"
+                                    : "bg-success/10 border-success/30"
+                                }`}
                               >
                                 <div className="flex items-start gap-1.5">
-                                  <AlertTriangle size={11} className={isOpen ? "text-amber-500" : "text-green-500"} style={{ flexShrink: 0, marginTop: 1 }} />
-                                  <p className="text-xs font-semibold text-gray-800 flex-1 leading-tight">{issue.title}</p>
+                                  <AlertTriangle size={11} className={isOpen ? "text-warn" : "text-success"} style={{ flexShrink: 0, marginTop: 1 }} />
+                                  <p className="text-xs font-semibold text-foreground flex-1 leading-tight">{issue.title}</p>
                                 </div>
                                 {issue.dependencyType && (
-                                  <p className="text-xs text-gray-500 pl-4">Type: <b>{issue.dependencyType}</b></p>
+                                  <p className="text-xs text-muted-foreground pl-4">Type: <b>{issue.dependencyType}</b></p>
                                 )}
                                 {blockingOwner && (
-                                  <p className="text-xs text-gray-500 pl-4">Blocking: <b>{blockingOwner}</b></p>
+                                  <p className="text-xs text-muted-foreground pl-4">Blocking: <b>{blockingOwner}</b></p>
                                 )}
                                 {issue.proposedRevisedDeadline && (
-                                  <p className="text-xs text-amber-600 pl-4">Proposed deadline: <b>{formatDate(issue.proposedRevisedDeadline)}</b></p>
+                                  <p className="text-xs text-warn pl-4">Proposed deadline: <b>{formatDate(issue.proposedRevisedDeadline)}</b></p>
                                 )}
-                                <p
-                                  className="text-xs pl-4 font-medium"
-                                  style={{ color: isOpen ? "#DC3545" : "#28A745" }}
-                                >
+                                <p className={`text-xs pl-4 font-medium ${isOpen ? "text-destructive" : "text-success"}`}>
                                   {issue.status.charAt(0).toUpperCase() + issue.status.slice(1)}
                                 </p>
                               </div>
@@ -939,38 +943,35 @@ export default function ProjectDetail() {
                     const totalLogged = logs.reduce((s, l) => s + l.hours, 0);
                     const planned = (t as { plannedEffortHours?: number | null }).plannedEffortHours ?? 0;
                     return (
-                      <div className="mt-4 pt-4 border-t border-gray-100">
+                      <div className="mt-4 pt-4 border-t border-border/60">
                         <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
                             <Clock size={10} /> Time Logged
                           </p>
                           {totalLogged > 0 && (
-                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                              style={{ background: "#EEF2FF", color: "#4338CA" }}>
+                            <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded-sm border bg-primary/10 text-primary border-primary/20">
                               {totalLogged.toFixed(1)}h{planned > 0 ? ` / ${planned}h` : ""}
                             </span>
                           )}
                         </div>
                         {planned > 0 && totalLogged > 0 && (
-                          <div className="w-full rounded-full overflow-hidden mb-2" style={{ background: "#E0E7FF", height: 4 }}>
-                            <div className="h-full rounded-full"
-                              style={{
-                                width: `${Math.min(100, Math.round((totalLogged / planned) * 100))}%`,
-                                background: totalLogged > planned ? "#DC3545" : "#6366F1",
-                              }} />
+                          <div className="w-full rounded-full overflow-hidden mb-2 bg-primary/15" style={{ height: 4 }}>
+                            <div
+                              className={`h-full rounded-full ${totalLogged > planned ? "bg-destructive" : "bg-primary"}`}
+                              style={{ width: `${Math.min(100, Math.round((totalLogged / planned) * 100))}%` }}
+                            />
                           </div>
                         )}
                         {logs.length === 0 ? (
-                          <p className="text-xs text-gray-400 italic">No time logged yet.</p>
+                          <p className="text-xs text-muted-foreground italic">No time logged yet.</p>
                         ) : (
                           <div className="space-y-1.5">
                             {logs.map(log => (
-                              <div key={log.id} className="flex items-start gap-2 rounded-lg px-2.5 py-2"
-                                style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
-                                <span className="text-xs font-bold text-indigo-600 flex-shrink-0">{log.hours.toFixed(1)}h</span>
+                              <div key={log.id} className="flex items-start gap-2 rounded-lg px-2.5 py-2 bg-muted/40 border border-border">
+                                <span className="text-xs font-bold text-primary flex-shrink-0">{log.hours.toFixed(1)}h</span>
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-xs text-gray-500">{formatDate(log.date)}{log.userName ? ` · ${log.userName}` : ""}</p>
-                                  {log.note && <p className="text-xs text-gray-400 truncate" title={log.note}>{log.note}</p>}
+                                  <p className="text-xs text-muted-foreground">{formatDate(log.date)}{log.userName ? ` · ${log.userName}` : ""}</p>
+                                  {log.note && <p className="text-xs text-muted-foreground truncate" title={log.note}>{log.note}</p>}
                                 </div>
                               </div>
                             ))}
@@ -1041,7 +1042,7 @@ export default function ProjectDetail() {
             <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-primary/20">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/20">
                   <Sparkles size={18} className="text-primary" />
                 </div>
                 <div>
@@ -1068,7 +1069,7 @@ export default function ProjectDetail() {
                   <button
                     onClick={() => { setAiSummaryLoading(true); run(); }}
                     disabled={loading}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold text-white bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 shadow-sm transition-all"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all"
                   >
                     <Sparkles size={12} />
                     {loading || aiSummaryLoading ? "Thinking…" : "Generate Summary"}
@@ -1268,7 +1269,7 @@ export default function ProjectDetail() {
                           </div>
                         )}
                         {!isPMORole && (
-                          <span className="text-xs text-gray-400 italic ml-auto">View only — PMO role can score</span>
+                          <span className="text-xs text-muted-foreground italic ml-auto">View only — PMO role can score</span>
                         )}
                       </div>
                     </div>

@@ -120,31 +120,31 @@ function MultiDeptSelect({ value, onChange }: { value: string; onChange: (v: str
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(o => !o)}
-        className="text-xs text-left truncate w-full px-1 py-0.5 rounded hover:bg-indigo-50"
+        className="text-xs text-left truncate w-full px-1 py-0.5 rounded hover:bg-primary/10"
         title={selected.join(", ") || "Select CFT Team (up to 2)"}
       >
         {selected.length > 0
-          ? <span className="text-gray-700">{selected.join(", ")}</span>
-          : <span className="text-gray-300 italic">CFT Team</span>}
+          ? <span className="text-foreground">{selected.join(", ")}</span>
+          : <span className="text-muted-foreground/60 italic">CFT Team</span>}
       </button>
       {open && (
         <div className="absolute z-50 bg-white border rounded-lg shadow-xl p-1 min-w-36" style={{ top: "100%", left: 0 }}>
-          <p className="text-xs text-gray-400 px-2 py-1">Select up to 2 departments</p>
+          <p className="text-xs text-muted-foreground px-2 py-1">Select up to 2 departments</p>
           {DEPARTMENTS.map(d => {
             const checked = selected.includes(d);
             const disabled = !checked && selected.length >= 2;
             return (
-              <label key={d} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-gray-50 text-xs"
+              <label key={d} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-accent/40 text-xs"
                 style={{ opacity: disabled ? 0.4 : 1, cursor: disabled ? "not-allowed" : "pointer" }}>
                 <input type="checkbox" checked={checked} disabled={disabled}
-                  onChange={() => toggle(d)} className="accent-indigo-500 w-3 h-3" />
-                <span className="text-gray-700">{d}</span>
+                  onChange={() => toggle(d)} className="accent-primary w-3 h-3" />
+                <span className="text-foreground">{d}</span>
               </label>
             );
           })}
           {selected.length > 0 && (
             <button onClick={() => { onChange(""); setOpen(false); }}
-              className="w-full text-left text-xs text-red-400 hover:text-red-600 px-2 py-1 mt-1 border-t border-gray-100">
+              className="w-full text-left text-xs text-red-400 hover:text-red-600 px-2 py-1 mt-1 border-t border-border/60">
               Clear
             </button>
           )}
@@ -168,10 +168,10 @@ function InlineNumberCell({ value, onSave }: { value: number | null | undefined;
   if (!editing) {
     return (
       <span
-        className="cursor-pointer hover:bg-indigo-50 px-1 rounded text-xs text-gray-600 block text-center"
+        className="cursor-pointer hover:bg-primary/10 px-1 rounded text-xs text-foreground block text-center"
         onClick={() => { setLocal(value?.toString() ?? ""); setEditing(true); }}
       >
-        {value != null ? `${value}h` : <span className="text-gray-300">—</span>}
+        {value != null ? `${value}h` : <span className="text-muted-foreground/60">—</span>}
       </span>
     );
   }
@@ -203,9 +203,9 @@ function InlineCell({ type, value, options, onSave, placeholder, displayLabel }:
 
   if (!editing) {
     return (
-      <span className="cursor-pointer hover:bg-indigo-50 px-1 rounded text-xs text-gray-700 truncate block"
+      <span className="cursor-pointer hover:bg-primary/10 px-1 rounded text-xs text-foreground truncate block"
         onClick={() => { setLocal(value); setEditing(true); }} title={display || placeholder}>
-        {display || <span className="text-gray-300 italic">{placeholder ?? "—"}</span>}
+        {display || <span className="text-muted-foreground/60 italic">{placeholder ?? "—"}</span>}
       </span>
     );
   }
@@ -395,7 +395,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
   function renderFlatRow(row: FlatRow, rowIdx: number): ReactElement {
     if (row.type === "addSubtask") {
       return (
-        <tr key={`add-${row.parentId}`} className="border-b border-gray-100 bg-indigo-50/40" style={{ height: ROW_HEIGHT }}>
+        <tr key={`add-${row.parentId}`} className="border-b border-border/60 bg-primary/10" style={{ height: ROW_HEIGHT }}>
           <td />
           <td colSpan={5} className="py-1 px-2" style={{ paddingLeft: 22 }}>
             <div className="flex items-center gap-2">
@@ -406,8 +406,8 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
                   if (e.key === "Enter") addSubtask(row.parentId);
                   if (e.key === "Escape") { setAddingSubtask(null); setNewSubtaskName(""); }
                 }} />
-              <button onClick={() => addSubtask(row.parentId)} className="text-xs px-2 py-1 rounded bg-indigo-500 text-white font-medium">Add</button>
-              <button onClick={() => { setAddingSubtask(null); setNewSubtaskName(""); }} className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-600">Cancel</button>
+              <button onClick={() => addSubtask(row.parentId)} className="text-xs px-2 py-1 rounded bg-primary text-white font-medium">Add</button>
+              <button onClick={() => { setAddingSubtask(null); setNewSubtaskName(""); }} className="text-xs px-2 py-1 rounded bg-muted text-foreground">Cancel</button>
             </div>
           </td>
           <td colSpan={13} />
@@ -444,13 +444,15 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
     return (
       <tr
         key={`${rowIdx}-${task.id}`}
-        className="border-b border-gray-50 hover:bg-indigo-50/30 transition-colors text-xs"
-        style={{ height: ROW_HEIGHT, background: task.isCritical ? "#FFF5F5" : isSubtask ? "#FAFBFF" : "white" }}
+        className={`border-b border-border/40 hover:bg-accent/30 transition-colors text-xs ${
+          task.isCritical ? "bg-destructive/5" : isSubtask ? "bg-primary/5" : "bg-card"
+        }`}
+        style={{ height: ROW_HEIGHT }}
       >
         {/* Expand toggle */}
         <td className="px-1 text-center" style={{ width: 28 }}>
           {!isSubtask && (
-            <button onClick={() => toggleExpand(task.id)} className="text-gray-400 hover:text-indigo-500">
+            <button onClick={() => toggleExpand(task.id)} className="text-muted-foreground hover:text-primary">
               {isExp ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             </button>
           )}
@@ -459,14 +461,14 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         {/* Name */}
         <td className="pr-2" style={{ paddingLeft: isSubtask ? 22 : 8, minWidth: 190, maxWidth: 220 }}>
           <div className="flex items-center gap-1.5 min-w-0">
-            {isSubtask && <div className="w-1.5 h-1.5 rounded-full bg-indigo-300 flex-shrink-0" />}
+            {isSubtask && <div className="w-1.5 h-1.5 rounded-full bg-primary/50 flex-shrink-0" />}
             {task.isCritical && !isSubtask && (
-              <span className="px-1 rounded font-bold flex-shrink-0" style={{ background: "#FEE2E2", color: "#991B1B", fontSize: 9 }}>CP</span>
+              <span className="px-1 rounded-sm font-mono uppercase tracking-wider font-semibold flex-shrink-0 border bg-destructive/10 text-destructive border-destructive/20" style={{ fontSize: 9 }}>CP</span>
             )}
-            <span className="font-medium text-gray-800 truncate" title={task.name}>{task.name}</span>
+            <span className="font-medium text-foreground truncate" title={task.name}>{task.name}</span>
             {!isSubtask && subs.length > 0 && (
-              <span className="ml-1 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full flex-shrink-0"
-                style={{ background: "#EEF2FF", color: "#4F46E5", fontSize: 9 }}
+              <span className="ml-1 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full flex-shrink-0 border bg-primary/10 text-primary border-primary/20"
+                style={{ fontSize: 9 }}
                 title={`${subs.length} subtask${subs.length !== 1 ? "s" : ""}`}>
                 <Layers size={9} />{subs.length}
               </span>
@@ -478,10 +480,10 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         <td className="px-1" style={{ minWidth: 105, maxWidth: 120 }}>
           {parentDisplay ? (
             <span className="text-xs truncate block" title={`#${parentDisplay.id} ${parentDisplay.name}`}>
-              <span className="font-mono font-bold text-indigo-400">#{parentDisplay.id}</span>
-              {parentDisplay.name && <span className="text-gray-500 ml-0.5">{parentDisplay.name}</span>}
+              <span className="font-mono font-bold text-primary/70">#{parentDisplay.id}</span>
+              {parentDisplay.name && <span className="text-muted-foreground ml-0.5">{parentDisplay.name}</span>}
             </span>
-          ) : <span className="text-gray-300 text-xs">—</span>}
+          ) : <span className="text-muted-foreground/60 text-xs">—</span>}
         </td>
 
         {/* Status */}
@@ -499,7 +501,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
           <div className="flex flex-col items-center">
             <RagDot rag={displayRag} />
             {rollupRag && rollupRag !== (d.rag ?? "green") && (
-              <span className="text-gray-400" style={{ fontSize: 9 }} title="Rolled up from subtasks">↑</span>
+              <span className="text-muted-foreground" style={{ fontSize: 9 }} title="Rolled up from subtasks">↑</span>
             )}
           </div>
         </td>
@@ -545,8 +547,8 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
 
         {/* Predecessor */}
         <td className="px-1" style={{ minWidth: 115, maxWidth: 130 }}>
-          <span className="text-xs text-gray-500 truncate block" title={predNames}>
-            {predNames || <span className="text-gray-300 italic">—</span>}
+          <span className="text-xs text-muted-foreground truncate block" title={predNames}>
+            {predNames || <span className="text-muted-foreground/60 italic">—</span>}
           </span>
         </td>
 
@@ -574,11 +576,11 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         <td className="px-1 text-center" style={{ minWidth: 70 }}>
           <button
             onClick={() => setTimelogModal({ taskId: task.id, taskName: task.name, plannedEffortHours: d.plannedEffortHours ?? d.estimatedHours })}
-            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full w-full justify-center"
-            style={{
-              background: d.actualHours && d.actualHours > 0 ? "#EEF2FF" : "#F1F5F9",
-              color: d.actualHours && d.actualHours > 0 ? "#4338CA" : "#94A3B8",
-            }}
+            className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full w-full justify-center border ${
+              d.actualHours && d.actualHours > 0
+                ? "bg-primary/10 text-primary border-primary/20"
+                : "bg-muted text-muted-foreground border-border"
+            }`}
             title="Log time / view effort"
           >
             <Clock size={9} />
@@ -590,8 +592,11 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         <td className="px-1 text-center" style={{ width: 60 }}>
           <button
             onClick={() => setIssueModal({ taskId: task.id, taskName: task.name })}
-            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
-            style={{ background: issueCount > 0 ? "#FDEDEE" : "#F1F5F9", color: issueCount > 0 ? "#DC3545" : "#94A3B8" }}
+            className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${
+              issueCount > 0
+                ? "bg-destructive/10 text-destructive border-destructive/20"
+                : "bg-muted text-muted-foreground border-border"
+            }`}
             title={issueCount > 0 ? `${issueCount} open issue${issueCount !== 1 ? "s" : ""}` : "Raise issue"}
           >
             <AlertTriangle size={10} />{issueCount > 0 ? issueCount : "+"}
@@ -602,7 +607,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         <td className="px-1 text-center" style={{ width: 32 }}>
           {!isSubtask && (
             <button onClick={() => { setAddingSubtask(task.id); setExpanded(prev => new Set([...prev, task.id])); }}
-              className="text-gray-300 hover:text-indigo-400" title="Add subtask">
+              className="text-muted-foreground/60 hover:text-primary/70" title="Add subtask">
               <Plus size={13} />
             </button>
           )}
@@ -622,7 +627,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
     );
   }
 
-  const thCls = "text-left text-xs font-bold text-gray-500 uppercase tracking-wide py-2.5 px-1 border-b border-gray-100 bg-gray-50 whitespace-nowrap";
+  const thCls = "text-left text-xs font-bold text-muted-foreground uppercase tracking-wide py-2.5 px-1 border-b border-border/60 bg-muted/40 whitespace-nowrap";
 
   return (
     <>
@@ -630,8 +635,8 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
       <div
         ref={scrollRef}
         onScroll={e => setScrollTop(e.currentTarget.scrollTop)}
-        className="overflow-x-auto overflow-y-auto rounded-2xl"
-        style={{ border: "1px solid #E2E8F0", height: VIEWPORT_H, position: "relative" }}
+        className="overflow-x-auto overflow-y-auto rounded-2xl border border-border"
+        style={{ height: VIEWPORT_H, position: "relative" }}
       >
         <table className="border-collapse" style={{ tableLayout: "auto", minWidth: 1750 }}>
           <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
@@ -663,7 +668,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
             {topPad > 0 && <tr aria-hidden style={{ height: topPad }}><td colSpan={20} /></tr>}
 
             {flatRows.length === 0 && (
-              <tr><td colSpan={20} className="text-center py-16 text-gray-400 text-sm">No tasks found.</td></tr>
+              <tr><td colSpan={20} className="text-center py-16 text-muted-foreground text-sm">No tasks found.</td></tr>
             )}
 
             {visibleRows.map((row, i) => renderFlatRow(row, startIdx + i))}
