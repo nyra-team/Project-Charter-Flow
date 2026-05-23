@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, chartersTable, approvalsTable, projectsTable, tasksTable, usersTable, risksTable, scoringCriteriaTable, projectScoresTable, resourceAllocationsTable } from "@workspace/db";
-import { eq, ne, desc } from "drizzle-orm";
+import { db, chartersTable, approvalsTable, projectsTable, tasksTable, milestonesTable, usersTable, risksTable, scoringCriteriaTable, projectScoresTable, resourceAllocationsTable } from "@workspace/db";
+import { eq, ne } from "drizzle-orm";
 import { getRecentActivityWithUsers } from "./activity";
 
 const router: IRouter = Router();
@@ -262,6 +262,147 @@ router.get("/dashboard/capacity-demand", async (_req, res): Promise<void> => {
   });
 
   res.json({ functions, months: months.map(m => m.label), cells });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/dashboard/milestone-achievers
+// Top assignees by on-time task completions in the last 90 days.
+// Tasks are the unit of ownership in this schema (assigneeId), not milestones.
+// ---------------------------------------------------------------------------
+router.get("/dashboard/milestone-achievers", async (_req, res): Promise<void> => {
+  const tasks = await db.select().from(tasksTable).where(eq(tasksTable.status, "completed"));
+  const users = await db.select().from(usersTable);
+  const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+
+  const cutoff = Date.now() - 90 * 86400000;
+  const byOwner: Record<number, { name: string; role: string; dept: string; total: number; onTime: number; early: number; late: number; _sumDelta: number }> = {};
+
+  for (const t of tasks) {
+    const assigneeId = t.assigneeId;
+    if (!assigneeId) continue;
+    const completedAtRaw = t.actualEnd ?? null;
+    if (!completedAtRaw) continue;
+    const completedAt = new Date(completedAtRaw).getTime();
+    if (!Number.isFinite(completedAt) || completedAt < cutoff) continue;
+    const plannedRaw = t.endDate;
+    if (!plannedRaw) continue;
+    const planned = new Date(plannedRaw).getTime();
+    if (!Number.isFinite(planned)) continue;
+
+    const u = userMap[assigneeId];
+    if (!byOwner[assigneeId]) {
+      byOwner[assigneeId] = { name: u?.name ?? `User ${assigneeId}`, role: u?.role ?? "", dept: u?.department ?? "—", total: 0, onTime: 0, early: 0, late: 0, _sumDelta: 0 };
+    }
+    const entry = byOwner[assigneeId];
+    entry.total++;
+    const deltaDays = Math.round((completedAt - planned) / 86400000);
+    entry._sumDelta += deltaDays;
+    if (deltaDays < 0) entry.early++;
+    else if (deltaDays === 0) entry.onTime++;
+    else entry.late++;
+  }
+
+  const board = Object.entries(byOwner).map(([userId, e]) => ({
+    userId: Number(userId),
+    name: e.name,
+    role: e.role,
+    department: e.dept,
+    completed: e.total,
+    onTimeOrEarly: e.early + e.onTime,
+    late: e.late,
+    onTimePct: e.total > 0 ? Math.round(((e.early + e.onTime) / e.total) * 100) : 0,
+    avgDaysVsPlan: e.total > 0 ? Math.round(e._sumDelta / e.total) : 0,
+  }))
+    .sort((a, b) => (b.onTimeOrEarly - a.onTimeOrEarly) || (a.avgDaysVsPlan - b.avgDaysVsPlan))
+    .slice(0, 10);
+
+  res.json({ window: "last 90 days", leaderboard: board });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/dashboard/stuck-approvals
+// Pending approvals sorted by days waiting (oldest first) — accountability view.
+// ---------------------------------------------------------------------------
+router.get("/dashboard/stuck-approvals", async (_req, res): Promise<void> => {
+  const pending = await db.select().from(approvalsTable).where(eq(approvalsTable.status, "pending"));
+  const users = await db.select().from(usersTable);
+  const charters = await db.select().from(chartersTable);
+  const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+  const charterMap = Object.fromEntries(charters.map(c => [c.id, c]));
+
+  const now = Date.now();
+  const items = pending.map(a => {
+    const createdAt = new Date(a.createdAt).getTime();
+    const daysWaiting = Math.floor((now - createdAt) / 86400000);
+    const approver = a.approverId ? userMap[a.approverId] : null;
+    const charter = a.charterId ? charterMap[a.charterId] : null;
+    return {
+      id: a.id,
+      charterId: a.charterId,
+      charterTitle: charter?.title ?? `Charter #${a.charterId}`,
+      stage: a.stage,
+      approverId: a.approverId,
+      approverName: approver?.name ?? "Unassigned",
+      approverRole: approver?.role ?? "",
+      daysWaiting,
+      severity: daysWaiting >= 7 ? "red" : daysWaiting >= 3 ? "amber" : "green",
+      createdAt: a.createdAt,
+    };
+  })
+    .sort((a, b) => b.daysWaiting - a.daysWaiting)
+    .slice(0, 15);
+
+  res.json({ items, totalPending: pending.length });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/dashboard/delivery-stats
+// Aggregate on-time delivery rate (tasks + milestones, last 90 days),
+// plus open-risk burden as a portfolio risk-management signal.
+// ---------------------------------------------------------------------------
+router.get("/dashboard/delivery-stats", async (_req, res): Promise<void> => {
+  const ms = await db.select().from(milestonesTable);
+  const tasks = await db.select().from(tasksTable);
+  const risks = await db.select().from(risksTable);
+
+  const cutoff = Date.now() - 90 * 86400000;
+
+  function rate(items: Array<{ status: string; planned: string | null; actual: string | null }>) {
+    const completed = items.filter(i => i.status === "completed" && i.planned && i.actual);
+    const window = completed.filter(i => new Date(i.actual as string).getTime() >= cutoff);
+    const onTime = window.filter(i => {
+      const c = new Date(i.actual as string).getTime();
+      const p = new Date(i.planned as string).getTime();
+      return c <= p;
+    }).length;
+    return { total: window.length, onTime, pct: window.length > 0 ? Math.round((onTime / window.length) * 100) : 0 };
+  }
+
+  const taskRate = rate(tasks.map(t => ({ status: t.status, planned: t.endDate, actual: t.actualEnd })));
+  const msRate = rate(ms.map(m => ({ status: m.status, planned: m.dueDate, actual: m.actualEnd })));
+
+  // Open risk pressure: high/critical risks still open
+  const openRisks = risks.filter(r => r.status === "open" || r.status === "in_progress");
+  const highSeverity = openRisks.filter(r => r.priority === "high" || r.priority === "critical" || r.rag === "red").length;
+  const unowned = openRisks.filter(r => !r.owner || r.owner.trim() === "").length;
+
+  res.json({
+    window: "last 90 days",
+    tasks: taskRate,
+    milestones: msRate,
+    overall: {
+      total: taskRate.total + msRate.total,
+      onTime: taskRate.onTime + msRate.onTime,
+      pct: (taskRate.total + msRate.total) > 0
+        ? Math.round(((taskRate.onTime + msRate.onTime) / (taskRate.total + msRate.total)) * 100)
+        : 0,
+    },
+    risks: {
+      totalOpen: openRisks.length,
+      highSeverity,
+      unowned,
+    },
+  });
 });
 
 export default router;
