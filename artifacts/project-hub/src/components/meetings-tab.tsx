@@ -135,8 +135,15 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
             <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Title" className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/40" />
             <div className="grid grid-cols-3 gap-2">
               <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="px-2 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/40">
-                <option value="status">Status</option><option value="kickoff">Kickoff</option><option value="review">Review</option>
-                <option value="planning">Planning</option><option value="retro">Retro</option><option value="other">Other</option>
+                <option value="wrm">WRM (Weekly Review)</option>
+                <option value="brm">BRM (Business Review)</option>
+                <option value="fortnight">Fortnight LD</option>
+                <option value="status">Status</option>
+                <option value="kickoff">Kickoff</option>
+                <option value="review">Review</option>
+                <option value="planning">Planning</option>
+                <option value="retro">Retro</option>
+                <option value="other">Other</option>
               </select>
               <input type="date" value={form.scheduledDate} onChange={e => setForm({ ...form, scheduledDate: e.target.value })} className="px-2 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/40" />
               <input type="time" value={form.scheduledTime} onChange={e => setForm({ ...form, scheduledTime: e.target.value })} className="px-2 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/40" />

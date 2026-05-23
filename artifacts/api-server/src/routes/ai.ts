@@ -11,8 +11,9 @@ import {
   milestonesTable,
   meetingsTable,
   meetingItemsTable,
+  activityTable,
 } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, or, inArray } from "drizzle-orm";
 import { llm, isLLMConfigured } from "@workspace/llm";
 
 const router: IRouter = Router();
@@ -262,6 +263,55 @@ router.post("/ai/meetings/:id/extract-action-items", async (req, res): Promise<v
 // ---------------------------------------------------------------------------
 // POST /api/ai/lessons-learned/search
 // ---------------------------------------------------------------------------
+router.post("/ai/projects/:id/audit-rca", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  const projectTasks = await db.select({ id: tasksTable.id }).from(tasksTable).where(eq(tasksTable.projectId, id));
+  const projectMs = await db.select({ id: milestonesTable.id }).from(milestonesTable).where(eq(milestonesTable.projectId, id));
+  const taskIds = projectTasks.map(t => t.id);
+  const msIds = projectMs.map(m => m.id);
+
+  const conditions = [and(eq(activityTable.entityType, "project"), eq(activityTable.entityId, id))!];
+  if (taskIds.length) conditions.push(and(eq(activityTable.entityType, "task"), inArray(activityTable.entityId, taskIds))!);
+  if (msIds.length) conditions.push(and(eq(activityTable.entityType, "milestone"), inArray(activityTable.entityId, msIds))!);
+
+  const events = await db.select().from(activityTable)
+    .where(conditions.length === 1 ? conditions[0] : or(...conditions))
+    .orderBy(desc(activityTable.createdAt))
+    .limit(200);
+
+  if (events.length === 0) {
+    res.status(400).json({ error: "No audit events recorded yet — nothing to analyze." });
+    return;
+  }
+
+  const trail = events.map(e =>
+    `[${new Date(e.createdAt as unknown as string).toISOString().slice(0,16).replace("T"," ")}] ${e.type} · ${e.entityType}#${e.entityId} · ${e.message}`
+  ).join("\n");
+
+  const result = await llm({
+    task: "audit_rca",
+    system:
+      "You are a senior PMO root-cause analyst. Read a project's structured audit trail (most recent first) and produce a tight Root Cause Analysis: identify what went wrong (or what is trending wrong), the likely root causes, contributing factors, and concrete corrective actions. Cite event types/timestamps when relevant. Never invent events not in the trail.",
+    prompt: `Project: ${project.name} (status: ${project.status}, RAG: ${project.ragStatus}, progress: ${project.progress}%)\n\nAudit trail (newest → oldest, up to 200 events):\n"""\n${trail}\n"""\n`,
+    jsonSchema: z.object({
+      summary: z.string(),
+      timeline_signals: z.array(z.string()),
+      root_causes: z.array(z.object({ cause: z.string(), evidence: z.string() })),
+      contributing_factors: z.array(z.string()),
+      corrective_actions: z.array(z.object({ action: z.string(), owner_hint: z.string().optional(), priority: z.enum(["P0","P1","P2","P3"]) })),
+      risk_outlook: z.enum(["green","amber","red"]),
+    }),
+    jsonSchemaHint: `{ "summary":"...", "timeline_signals":["..."], "root_causes":[{"cause":"...","evidence":"..."}], "contributing_factors":["..."], "corrective_actions":[{"action":"...","owner_hint":"role/dept","priority":"P0|P1|P2|P3"}], "risk_outlook":"green|amber|red" }`,
+    maxTokens: 3500,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json({ ...result.data, eventsAnalyzed: events.length });
+});
+
 router.post("/ai/lessons-learned/search", async (req, res): Promise<void> => {
   const { query, lessons } = (req.body || {}) as {
     query?: string;
