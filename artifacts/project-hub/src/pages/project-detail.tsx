@@ -20,7 +20,7 @@ import {
   ChevronDown, ChevronRight, Layers, XCircle,
   LayoutGrid, Kanban, Table2, Star, Users, DollarSign, FileText,
   Shield, AlertCircle, UserCheck, Zap, MessageSquare, History,
-  TrendingUp, GitBranch, Calendar as CalendarIcon,
+  TrendingUp, GitBranch, Calendar as CalendarIcon, Sparkles,
 } from "lucide-react";
 import { MessagesTab } from "../components/messages-tab";
 import { AuditTab } from "../components/audit-tab";
@@ -1026,11 +1026,17 @@ export default function ProjectDetail() {
       {/* ── Analytics Tab ────────────────────────────────────────────── */}
       {activeTab === "analytics" && (
         <div className="space-y-5">
-          <div className="rounded-2xl p-5 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/20 border border-indigo-200 dark:border-indigo-900">
+          <div className="glass-surface lift-card rounded-2xl p-5 ph-rise relative overflow-hidden">
+            <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="font-semibold text-indigo-900 dark:text-indigo-200">AI Project Summary</h3>
-                <p className="text-xs text-indigo-700/70 dark:text-indigo-400 mt-0.5">One-click executive briefing from all signals</p>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-primary/20">
+                  <Sparkles size={18} className="text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-[14px] font-semibold text-foreground tracking-tight">AI Project Summary</h3>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">One-click executive briefing from all signals</p>
+                </div>
               </div>
               <AiButton
                 label="Generate Summary"
@@ -1051,29 +1057,30 @@ export default function ProjectDetail() {
                   <button
                     onClick={() => { setAiSummaryLoading(true); run(); }}
                     disabled={loading}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold text-white bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 shadow-sm transition-all"
                   >
-                    {loading || aiSummaryLoading ? "Thinking…" : "✨ Generate Summary"}
+                    <Sparkles size={12} />
+                    {loading || aiSummaryLoading ? "Thinking…" : "Generate Summary"}
                     {error && <span className="text-red-200 text-xs ml-1">!</span>}
                   </button>
                 )}
               </AiButton>
             </div>
-            {aiSummaryError && <div className="mt-3 text-xs text-red-600">{aiSummaryError}</div>}
+            {aiSummaryError && <div className="mt-3 text-xs text-destructive">{aiSummaryError}</div>}
             {aiSummary && (
-              <div className="mt-3 space-y-3 text-sm">
-                {aiSummary.summary && <p className="text-gray-800 dark:text-gray-100">{aiSummary.summary}</p>}
+              <div className="mt-4 space-y-3 text-sm">
+                {aiSummary.summary && <p className="text-foreground leading-relaxed">{aiSummary.summary}</p>}
                 <div className="grid grid-cols-2 gap-3">
                   {aiSummary.highlights?.length ? (
-                    <div className="rounded-lg bg-white/70 dark:bg-card p-3 border border-emerald-200">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1">Highlights</div>
-                      <ul className="list-disc pl-4 text-xs space-y-0.5">{aiSummary.highlights.map((h, i) => <li key={i}>{h}</li>)}</ul>
+                    <div className="rounded-lg bg-success/5 p-3 border border-success/20">
+                      <div className="text-[10px] font-mono uppercase tracking-wider font-semibold text-success mb-1.5">Highlights</div>
+                      <ul className="list-disc pl-4 text-xs space-y-0.5 text-foreground">{aiSummary.highlights.map((h, i) => <li key={i}>{h}</li>)}</ul>
                     </div>
                   ) : null}
                   {aiSummary.concerns?.length ? (
-                    <div className="rounded-lg bg-white/70 dark:bg-card p-3 border border-rose-200">
-                      <div className="text-[10px] font-bold uppercase tracking-wider text-rose-700 mb-1">Concerns</div>
-                      <ul className="list-disc pl-4 text-xs space-y-0.5">{aiSummary.concerns.map((h, i) => <li key={i}>{h}</li>)}</ul>
+                    <div className="rounded-lg bg-destructive/5 p-3 border border-destructive/20">
+                      <div className="text-[10px] font-mono uppercase tracking-wider font-semibold text-destructive mb-1.5">Concerns</div>
+                      <ul className="list-disc pl-4 text-xs space-y-0.5 text-foreground">{aiSummary.concerns.map((h, i) => <li key={i}>{h}</li>)}</ul>
                     </div>
                   ) : null}
                 </div>

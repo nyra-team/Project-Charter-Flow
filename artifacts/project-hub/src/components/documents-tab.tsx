@@ -27,11 +27,11 @@ type DocVersion = {
 const ACCESS_LEVELS = ["public", "team", "restricted", "confidential"] as const;
 const CATEGORY_TAGS = ["URS", "RFP", "NFA", "Charter", "Contract", "UAT", "Closure", "Other"];
 
-const ACCESS_META: Record<string, { color: string; bg: string; icon: typeof Lock }> = {
-  public: { color: "#15803D", bg: "#F0FDF4", icon: Unlock },
-  team: { color: "#4338CA", bg: "#EEF2FF", icon: Folder },
-  restricted: { color: "#B45309", bg: "#FFFBEB", icon: Lock },
-  confidential: { color: "#991B1B", bg: "#FEE2E2", icon: Lock },
+const ACCESS_PILL: Record<string, { pill: string; icon: typeof Lock }> = {
+  public:       { pill: "bg-success/10 text-success border-success/20",            icon: Unlock },
+  team:         { pill: "bg-primary/10 text-primary border-primary/20",            icon: Folder },
+  restricted:   { pill: "bg-warn/10 text-warn border-warn/20",                     icon: Lock },
+  confidential: { pill: "bg-destructive/10 text-destructive border-destructive/20", icon: Lock },
 };
 
 export function DocumentsTab({ projectId }: { projectId: number }) {
@@ -132,36 +132,36 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
   }
 
   function DocCard({ d }: { d: Doc }) {
-    const meta = ACCESS_META[d.accessLevel] ?? ACCESS_META.team;
+    const meta = ACCESS_PILL[d.accessLevel] ?? ACCESS_PILL.team;
     const Icon = meta.icon;
     const isLocked = d.approvalStatus === "checked_out";
     return (
-      <div className="rounded-xl p-3 hover:shadow-sm transition-shadow" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+      <div className="glass-surface lift-card rounded-xl p-3 group">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "#EEF2FF" }}>
-            <FileText size={16} className="text-indigo-500" />
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-primary/10 border border-primary/20">
+            <FileText size={16} className="text-primary" />
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-sm font-semibold text-gray-900 truncate">{d.name}</p>
-              <span className="text-xs font-bold text-indigo-500">v{d.version}</span>
+              <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">{d.name}</p>
+              <span className="text-[11px] font-mono font-semibold text-primary">v{d.version}</span>
               {isLocked && (
-                <span className="text-xs font-bold px-1.5 py-0.5 rounded flex items-center gap-1" style={{ background: "#FEE2E2", color: "#991B1B" }}>
+                <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-destructive/10 text-destructive border-destructive/20 inline-flex items-center gap-1">
                   <Lock size={9} /> Locked
                 </span>
               )}
             </div>
-            {d.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{d.description}</p>}
-            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-              <span className="text-xs font-semibold px-1.5 py-0.5 rounded flex items-center gap-1" style={{ background: meta.bg, color: meta.color }}>
+            {d.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{d.description}</p>}
+            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+              <span className={`text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border inline-flex items-center gap-1 ${meta.pill}`}>
                 <Icon size={9} /> {d.accessLevel}
               </span>
               {(d.tags ?? []).map(t => (
-                <span key={t} className="text-xs font-semibold px-1.5 py-0.5 rounded flex items-center gap-1" style={{ background: "#F1F5F9", color: "#475569" }}>
+                <span key={t} className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm border bg-muted text-muted-foreground border-border inline-flex items-center gap-1">
                   <Tag size={8} /> {t}
                 </span>
               ))}
-              <span className="text-xs text-gray-400">
+              <span className="text-[10px] text-muted-foreground/80 font-mono">
                 {userName(d.uploadedBy)} · {d.uploadedAt ? formatDate(d.uploadedAt) : "—"}
               </span>
             </div>
@@ -170,18 +170,18 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
             <select
               value={d.accessLevel}
               onChange={e => changeAccess(d, e.target.value)}
-              className="text-xs border border-gray-200 rounded px-1.5 py-1 text-gray-600"
+              className="text-xs border border-input bg-background rounded-md px-1.5 py-1 text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
               title="Access level"
             >
               {ACCESS_LEVELS.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
-            <button onClick={() => toggleLock(d)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-indigo-500" title={isLocked ? "Check in" : "Check out (lock)"}>
+            <button onClick={() => toggleLock(d)} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-primary transition-colors" title={isLocked ? "Check in" : "Check out (lock)"}>
               {isLocked ? <Unlock size={13} /> : <Lock size={13} />}
             </button>
-            <button onClick={() => setVersionDocId(d.id)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-indigo-500" title="Version history">
+            <button onClick={() => setVersionDocId(d.id)} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-primary transition-colors" title="Version history">
               <History size={13} />
             </button>
-            <button onClick={() => handleDelete(d.id)} className="p-1.5 rounded hover:bg-gray-100 text-gray-400 hover:text-red-500" title="Delete">
+            <button onClick={() => handleDelete(d.id)} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-destructive transition-colors" title="Delete">
               <Trash2 size={13} />
             </button>
           </div>
@@ -193,35 +193,34 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="rounded-2xl p-4 flex flex-wrap items-center gap-3" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+      <div className="glass-surface lift-card rounded-2xl p-4 flex flex-wrap items-center gap-3 ph-rise">
         <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-          <Search size={14} className="text-gray-400" />
+          <Search size={14} className="text-muted-foreground" />
           <Input
             placeholder="Search documents by name, description, tag…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="border-0 shadow-none focus-visible:ring-0 px-0"
+            className="border-0 shadow-none focus-visible:ring-0 px-0 bg-transparent"
           />
         </div>
-        <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} className="text-sm border border-gray-200 rounded-lg px-3 py-2">
+        <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} className="text-sm border border-input bg-background rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-ring/40">
           <option value="">All tags</option>
           {CATEGORY_TAGS.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
-        <select value={accessFilter} onChange={e => setAccessFilter(e.target.value)} className="text-sm border border-gray-200 rounded-lg px-3 py-2">
+        <select value={accessFilter} onChange={e => setAccessFilter(e.target.value)} className="text-sm border border-input bg-background rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-ring/40">
           <option value="">All access</option>
           {ACCESS_LEVELS.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
-        <div className="flex gap-1 p-1 rounded-lg" style={{ background: "#F1F5F9" }}>
+        <div className="flex gap-1 p-1 rounded-md bg-muted">
           {(["folder", "list"] as const).map(v => (
             <button
               key={v}
               onClick={() => setView(v)}
-              className="px-3 py-1 rounded text-xs font-semibold transition-all"
-              style={{
-                background: view === v ? "white" : "transparent",
-                color: view === v ? "#4338CA" : "#64748B",
-                boxShadow: view === v ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
-              }}
+              className={`px-3 py-1 rounded text-xs font-semibold capitalize transition-all ${
+                view === v
+                  ? "bg-card text-primary shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
             >
               {v}
             </button>
@@ -229,36 +228,35 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
         </div>
         <button
           onClick={() => setShowAdd(true)}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-          style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
         >
           <Upload size={14} /> Upload Document
         </button>
       </div>
 
       {filtered.length === 0 ? (
-        <div className="rounded-2xl p-10 text-center text-sm text-gray-400" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+        <div className="glass-surface rounded-2xl p-10 text-center text-sm text-muted-foreground ph-rise ph-rise-2">
           {allDocs.length === 0 ? "No documents yet. Click 'Upload Document' to add one." : "No documents match your filters."}
         </div>
       ) : view === "folder" ? (
-        <div className="space-y-3">
+        <div className="space-y-3 stagger-children">
           {LIFECYCLE_STAGES.map(s => {
             const stageDocs = docsByStage[s.key] ?? [];
             if (stageDocs.length === 0) return null;
             const expanded = expandedStages.has(s.key);
             return (
-              <div key={s.key} className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #E2E8F0" }}>
+              <div key={s.key} className="glass-surface rounded-2xl overflow-hidden">
                 <button
                   onClick={() => toggleStage(s.key)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50"
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors"
                 >
-                  {expanded ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
+                  {expanded ? <ChevronDown size={14} className="text-muted-foreground" /> : <ChevronRight size={14} className="text-muted-foreground" />}
                   <Folder size={14} style={{ color: s.color }} />
-                  <span className="text-sm font-semibold text-gray-800">{s.label}</span>
-                  <span className="text-xs text-gray-400 ml-auto">{stageDocs.length} doc{stageDocs.length !== 1 ? "s" : ""}</span>
+                  <span className="text-sm font-semibold text-foreground">{s.label}</span>
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground ml-auto">{stageDocs.length} doc{stageDocs.length !== 1 ? "s" : ""}</span>
                 </button>
                 {expanded && (
-                  <div className="px-4 pb-4 space-y-2">
+                  <div className="px-4 pb-4 space-y-2 border-t border-border/60 pt-3">
                     {stageDocs.map(d => <DocCard key={d.id} d={d} />)}
                   </div>
                 )}
@@ -266,15 +264,15 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
             );
           })}
           {(docsByStage["__unstaged__"] ?? []).length > 0 && (
-            <div className="rounded-2xl overflow-hidden" style={{ background: "white", border: "1px solid #E2E8F0" }}>
-              <button onClick={() => toggleStage("__unstaged__")} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50">
-                {expandedStages.has("__unstaged__") ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
-                <Folder size={14} className="text-gray-400" />
-                <span className="text-sm font-semibold text-gray-800">Unassigned to a stage</span>
-                <span className="text-xs text-gray-400 ml-auto">{docsByStage["__unstaged__"].length} doc{docsByStage["__unstaged__"].length !== 1 ? "s" : ""}</span>
+            <div className="glass-surface rounded-2xl overflow-hidden">
+              <button onClick={() => toggleStage("__unstaged__")} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors">
+                {expandedStages.has("__unstaged__") ? <ChevronDown size={14} className="text-muted-foreground" /> : <ChevronRight size={14} className="text-muted-foreground" />}
+                <Folder size={14} className="text-muted-foreground" />
+                <span className="text-sm font-semibold text-foreground">Unassigned to a stage</span>
+                <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground ml-auto">{docsByStage["__unstaged__"].length} doc{docsByStage["__unstaged__"].length !== 1 ? "s" : ""}</span>
               </button>
               {expandedStages.has("__unstaged__") && (
-                <div className="px-4 pb-4 space-y-2">
+                <div className="px-4 pb-4 space-y-2 border-t border-border/60 pt-3">
                   {docsByStage["__unstaged__"].map(d => <DocCard key={d.id} d={d} />)}
                 </div>
               )}
@@ -282,7 +280,7 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
           )}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2 stagger-children">
           {filtered.map(d => <DocCard key={d.id} d={d} />)}
         </div>
       )}
@@ -291,39 +289,39 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
       <Dialog open={showAdd} onOpenChange={v => { if (!v) setShowAdd(false); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Upload size={16} className="text-indigo-500" /> Upload Document</DialogTitle>
+            <DialogTitle className="flex items-center gap-2 tracking-tight"><Upload size={16} className="text-primary" /> Upload Document</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <label className="text-xs font-semibold text-gray-500">Name</label>
-              <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. URS v1" />
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Name</label>
+              <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. URS v1" className="mt-1" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-gray-500">Stage</label>
-                <select value={form.stage} onChange={e => setForm({ ...form, stage: e.target.value })} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mt-1">
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Stage</label>
+                <select value={form.stage} onChange={e => setForm({ ...form, stage: e.target.value })} className="w-full text-sm border border-input bg-background rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-ring/40">
                   <option value="">— None —</option>
                   {LIFECYCLE_STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
                 </select>
               </div>
               <div>
-                <label className="text-xs font-semibold text-gray-500">Access</label>
-                <select value={form.accessLevel} onChange={e => setForm({ ...form, accessLevel: e.target.value })} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 mt-1">
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Access</label>
+                <select value={form.accessLevel} onChange={e => setForm({ ...form, accessLevel: e.target.value })} className="w-full text-sm border border-input bg-background rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-ring/40">
                   {ACCESS_LEVELS.map(a => <option key={a} value={a}>{a}</option>)}
                 </select>
               </div>
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500">File URL</label>
-              <Input value={form.fileUrl} onChange={e => setForm({ ...form, fileUrl: e.target.value })} placeholder="https://…" />
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">File URL</label>
+              <Input value={form.fileUrl} onChange={e => setForm({ ...form, fileUrl: e.target.value })} placeholder="https://…" className="mt-1" />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500">Description</label>
-              <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short summary" rows={2} />
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Description</label>
+              <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short summary" rows={2} className="mt-1" />
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500">Tags</label>
-              <div className="flex flex-wrap gap-1.5 mt-1">
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Tags</label>
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {CATEGORY_TAGS.map(t => {
                   const on = form.tags.includes(t);
                   return (
@@ -331,17 +329,20 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
                       key={t}
                       type="button"
                       onClick={() => setForm({ ...form, tags: on ? form.tags.filter(x => x !== t) : [...form.tags, t] })}
-                      className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                      style={{ background: on ? "#4338CA" : "#F1F5F9", color: on ? "white" : "#475569" }}
+                      className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border transition-colors ${
+                        on
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted text-muted-foreground border-border hover:bg-accent"
+                      }`}
                     >{t}</button>
                   );
                 })}
               </div>
             </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">Cancel</button>
-              <button onClick={handleAdd} className="px-4 py-2 text-sm font-semibold text-white rounded-lg" style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}>
-                <Plus size={12} className="inline mr-1" /> Add
+            <div className="flex justify-end gap-2 pt-2 border-t border-border/60">
+              <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm rounded-md font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">Cancel</button>
+              <button onClick={handleAdd} className="px-3 py-1.5 text-sm font-semibold bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors shadow-sm inline-flex items-center gap-1.5">
+                <Plus size={12} /> Add
               </button>
             </div>
           </div>
@@ -379,37 +380,37 @@ function VersionHistoryModal({ documentId, onClose }: { documentId: number; onCl
     <Dialog open={true} onOpenChange={v => { if (!v) onClose(); }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><History size={16} className="text-indigo-500" /> Version History</DialogTitle>
+          <DialogTitle className="flex items-center gap-2 tracking-tight"><History size={16} className="text-primary" /> Version History</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           {vs.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No prior versions logged. Current is v1.</p>
+            <p className="text-sm text-muted-foreground italic">No prior versions logged. Current is v1.</p>
           ) : (
-            <div className="space-y-2 max-h-72 overflow-y-auto">
+            <div className="space-y-2 max-h-72 overflow-y-auto scrollbar-thin">
               {vs.map(v => (
-                <div key={v.id} className="rounded-lg p-3" style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}>
+                <div key={v.id} className="rounded-md p-3 bg-muted/50 border border-border">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold text-indigo-600">v{v.version}</span>
-                    <span className="text-xs text-gray-400">{v.uploadedAt ? formatDate(v.uploadedAt) : "—"}</span>
+                    <span className="text-sm font-mono font-semibold text-primary">v{v.version}</span>
+                    <span className="text-[10px] font-mono text-muted-foreground">{v.uploadedAt ? formatDate(v.uploadedAt) : "—"}</span>
                   </div>
-                  {v.notes && <p className="text-xs text-gray-600 mt-1">{v.notes}</p>}
-                  {v.fileUrl && <a href={v.fileUrl} target="_blank" rel="noreferrer" className="text-xs text-indigo-500 hover:underline">Open file</a>}
+                  {v.notes && <p className="text-xs text-muted-foreground mt-1">{v.notes}</p>}
+                  {v.fileUrl && <a href={v.fileUrl} target="_blank" rel="noreferrer" className="text-xs text-primary hover:underline">Open file →</a>}
                 </div>
               ))}
             </div>
           )}
 
           {showForm ? (
-            <div className="space-y-2 border-t pt-3">
+            <div className="space-y-2 border-t border-border/60 pt-3">
               <Input value={form.fileUrl} onChange={e => setForm({ ...form, fileUrl: e.target.value })} placeholder="New file URL" />
               <Input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Change notes" />
               <div className="flex gap-2 justify-end">
-                <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-sm rounded-lg border border-gray-200 hover:bg-gray-50">Cancel</button>
-                <button onClick={submit} className="px-3 py-1.5 text-sm font-semibold text-white rounded-lg" style={{ background: "linear-gradient(135deg, #6366F1, #8B5CF6)" }}>Save</button>
+                <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-sm rounded-md font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">Cancel</button>
+                <button onClick={submit} className="px-3 py-1.5 text-sm font-semibold bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors shadow-sm">Save</button>
               </div>
             </div>
           ) : (
-            <button onClick={() => setShowForm(true)} className="w-full py-2 text-sm font-semibold rounded-lg flex items-center justify-center gap-1 text-indigo-600 hover:bg-indigo-50">
+            <button onClick={() => setShowForm(true)} className="w-full py-2 text-sm font-semibold rounded-md flex items-center justify-center gap-1.5 text-primary hover:bg-primary/10 transition-colors">
               <Plus size={13} /> Check in new version
             </button>
           )}

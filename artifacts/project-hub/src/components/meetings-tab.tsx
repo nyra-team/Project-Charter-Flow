@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Calendar, Plus, Loader2, X, Sparkles, CheckSquare } from "lucide-react";
 import { useUserStore } from "../lib/store";
 import { api } from "../lib/extra-api";
-import { AiButton, AiResultPanel } from "./ai-button";
+import { AiResultPanel } from "./ai-button";
 
 type Meeting = {
   id: number; title: string; type: string; projectId: number | null;
@@ -14,6 +14,12 @@ type Item = {
   id: number; meetingId: number; description: string;
   assignedToUserId: number | null; dueDate: string | null;
   percentComplete: number; status: string; notes: string; category: string;
+};
+
+const STATUS_PILL: Record<string, string> = {
+  completed:   "bg-success/10 text-success border-success/20",
+  in_progress: "bg-primary/10 text-primary border-primary/20",
+  scheduled:   "bg-muted text-muted-foreground border-border",
 };
 
 export function MeetingsTab({ projectId }: { projectId: number }) {
@@ -75,35 +81,44 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl p-5 bg-white dark:bg-card border border-border flex items-center justify-between gap-3">
-        <div>
-          <h3 className="font-semibold text-gray-900 dark:text-foreground flex items-center gap-2"><Calendar size={16} /> Meetings & Action Items</h3>
-          <p className="text-xs text-muted-foreground mt-1">Capture meeting notes; AI extracts action items into the tracker.</p>
+      <div className="glass-surface lift-card rounded-2xl p-5 ph-rise relative overflow-hidden">
+        <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 border border-primary/20">
+              <Calendar size={18} className="text-primary" />
+            </div>
+            <div>
+              <h3 className="text-[14px] font-semibold text-foreground tracking-tight">Meetings & Action Items</h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Capture meeting notes; AI extracts action items into the tracker.</p>
+            </div>
+          </div>
+          <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm">
+            <Plus size={14} /> New Meeting
+          </button>
         </div>
-        <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-indigo-600 text-white">
-          <Plus size={14} /> New Meeting
-        </button>
       </div>
 
       {loading ? (
         <div className="text-center py-8 text-muted-foreground"><Loader2 className="animate-spin inline mr-2" size={14} /> Loading…</div>
       ) : meetings.length === 0 ? (
-        <div className="rounded-2xl p-8 text-center bg-white dark:bg-card border border-border">
-          <Calendar size={28} className="text-gray-300 mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">No meetings recorded.</p>
+        <div className="glass-surface rounded-2xl p-10 text-center ph-rise ph-rise-2">
+          <Calendar size={28} className="text-muted-foreground/40 mx-auto mb-2" />
+          <p className="text-sm text-muted-foreground">No meetings recorded yet.</p>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2 stagger-children">
           {meetings.map(m => (
-            <div key={m.id} onClick={() => setSelected(m)} className="rounded-xl p-4 bg-white dark:bg-card border border-border hover:shadow-sm cursor-pointer">
+            <div key={m.id} onClick={() => setSelected(m)}
+                 className="glass-surface lift-card rounded-xl p-4 cursor-pointer group">
               <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h4 className="font-semibold text-gray-900 dark:text-foreground">{m.title}</h4>
-                  <div className="text-xs text-muted-foreground mt-0.5">
+                <div className="min-w-0">
+                  <h4 className="font-semibold text-foreground tracking-tight group-hover:text-primary transition-colors">{m.title}</h4>
+                  <div className="text-[11px] text-muted-foreground mt-0.5 font-mono">
                     {m.scheduledDate}{m.scheduledTime ? ` · ${m.scheduledTime}` : ""} · {m.type} · {m.status}
                   </div>
                 </div>
-                {m.isFlashMode && <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">Flash</span>}
+                {m.isFlashMode && <span className="text-[10px] uppercase font-mono tracking-wider font-semibold px-2 py-0.5 rounded-sm border bg-warn/10 text-warn border-warn/20">Flash</span>}
               </div>
             </div>
           ))}
@@ -111,64 +126,73 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
       )}
 
       {showAdd && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowAdd(false)}>
-          <div className="bg-white dark:bg-card rounded-2xl p-5 w-full max-w-lg space-y-3" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between"><h3 className="font-bold text-lg">New Meeting</h3><button onClick={() => setShowAdd(false)}><X size={16} /></button></div>
-            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Title" className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-sm" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setShowAdd(false)}>
+          <div className="bg-popover text-popover-foreground border border-popover-border shadow-2xl rounded-2xl p-5 w-full max-w-lg space-y-3 ph-rise" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-[15px] text-foreground tracking-tight">New Meeting</h3>
+              <button onClick={() => setShowAdd(false)} className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"><X size={15} /></button>
+            </div>
+            <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Title" className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/40" />
             <div className="grid grid-cols-3 gap-2">
-              <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="px-2 py-1 rounded border border-input bg-background text-sm">
+              <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="px-2 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/40">
                 <option value="status">Status</option><option value="kickoff">Kickoff</option><option value="review">Review</option>
                 <option value="planning">Planning</option><option value="retro">Retro</option><option value="other">Other</option>
               </select>
-              <input type="date" value={form.scheduledDate} onChange={e => setForm({ ...form, scheduledDate: e.target.value })} className="px-2 py-1 rounded border border-input bg-background text-sm" />
-              <input type="time" value={form.scheduledTime} onChange={e => setForm({ ...form, scheduledTime: e.target.value })} className="px-2 py-1 rounded border border-input bg-background text-sm" />
+              <input type="date" value={form.scheduledDate} onChange={e => setForm({ ...form, scheduledDate: e.target.value })} className="px-2 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/40" />
+              <input type="time" value={form.scheduledTime} onChange={e => setForm({ ...form, scheduledTime: e.target.value })} className="px-2 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/40" />
             </div>
-            <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Location / link" className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-sm" />
-            <textarea value={form.agenda} onChange={e => setForm({ ...form, agenda: e.target.value })} placeholder="Agenda" rows={3} className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-sm" />
-            <div className="flex justify-end gap-2"><button onClick={() => setShowAdd(false)} className="px-3 py-1.5 rounded-md text-sm bg-muted">Cancel</button><button onClick={() => void handleAdd()} className="px-3 py-1.5 rounded-md text-sm font-semibold bg-indigo-600 text-white">Create</button></div>
+            <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} placeholder="Location / link" className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/40" />
+            <textarea value={form.agenda} onChange={e => setForm({ ...form, agenda: e.target.value })} placeholder="Agenda" rows={3} className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/40" />
+            <div className="flex justify-end gap-2 pt-2 border-t border-border/60">
+              <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">Cancel</button>
+              <button onClick={() => void handleAdd()} className="px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm">Create</button>
+            </div>
           </div>
         </div>
       )}
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSelected(null)}>
-          <div className="bg-white dark:bg-card rounded-2xl p-5 w-full max-w-2xl space-y-3 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200" onClick={() => setSelected(null)}>
+          <div className="bg-popover text-popover-foreground border border-popover-border shadow-2xl rounded-2xl p-5 w-full max-w-2xl space-y-3 max-h-[90vh] overflow-y-auto scrollbar-thin ph-rise" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-lg">{selected.title}</h3>
-                <p className="text-xs text-muted-foreground">{selected.scheduledDate}{selected.scheduledTime ? ` · ${selected.scheduledTime}` : ""}</p>
+                <h3 className="font-semibold text-[15px] text-foreground tracking-tight">{selected.title}</h3>
+                <p className="text-[11px] text-muted-foreground font-mono">{selected.scheduledDate}{selected.scheduledTime ? ` · ${selected.scheduledTime}` : ""}</p>
               </div>
-              <button onClick={() => setSelected(null)}><X size={16} /></button>
+              <button onClick={() => setSelected(null)} className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"><X size={15} /></button>
             </div>
-            {selected.agenda && <div className="text-xs"><strong>Agenda:</strong> {selected.agenda}</div>}
-            <textarea value={selected.notes} onChange={e => setSelected({ ...selected, notes: e.target.value })} placeholder="Meeting notes / transcript — paste here so AI can extract action items" rows={6} className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-sm font-mono" />
+            {selected.agenda && <div className="text-xs rounded-md bg-muted/50 border border-border p-2.5"><span className="font-semibold text-foreground">Agenda:</span> <span className="text-muted-foreground">{selected.agenda}</span></div>}
+            <textarea value={selected.notes ?? ""} onChange={e => setSelected({ ...selected, notes: e.target.value })} placeholder="Meeting notes / transcript — paste here so AI can extract action items" rows={6} className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring/40" />
             <div className="flex justify-between items-center">
-              <button onClick={() => void handleSaveNotes()} className="px-3 py-1.5 rounded-md text-sm font-semibold bg-muted hover:bg-accent">Save Notes</button>
-              <button onClick={() => void handleExtract()} disabled={aiLoading} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-gradient-to-r from-indigo-500 to-purple-500 text-white disabled:opacity-50">
+              <button onClick={() => void handleSaveNotes()} className="px-3 py-1.5 rounded-md text-sm font-medium text-foreground bg-muted hover:bg-accent transition-colors">Save Notes</button>
+              <button onClick={() => void handleExtract()} disabled={aiLoading} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-gradient-to-r from-indigo-500 to-purple-500 text-white hover:from-indigo-600 hover:to-purple-600 disabled:opacity-50 shadow-sm transition-all">
                 {aiLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                Extract Action Items (AI)
+                Extract Action Items
               </button>
             </div>
             <AiResultPanel title="AI Extraction" loading={aiLoading} error={aiError} result={aiResult} render={(r) => {
               const x = r as { extracted?: number; created?: number };
               const count = x.extracted ?? x.created ?? 0;
-              return <div className="text-xs text-emerald-700 dark:text-emerald-300">Extracted {count} action items.</div>;
+              return <div className="text-xs text-success font-medium">Extracted {count} action items into the tracker below.</div>;
             }} />
-            <div className="border-t border-border pt-3">
-              <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5"><CheckSquare size={14} /> Action Items ({items.length})</h4>
+            <div className="border-t border-border/60 pt-3">
+              <h4 className="text-[13px] font-semibold mb-2 flex items-center gap-1.5 text-foreground tracking-tight"><CheckSquare size={14} className="text-primary" /> Action Items <span className="text-muted-foreground font-normal">({items.length})</span></h4>
               {items.length === 0 ? (
-                <p className="text-xs text-muted-foreground italic">No action items.</p>
+                <p className="text-xs text-muted-foreground italic">No action items yet.</p>
               ) : (
-                <ul className="space-y-1">
-                  {items.map(it => (
-                    <li key={it.id} className="text-xs flex items-start gap-2 p-2 rounded bg-muted/40">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${it.status === "completed" ? "bg-emerald-100 text-emerald-700" : it.status === "in_progress" ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-700"}`}>{it.status}</span>
-                      <div className="flex-1">
-                        <div className="font-medium">{it.description}</div>
-                        <div className="text-muted-foreground">{it.category}{it.dueDate ? ` · due ${it.dueDate}` : ""}{it.assignedToUserId ? ` · @user${it.assignedToUserId}` : ""}</div>
-                      </div>
-                    </li>
-                  ))}
+                <ul className="space-y-1.5">
+                  {items.map(it => {
+                    const pill = STATUS_PILL[it.status] ?? STATUS_PILL.scheduled;
+                    return (
+                      <li key={it.id} className="text-xs flex items-start gap-2 p-2.5 rounded-md bg-muted/50 border border-border/60 hover:border-border transition-colors">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-sm font-mono uppercase tracking-wider font-semibold border whitespace-nowrap ${pill}`}>{it.status}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-foreground">{it.description}</div>
+                          <div className="text-muted-foreground font-mono text-[10px] mt-0.5">{it.category}{it.dueDate ? ` · due ${it.dueDate}` : ""}{it.assignedToUserId ? ` · @user${it.assignedToUserId}` : ""}</div>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
