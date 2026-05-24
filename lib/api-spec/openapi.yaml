@@ -2715,7 +2715,6 @@ components:
         endDate:
           type: string
       required:
-        - charterId
         - name
 
     UpdateProjectBody:

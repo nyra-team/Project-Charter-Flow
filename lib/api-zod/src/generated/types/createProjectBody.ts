@@ -7,7 +7,7 @@
  */
 
 export interface CreateProjectBody {
-  charterId: number;
+  charterId?: number;
   portfolioId?: number;
   programId?: number;
   name: string;

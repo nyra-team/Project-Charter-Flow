@@ -64,7 +64,10 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
 
   const { data: stageRecords = [] } = useListProjectStages(projectId);
   const { data: documents = [], refetch: refetchDocs } = useListDocuments(projectId);
-  const { data: approvals = [] } = useListApprovals(charterId ? { charterId } : {});
+  const { data: approvals = [] } = useListApprovals(
+    charterId ? { charterId } : {},
+    { query: { enabled: !!charterId } },
+  );
 
   const createStageMutation = useCreateProjectStage();
   const updateStageMutation = useUpdateProjectStage();

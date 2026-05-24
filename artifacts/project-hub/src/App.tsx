@@ -6,6 +6,7 @@ import { Layout } from "./components/Layout";
 import Dashboard from "./pages/dashboard";
 import ChartersList from "./pages/charters";
 import NewCharter from "./pages/charter-new";
+import NewDemand from "./pages/demand-new";
 import CharterDetail from "./pages/charter-detail";
 import ApprovalsList from "./pages/approvals";
 import ProjectsList from "./pages/projects";
@@ -27,6 +28,7 @@ function Router() {
         <Route path="/" component={Dashboard} />
         <Route path="/charters" component={ChartersList} />
         <Route path="/charters/new" component={NewCharter} />
+        <Route path="/demands/new" component={NewDemand} />
         <Route path="/charters/:id" component={CharterDetail} />
         <Route path="/approvals" component={ApprovalsList} />
         <Route path="/projects" component={ProjectsList} />

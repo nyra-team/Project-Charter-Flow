@@ -639,7 +639,7 @@ export const ListProjectsResponse = zod.array(ListProjectsResponseItem);
  * @summary Create a project from an approved charter
  */
 export const CreateProjectBody = zod.object({
-  charterId: zod.number(),
+  charterId: zod.number().optional(),
   portfolioId: zod.number().optional(),
   programId: zod.number().optional(),
   name: zod.string(),

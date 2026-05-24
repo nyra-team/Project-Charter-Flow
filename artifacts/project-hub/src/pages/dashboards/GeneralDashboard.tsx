@@ -3,7 +3,7 @@ import { formatCurrency } from "../../lib/format";
 import {
   FileText, CheckSquare, DollarSign, ArrowUpRight, Clock,
   CheckCircle2, AlertTriangle, XCircle, Trophy, Zap, TrendingUp,
-  FolderKanban, Activity,
+  FolderKanban, Activity, Sparkles,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -232,10 +232,10 @@ export default function GeneralDashboard() {
           </div>
           <div className="flex items-center gap-3">
             <RefreshButton />
-            <Link href="/charters/new">
-              <button className="btn-glossy-cta flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold">
-                <FileText size={14} />
-                <span>New Charter</span>
+            <Link href="/demands/new">
+              <button className="btn-glossy-cta flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold" data-testid="button-new-demand">
+                <Sparkles size={14} />
+                <span>New Demand</span>
               </button>
             </Link>
           </div>

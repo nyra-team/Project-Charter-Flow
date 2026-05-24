@@ -61,7 +61,9 @@ router.post("/projects", async (req, res): Promise<void> => {
     siteRegion: d.siteRegion as string | undefined,
     function: d.function as string | undefined,
   }).returning();
-  await db.update(chartersTable).set({ projectId: project.id, status: "active" }).where(eq(chartersTable.id, parsed.data.charterId));
+  if (parsed.data.charterId) {
+    await db.update(chartersTable).set({ projectId: project.id, status: "active" }).where(eq(chartersTable.id, parsed.data.charterId));
+  }
   await logActivity("project_created", `Project "${project.name}" created`, project.id, "project");
   res.status(201).json(formatProject(project as unknown as Record<string, unknown>));
 });
