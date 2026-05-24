@@ -94,11 +94,11 @@ export default function ChartersList() {
 
       {/* Charter cards */}
       {isLoading ? (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-2xl" />)}
         </div>
       ) : filteredCharters && filteredCharters.length > 0 ? (
-        <div className="space-y-3 stagger-children">
+        <div className="space-y-4 stagger-children">
           {filteredCharters.map(charter => (
             <Link key={charter.id} href={`/charters/${charter.id}`}>
               <div className="glass-surface lift-card rounded-2xl p-4 flex items-center gap-4 cursor-pointer">

@@ -170,11 +170,11 @@ export default function ApprovalsList() {
 
       {/* Approval items */}
       {isLoading ? (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-28 rounded-2xl" />)}
         </div>
       ) : filteredApprovals.length > 0 ? (
-        <div className="space-y-3 stagger-children">
+        <div className="space-y-4 stagger-children">
           {filteredApprovals.map(approval => {
             const isOpen = expanded === approval.id;
             return (
