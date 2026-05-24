@@ -371,6 +371,16 @@ export default function ProjectDetail() {
     const allowed = ["lifecycle","grid","gantt","board","resources","budget","documents","risks","issues","raci","escalation","messages","audit","analytics","scoring","meetings","changes","benefits"] as const;
     if ((allowed as readonly string[]).includes(tab)) setActiveTab(tab as typeof allowed[number]);
   }, [search]);
+
+  // Deep-link to a specific lifecycle stage via ?stage=project_case
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const stageParam = params.get("stage");
+    if (stageParam) {
+      setActiveTab("lifecycle");
+      setSelectedStageKey(stageParam);
+    }
+  }, [search]);
   const [nfaDismissed, setNfaDismissed] = useState(false);
   const [selectedBoardTaskId, setSelectedBoardTaskId] = useState<number | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
