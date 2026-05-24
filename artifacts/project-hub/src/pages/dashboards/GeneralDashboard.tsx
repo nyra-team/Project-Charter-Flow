@@ -9,11 +9,13 @@ import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { format } from "date-fns";
-import { LIFECYCLE_STAGES, getStageConfig } from "../../lib/lifecycle-config";
+import { LIFECYCLE_STAGES, getStageConfig, getStageIndex } from "../../lib/lifecycle-config";
 import { LIFECYCLE_PHASES } from "../../lib/lifecycle-phases";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { KPITile, DashboardCard, useAutoRefresh } from "../../components/dashboard/primitives";
+import { LifecycleStepper } from "../../components/lifecycle-stepper";
+import { StageDetailDialog } from "../../components/stage-detail-dialog";
 
 const DEMAND_STAGES = ["project_case", "urs", "rfp", "vendor_evaluation"] as const;
 
@@ -200,6 +202,27 @@ export default function GeneralDashboard() {
     return map;
   }, [projects]);
 
+  // Dashboard stepper: most-advanced project stage = "active" for the org;
+  // any stage with at least one project past it is "complete" on the timeline.
+  const { dashboardCurrentStage, syntheticStageRecords } = useMemo(() => {
+    const maxIdx = (projects ?? []).reduce((acc, p) => {
+      const i = getStageIndex(p.stage ?? "project_case");
+      return i > acc ? i : acc;
+    }, 0);
+    const current = LIFECYCLE_STAGES[maxIdx]?.key ?? "project_case";
+    const records = LIFECYCLE_STAGES.map((s, i) => ({
+      stage: s.key,
+      status: i < maxIdx ? "complete" : i === maxIdx ? "in_progress" : "not_started",
+    }));
+    return { dashboardCurrentStage: current, syntheticStageRecords: records };
+  }, [projects]);
+
+  const [stageDetail, setStageDetail] = useState<string | null>(null);
+  const projectsAtSelectedStage = useMemo(
+    () => (stageDetail ? (projects ?? []).filter((p) => (p.stage ?? "project_case") === stageDetail) : []),
+    [projects, stageDetail],
+  );
+
   // Portfolio velocity — illustrative 8-week ramp anchored to current counts.
   // TODO: replace with /api/dashboard/velocity time-series once backend endpoint exists.
   const velocitySeries = useMemo(() => {
@@ -296,24 +319,14 @@ export default function GeneralDashboard() {
           </Link>
         }
       >
-        {/* 16-stage heatmap row */}
-        <div className="grid grid-cols-8 lg:grid-cols-16 gap-1.5 mb-4">
-          {LIFECYCLE_STAGES.map((s, idx) => {
-            const count = lifecycleCounts.get(s.key) ?? 0;
-            const intensity = count === 0 ? 0.08 : Math.min(0.18 + count * 0.18, 0.85);
-            return (
-              <Link key={s.key} href={`/pipeline#stage-${s.key}`}>
-                <div
-                  title={`${s.label} · ${count} project${count === 1 ? "" : "s"}`}
-                  className="relative h-12 rounded-md border border-border flex flex-col items-center justify-center cursor-pointer hover:scale-[1.06] transition-transform"
-                  style={{ background: `${s.color}${Math.round(intensity * 255).toString(16).padStart(2, "0")}` }}
-                >
-                  <span className="text-[8px] font-mono text-card-foreground/60 leading-none">{idx + 1}</span>
-                  <span className="text-sm font-mono font-semibold num-tabular text-card-foreground leading-tight">{count}</span>
-                </div>
-              </Link>
-            );
-          })}
+        {/* 16-stage stepper diagram — same component as project detail */}
+        <div className="px-2 pt-2 pb-4 mb-4">
+          <LifecycleStepper
+            currentStageKey={dashboardCurrentStage}
+            stageRecords={syntheticStageRecords}
+            counts={Object.fromEntries(lifecycleCounts)}
+            onStageClick={(k) => setStageDetail(k)}
+          />
         </div>
         {/* Phase summary */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -490,6 +503,17 @@ export default function GeneralDashboard() {
           </DashboardCard>
         </div>
       </div>
+
+      <StageDetailDialog
+        stageKey={stageDetail}
+        onClose={() => setStageDetail(null)}
+        projects={projectsAtSelectedStage.map((p) => ({
+          id: p.id,
+          name: p.name,
+          ragStatus: (p as { ragStatus?: string | null }).ragStatus ?? null,
+          priority: (p as { priority?: string | null }).priority ?? null,
+        }))}
+      />
     </div>
   );
 }
