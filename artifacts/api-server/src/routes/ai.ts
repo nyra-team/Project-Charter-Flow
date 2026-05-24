@@ -36,7 +36,7 @@ router.get("/ai/status", (_req, res) => {
   res.json({
     configured: isLLMConfigured(),
     provider: "anthropic",
-    model: process.env.LLM_DEFAULT_MODEL || "claude-sonnet-4-5",
+    model: process.env.LLM_DEFAULT_MODEL || "claude-sonnet-4-6",
   });
 });
 

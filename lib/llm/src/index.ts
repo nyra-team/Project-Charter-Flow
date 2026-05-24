@@ -9,11 +9,13 @@ import { z } from "zod";
  * managed in one place.
  *
  * Configuration:
- *   - ANTHROPIC_API_KEY        (required to enable AI features)
- *   - ANTHROPIC_BASE_URL       (optional — for proxies)
- *   - LLM_DEFAULT_MODEL        (optional — default: claude-sonnet-4-6)
+ *   - AI_INTEGRATIONS_ANTHROPIC_API_KEY   (auto-provisioned by Replit AI Integrations)
+ *   - AI_INTEGRATIONS_ANTHROPIC_BASE_URL  (auto-provisioned proxy URL)
+ *   - ANTHROPIC_API_KEY                   (fallback — own Anthropic key)
+ *   - ANTHROPIC_BASE_URL                  (fallback — own proxy URL)
+ *   - LLM_DEFAULT_MODEL                   (optional — default: claude-sonnet-4-6)
  *
- * If the API key is missing, `llm()` returns a structured `{ ok: false }`
+ * If no API key is set, `llm()` returns a structured `{ ok: false }`
  * result so callers can render a friendly "AI not configured" hint
  * instead of crashing.
  */
@@ -49,22 +51,25 @@ export type LLMResult<T = string> =
   | { ok: true; data: T; raw: string; usage?: { inputTokens?: number; outputTokens?: number } }
   | { ok: false; reason: "no_api_key" | "llm_error" | "parse_error" | "validation_error"; message: string };
 
-const DEFAULT_MODEL = process.env.LLM_DEFAULT_MODEL || "claude-sonnet-4-5";
+const DEFAULT_MODEL = process.env.LLM_DEFAULT_MODEL || "claude-sonnet-4-6";
+
+function resolveCredentials(): { apiKey?: string; baseURL?: string } {
+  const apiKey = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY;
+  const baseURL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || process.env.ANTHROPIC_BASE_URL || undefined;
+  return { apiKey, baseURL };
+}
 
 let _client: Anthropic | null = null;
 function getClient(): Anthropic | null {
   if (_client) return _client;
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const { apiKey, baseURL } = resolveCredentials();
   if (!apiKey) return null;
-  _client = new Anthropic({
-    apiKey,
-    baseURL: process.env.ANTHROPIC_BASE_URL || undefined,
-  });
+  _client = new Anthropic({ apiKey, baseURL });
   return _client;
 }
 
 export function isLLMConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  return Boolean(resolveCredentials().apiKey);
 }
 
 /**
@@ -77,7 +82,7 @@ export async function llm<T = string>(opts: LLMCallOptions<T>): Promise<LLMResul
       ok: false,
       reason: "no_api_key",
       message:
-        "AI features require an ANTHROPIC_API_KEY. Add it under Tools → Secrets and reload the page to enable AI Insights.",
+        "AI features require Anthropic credentials. Enable Replit AI Integrations for Anthropic, or add ANTHROPIC_API_KEY under Tools → Secrets and reload the page.",
     };
   }
 
