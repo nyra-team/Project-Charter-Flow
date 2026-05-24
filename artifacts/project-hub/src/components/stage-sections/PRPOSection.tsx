@@ -20,15 +20,15 @@ export function PRPOSection({ projectId }: { projectId: number }) {
 
   const allStages = stages as Array<{ id: number; stage: string; status: string; notes?: string | null }>;
   const stageRecord = allStages.find((s) => s.stage === "pr_po");
-  const nfaRecord = allStages.find((s) => s.stage === "nfa");
+  const nfaRecord = allStages.find((s) => s.stage === "legal");
 
-  // Read NFA approval state from the NFA stage notes
+  // Read Legal sign-off state (Legal is now the immediate hard gate before PR/PO)
   const nfaApproved = (() => {
     if (nfaRecord?.status === "complete") return true;
     try {
       const np = JSON.parse(nfaRecord?.notes ?? "{}") as Record<string, unknown>;
-      const nfa = np.__nfa as { chain?: Array<{ status: string }> } | undefined;
-      return !!nfa?.chain && nfa.chain.length > 0 && nfa.chain.every(c => c.status === "approved");
+      const legal = np.__legal as { legalApproved?: boolean } | undefined;
+      return !!legal?.legalApproved;
     } catch { return false; }
   })();
 
@@ -74,7 +74,7 @@ export function PRPOSection({ projectId }: { projectId: number }) {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-bold text-red-900">PR + PO Release</p>
-          <p className="text-[11px] text-red-700">FR-13 · NFA approval is a hard gate before releasing PO</p>
+          <p className="text-[11px] text-red-700">FR-13 · Legal sign-off is a hard gate before releasing PO</p>
         </div>
         {saved.savedAt && (
           <span className="text-[10px] font-mono text-red-700 bg-red-100 rounded-full px-2 py-0.5">
@@ -87,7 +87,7 @@ export function PRPOSection({ projectId }: { projectId: number }) {
       <div className={`rounded-lg px-3 py-2 flex items-center gap-2 border ${nfaApproved ? "bg-green-50 border-green-200" : "bg-amber-50 border-amber-200"}`}>
         {nfaApproved ? <CheckCircle2 size={14} className="text-green-700" /> : <Lock size={14} className="text-amber-700" />}
         <span className={`text-xs font-semibold ${nfaApproved ? "text-green-800" : "text-amber-800"}`}>
-          NFA Gate: {nfaApproved ? "Approved — PO release permitted" : "Pending — complete NFA approval chain to release PO"}
+          Legal Gate: {nfaApproved ? "Signed off — PO release permitted" : "Pending — complete Legal sign-off to release PO"}
         </span>
       </div>
 

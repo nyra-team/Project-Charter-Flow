@@ -27,6 +27,9 @@ import { NFASection } from "./stage-sections/NFASection";
 import { PRPOSection } from "./stage-sections/PRPOSection";
 import { TechnicalDesignSection } from "./stage-sections/TechnicalDesignSection";
 import { ImplementationPlanSection } from "./stage-sections/ImplementationPlanSection";
+import { LegalSection } from "./stage-sections/LegalSection";
+import { CharterSection } from "./stage-sections/CharterSection";
+import { DevelopmentSection } from "./stage-sections/DevelopmentSection";
 
 interface StagePanelProps {
   projectId: number;
@@ -317,10 +320,13 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
             {stageHas(stageConfig, "hasURSDualApproval") && <URSDualApprovalSection projectId={projectId} />}
             {stageHas(stageConfig, "hasRFPTemplate") && <RFPTemplateSection projectId={projectId} />}
             {stageHas(stageConfig, "hasVendorEvalScorecard") && <VendorEvalScorecard projectId={projectId} />}
+            {stageHas(stageConfig, "hasCharter") && <CharterSection projectId={projectId} />}
             {stageHas(stageConfig, "hasNFA") && <NFASection projectId={projectId} />}
+            {stageHas(stageConfig, "hasLegal") && <LegalSection projectId={projectId} />}
             {stageHas(stageConfig, "hasPRPO") && <PRPOSection projectId={projectId} />}
             {stageHas(stageConfig, "hasKickoffAttendees") && <KickoffAttendeesSection projectId={projectId} />}
             {stageHas(stageConfig, "hasTechnicalDesign") && <TechnicalDesignSection projectId={projectId} />}
+            {stageHas(stageConfig, "hasDevelopment") && <DevelopmentSection projectId={projectId} />}
             {stageHas(stageConfig, "hasImplementationPlan") && <ImplementationPlanSection projectId={projectId} />}
             {stageHas(stageConfig, "hasUATDefects") && <UATDefectSection projectId={projectId} />}
             {stageHas(stageConfig, "hasGoLiveCountdown") && <GoLiveCountdown projectId={projectId} />}

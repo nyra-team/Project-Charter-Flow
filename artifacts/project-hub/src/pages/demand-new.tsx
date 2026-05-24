@@ -2,7 +2,19 @@ import { useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useCreateProject, useCreateProjectStage } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, ChevronLeft, Sparkles, Lightbulb } from "lucide-react";
+import { Loader2, ChevronLeft, Sparkles } from "lucide-react";
+
+function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+  return (
+    <div className="glass-surface lift-card ph-rise rounded-2xl p-6">
+      <div className="mb-5">
+        <h3 className="text-base font-semibold text-foreground tracking-tight">{title}</h3>
+        {subtitle && <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
+      </div>
+      <div className="space-y-4">{children}</div>
+    </div>
+  );
+}
 
 export default function NewDemand() {
   const [, navigate] = useLocation();
@@ -46,89 +58,69 @@ export default function NewDemand() {
   }
 
   return (
-    <div className="min-h-full px-6 lg:px-10 py-8 max-w-3xl mx-auto">
-      <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4">
-        <ChevronLeft size={14} /> Back to Dashboard
-      </Link>
-
-      <div className="glass-surface rounded-2xl p-8 bg-gradient-to-br from-indigo-50/60 to-blue-50/40 dark:from-indigo-950/30 dark:to-blue-950/20 border border-indigo-200/40 dark:border-indigo-800/30">
-        <div className="flex items-center gap-2 mb-1">
-          <Sparkles size={16} className="text-indigo-500" />
-          <span className="text-[10px] font-mono tracking-[0.22em] uppercase text-indigo-600 dark:text-indigo-400">
-            Stage 1 of 15 · FR-01
-          </span>
-        </div>
-        <h1 className="text-3xl font-bold tracking-tight text-card-foreground">New Demand</h1>
-        <p className="text-sm text-muted-foreground mt-2">
-          Start a new project at the very beginning of the governance lifecycle. You'll capture
-          the business case, scope, and budget on the next screen.
+    <div className="min-h-full px-6 lg:px-10 py-8 max-w-4xl mx-auto space-y-6">
+      <div>
+        <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3">
+          <ChevronLeft size={14} /> Back to Dashboard
+        </Link>
+        <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground">
+          Stage 1 of 16 · FR-01 · Demand Initiation
         </p>
+        <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-card-foreground mt-1">New Demand</h1>
+        <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
+          Start a new project at the very beginning of the governance lifecycle. You'll capture
+          the full business justification, scope, outcomes and CapEx/OpEx split on the next screen.
+        </p>
+      </div>
 
-        <div className="mt-5 flex items-start gap-2 rounded-md bg-indigo-100/50 dark:bg-indigo-900/30 px-3 py-2 text-[12px] text-indigo-900 dark:text-indigo-200">
-          <Lightbulb size={14} className="mt-0.5 shrink-0" />
-          <p>
-            <span className="font-semibold">Demand Initiation</span> is the first of 12 governance
-            stages. After this, the project flows through URS → RFP → Vendor Evaluation → Charter
-            → NFA → PR/PO → Kickoff → Design → Implementation → UAT → Go-Live → Closure.
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <SectionCard title="Demand Basics" subtitle="Give the demand a name and a one-line description.">
           <div>
-            <label className="text-sm font-medium text-card-foreground">
+            <label className="text-sm font-medium text-foreground">
               Project / Demand Name <span className="text-red-500">*</span>
             </label>
             <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              type="text" value={name} onChange={(e) => setName(e.target.value)}
               placeholder="e.g. SAP MM Module Upgrade"
               className="mt-1.5 w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
-              autoFocus
-              data-testid="input-demand-name"
+              autoFocus data-testid="input-demand-name"
             />
           </div>
-
           <div>
-            <label className="text-sm font-medium text-card-foreground">Short Description</label>
+            <label className="text-sm font-medium text-foreground">Short Description</label>
             <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="One-line summary of what this demand is about (you'll add the full business justification on the next screen)."
-              rows={3}
+              value={description} onChange={(e) => setDescription(e.target.value)}
+              placeholder="One-line summary of what this demand is about."
+              rows={2}
               className="mt-1.5 w-full px-3 py-2 rounded-md border border-input bg-background text-sm resize-none"
               data-testid="input-demand-description"
             />
           </div>
+        </SectionCard>
 
-          <div>
-            <label className="text-sm font-medium text-card-foreground">Initial Sponsor</label>
-            <input
-              type="text"
-              value={sponsor}
-              onChange={(e) => setSponsor(e.target.value)}
-              placeholder="Sponsor name or role (optional)"
-              className="mt-1.5 w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
-              data-testid="input-demand-sponsor"
-            />
-          </div>
+        <SectionCard title="Initial Sponsor" subtitle="Optional — full sponsor details can be added on the Project Case form.">
+          <input
+            type="text" value={sponsor} onChange={(e) => setSponsor(e.target.value)}
+            placeholder="Sponsor name or role"
+            className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
+            data-testid="input-demand-sponsor"
+          />
+        </SectionCard>
 
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <Link href="/" className="text-sm px-4 h-9 inline-flex items-center text-muted-foreground hover:text-foreground">
-              Cancel
-            </Link>
-            <button
-              type="submit"
-              disabled={submitting || !name.trim()}
-              className="btn-glossy-cta flex items-center gap-2 px-5 h-9 rounded-md text-[13px] font-semibold disabled:opacity-50"
-              data-testid="button-create-demand"
-            >
-              {submitting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-              <span>Create Demand & Open Project Case</span>
-            </button>
-          </div>
-        </form>
-      </div>
+        <div className="flex items-center justify-end gap-3">
+          <Link href="/" className="text-sm px-4 h-9 inline-flex items-center text-muted-foreground hover:text-foreground">
+            Cancel
+          </Link>
+          <button
+            type="submit" disabled={submitting || !name.trim()}
+            className="btn-glossy-cta flex items-center gap-2 px-5 h-9 rounded-md text-[13px] font-semibold disabled:opacity-50"
+            data-testid="button-create-demand"
+          >
+            {submitting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            <span>Create Demand & Open Project Case</span>
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

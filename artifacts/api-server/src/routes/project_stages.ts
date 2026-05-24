@@ -57,9 +57,15 @@ const STAGE_GATES: Record<string, StageGate> = {
     requiredDocNames: ["NFA Form", "Budget Breakdown"],
     advanceRoles: ["cfo", "chairman"],
   },
-  pr_po: {
+  legal: {
     prerequisites: ["nfa"],
-    blockingChecklistIds: ["nfa_approved_gate", "vendor_contract_uploaded", "pr_submitted", "po_released"],
+    blockingChecklistIds: ["contract_uploaded", "legal_reviewed", "compliance_confirmed", "legal_signoff"],
+    requiredDocNames: ["Vendor Contract", "Legal Review Note"],
+    advanceRoles: ["legal", "pmo"],
+  },
+  pr_po: {
+    prerequisites: ["legal"],
+    blockingChecklistIds: ["legal_approved_gate", "vendor_contract_uploaded", "pr_submitted", "po_released"],
     requiredDocNames: ["PR Form", "PO Document", "Vendor Contract"],
     advanceRoles: ["finance", "scm"],
   },
@@ -115,7 +121,7 @@ const STAGE_GATES: Record<string, StageGate> = {
 
 const ORDERED_STAGES = [
   "project_case", "urs", "rfp", "vendor_evaluation",
-  "charter", "nfa", "pr_po", "kickoff", "technical_design", "development",
+  "charter", "nfa", "legal", "pr_po", "kickoff", "technical_design", "development",
   "implementation_plan", "uat", "go_live", "closure_readiness", "project_closure",
 ];
 
