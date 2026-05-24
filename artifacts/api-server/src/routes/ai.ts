@@ -336,6 +336,55 @@ router.post("/ai/lessons-learned/search", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/ai/charters/draft-fields
+// Drafts charter long-form fields from a few basic inputs (title + function +
+// strategic themes + optional hint). Used by the charter-new wizard's
+// "AI Draft from Project Details" button to populate empty fields only.
+// ---------------------------------------------------------------------------
+router.post("/ai/charters/draft-fields", async (req, res): Promise<void> => {
+  const {
+    title,
+    function: fn,
+    strategicThemes,
+    hint,
+    tentativeBudget,
+  } = (req.body || {}) as {
+    title?: string;
+    function?: string;
+    strategicThemes?: string[];
+    hint?: string;
+    tentativeBudget?: number;
+  };
+  if (!title || title.trim().length < 3) {
+    res.status(400).json({ error: "title is required" });
+    return;
+  }
+  const themesStr = (strategicThemes ?? []).filter(Boolean).join(", ") || "(none specified)";
+  const result = await llm({
+    task: "charter_draft_fields",
+    system:
+      "You are an experienced PMO Business Analyst drafting the long-form sections of a project charter. Given only a project title, owning function, and strategic themes (and an optional hint), produce realistic, executive-grade first-draft content for each section. Be specific to the project as described — never write generic placeholder text. Where you state numbers, label them as illustrative ('e.g.', 'approx.'). Never invent stakeholders, vendors, or hard dates.",
+    prompt: `Project title: ${title}\nFunction / Department: ${fn || "(unspecified)"}\nStrategic themes: ${themesStr}\nTentative budget: ${tentativeBudget ? `USD ${tentativeBudget}` : "(unspecified)"}\nUser hint: ${hint || "(none)"}\n\nDraft each charter field in 80-180 words (shorter for summaries). Use professional, decision-grade language an executive steering committee would expect.`,
+    jsonSchema: z.object({
+      businessJustification: z.string().min(100),
+      scopeSummary: z.string().min(50),
+      expectedOutcomes: z.string().min(20),
+      scope: z.string().min(50),
+      deliverables: z.string().min(20),
+      solutionComparison: z.string().optional(),
+      toplineImprovement: z.string().optional(),
+      bottomLineOptimization: z.string().optional(),
+      complianceBenefits: z.string().optional(),
+      productivityImprovement: z.string().optional(),
+    }),
+    jsonSchemaHint: `{ "businessJustification":"...", "scopeSummary":"...", "expectedOutcomes":"...", "scope":"In-Scope: ...\\nOut-of-Scope: ...", "deliverables":"- ...\\n- ...", "solutionComparison":"...", "toplineImprovement":"...", "bottomLineOptimization":"...", "complianceBenefits":"...", "productivityImprovement":"..." }`,
+    maxTokens: 4000,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/ai/scope-improvement
 // ---------------------------------------------------------------------------
 router.post("/ai/scope-improvement", async (req, res): Promise<void> => {

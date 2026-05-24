@@ -71,19 +71,34 @@ function FieldRow({ children, cols = 2 }: { children: React.ReactNode; cols?: nu
   );
 }
 
-function AiImproveButton({ text, onResult }: { text: string; onResult: (v: string) => void }) {
+function AiImproveButton({
+  text,
+  onResult,
+  instruction = "expand and add concrete business justification detail",
+  audience = "Corporate steering committee",
+  minChars = 20,
+  label = "AI Rewrite",
+}: {
+  text: string;
+  onResult: (v: string) => void;
+  instruction?: string;
+  audience?: string;
+  minChars?: number;
+  label?: string;
+}) {
   const status = useAiStatus();
   const [loading, setLoading] = useState(false);
   if (status && !status.configured) return null;
+  const tooShort = (text?.length ?? 0) < minChars;
   return (
     <button
       type="button"
-      disabled={loading || (text?.length ?? 0) < 20}
-      title={(text?.length ?? 0) < 20 ? "Write at least 20 chars first, AI will polish it" : "Polish & expand using AI"}
+      disabled={loading || tooShort}
+      title={tooShort ? `Write at least ${minChars} chars first, AI will polish it` : "Polish & expand using AI"}
       onClick={async () => {
         setLoading(true);
         try {
-          const data = await api.post<{ rewritten?: string; improved?: string }>("/api/ai/improve-text", { text, instruction: "expand and add concrete business justification detail", audience: "Corporate steering committee" });
+          const data = await api.post<{ rewritten?: string; improved?: string }>("/api/ai/improve-text", { text, instruction, audience });
           const out = data?.rewritten ?? data?.improved;
           if (out) onResult(out);
         } catch (e) { console.warn(e); }
@@ -92,8 +107,95 @@ function AiImproveButton({ text, onResult }: { text: string; onResult: (v: strin
       className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 disabled:opacity-50"
     >
       {loading ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-      AI Improve
+      {label}
     </button>
+  );
+}
+
+type DraftResult = {
+  businessJustification?: string;
+  scopeSummary?: string;
+  expectedOutcomes?: string;
+  scope?: string;
+  deliverables?: string;
+  solutionComparison?: string;
+  toplineImprovement?: string;
+  bottomLineOptimization?: string;
+  complianceBenefits?: string;
+  productivityImprovement?: string;
+};
+
+function AiDraftFromBasicsButton({
+  title, fn, themes, tentativeBudget, currentValues, onDraft,
+}: {
+  title: string;
+  fn: string;
+  themes: string[];
+  tentativeBudget?: number;
+  currentValues: DraftResult;
+  onDraft: (filled: DraftResult, filledCount: number) => void;
+}) {
+  const status = useAiStatus();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (status && !status.configured) return null;
+
+  const titleOk = (title?.trim().length ?? 0) >= 3;
+  const fnOk = !!fn;
+  const themesOk = themes.length > 0;
+  const ready = titleOk && fnOk && themesOk;
+
+  const missingReasons: string[] = [];
+  if (!titleOk) missingReasons.push("project title");
+  if (!fnOk) missingReasons.push("function / department");
+  if (!themesOk) missingReasons.push("at least one strategic theme");
+
+  async function run() {
+    setLoading(true); setError(null);
+    try {
+      const data = await api.post<DraftResult>("/api/ai/charters/draft-fields", {
+        title, function: fn, strategicThemes: themes, tentativeBudget,
+      });
+      // Only fill fields the user has left empty — never overwrite existing input.
+      const filled: DraftResult = {};
+      let count = 0;
+      (Object.keys(data) as Array<keyof DraftResult>).forEach(k => {
+        const current = (currentValues[k] ?? "").toString().trim();
+        const incoming = (data[k] ?? "").toString().trim();
+        if (!current && incoming) { filled[k] = data[k]; count++; }
+      });
+      onDraft(filled, count);
+    } catch (e: unknown) {
+      const msg = (e as Error & { body?: { error?: string } })?.body?.error
+        ?? (e as Error)?.message
+        ?? "AI draft request failed";
+      setError(msg);
+    } finally { setLoading(false); }
+  }
+
+  return (
+    <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 flex items-start gap-3">
+      <Sparkles size={18} className="text-primary flex-shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-foreground">Draft long-form fields with AI</p>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Once you've filled the project title, function, and a strategic theme, AI will draft your business justification, scope summary, expected outcomes, and other long fields. Your existing text won't be overwritten — only empty fields are filled.
+        </p>
+        {error && <p className="text-xs text-destructive mt-1">{error}</p>}
+        {!ready && (
+          <p className="text-xs text-warn mt-1">Add {missingReasons.join(", ")} first.</p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={run}
+        disabled={!ready || loading}
+        className="flex items-center gap-1.5 px-3 py-2 rounded-md text-xs font-semibold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+      >
+        {loading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+        {loading ? "Drafting…" : "AI Draft"}
+      </button>
+    </div>
   );
 }
 
@@ -295,6 +397,51 @@ export default function NewCharter() {
           {/* Step 0: Project Case */}
           {step === 0 && (
             <div className="space-y-4">
+              <AiDraftFromBasicsButton
+                title={form.watch("title") ?? ""}
+                fn={form.watch("function") ?? ""}
+                themes={watchedStrategicThemes}
+                tentativeBudget={form.watch("tentativeBudget") as number | undefined}
+                currentValues={{
+                  businessJustification: form.watch("businessJustification"),
+                  scopeSummary: form.watch("scopeSummary"),
+                  expectedOutcomes: form.watch("expectedOutcomes"),
+                  scope: form.watch("scope"),
+                  deliverables: form.watch("deliverables"),
+                  solutionComparison: form.watch("solutionComparison"),
+                  toplineImprovement: form.watch("toplineImprovement"),
+                  bottomLineOptimization: form.watch("bottomLineOptimization"),
+                  complianceBenefits: form.watch("complianceBenefits"),
+                  productivityImprovement: form.watch("productivityImprovement"),
+                }}
+                onDraft={(filled) => {
+                  // Re-check live form state at apply-time to avoid overwriting
+                  // anything the user typed while the AI request was in flight.
+                  let appliedCount = 0;
+                  let skippedCount = 0;
+                  (Object.keys(filled) as Array<keyof DraftResult>).forEach(k => {
+                    const v = filled[k];
+                    if (!v) return;
+                    const liveValue = (form.getValues(k as keyof FormValues) ?? "").toString().trim();
+                    if (liveValue) { skippedCount++; return; }
+                    form.setValue(k as keyof FormValues, v, { shouldDirty: true, shouldValidate: true });
+                    appliedCount++;
+                  });
+                  if (appliedCount > 0) {
+                    toast({
+                      title: `AI filled ${appliedCount} empty field${appliedCount > 1 ? "s" : ""}`,
+                      description: skippedCount > 0
+                        ? `Skipped ${skippedCount} field${skippedCount > 1 ? "s" : ""} you'd already started typing in. Review each section before submitting.`
+                        : "Review and edit each section before submitting.",
+                    });
+                  } else {
+                    toast({
+                      title: "Nothing changed — all fields already had content",
+                      description: "Use the AI Rewrite button on any field to refine it.",
+                    });
+                  }
+                }}
+              />
               <SectionCard title="Project Case Information" subtitle="Core identification and strategic alignment">
                 <FormField
                   control={form.control}
@@ -337,7 +484,15 @@ export default function NewCharter() {
                     <FormItem>
                       <div className="flex items-center justify-between">
                         <FormLabel className="text-sm font-medium text-foreground">Scope Summary</FormLabel>
-                        <CharCount value={watchedScopeSummary} min={50} />
+                        <div className="flex items-center gap-3">
+                          <AiImproveButton
+                            text={field.value ?? ""}
+                            onResult={(v) => field.onChange(v)}
+                            instruction="Tighten into a clear 2-3 sentence scope summary. Mention what is in scope and what is explicitly excluded at a high level."
+                            minChars={20}
+                          />
+                          <CharCount value={watchedScopeSummary} min={50} />
+                        </div>
                       </div>
                       <FormControl>
                         <Textarea {...field} rows={2} placeholder="Briefly summarize what is in scope and what is explicitly excluded..." />
@@ -352,7 +507,15 @@ export default function NewCharter() {
                   name="expectedOutcomes"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-foreground">Expected Outcomes</FormLabel>
+                      <div className="flex items-center justify-between">
+                        <FormLabel className="text-sm font-medium text-foreground">Expected Outcomes</FormLabel>
+                        <AiImproveButton
+                          text={field.value ?? ""}
+                          onResult={(v) => field.onChange(v)}
+                          instruction="Rewrite as 3-5 concrete, measurable outcomes. Each should have a metric or clear acceptance signal (e.g. cycle time reduced from X to Y)."
+                          minChars={15}
+                        />
+                      </div>
                       <FormControl>
                         <Textarea {...field} rows={2} placeholder="What measurable outcomes will be achieved upon project completion?" />
                       </FormControl>
@@ -434,7 +597,15 @@ export default function NewCharter() {
                   name="scope"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-foreground">Detailed Scope Statement</FormLabel>
+                      <div className="flex items-center justify-between">
+                        <FormLabel className="text-sm font-medium text-foreground">Detailed Scope Statement</FormLabel>
+                        <AiImproveButton
+                          text={field.value ?? ""}
+                          onResult={(v) => field.onChange(v)}
+                          instruction="Restructure into clear In-Scope, Out-of-Scope, Assumptions, and Constraints sections with concise bullet points. Preserve all facts from the original."
+                          minChars={30}
+                        />
+                      </div>
                       <FormControl>
                         <Textarea {...field} rows={5} placeholder="Clearly define the full boundaries and detailed scope of this project, including what is in scope and what is explicitly excluded..." />
                       </FormControl>
@@ -449,7 +620,15 @@ export default function NewCharter() {
                   name="deliverables"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-foreground">Key Deliverables</FormLabel>
+                      <div className="flex items-center justify-between">
+                        <FormLabel className="text-sm font-medium text-foreground">Key Deliverables</FormLabel>
+                        <AiImproveButton
+                          text={field.value ?? ""}
+                          onResult={(v) => field.onChange(v)}
+                          instruction="Rewrite as a clean bulleted list of concrete deliverables. Each item should start with a noun and have a single clear definition of done."
+                          minChars={20}
+                        />
+                      </div>
                       <FormControl>
                         <Textarea {...field} rows={4} placeholder="List the tangible outcomes, reports, systems or products..." />
                       </FormControl>
@@ -462,7 +641,15 @@ export default function NewCharter() {
                   name="solutionComparison"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm font-medium text-foreground">Solution / Vendor Comparison</FormLabel>
+                      <div className="flex items-center justify-between">
+                        <FormLabel className="text-sm font-medium text-foreground">Solution / Vendor Comparison</FormLabel>
+                        <AiImproveButton
+                          text={field.value ?? ""}
+                          onResult={(v) => field.onChange(v)}
+                          instruction="Structure as a comparison of 2-3 alternative approaches with pros, cons, and rough cost/effort indication. Mark the recommended option."
+                          minChars={20}
+                        />
+                      </div>
                       <FormControl>
                         <Textarea {...field} rows={3} placeholder="Compare alternative approaches or vendor solutions considered..." />
                       </FormControl>
@@ -485,6 +672,14 @@ export default function NewCharter() {
               <BenefitCard label="Topline Improvement" description="Revenue growth, new market opportunities, sales uplift" accent="success" icon={<TrendingUp size={16} />}>
                 <FormField control={form.control} name="toplineImprovement" render={({ field }) => (
                   <FormItem>
+                    <div className="flex justify-end mb-1">
+                      <AiImproveButton
+                        text={field.value ?? ""}
+                        onResult={(v) => field.onChange(v)}
+                        instruction="Quantify expected revenue impact where possible (e.g. % uplift, addressable market, conversion). Mark any numbers as illustrative."
+                        minChars={15}
+                      />
+                    </div>
                     <FormControl>
                       <Textarea {...field} rows={3} placeholder="e.g. Expected 15% revenue increase through new digital channels..." />
                     </FormControl>
@@ -495,6 +690,14 @@ export default function NewCharter() {
               <BenefitCard label="Bottom Line Optimization" description="Cost reduction, efficiency gains, operational savings" accent="primary" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>}>
                 <FormField control={form.control} name="bottomLineOptimization" render={({ field }) => (
                   <FormItem>
+                    <div className="flex justify-end mb-1">
+                      <AiImproveButton
+                        text={field.value ?? ""}
+                        onResult={(v) => field.onChange(v)}
+                        instruction="Quantify cost savings and efficiency gains (e.g. % cost reduction, FTE hours saved, vendor consolidation). Mark numbers as illustrative."
+                        minChars={15}
+                      />
+                    </div>
                     <FormControl>
                       <Textarea {...field} rows={3} placeholder="e.g. Reduce operational costs by 20% through automation..." />
                     </FormControl>
@@ -505,6 +708,14 @@ export default function NewCharter() {
               <BenefitCard label="Compliance Benefits" description="Regulatory adherence, risk reduction, audit readiness" accent="warn" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>}>
                 <FormField control={form.control} name="complianceBenefits" render={({ field }) => (
                   <FormItem>
+                    <div className="flex justify-end mb-1">
+                      <AiImproveButton
+                        text={field.value ?? ""}
+                        onResult={(v) => field.onChange(v)}
+                        instruction="Name specific compliance frameworks and regulations addressed (e.g. ISO 27001, GDPR, SOX). Describe audit-readiness improvements concretely."
+                        minChars={15}
+                      />
+                    </div>
                     <FormControl>
                       <Textarea {...field} rows={3} placeholder="e.g. Achieve ISO 27001 certification, reduce regulatory penalty risk..." />
                     </FormControl>
@@ -515,6 +726,14 @@ export default function NewCharter() {
               <BenefitCard label="Productivity Improvement" description="Time savings, faster processes, better employee experience" accent="accent" icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>}>
                 <FormField control={form.control} name="productivityImprovement" render={({ field }) => (
                   <FormItem>
+                    <div className="flex justify-end mb-1">
+                      <AiImproveButton
+                        text={field.value ?? ""}
+                        onResult={(v) => field.onChange(v)}
+                        instruction="Quantify time savings, faster cycle times, or FTE impact. Show before vs after where possible. Mark numbers as illustrative."
+                        minChars={15}
+                      />
+                    </div>
                     <FormControl>
                       <Textarea {...field} rows={3} placeholder="e.g. Reduce report generation time from 3 days to 2 hours..." />
                     </FormControl>
