@@ -22,6 +22,11 @@ import { KickoffAttendeesSection } from "./stage-sections/KickoffAttendees";
 import { VendorEvalScorecard } from "./stage-sections/VendorEvalScorecard";
 import { ClosureReadinessSection } from "./stage-sections/ClosureReadinessSection";
 import { DocumentUploadRow } from "./stage-sections/DocumentUploadRow";
+import { DemandInitiationSection } from "./stage-sections/DemandInitiationSection";
+import { NFASection } from "./stage-sections/NFASection";
+import { PRPOSection } from "./stage-sections/PRPOSection";
+import { TechnicalDesignSection } from "./stage-sections/TechnicalDesignSection";
+import { ImplementationPlanSection } from "./stage-sections/ImplementationPlanSection";
 
 interface StagePanelProps {
   projectId: number;
@@ -305,10 +310,15 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
             )}
 
             {/* Stage-specific workflow sections */}
+            {stageHas(stageConfig, "hasDemandInitiation") && <DemandInitiationSection projectId={projectId} />}
             {stageHas(stageConfig, "hasURSDualApproval") && <URSDualApprovalSection projectId={projectId} />}
             {stageHas(stageConfig, "hasRFPTemplate") && <RFPTemplateSection projectId={projectId} />}
             {stageHas(stageConfig, "hasVendorEvalScorecard") && <VendorEvalScorecard projectId={projectId} />}
+            {stageHas(stageConfig, "hasNFA") && <NFASection projectId={projectId} />}
+            {stageHas(stageConfig, "hasPRPO") && <PRPOSection projectId={projectId} />}
             {stageHas(stageConfig, "hasKickoffAttendees") && <KickoffAttendeesSection projectId={projectId} />}
+            {stageHas(stageConfig, "hasTechnicalDesign") && <TechnicalDesignSection projectId={projectId} />}
+            {stageHas(stageConfig, "hasImplementationPlan") && <ImplementationPlanSection projectId={projectId} />}
             {stageHas(stageConfig, "hasUATDefects") && <UATDefectSection projectId={projectId} />}
             {stageHas(stageConfig, "hasGoLiveCountdown") && <GoLiveCountdown projectId={projectId} />}
             {stageHas(stageConfig, "hasClosureReadinessSection") && <ClosureReadinessSection projectId={projectId} />}

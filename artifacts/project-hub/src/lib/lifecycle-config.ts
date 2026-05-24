@@ -19,6 +19,7 @@ export const LIFECYCLE_STAGES = [
     prerequisites: [] as string[],
     advanceRoles: ["initiator", "pmo"],
     advanceLabel: "Submit Project Case",
+    stageSpecific: { hasDemandInitiation: true },
   },
   {
     key: "urs",
@@ -136,6 +137,7 @@ export const LIFECYCLE_STAGES = [
     prerequisites: ["charter"],
     advanceRoles: ["cfo", "chairman"],
     advanceLabel: "Complete NFA Approval & Advance to PR/PO",
+    stageSpecific: { hasNFA: true },
   },
   {
     key: "pr_po",
@@ -158,6 +160,7 @@ export const LIFECYCLE_STAGES = [
     prerequisites: ["nfa"],
     advanceRoles: ["finance", "scm"],
     advanceLabel: "Release PO & Advance to Kickoff",
+    stageSpecific: { hasPRPO: true },
   },
   {
     key: "kickoff",
@@ -203,6 +206,7 @@ export const LIFECYCLE_STAGES = [
     prerequisites: ["kickoff"],
     advanceRoles: ["pm", "pmo", "hod"],
     advanceLabel: "Approve Technical Design — Start Development",
+    stageSpecific: { hasTechnicalDesign: true },
   },
   {
     key: "development",
@@ -245,6 +249,7 @@ export const LIFECYCLE_STAGES = [
     prerequisites: ["development"],
     advanceRoles: ["pm", "pmo"],
     advanceLabel: "Implementation Plan Approved — Advance to UAT",
+    stageSpecific: { hasImplementationPlan: true },
   },
   {
     key: "uat",

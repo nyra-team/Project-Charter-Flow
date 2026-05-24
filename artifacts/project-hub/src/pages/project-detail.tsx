@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { useRoute, Link } from "wouter";
+import { useRoute, Link, useSearch } from "wouter";
 import {
   useGetProject, useListMilestones, useListTasks,
   useGetBurndown, useGetCriticalPath, useListProjectStages, useListUsers,
@@ -359,6 +359,18 @@ export default function ProjectDetail() {
   const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
   const [gridSubTab, setGridSubTab] = useState<"tasks" | "milestones">("tasks");
   const [selectedStageKey, setSelectedStageKey] = useState<string | undefined>(undefined);
+
+  // Sync activeTab / gridSubTab from ?tab= query string so stage-section deep-links work.
+  const search = useSearch();
+  useEffect(() => {
+    const params = new URLSearchParams(search);
+    const tab = params.get("tab");
+    if (!tab) return;
+    if (tab === "milestones") { setActiveTab("grid"); setGridSubTab("milestones"); return; }
+    if (tab === "tasks") { setActiveTab("grid"); setGridSubTab("tasks"); return; }
+    const allowed = ["lifecycle","grid","gantt","board","resources","budget","documents","risks","issues","raci","escalation","messages","audit","analytics","scoring","meetings","changes","benefits"] as const;
+    if ((allowed as readonly string[]).includes(tab)) setActiveTab(tab as typeof allowed[number]);
+  }, [search]);
   const [nfaDismissed, setNfaDismissed] = useState(false);
   const [selectedBoardTaskId, setSelectedBoardTaskId] = useState<number | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
