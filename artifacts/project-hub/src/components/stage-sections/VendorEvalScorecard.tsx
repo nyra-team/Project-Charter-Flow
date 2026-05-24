@@ -2,6 +2,13 @@ import { useState, useEffect } from "react";
 import { useListProjectStages, useUpdateProjectStage } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2 } from "lucide-react";
+import { AiButton } from "../ai-button";
+
+type AiScoreResult = {
+ functional: number; technical: number; commercial: number; track_record: number;
+ rationale: { functional: string; technical: string; commercial: string; track_record: string };
+ overallNote: string;
+};
 
 interface Criterion {
  id: string;
@@ -44,6 +51,8 @@ export function VendorEvalScorecard({ projectId }: { projectId: number }) {
 
  const [vendorName, setVendorName] = useState(savedVendor);
  const [scores, setScores] = useState<ScoreMap>(savedScores);
+ const [vendorNotes, setVendorNotes] = useState("");
+ const [aiResult, setAiResult] = useState<AiScoreResult | null>(null);
 
  useEffect(() => {
  if (evalRecord?.notes) {
@@ -110,6 +119,42 @@ export function VendorEvalScorecard({ projectId }: { projectId: number }) {
  className="w-full text-sm border border-border rounded-lg px-3 py-1.5 bg-card outline-none focus:ring-1 focus:ring-warn"
  />
  </div>
+
+ <div>
+ <div className="flex items-center justify-between mb-1">
+ <label className="text-xs font-semibold text-foreground">Proposal Notes (optional, for AI scoring)</label>
+ <AiButton
+ label="AI Score Vendor"
+ endpoint="/api/ai/vendors/score"
+ payload={{ projectId, vendorName, vendorNotes }}
+ size="sm"
+ variant="subtle"
+ onResult={(d) => {
+ const r = d as AiScoreResult;
+ setAiResult(r);
+ setScores({ functional: r.functional, technical: r.technical, commercial: r.commercial, track_record: r.track_record });
+ toast({ title: "AI scores applied — review and save" });
+ }}
+ />
+ </div>
+ <textarea
+ value={vendorNotes} onChange={(e) => setVendorNotes(e.target.value)}
+ rows={2} placeholder="Key proposal highlights, pricing, references known so far…"
+ className="w-full text-xs border border-border rounded-lg px-2 py-1.5 bg-card outline-none focus:ring-1 focus:ring-warn"
+ disabled={!vendorName.trim()}
+ />
+ </div>
+
+ {aiResult && (
+ <div className="rounded-lg p-3 bg-card border border-border space-y-1 text-xs">
+ <p className="font-semibold text-foreground">AI rationale</p>
+ <p><span className="text-muted-foreground">Functional:</span> {aiResult.rationale.functional}</p>
+ <p><span className="text-muted-foreground">Technical:</span> {aiResult.rationale.technical}</p>
+ <p><span className="text-muted-foreground">Commercial:</span> {aiResult.rationale.commercial}</p>
+ <p><span className="text-muted-foreground">Track record:</span> {aiResult.rationale.track_record}</p>
+ <p className="pt-1 border-t border-border text-foreground"><strong>Overall:</strong> {aiResult.overallNote}</p>
+ </div>
+ )}
 
  <div className="space-y-3">
  {CRITERIA.map((c) => (

@@ -9,6 +9,9 @@ import {
 import { useUserStore } from "../../lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { AiButton } from "../ai-button";
+
+type AiSections = { introduction?: string; scopeOfWork?: string; proposalRequirements?: string; evaluationCriteria?: string; termsAndConditions?: string };
 
 export function RFPTemplateSection({ projectId }: { projectId: number }) {
  const createDocument = useCreateDocument();
@@ -19,6 +22,7 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  const { data: stages = [] } = useListProjectStages(projectId);
  const { data: project } = useGetProject(projectId);
  const [generated, setGenerated] = useState(false);
+ const [aiSections, setAiSections] = useState<AiSections | null>(null);
 
  const rfpRecord = (
  stages as Array<{ id: number; stage: string; notes?: string | null }>
@@ -101,13 +105,13 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
 
  addSection(
  "1. Introduction & Background",
- `This Request for Proposal is issued for the project "${projectTitle}". Vendors are invited to submit proposals for the provision of goods and services as detailed herein. This RFP has been derived from the approved User Requirements Specification (URS), signed off by ${ursApprovalLine}.`,
+ aiSections?.introduction ?? `This Request for Proposal is issued for the project "${projectTitle}". Vendors are invited to submit proposals for the provision of goods and services as detailed herein. This RFP has been derived from the approved User Requirements Specification (URS), signed off by ${ursApprovalLine}.`,
  );
  addSection(
  "2. Scope of Work",
- ursScope
+ aiSections?.scopeOfWork ?? (ursScope
  ? `The following scope is derived from the approved URS:\n\n${ursScope}`
- : `Vendor must address all functional and technical requirements documented in the attached URS. The scope covers end-to-end delivery including design, implementation, testing, training and go-live support.`,
+ : `Vendor must address all functional and technical requirements documented in the attached URS. The scope covers end-to-end delivery including design, implementation, testing, training and go-live support.`),
  );
  addSection(
  "3. Functional Requirements (from URS)",
@@ -117,11 +121,11 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  );
  addSection(
  "4. Proposal Requirements",
- "Proposals must include: (a) Executive Summary, (b) Technical Approach and Solution Architecture, (c) Implementation Timeline with milestones, (d) Itemised Pricing — CapEx and OpEx breakdown, (e) Support, Maintenance and Warranty terms, (f) References from at least two comparable projects.",
+ aiSections?.proposalRequirements ?? "Proposals must include: (a) Executive Summary, (b) Technical Approach and Solution Architecture, (c) Implementation Timeline with milestones, (d) Itemised Pricing — CapEx and OpEx breakdown, (e) Support, Maintenance and Warranty terms, (f) References from at least two comparable projects.",
  );
  addSection(
  "5. Evaluation Criteria",
- "Proposals will be scored on: Functional fit to URS (40%), Technical architecture (20%), Commercial competitiveness (25%), Vendor track record and references (15%). Minimum qualifying score: 60%.",
+ aiSections?.evaluationCriteria ?? "Proposals will be scored on: Functional fit to URS (40%), Technical architecture (20%), Commercial competitiveness (25%), Vendor track record and references (15%). Minimum qualifying score: 60%.",
  );
  addSection(
  "6. Submission Deadline",
@@ -129,7 +133,7 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  );
  addSection(
  "7. Terms & Conditions",
- "This RFP does not constitute a commitment to award a contract. The issuing organisation reserves the right to accept or reject any proposal in whole or in part. All proposal materials become property of the issuer upon submission.",
+ aiSections?.termsAndConditions ?? "This RFP does not constitute a commitment to award a contract. The issuing organisation reserves the right to accept or reject any proposal in whole or in part. All proposal materials become property of the issuer upon submission.",
  );
 
  doc.setFontSize(8);
@@ -198,12 +202,30 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  <div
  className="rounded-2xl p-4 space-y-3"
  >
+ <div className="flex items-center justify-between">
  <p className="text-sm font-bold text-foreground">RFP Template Generator</p>
+ <AiButton
+ label={aiSections ? "Refine with AI" : "AI Draft Sections"}
+ endpoint="/api/ai/rfp/draft-sections"
+ payload={{ projectId }}
+ size="sm"
+ variant="subtle"
+ onResult={(d) => {
+ setAiSections(d as AiSections);
+ toast({ title: "AI sections drafted — next generate will use them" });
+ }}
+ />
+ </div>
  <p className="text-xs text-primary">
  Auto-generates a structured RFP PDF pre-populated from the approved URS — including project
  title, scope, requirements, approvers, and evaluation criteria. Appears in the Documents tab
  for SCM distribution.
  </p>
+ {aiSections && (
+ <div className="rounded-lg p-2.5 text-xs bg-success/10 border border-success/30 text-success">
+ ✓ AI-drafted RFP sections ready — they will be used when you generate the PDF.
+ </div>
+ )}
 
  {alreadyGenerated || generated ? (
  <div className="space-y-2">

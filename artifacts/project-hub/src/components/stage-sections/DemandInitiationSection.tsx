@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useListProjectStages, useUpdateProjectStage } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, AlertCircle } from "lucide-react";
+import { AiButton } from "../ai-button";
 
 type DemandPayload = {
  businessJustification?: string;
@@ -82,11 +83,28 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
  <p className="text-sm font-bold text-foreground">Project Case Form</p>
  <p className="text-[11px] text-primary">FR-01 · captures business justification, scope, outcomes and preliminary budget</p>
  </div>
+ <div className="flex items-center gap-2">
+ <AiButton
+ label="AI Draft"
+ endpoint="/api/ai/demand/draft"
+ payload={{ projectId, hint: bj || scope || outcomes || undefined }}
+ size="sm"
+ variant="subtle"
+ onResult={(d) => {
+ const r = d as { businessJustification?: string; scopeSummary?: string; expectedOutcomes?: string; sponsor?: string };
+ if (r.businessJustification) setBj(r.businessJustification);
+ if (r.scopeSummary) setScope(r.scopeSummary);
+ if (r.expectedOutcomes) setOutcomes(r.expectedOutcomes);
+ if (r.sponsor && !sponsor) setSponsor(r.sponsor);
+ toast({ title: "AI draft applied — review and save" });
+ }}
+ />
  {saved.savedAt && (
  <span className="text-[10px] font-mono text-primary bg-primary/10 rounded-full px-2 py-0.5">
  Saved {new Date(saved.savedAt).toLocaleDateString()}
  </span>
  )}
+ </div>
  </div>
 
  <div>

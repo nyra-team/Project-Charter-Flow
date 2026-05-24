@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { useListProjectStages, useUpdateProjectStage } from "@workspace/api-client-react";
 import { useUserStore } from "../../lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { formatDate } from "../../lib/format";
+import { AiButton } from "../ai-button";
 
 export function URSDualApprovalSection({ projectId }: { projectId: number }) {
  const { data: stages = [] } = useListProjectStages(projectId);
@@ -17,6 +19,20 @@ export function URSDualApprovalSection({ projectId }: { projectId: number }) {
  try { return JSON.parse(ursRecord?.notes ?? "{}"); }
  catch { return {}; }
  })();
+
+ const savedScope = (parsedNotes.__urs_scope as string | undefined) ?? "";
+ const savedReqs = (parsedNotes.__urs_requirements as string | undefined) ?? "";
+ const [scopeText, setScopeText] = useState(savedScope);
+ const [reqsText, setReqsText] = useState(savedReqs);
+ useEffect(() => { setScopeText(savedScope); setReqsText(savedReqs); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [ursRecord?.id]);
+ const contentDirty = scopeText !== savedScope || reqsText !== savedReqs;
+ function saveContent() {
+ if (!ursRecord?.id) { toast({ title: "Initialise the URS stage first", variant: "destructive" }); return; }
+ updateStage.mutate(
+ { id: ursRecord.id, data: { notes: JSON.stringify({ ...parsedNotes, __urs_scope: scopeText, __urs_requirements: reqsText }) } },
+ { onSuccess: () => toast({ title: "URS content saved" }), onError: () => toast({ title: "Failed to save URS content", variant: "destructive" }) },
+ );
+ }
 
  const bizApproved = !!(parsedNotes.__urs_biz_approved);
  const itApproved = !!(parsedNotes.__urs_it_approved);
@@ -64,7 +80,47 @@ export function URSDualApprovalSection({ projectId }: { projectId: number }) {
  <div
  className="rounded-2xl p-4 space-y-3"
  >
- <p className="text-sm font-bold text-foreground">URS Dual-Approval Required</p>
+ <div className="flex items-center justify-between">
+ <p className="text-sm font-bold text-foreground">URS Content</p>
+ <div className="flex items-center gap-2">
+ <AiButton
+ label="AI Draft URS"
+ endpoint="/api/ai/urs/draft"
+ payload={{ projectId, hint: scopeText || reqsText || undefined }}
+ size="sm"
+ variant="subtle"
+ onResult={(d) => {
+ const r = d as { scope?: string; requirements?: string };
+ if (r.scope) setScopeText(r.scope);
+ if (r.requirements) setReqsText(r.requirements);
+ toast({ title: "AI draft applied — review and save" });
+ }}
+ />
+ <button
+ onClick={saveContent}
+ disabled={!contentDirty || updateStage.isPending}
+ className="bg-primary hover:bg-primary/90 text-[10px] font-semibold text-primary-foreground px-2 py-1 rounded disabled:opacity-40"
+ >Save Content</button>
+ </div>
+ </div>
+ <div>
+ <label className="text-[11px] font-semibold text-foreground block mb-1">URS Scope</label>
+ <textarea
+ value={scopeText} onChange={(e) => setScopeText(e.target.value)}
+ rows={3} placeholder="End-to-end scope — what users need the solution to do"
+ className="w-full text-xs border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary bg-card"
+ />
+ </div>
+ <div>
+ <label className="text-[11px] font-semibold text-foreground block mb-1">URS Requirements</label>
+ <textarea
+ value={reqsText} onChange={(e) => setReqsText(e.target.value)}
+ rows={6} placeholder="Numbered functional / non-functional / integration / security requirements"
+ className="w-full text-xs border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary bg-card font-mono"
+ />
+ </div>
+
+ <p className="text-sm font-bold text-foreground pt-2 border-t border-border">URS Dual-Approval Required</p>
  <p className="text-xs text-primary">
  Both Business Owner and IT Team must approve before advancing to RFP.
  </p>

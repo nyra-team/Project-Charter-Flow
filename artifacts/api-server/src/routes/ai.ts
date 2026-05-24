@@ -4,6 +4,7 @@ import {
   db,
   chartersTable,
   projectsTable,
+  projectStagesTable,
   budgetLinesTable,
   risksTable,
   issuesTable,
@@ -406,6 +407,194 @@ router.post("/ai/scope-improvement", async (req, res): Promise<void> => {
     }),
     jsonSchemaHint: `{ "inScope":[...], "outOfScope":[...], "assumptions":[...], "constraints":[...], "deliverables":[...], "ambiguities":[...], "rewritten":"single-paragraph cleaned version" }`,
     maxTokens: 3000,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// Early-stage helpers — load project + selected stage notes for AI context.
+// ---------------------------------------------------------------------------
+async function loadProjectContext(projectId: number) {
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
+  if (!project) return null;
+  const stages = await db.select().from(projectStagesTable).where(eq(projectStagesTable.projectId, projectId));
+  const [charter] = await db.select().from(chartersTable).where(eq(chartersTable.projectId, projectId));
+  const stageNotes: Record<string, Record<string, unknown>> = {};
+  for (const s of stages) {
+    try { stageNotes[s.stage] = JSON.parse(s.notes ?? "{}"); } catch { stageNotes[s.stage] = {}; }
+  }
+  return { project, stages, charter, stageNotes };
+}
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/demand/draft
+// ---------------------------------------------------------------------------
+router.post("/ai/demand/draft", async (req, res): Promise<void> => {
+  const { projectId, hint } = (req.body || {}) as { projectId?: number; hint?: string };
+  if (!projectId) { res.status(400).json({ error: "projectId is required" }); return; }
+  const ctx = await loadProjectContext(projectId);
+  if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
+  const { project, charter } = ctx;
+  const result = await llm({
+    task: "demand_draft",
+    system:
+      "You are a senior PMO Business Analyst drafting the Project Case (Demand Initiation) for a new enterprise project at Granules India, an Indian pharmaceuticals manufacturer. Produce realistic, executive-grade first-draft content for each field. Be specific to the project as described. Where numbers appear, mark them illustrative ('e.g.', 'approx.'). Never invent stakeholders, vendors, or hard dates.",
+    prompt: `Project: ${project.name}\nDescription: ${project.description ?? "(none)"}\nFunction: ${(project as { function?: string }).function ?? "(unspecified)"}\nCharter title: ${charter?.title ?? "(no charter yet)"}\nCharter description: ${charter?.description ?? ""}\nUser hint: ${hint ?? "(none)"}\n\nDraft each field below in 80-180 words, in professional decision-grade tone.`,
+    jsonSchema: z.object({
+      businessJustification: z.string().min(100),
+      scopeSummary: z.string().min(50),
+      expectedOutcomes: z.string().min(20),
+      sponsor: z.string().optional(),
+    }),
+    jsonSchemaHint: `{ "businessJustification":"...", "scopeSummary":"In-Scope: ...\\nOut-of-Scope: ...", "expectedOutcomes":"- KPI ...\\n- Savings ...", "sponsor":"role / function" }`,
+    maxTokens: 3000,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/urs/draft
+// ---------------------------------------------------------------------------
+router.post("/ai/urs/draft", async (req, res): Promise<void> => {
+  const { projectId, hint } = (req.body || {}) as { projectId?: number; hint?: string };
+  if (!projectId) { res.status(400).json({ error: "projectId is required" }); return; }
+  const ctx = await loadProjectContext(projectId);
+  if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
+  const { project, charter, stageNotes } = ctx;
+  const demand = (stageNotes.project_case?.__demand_initiation ?? {}) as Record<string, unknown>;
+  const result = await llm({
+    task: "urs_draft",
+    system:
+      "You are a senior PMO Business Analyst drafting a User Requirements Specification (URS). Convert business intent into a clear scope and a numbered list of testable functional and non-functional requirements. Be specific. Each requirement must be implementable and verifiable. Avoid vague verbs like 'support' alone — pair with measurable criteria.",
+    prompt: `Project: ${project.name}\nDescription: ${project.description ?? ""}\nCharter scope: ${charter?.scope ?? ""}\nCharter deliverables: ${charter?.deliverables ?? ""}\nDemand business justification: ${demand.businessJustification ?? ""}\nDemand scope summary: ${demand.scopeSummary ?? ""}\nDemand expected outcomes: ${demand.expectedOutcomes ?? ""}\nUser hint: ${hint ?? "(none)"}\n\nProduce a URS scope paragraph (120-200 words) AND 10-15 numbered requirements grouped by Functional / Non-Functional / Integration / Security.`,
+    jsonSchema: z.object({
+      scope: z.string().min(100),
+      requirements: z.string().min(100),
+    }),
+    jsonSchemaHint: `{ "scope":"end-to-end paragraph", "requirements":"FUNCTIONAL\\n1. ...\\n2. ...\\n\\nNON-FUNCTIONAL\\n6. ...\\n\\nINTEGRATION\\n...\\n\\nSECURITY\\n..." }`,
+    maxTokens: 3500,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/rfp/draft-sections
+// ---------------------------------------------------------------------------
+router.post("/ai/rfp/draft-sections", async (req, res): Promise<void> => {
+  const { projectId } = (req.body || {}) as { projectId?: number };
+  if (!projectId) { res.status(400).json({ error: "projectId is required" }); return; }
+  const ctx = await loadProjectContext(projectId);
+  if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
+  const { project, charter, stageNotes } = ctx;
+  const urs = stageNotes.urs ?? {};
+  const demand = (stageNotes.project_case?.__demand_initiation ?? {}) as Record<string, unknown>;
+  const result = await llm({
+    task: "rfp_draft_sections",
+    system:
+      "You are a procurement specialist drafting an RFP (Request for Proposal) for an Indian pharmaceuticals company. Produce sharp, vendor-actionable sections. Avoid boilerplate; tie every paragraph back to the specific project context provided.",
+    prompt: `Project: ${project.name}\nFunction: ${(project as { function?: string }).function ?? ""}\nCharter scope: ${charter?.scope ?? ""}\nURS scope: ${(urs as { __urs_scope?: string }).__urs_scope ?? ""}\nURS requirements: ${(urs as { __urs_requirements?: string }).__urs_requirements ?? ""}\nDemand outcomes: ${demand.expectedOutcomes ?? ""}\n\nDraft the RFP narrative sections below in professional procurement tone.`,
+    jsonSchema: z.object({
+      introduction: z.string().min(80),
+      scopeOfWork: z.string().min(80),
+      proposalRequirements: z.string().min(80),
+      evaluationCriteria: z.string().min(80),
+      termsAndConditions: z.string().min(80),
+    }),
+    jsonSchemaHint: `{ "introduction":"...", "scopeOfWork":"...", "proposalRequirements":"(a) ... (b) ... (c) ...", "evaluationCriteria":"Functional fit (40%) ...", "termsAndConditions":"..." }`,
+    maxTokens: 3500,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/vendors/score
+// ---------------------------------------------------------------------------
+router.post("/ai/vendors/score", async (req, res): Promise<void> => {
+  const { projectId, vendorName, vendorNotes } = (req.body || {}) as { projectId?: number; vendorName?: string; vendorNotes?: string };
+  if (!projectId || !vendorName) { res.status(400).json({ error: "projectId and vendorName are required" }); return; }
+  const ctx = await loadProjectContext(projectId);
+  if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
+  const { project, charter, stageNotes } = ctx;
+  const urs = stageNotes.urs ?? {};
+  const result = await llm({
+    task: "vendor_score_suggest",
+    system:
+      "You are an evaluation committee assistant scoring a vendor proposal against a URS. Score four criteria 0-100: Functional Fit to URS, Technical Architecture, Commercial Competitiveness, Vendor Track Record. Return scores AND a 1-2 sentence rationale each. Be honest — do NOT default everything to 70+. If information is missing, score conservatively and say so in the rationale.",
+    prompt: `Project: ${project.name}\nCharter scope: ${charter?.scope ?? ""}\nURS scope: ${(urs as { __urs_scope?: string }).__urs_scope ?? ""}\nURS requirements: ${(urs as { __urs_requirements?: string }).__urs_requirements ?? ""}\n\nVendor under evaluation: ${vendorName}\nVendor proposal notes / known info: ${vendorNotes ?? "(none provided — score conservatively)"}\n`,
+    jsonSchema: z.object({
+      functional: z.number().min(0).max(100),
+      technical: z.number().min(0).max(100),
+      commercial: z.number().min(0).max(100),
+      track_record: z.number().min(0).max(100),
+      rationale: z.object({
+        functional: z.string(),
+        technical: z.string(),
+        commercial: z.string(),
+        track_record: z.string(),
+      }),
+      overallNote: z.string(),
+    }),
+    jsonSchemaHint: `{ "functional":75, "technical":70, "commercial":65, "track_record":60, "rationale":{ "functional":"...", "technical":"...", "commercial":"...", "track_record":"..." }, "overallNote":"summary recommendation" }`,
+    maxTokens: 2500,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/nfa/draft
+// ---------------------------------------------------------------------------
+router.post("/ai/nfa/draft", async (req, res): Promise<void> => {
+  const { projectId, amount } = (req.body || {}) as { projectId?: number; amount?: number };
+  if (!projectId) { res.status(400).json({ error: "projectId is required" }); return; }
+  const ctx = await loadProjectContext(projectId);
+  if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
+  const { project, charter, stageNotes } = ctx;
+  const demand = (stageNotes.project_case?.__demand_initiation ?? {}) as Record<string, unknown>;
+  const vendor = (stageNotes.vendor_evaluation ?? {}) as Record<string, unknown>;
+  const result = await llm({
+    task: "nfa_draft",
+    system:
+      "You are a Finance Business Partner drafting an NFA (Note for Approval) at Granules India. The NFA is presented to Finance Head, PMO, Department Head and Chairman/MD. Tone: factual, executive, financially literate. Always tie spend back to business outcomes.",
+    prompt: `Project: ${project.name}\nFunction: ${(project as { function?: string }).function ?? ""}\nCharter description: ${charter?.description ?? ""}\nCharter expected benefits: ${charter?.toplineImprovement ?? ""} / ${charter?.bottomLineOptimization ?? ""}\nDemand justification: ${demand.businessJustification ?? ""}\nDemand expected outcomes: ${demand.expectedOutcomes ?? ""}\nSelected vendor: ${(vendor as { __vendor_name?: string }).__vendor_name ?? "(not yet selected)"}\nAmount requested: INR ${amount ?? 0}\n\nDraft the four NFA narrative sections below.`,
+    jsonSchema: z.object({
+      executiveSummary: z.string().min(80),
+      businessJustification: z.string().min(80),
+      financialImpact: z.string().min(80),
+      riskAndMitigation: z.string().min(80),
+    }),
+    jsonSchemaHint: `{ "executiveSummary":"2-3 lines", "businessJustification":"why this spend", "financialImpact":"CapEx/OpEx/payback", "riskAndMitigation":"top risks + controls" }`,
+    maxTokens: 3000,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/kickoff/agenda
+// ---------------------------------------------------------------------------
+router.post("/ai/kickoff/agenda", async (req, res): Promise<void> => {
+  const { projectId } = (req.body || {}) as { projectId?: number };
+  if (!projectId) { res.status(400).json({ error: "projectId is required" }); return; }
+  const ctx = await loadProjectContext(projectId);
+  if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
+  const { project, charter } = ctx;
+  const result = await llm({
+    task: "kickoff_agenda",
+    system:
+      "You are a PMO chief of staff preparing a project kickoff meeting agenda and suggested attendee list for an Indian pharmaceuticals company. Produce a tight, time-boxed 60-minute agenda and a realistic role-based attendee list. Use Indian corporate role titles (HOD, GM, Finance Head, IT Lead, etc.).",
+    prompt: `Project: ${project.name}\nFunction: ${(project as { function?: string }).function ?? ""}\nDescription: ${project.description ?? ""}\nCharter scope: ${charter?.scope ?? ""}\nCharter deliverables: ${charter?.deliverables ?? ""}\n`,
+    jsonSchema: z.object({
+      agendaItems: z.array(z.object({ minutes: z.number(), title: z.string(), owner: z.string() })).min(5),
+      suggestedAttendees: z.array(z.object({ name: z.string(), dept: z.string(), role: z.string() })).min(5),
+      openingRemarks: z.string(),
+    }),
+    jsonSchemaHint: `{ "agendaItems":[{"minutes":5,"title":"Welcome & Objectives","owner":"Project Sponsor"}, ...], "suggestedAttendees":[{"name":"<role>","dept":"<Dept>","role":"Sponsor"}], "openingRemarks":"2-3 sentences" }`,
+    maxTokens: 2500,
   });
   if (!result.ok) return aiError(result.reason, result.message, res);
   res.json(result.data);

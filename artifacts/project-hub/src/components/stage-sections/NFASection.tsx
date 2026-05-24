@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { useListProjectStages, useUpdateProjectStage } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Clock, Circle } from "lucide-react";
+import { AiButton } from "../ai-button";
 
 type NFAApproval = { approver: string; status: "pending" | "approved" | "rejected"; decidedAt?: string; comment?: string };
 type NFAPayload = {
  nfaNumber?: string;
  amountRequested?: number;
+ noteDraft?: string;
  chain: NFAApproval[];
  savedAt?: string;
 };
@@ -32,11 +34,13 @@ export function NFASection({ projectId }: { projectId: number }) {
 
  const [nfaNo, setNfaNo] = useState(saved.nfaNumber ?? "");
  const [amount, setAmount] = useState<string>(saved.amountRequested?.toString() ?? "");
+ const [noteDraft, setNoteDraft] = useState<string>(saved.noteDraft ?? "");
  const [chain, setChain] = useState<NFAApproval[]>(saved.chain ?? DEFAULT_CHAIN);
 
  useEffect(() => {
  setNfaNo(saved.nfaNumber ?? "");
  setAmount(saved.amountRequested?.toString() ?? "");
+ setNoteDraft(saved.noteDraft ?? "");
  setChain(saved.chain && saved.chain.length > 0 ? saved.chain : DEFAULT_CHAIN);
  // eslint-disable-next-line react-hooks/exhaustive-deps
  }, [stageRecord?.id]);
@@ -47,7 +51,7 @@ export function NFASection({ projectId }: { projectId: number }) {
  return;
  }
  const payload: NFAPayload = {
- nfaNumber: nfaNo, amountRequested: Number(amount) || 0, chain,
+ nfaNumber: nfaNo, amountRequested: Number(amount) || 0, noteDraft, chain,
  ...next, savedAt: new Date().toISOString(),
  };
  updateStage.mutate(
@@ -74,6 +78,19 @@ export function NFASection({ projectId }: { projectId: number }) {
  </div>
  {allApproved && <span className="text-[10px] font-mono font-semibold text-success bg-success/10 rounded-full px-2 py-0.5">✓ FULLY APPROVED</span>}
  {anyRejected && <span className="text-[10px] font-mono font-semibold text-destructive bg-destructive/10 rounded-full px-2 py-0.5">✗ REJECTED</span>}
+ <AiButton
+ label="AI Draft NFA Note"
+ endpoint="/api/ai/nfa/draft"
+ payload={{ projectId, amount: Number(amount) || 0 }}
+ size="sm"
+ variant="subtle"
+ onResult={(d) => {
+ const r = d as { executiveSummary: string; businessJustification: string; financialImpact: string; riskAndMitigation: string };
+ const next = `EXECUTIVE SUMMARY\n${r.executiveSummary}\n\nBUSINESS JUSTIFICATION\n${r.businessJustification}\n\nFINANCIAL IMPACT\n${r.financialImpact}\n\nRISK & MITIGATION\n${r.riskAndMitigation}`;
+ setNoteDraft(next);
+ toast({ title: "AI NFA note drafted — review and click outside the box to save" });
+ }}
+ />
  </div>
 
  <div className="grid grid-cols-2 gap-2">
@@ -93,6 +110,18 @@ export function NFASection({ projectId }: { projectId: number }) {
  className="w-full text-xs border border-border rounded-lg px-2 py-1.5 bg-card focus:outline-none focus:ring-1 focus:ring-warn font-mono"
  />
  </div>
+ </div>
+
+ <div>
+ <label className="text-[11px] font-semibold text-foreground block mb-1">NFA Note (justification, financial impact, risks)</label>
+ <textarea
+ value={noteDraft}
+ onChange={(e) => setNoteDraft(e.target.value)}
+ onBlur={() => persist({})}
+ rows={6}
+ placeholder="Use AI Draft NFA Note above to auto-fill, or write your own…"
+ className="w-full text-xs border border-border rounded-lg px-2 py-1.5 bg-card focus:outline-none focus:ring-1 focus:ring-warn font-mono whitespace-pre-wrap"
+ />
  </div>
 
  <div className="space-y-2">
