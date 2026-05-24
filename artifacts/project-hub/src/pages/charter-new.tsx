@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch, type UseFormReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useCreateCharter, useListUsers, useListScoringCriteria } from "@workspace/api-client-react";
@@ -126,21 +126,23 @@ type DraftResult = {
 };
 
 function AiDraftFromBasicsButton({
-  title, fn, themes, tentativeBudget, currentValues, onDraft,
+  form, onDraft,
 }: {
-  title: string;
-  fn: string;
-  themes: string[];
-  tentativeBudget?: number;
-  currentValues: DraftResult;
-  onDraft: (filled: DraftResult, filledCount: number) => void;
+  form: UseFormReturn<FormValues>;
+  onDraft: (filled: DraftResult) => void;
 }) {
   const status = useAiStatus();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Subscribe to live form state so the button enables the moment the user
+  // fills in title + function + at least one theme.
+  const title = useWatch({ control: form.control, name: "title" }) ?? "";
+  const fn = useWatch({ control: form.control, name: "function" }) ?? "";
+  const themes = (useWatch({ control: form.control, name: "strategicThemes" }) ?? []) as string[];
+  const tentativeBudget = useWatch({ control: form.control, name: "tentativeBudget" }) as number | undefined;
   if (status && !status.configured) return null;
 
-  const titleOk = (title?.trim().length ?? 0) >= 3;
+  const titleOk = title.trim().length >= 3;
   const fnOk = !!fn;
   const themesOk = themes.length > 0;
   const ready = titleOk && fnOk && themesOk;
@@ -156,15 +158,7 @@ function AiDraftFromBasicsButton({
       const data = await api.post<DraftResult>("/api/ai/charters/draft-fields", {
         title, function: fn, strategicThemes: themes, tentativeBudget,
       });
-      // Only fill fields the user has left empty — never overwrite existing input.
-      const filled: DraftResult = {};
-      let count = 0;
-      (Object.keys(data) as Array<keyof DraftResult>).forEach(k => {
-        const current = (currentValues[k] ?? "").toString().trim();
-        const incoming = (data[k] ?? "").toString().trim();
-        if (!current && incoming) { filled[k] = data[k]; count++; }
-      });
-      onDraft(filled, count);
+      onDraft(data);
     } catch (e: unknown) {
       const msg = (e as Error & { body?: { error?: string } })?.body?.error
         ?? (e as Error)?.message
@@ -398,22 +392,7 @@ export default function NewCharter() {
           {step === 0 && (
             <div className="space-y-4">
               <AiDraftFromBasicsButton
-                title={form.watch("title") ?? ""}
-                fn={form.watch("function") ?? ""}
-                themes={watchedStrategicThemes}
-                tentativeBudget={form.watch("tentativeBudget") as number | undefined}
-                currentValues={{
-                  businessJustification: form.watch("businessJustification"),
-                  scopeSummary: form.watch("scopeSummary"),
-                  expectedOutcomes: form.watch("expectedOutcomes"),
-                  scope: form.watch("scope"),
-                  deliverables: form.watch("deliverables"),
-                  solutionComparison: form.watch("solutionComparison"),
-                  toplineImprovement: form.watch("toplineImprovement"),
-                  bottomLineOptimization: form.watch("bottomLineOptimization"),
-                  complianceBenefits: form.watch("complianceBenefits"),
-                  productivityImprovement: form.watch("productivityImprovement"),
-                }}
+                form={form}
                 onDraft={(filled) => {
                   // Re-check live form state at apply-time to avoid overwriting
                   // anything the user typed while the AI request was in flight.
