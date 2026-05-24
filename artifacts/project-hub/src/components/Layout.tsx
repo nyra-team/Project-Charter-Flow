@@ -7,6 +7,8 @@ import {
   CheckSquare,
   FileText,
   LayoutDashboard,
+  Sparkles,
+  Inbox,
   LogOut,
   Settings,
   ChevronDown,
@@ -44,6 +46,7 @@ type NavItem = { href: string; label: string; icon: React.ComponentType<{ size?:
 
 const MAIN_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/demands", label: "Demands", icon: Inbox },
   { href: "/charters", label: "Charters", icon: FileText },
   { href: "/approvals", label: "Approvals", icon: CheckSquare },
   { href: "/projects", label: "Projects", icon: BarChart3 },
@@ -256,6 +259,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
         >
           {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
         </button>
+
+        {/* New Demand CTA — primary entry point into the lifecycle */}
+        <div className={`relative ${effectiveCollapsed ? "px-2 pt-3" : "px-3 pt-3"}`}>
+          <Link href="/demands/new" aria-label="New Demand">
+            <button
+              title={effectiveCollapsed ? "New Demand" : undefined}
+              className={`btn-glossy-cta flex items-center justify-center gap-2 rounded-md text-[12px] font-semibold w-full ${
+                effectiveCollapsed ? "h-10 px-0" : "h-9 px-3"
+              }`}
+            >
+              <Sparkles size={13} />
+              {!effectiveCollapsed && <span>New Demand</span>}
+            </button>
+          </Link>
+        </div>
 
         {/* Navigation */}
         <nav className="relative flex-1 py-2 overflow-y-auto scrollbar-thin">

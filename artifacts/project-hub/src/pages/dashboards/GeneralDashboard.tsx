@@ -1,17 +1,20 @@
-import { useGetDashboardSummary, useGetRecentActivity, type DashboardSummary } from "@workspace/api-client-react";
+import { useGetDashboardSummary, useGetRecentActivity, useListProjects, type DashboardSummary } from "@workspace/api-client-react";
 import { formatCurrency } from "../../lib/format";
 import {
   FileText, CheckSquare, DollarSign, ArrowUpRight, Clock,
   CheckCircle2, AlertTriangle, XCircle, Trophy, Zap, TrendingUp,
-  FolderKanban, Activity, Sparkles,
+  FolderKanban, Activity, Sparkles, Inbox,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { format } from "date-fns";
+import { getStageConfig } from "../../lib/lifecycle-config";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { KPITile, DashboardCard, useAutoRefresh } from "../../components/dashboard/primitives";
+
+const DEMAND_STAGES = ["project_case", "urs", "rfp", "vendor_evaluation"] as const;
 
 const STATUS_TOKEN: Record<string, string> = {
   draft: "hsl(var(--muted-foreground))",
@@ -175,7 +178,15 @@ export default function GeneralDashboard() {
   const { refetchInterval, markRefreshed, RefreshButton } = useAutoRefresh();
   const { data: summary, isLoading: loadingSummary } = useGetDashboardSummary({ query: { refetchInterval } as never });
   const { data: activities, isLoading: loadingActivity } = useGetRecentActivity({ query: { refetchInterval } as never });
+  const { data: projects } = useListProjects(undefined, { query: { refetchInterval } as never });
   useEffect(() => { if (summary) markRefreshed(); }, [summary]);
+
+  const demands = (projects ?? []).filter(
+    (p) => DEMAND_STAGES.includes((p.stage ?? "project_case") as typeof DEMAND_STAGES[number]),
+  );
+  const demandsByStage = DEMAND_STAGES.map((key) => ({
+    key, cfg: getStageConfig(key)!, count: demands.filter((d) => (d.stage ?? "project_case") === key).length,
+  }));
 
   // Portfolio velocity — illustrative 8-week ramp anchored to current counts.
   // TODO: replace with /api/dashboard/velocity time-series once backend endpoint exists.
@@ -243,20 +254,61 @@ export default function GeneralDashboard() {
       </div>
 
       {/* KPI Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
         <div className="ph-rise">
-          <Link href="/charters"><div><KPITile label="Total Charters"   value={summary?.totalCharters ?? 0}                      tone="default" icon={FileText}    sub="All time" /></div></Link>
+          <Link href="/demands"><div><KPITile label="Active Demands" value={demands.length} tone="default" icon={Inbox} sub="Pre-charter pipeline" /></div></Link>
         </div>
         <div className="ph-rise ph-rise-2">
-          <Link href="/approvals"><div><KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0}                  tone="warn"    icon={CheckSquare} sub="Awaiting action" /></div></Link>
+          <Link href="/charters"><div><KPITile label="Total Charters" value={summary?.totalCharters ?? 0} tone="default" icon={FileText} sub="All time" /></div></Link>
         </div>
         <div className="ph-rise ph-rise-3">
-          <Link href="/projects"><div><KPITile label="Active Projects" value={summary?.activeProjects ?? 0}                       tone="primary" icon={TrendingUp}  sub="In execution" /></div></Link>
+          <Link href="/approvals"><div><KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0} tone="warn" icon={CheckSquare} sub="Awaiting action" /></div></Link>
         </div>
         <div className="ph-rise ph-rise-4">
-          <KPITile label="Approved Budget"  value={formatCurrency(summary?.totalBudgetApproved ?? 0)} tone="success" icon={DollarSign}  sub="Total approved" />
+          <Link href="/projects"><div><KPITile label="Active Projects" value={summary?.activeProjects ?? 0} tone="primary" icon={TrendingUp} sub="In execution" /></div></Link>
+        </div>
+        <div className="ph-rise ph-rise-4">
+          <KPITile label="Approved Budget" value={formatCurrency(summary?.totalBudgetApproved ?? 0)} tone="success" icon={DollarSign} sub="Total approved" />
         </div>
       </div>
+
+      {/* Demands pipeline — at-a-glance distribution across the 4 pre-charter stages */}
+      <DashboardCard
+        title="Demands Pipeline"
+        subtitle="Initiatives flowing toward Charter approval"
+        actions={
+          <Link href="/demands">
+            <button className="text-[11px] text-primary font-medium flex items-center gap-1 hover:opacity-80">
+              View all <ArrowUpRight size={11} />
+            </button>
+          </Link>
+        }
+      >
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {demandsByStage.map(({ key, cfg, count }) => (
+            <Link key={key} href={`/demands`}>
+              <div className="rounded-lg p-3 border border-border bg-muted/40 hover:border-foreground/20 transition-colors cursor-pointer">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="w-2 h-2 rounded-full" style={{ background: cfg.color }} />
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{cfg.shortLabel}</span>
+                </div>
+                <div className="text-2xl font-mono font-semibold num-tabular text-card-foreground">{count}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{cfg.label}</div>
+              </div>
+            </Link>
+          ))}
+        </div>
+        {demands.length === 0 && (
+          <div className="mt-4 flex items-center justify-between p-3 rounded-md bg-muted/40 border border-dashed border-border">
+            <p className="text-xs text-muted-foreground">No demands in the pipeline yet.</p>
+            <Link href="/demands/new">
+              <button className="text-[11px] font-semibold text-primary inline-flex items-center gap-1 hover:underline">
+                <Sparkles size={11} /> Start one
+              </button>
+            </Link>
+          </div>
+        )}
+      </DashboardCard>
 
       {/* Portfolio Velocity — area chart (Command Center cyan area + Atelier amber dashed baseline) */}
       <DashboardCard
