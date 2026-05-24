@@ -100,7 +100,7 @@ export default function ChartersList() {
       ) : filteredCharters && filteredCharters.length > 0 ? (
         <div className="space-y-6 stagger-children">
           {filteredCharters.map(charter => (
-            <Link key={charter.id} href={`/charters/${charter.id}`}>
+            <Link key={charter.id} href={`/charters/${charter.id}`} className="block">
               <div className="glass-surface lift-card rounded-2xl p-4 flex items-center gap-4 cursor-pointer">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-primary/10 border border-primary/20">
                   <FileText size={18} className="text-primary" />
