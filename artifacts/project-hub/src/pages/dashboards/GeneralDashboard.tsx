@@ -9,7 +9,8 @@ import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from "recharts";
 import { format } from "date-fns";
-import { getStageConfig } from "../../lib/lifecycle-config";
+import { LIFECYCLE_STAGES, getStageConfig } from "../../lib/lifecycle-config";
+import { LIFECYCLE_PHASES } from "../../lib/lifecycle-phases";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import { KPITile, DashboardCard, useAutoRefresh } from "../../components/dashboard/primitives";
@@ -188,6 +189,17 @@ export default function GeneralDashboard() {
     key, cfg: getStageConfig(key)!, count: demands.filter((d) => (d.stage ?? "project_case") === key).length,
   }));
 
+  // Full 16-stage distribution for the lifecycle funnel
+  const lifecycleCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const s of LIFECYCLE_STAGES) map.set(s.key, 0);
+    for (const p of projects ?? []) {
+      const k = p.stage ?? "project_case";
+      map.set(k, (map.get(k) ?? 0) + 1);
+    }
+    return map;
+  }, [projects]);
+
   // Portfolio velocity — illustrative 8-week ramp anchored to current counts.
   // TODO: replace with /api/dashboard/velocity time-series once backend endpoint exists.
   const velocitySeries = useMemo(() => {
@@ -272,42 +284,79 @@ export default function GeneralDashboard() {
         </div>
       </div>
 
-      {/* Demands pipeline — at-a-glance distribution across the 4 pre-charter stages */}
+      {/* Lifecycle Pipeline — full 16-stage funnel grouped by the 4 phases */}
       <DashboardCard
-        title="Demands Pipeline"
-        subtitle="Initiatives flowing toward Charter approval"
+        title="Lifecycle Pipeline"
+        subtitle="Live project distribution across all 16 stages · 4 phases"
         actions={
-          <Link href="/demands">
+          <Link href="/pipeline">
             <button className="text-[11px] text-primary font-medium flex items-center gap-1 hover:opacity-80">
-              View all <ArrowUpRight size={11} />
+              Open board <ArrowUpRight size={11} />
             </button>
           </Link>
         }
       >
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {demandsByStage.map(({ key, cfg, count }) => (
-            <Link key={key} href={`/demands`}>
-              <div className="rounded-lg p-3 border border-border bg-muted/40 hover:border-foreground/20 transition-colors cursor-pointer">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="w-2 h-2 rounded-full" style={{ background: cfg.color }} />
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{cfg.shortLabel}</span>
+        {/* 16-stage heatmap row */}
+        <div className="grid grid-cols-8 lg:grid-cols-16 gap-1.5 mb-4">
+          {LIFECYCLE_STAGES.map((s, idx) => {
+            const count = lifecycleCounts.get(s.key) ?? 0;
+            const intensity = count === 0 ? 0.08 : Math.min(0.18 + count * 0.18, 0.85);
+            return (
+              <Link key={s.key} href={`/pipeline#stage-${s.key}`}>
+                <div
+                  title={`${s.label} · ${count} project${count === 1 ? "" : "s"}`}
+                  className="relative h-12 rounded-md border border-border flex flex-col items-center justify-center cursor-pointer hover:scale-[1.06] transition-transform"
+                  style={{ background: `${s.color}${Math.round(intensity * 255).toString(16).padStart(2, "0")}` }}
+                >
+                  <span className="text-[8px] font-mono text-card-foreground/60 leading-none">{idx + 1}</span>
+                  <span className="text-sm font-mono font-semibold num-tabular text-card-foreground leading-tight">{count}</span>
                 </div>
-                <div className="text-2xl font-mono font-semibold num-tabular text-card-foreground">{count}</div>
-                <div className="text-[10px] text-muted-foreground mt-0.5 truncate">{cfg.label}</div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            );
+          })}
         </div>
-        {demands.length === 0 && (
-          <div className="mt-4 flex items-center justify-between p-3 rounded-md bg-muted/40 border border-dashed border-border">
-            <p className="text-xs text-muted-foreground">No demands in the pipeline yet.</p>
-            <Link href="/demands/new">
-              <button className="text-[11px] font-semibold text-primary inline-flex items-center gap-1 hover:underline">
-                <Sparkles size={11} /> Start one
-              </button>
-            </Link>
+        {/* Phase summary */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {LIFECYCLE_PHASES.map((phase) => {
+            const count = phase.stageKeys.reduce((s, k) => s + (lifecycleCounts.get(k) ?? 0), 0);
+            return (
+              <Link key={phase.key} href={`/pipeline`}>
+                <div className="rounded-lg p-3 border border-border bg-muted/40 hover:border-foreground/20 transition-colors cursor-pointer">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full" style={{ background: phase.color }} />
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{phase.shortLabel}</span>
+                    </div>
+                    <span className="text-[9px] text-muted-foreground">{phase.stageKeys.length} stage{phase.stageKeys.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <div className="text-xl font-mono font-semibold num-tabular text-card-foreground">{count}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">{phase.label}</div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+        {/* Demand sub-pipeline reminder */}
+        <div className="mt-4 flex items-center justify-between gap-3 p-3 rounded-md bg-primary/5 border border-primary/20">
+          <div className="flex items-center gap-2 text-[12px]">
+            <Inbox size={13} className="text-primary" />
+            <span className="text-card-foreground font-semibold">{demands.length}</span>
+            <span className="text-muted-foreground">active demand{demands.length === 1 ? "" : "s"} in the first 4 stages</span>
+            <span className="hidden sm:inline text-muted-foreground/60">·</span>
+            <span className="hidden sm:flex items-center gap-1.5">
+              {demandsByStage.map((d) => (
+                <span key={d.key} className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ background: `${d.cfg.color}1A`, color: d.cfg.color }}>
+                  {d.cfg.shortLabel} {d.count}
+                </span>
+              ))}
+            </span>
           </div>
-        )}
+          <Link href="/demands">
+            <button className="text-[11px] font-semibold text-primary inline-flex items-center gap-1 hover:underline whitespace-nowrap">
+              View demands <ArrowUpRight size={10} />
+            </button>
+          </Link>
+        </div>
       </DashboardCard>
 
       {/* Portfolio Velocity — area chart (Command Center cyan area + Atelier amber dashed baseline) */}

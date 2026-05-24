@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Sparkles,
   Inbox,
+  Workflow,
   LogOut,
   Settings,
   ChevronDown,
@@ -46,6 +47,7 @@ type NavItem = { href: string; label: string; icon: React.ComponentType<{ size?:
 
 const MAIN_NAV: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/pipeline", label: "Pipeline", icon: Workflow },
   { href: "/demands", label: "Demands", icon: Inbox },
   { href: "/charters", label: "Charters", icon: FileText },
   { href: "/approvals", label: "Approvals", icon: CheckSquare },
