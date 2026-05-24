@@ -3,9 +3,10 @@ import {
 } from "react";
 import { useUpdateTask, useCreateTask, useListIssues } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronRight, ChevronDown, Plus, AlertTriangle, ArrowUpDown, Layers, Clock } from "lucide-react";
+import { ChevronRight, ChevronDown, Plus, AlertTriangle, ArrowUpDown, Layers, Clock, Search, Users, EyeOff, LayoutList } from "lucide-react";
 import { RagDot, StatusSelect, PrioritySelect } from "./task-status-chip";
-import { fmtVariance, DEPARTMENTS } from "../lib/task-constants";
+import { PersonAvatar } from "./person-avatar";
+import { fmtVariance, DEPARTMENTS, TASK_STATUSES, TASK_PRIORITIES, getStatusMeta, getPriorityMeta } from "../lib/task-constants";
 import { IssueRaiseModal } from "./issue-raise-modal";
 import { LogTimeModal } from "./log-time-modal";
 
@@ -55,7 +56,12 @@ type SortDir = "asc" | "desc";
 // Flat row descriptors for virtualization
 type FlatRow =
   | { type: "task"; task: GridTask; isSubtask: boolean }
-  | { type: "addSubtask"; parentId: number };
+  | { type: "addSubtask"; parentId: number }
+  | { type: "groupHeader"; key: string; label: string; color: string; count: number; effortSum: number; collapsed: boolean }
+  | { type: "groupSummary"; key: string; count: number; effortSum: number };
+
+type GroupBy = "none" | "status" | "priority" | "assigneeId";
+type HideableCol = "manager" | "predecessor" | "cft" | "effort" | "actualHrs" | "issues";
 
 const ROW_HEIGHT = 38; // px per rendered row
 const VIEWPORT_H = 520; // visible table height
@@ -261,6 +267,31 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
   const [addingSubtask, setAddingSubtask] = useState<number | null>(null);
   const [newSubtaskName, setNewSubtaskName] = useState("");
 
+  // ── Monday-style toolbar state (FR-26 / CR-3) ───────────────────────────────
+  const [search, setSearch] = useState("");
+  const [personFilter, setPersonFilter] = useState<number | "all">("all");
+  const [groupBy, setGroupBy] = useState<GroupBy>("status");
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [hiddenCols, setHiddenCols] = useState<Set<HideableCol>>(new Set());
+  const [hideMenuOpen, setHideMenuOpen] = useState(false);
+  const hideMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (hideMenuRef.current && !hideMenuRef.current.contains(e.target as Node)) setHideMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  function toggleHidden(c: HideableCol) {
+    setHiddenCols(prev => { const n = new Set(prev); n.has(c) ? n.delete(c) : n.add(c); return n; });
+  }
+  function toggleGroupCollapse(k: string) {
+    setCollapsedGroups(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  }
+  const isHidden = (c: HideableCol) => hiddenCols.has(c);
+
   const issueCountByTask = useMemo(() => {
     const m: Record<number, number> = {};
     for (const i of issues as Array<{ taskId?: number | null; status: string }>) {
@@ -279,7 +310,29 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
     return m;
   }, [tasks]);
 
-  const topLevel = useMemo(() => tasks.filter(t => !t.parentTaskId), [tasks]);
+  const topLevel = useMemo(() => {
+    const all = tasks.filter(t => !t.parentTaskId);
+    const q = search.trim().toLowerCase();
+    return all.filter(t => {
+      if (q && !t.name.toLowerCase().includes(q)) {
+        // also match if any subtask contains the query
+        const subs = tasks.filter(s => s.parentTaskId === t.id);
+        if (!subs.some(s => s.name.toLowerCase().includes(q))) return false;
+      }
+      if (personFilter !== "all") {
+        const d = pendingPatches[t.id] ?? {};
+        const aid = (d.assigneeId as number | undefined) ?? t.assigneeId;
+        const mid = (d.managerId as number | undefined) ?? t.managerId;
+        const subs = tasks.filter(s => s.parentTaskId === t.id);
+        const matches =
+          aid === personFilter ||
+          mid === personFilter ||
+          subs.some(s => s.assigneeId === personFilter || s.managerId === personFilter);
+        if (!matches) return false;
+      }
+      return true;
+    });
+  }, [tasks, search, personFilter, pendingPatches]);
 
   function toggleExpand(id: number) {
     setExpanded(prev => {
@@ -311,22 +364,104 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
     });
   }, [topLevel, sortKey, sortDir, pendingPatches]);
 
-  // Build flat list of visible rows for virtualization
+  // ── Group-by sections (monday.com style) ───────────────────────────────────
+  function getGroupForTask(t: GridTask): { key: string; label: string; color: string } {
+    const d = { ...t, ...pendingPatches[t.id] };
+    if (groupBy === "status") {
+      const m = getStatusMeta(d.status);
+      return { key: d.status || "_none", label: m.label, color: m.solid };
+    }
+    if (groupBy === "priority") {
+      const m = getPriorityMeta(d.priority);
+      return { key: d.priority || "_none", label: m.label, color: m.solid };
+    }
+    if (groupBy === "assigneeId") {
+      const u = users.find(u => u.id === d.assigneeId);
+      const key = d.assigneeId ? String(d.assigneeId) : "_none";
+      return { key, label: u?.name ?? "Unassigned", color: "#64748B" };
+    }
+    return { key: "_all", label: "All Tasks", color: "#64748B" };
+  }
+
+  // Build flat list of visible rows for virtualization (with group headers + summary rows)
   const flatRows = useMemo<FlatRow[]>(() => {
     const rows: FlatRow[] = [];
-    for (const task of sortedTop) {
-      rows.push({ type: "task", task, isSubtask: false });
-      if (expanded.has(task.id)) {
-        for (const sub of subtaskMap[task.id] ?? []) {
-          rows.push({ type: "task", task: sub, isSubtask: true });
-        }
-        if (addingSubtask === task.id) {
-          rows.push({ type: "addSubtask", parentId: task.id });
+
+    if (groupBy === "none") {
+      for (const task of sortedTop) {
+        rows.push({ type: "task", task, isSubtask: false });
+        if (expanded.has(task.id)) {
+          for (const sub of subtaskMap[task.id] ?? []) {
+            rows.push({ type: "task", task: sub, isSubtask: true });
+          }
+          if (addingSubtask === task.id) rows.push({ type: "addSubtask", parentId: task.id });
         }
       }
+      return rows;
+    }
+
+    // Group tasks by status/priority/owner preserving sorted order
+    const groupOrder: string[] = [];
+    const groupMeta: Record<string, { label: string; color: string }> = {};
+    const grouped: Record<string, GridTask[]> = {};
+    for (const t of sortedTop) {
+      const g = getGroupForTask(t);
+      if (!grouped[g.key]) {
+        grouped[g.key] = [];
+        groupMeta[g.key] = { label: g.label, color: g.color };
+        groupOrder.push(g.key);
+      }
+      grouped[g.key]!.push(t);
+    }
+
+    // For status grouping, force canonical order (matches monday.com)
+    if (groupBy === "status") {
+      const canonical: string[] = TASK_STATUSES.map(s => s.value);
+      groupOrder.sort((a, b) => {
+        const ai = canonical.indexOf(a);
+        const bi = canonical.indexOf(b);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      });
+    } else if (groupBy === "priority") {
+      const canonical: string[] = TASK_PRIORITIES.map(p => p.value);
+      groupOrder.sort((a, b) => {
+        const ai = canonical.indexOf(a);
+        const bi = canonical.indexOf(b);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+      });
+    }
+
+    for (const key of groupOrder) {
+      const members = grouped[key]!;
+      const meta = groupMeta[key]!;
+      const effortSum = members.reduce((s, t) => {
+        const d = { ...t, ...pendingPatches[t.id] };
+        return s + Number(d.plannedEffortHours ?? d.estimatedHours ?? 0);
+      }, 0);
+      const collapsed = collapsedGroups.has(key);
+      rows.push({
+        type: "groupHeader",
+        key,
+        label: meta.label,
+        color: meta.color,
+        count: members.length,
+        effortSum,
+        collapsed,
+      });
+      if (collapsed) continue;
+      for (const task of members) {
+        rows.push({ type: "task", task, isSubtask: false });
+        if (expanded.has(task.id)) {
+          for (const sub of subtaskMap[task.id] ?? []) {
+            rows.push({ type: "task", task: sub, isSubtask: true });
+          }
+          if (addingSubtask === task.id) rows.push({ type: "addSubtask", parentId: task.id });
+        }
+      }
+      rows.push({ type: "groupSummary", key, count: members.length, effortSum });
     }
     return rows;
-  }, [sortedTop, expanded, subtaskMap, addingSubtask]);
+  }, [sortedTop, expanded, subtaskMap, addingSubtask, groupBy, pendingPatches, collapsedGroups, users]);
 
   // Virtual window
   const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
@@ -392,7 +527,59 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
 
   const userOptions = users.map(u => ({ value: u.id.toString(), label: u.name }));
 
+  // Computed visible column count for spanning helper rows
+  const VISIBLE_COLS = 20
+    - (isHidden("manager") ? 1 : 0)
+    - (isHidden("predecessor") ? 1 : 0)
+    - (isHidden("cft") ? 2 : 0)  // CFT Team + CFT Owner share one toggle
+    - (isHidden("effort") ? 1 : 0)
+    - (isHidden("actualHrs") ? 1 : 0)
+    - (isHidden("issues") ? 1 : 0);
+
   function renderFlatRow(row: FlatRow, rowIdx: number): ReactElement {
+    if (row.type === "groupHeader") {
+      return (
+        <tr key={`gh-${row.key}-${rowIdx}`} style={{ height: ROW_HEIGHT }}>
+          <td colSpan={VISIBLE_COLS} className="p-0">
+            <div
+              className="flex items-center gap-2 px-3 py-1.5 border-l-4 cursor-pointer hover:brightness-95 transition"
+              style={{ borderLeftColor: row.color, background: `${row.color}1A` }}
+              onClick={() => toggleGroupCollapse(row.key)}
+            >
+              {row.collapsed
+                ? <ChevronRight size={14} style={{ color: row.color }} />
+                : <ChevronDown size={14} style={{ color: row.color }} />}
+              <span className="text-xs font-bold uppercase tracking-wide" style={{ color: row.color }}>
+                {row.label}
+              </span>
+              <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full"
+                    style={{ background: row.color, color: "#FFFFFF" }}>
+                {row.count}
+              </span>
+              <span className="ml-auto text-xs text-muted-foreground">
+                {row.effortSum > 0 ? `${row.effortSum.toFixed(1)}h planned` : ""}
+              </span>
+            </div>
+          </td>
+        </tr>
+      );
+    }
+
+    if (row.type === "groupSummary") {
+      return (
+        <tr key={`gs-${row.key}-${rowIdx}`} style={{ height: ROW_HEIGHT - 6 }} className="border-b border-border/60">
+          <td />
+          <td className="text-xs text-muted-foreground font-semibold px-2" style={{ paddingLeft: 8 }}>
+            {row.count} item{row.count !== 1 ? "s" : ""}
+          </td>
+          <td colSpan={Math.max(1, VISIBLE_COLS - 4)} />
+          <td colSpan={2} className="text-xs text-muted-foreground font-semibold text-right pr-3">
+            Σ {row.effortSum.toFixed(1)}h
+          </td>
+        </tr>
+      );
+    }
+
     if (row.type === "addSubtask") {
       return (
         <tr key={`add-${row.parentId}`} className="border-b border-border/60 bg-primary/10" style={{ height: ROW_HEIGHT }}>
@@ -410,7 +597,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
               <button onClick={() => { setAddingSubtask(null); setNewSubtaskName(""); }} className="text-xs px-2 py-1 rounded bg-muted text-foreground">Cancel</button>
             </div>
           </td>
-          <td colSpan={13} />
+          <td colSpan={Math.max(1, VISIBLE_COLS - 6)} />
         </tr>
       );
     }
@@ -514,11 +701,13 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         </td>
 
         {/* Manager */}
-        <td className="px-1" style={{ minWidth: 95, maxWidth: 110 }}>
-          <InlineCell type="select" value={d.managerId?.toString() ?? ""} options={userOptions}
-            onSave={v => patch(task.id, { managerId: v ? parseInt(v) : null })}
-            displayLabel={userLabel(d.managerId)} placeholder="Manager" />
-        </td>
+        {!isHidden("manager") && (
+          <td className="px-1" style={{ minWidth: 95, maxWidth: 110 }}>
+            <InlineCell type="select" value={d.managerId?.toString() ?? ""} options={userOptions}
+              onSave={v => patch(task.id, { managerId: v ? parseInt(v) : null })}
+              displayLabel={userLabel(d.managerId)} placeholder="Manager" />
+          </td>
+        )}
 
         {/* Planned Start */}
         <td className="px-1" style={{ minWidth: 90 }}>
@@ -546,62 +735,73 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         </td>
 
         {/* Predecessor */}
-        <td className="px-1" style={{ minWidth: 115, maxWidth: 130 }}>
-          <span className="text-xs text-muted-foreground truncate block" title={predNames}>
-            {predNames || <span className="text-muted-foreground/60 italic">—</span>}
-          </span>
-        </td>
+        {!isHidden("predecessor") && (
+          <td className="px-1" style={{ minWidth: 115, maxWidth: 130 }}>
+            <span className="text-xs text-muted-foreground truncate block" title={predNames}>
+              {predNames || <span className="text-muted-foreground/60 italic">—</span>}
+            </span>
+          </td>
+        )}
 
-        {/* CFT Team (≤2 depts) */}
-        <td className="px-1" style={{ minWidth: 125 }}>
-          <MultiDeptSelect value={d.cftDept ?? ""} onChange={v => patch(task.id, { cftDept: v || null })} />
-        </td>
-
-        {/* CFT Owner (filtered by dept) */}
-        <td className="px-1" style={{ minWidth: 105 }}>
-          <InlineCell type="select" value={d.cftOwner?.toString() ?? ""} options={cftOwnerOptions}
-            onSave={v => patch(task.id, { cftOwner: v ? parseInt(v) : null })}
-            displayLabel={userLabel(d.cftOwner)} placeholder="CFT Owner" />
-        </td>
+        {!isHidden("cft") && (
+          <>
+            {/* CFT Team (≤2 depts) */}
+            <td className="px-1" style={{ minWidth: 125 }}>
+              <MultiDeptSelect value={d.cftDept ?? ""} onChange={v => patch(task.id, { cftDept: v || null })} />
+            </td>
+            {/* CFT Owner (filtered by dept) */}
+            <td className="px-1" style={{ minWidth: 105 }}>
+              <InlineCell type="select" value={d.cftOwner?.toString() ?? ""} options={cftOwnerOptions}
+                onSave={v => patch(task.id, { cftOwner: v ? parseInt(v) : null })}
+                displayLabel={userLabel(d.cftOwner)} placeholder="CFT Owner" />
+            </td>
+          </>
+        )}
 
         {/* Planned Effort — inline number */}
-        <td className="px-1" style={{ minWidth: 65 }}>
-          <InlineNumberCell
-            value={d.plannedEffortHours ?? d.estimatedHours}
-            onSave={v => patch(task.id, { plannedEffortHours: v, estimatedHours: v })}
-          />
-        </td>
+        {!isHidden("effort") && (
+          <td className="px-1" style={{ minWidth: 65 }}>
+            <InlineNumberCell
+              value={d.plannedEffortHours ?? d.estimatedHours}
+              onSave={v => patch(task.id, { plannedEffortHours: v, estimatedHours: v })}
+            />
+          </td>
+        )}
 
         {/* Actual Effort (logged hours) */}
-        <td className="px-1 text-center" style={{ minWidth: 70 }}>
-          <button
-            onClick={() => setTimelogModal({ taskId: task.id, taskName: task.name, plannedEffortHours: d.plannedEffortHours ?? d.estimatedHours })}
-            className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full w-full justify-center border ${
-              d.actualHours && d.actualHours > 0
-                ? "bg-primary/10 text-primary border-primary/20"
-                : "bg-muted text-muted-foreground border-border"
-            }`}
-            title="Log time / view effort"
-          >
-            <Clock size={9} />
-            {d.actualHours != null && d.actualHours > 0 ? `${d.actualHours}h` : "+"}
-          </button>
-        </td>
+        {!isHidden("actualHrs") && (
+          <td className="px-1 text-center" style={{ minWidth: 70 }}>
+            <button
+              onClick={() => setTimelogModal({ taskId: task.id, taskName: task.name, plannedEffortHours: d.plannedEffortHours ?? d.estimatedHours })}
+              className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full w-full justify-center border ${
+                d.actualHours && d.actualHours > 0
+                  ? "bg-primary/10 text-primary border-primary/20"
+                  : "bg-muted text-muted-foreground border-border"
+              }`}
+              title="Log time / view effort"
+            >
+              <Clock size={9} />
+              {d.actualHours != null && d.actualHours > 0 ? `${d.actualHours}h` : "+"}
+            </button>
+          </td>
+        )}
 
         {/* Issues */}
-        <td className="px-1 text-center" style={{ width: 60 }}>
-          <button
-            onClick={() => setIssueModal({ taskId: task.id, taskName: task.name })}
-            className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${
-              issueCount > 0
-                ? "bg-destructive/10 text-destructive border-destructive/20"
-                : "bg-muted text-muted-foreground border-border"
-            }`}
-            title={issueCount > 0 ? `${issueCount} open issue${issueCount !== 1 ? "s" : ""}` : "Raise issue"}
-          >
-            <AlertTriangle size={10} />{issueCount > 0 ? issueCount : "+"}
-          </button>
-        </td>
+        {!isHidden("issues") && (
+          <td className="px-1 text-center" style={{ width: 60 }}>
+            <button
+              onClick={() => setIssueModal({ taskId: task.id, taskName: task.name })}
+              className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${
+                issueCount > 0
+                  ? "bg-destructive/10 text-destructive border-destructive/20"
+                  : "bg-muted text-muted-foreground border-border"
+              }`}
+              title={issueCount > 0 ? `${issueCount} open issue${issueCount !== 1 ? "s" : ""}` : "Raise issue"}
+            >
+              <AlertTriangle size={10} />{issueCount > 0 ? issueCount : "+"}
+            </button>
+          </td>
+        )}
 
         {/* Add subtask */}
         <td className="px-1 text-center" style={{ width: 32 }}>
@@ -629,8 +829,88 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
 
   const thCls = "text-left text-xs font-bold text-muted-foreground uppercase tracking-wide py-2.5 px-1 border-b border-border/60 bg-muted/40 whitespace-nowrap";
 
+  const HIDEABLE_LABELS: Record<HideableCol, string> = {
+    manager: "Manager",
+    predecessor: "Predecessor",
+    cft: "CFT Team + Owner",
+    effort: "Planned Effort",
+    actualHrs: "Actual Hours",
+    issues: "Issues",
+  };
+
   return (
     <>
+      {/* ── Monday-style toolbar (FR-26 / CR-3) ─────────────────────────────── */}
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-border bg-background">
+          <Search size={13} className="text-muted-foreground" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search tasks…"
+            className="text-xs bg-transparent outline-none w-44 text-foreground placeholder:text-muted-foreground/60"
+          />
+        </div>
+
+        <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-border bg-background">
+          <Users size={13} className="text-muted-foreground" />
+          <select
+            value={String(personFilter)}
+            onChange={e => setPersonFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
+            className="text-xs bg-transparent outline-none text-foreground cursor-pointer"
+          >
+            <option value="all">All people</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-border bg-background">
+          <LayoutList size={13} className="text-muted-foreground" />
+          <span className="text-xs text-muted-foreground">Group:</span>
+          <select
+            value={groupBy}
+            onChange={e => setGroupBy(e.target.value as GroupBy)}
+            className="text-xs bg-transparent outline-none text-foreground font-medium cursor-pointer"
+          >
+            <option value="status">Status</option>
+            <option value="priority">Priority</option>
+            <option value="assigneeId">Owner</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+
+        <div className="relative" ref={hideMenuRef}>
+          <button
+            onClick={() => setHideMenuOpen(o => !o)}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-border bg-background text-xs text-foreground hover:bg-accent/40"
+          >
+            <EyeOff size={13} />
+            Hide{hiddenCols.size > 0 ? ` (${hiddenCols.size})` : ""}
+          </button>
+          {hideMenuOpen && (
+            <div className="absolute z-50 mt-1 bg-popover text-popover-foreground border border-popover-border rounded-lg shadow-xl p-1 min-w-44">
+              {(Object.keys(HIDEABLE_LABELS) as HideableCol[]).map(c => (
+                <label key={c} className="flex items-center gap-2 px-2 py-1 rounded hover:bg-accent/40 text-xs cursor-pointer">
+                  <input type="checkbox" checked={hiddenCols.has(c)} onChange={() => toggleHidden(c)} className="accent-primary w-3 h-3" />
+                  <span>{HIDEABLE_LABELS[c]}</span>
+                </label>
+              ))}
+              {hiddenCols.size > 0 && (
+                <button onClick={() => setHiddenCols(new Set())}
+                  className="w-full text-left text-xs text-primary hover:text-primary/80 px-2 py-1 mt-1 border-t border-border/60">
+                  Show all columns
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        <span className="text-xs text-muted-foreground ml-auto">
+          {topLevel.length} task{topLevel.length !== 1 ? "s" : ""}
+          {(search || personFilter !== "all") && " (filtered)"}
+        </span>
+      </div>
+
       {/* Virtualized scrollable table container */}
       <div
         ref={scrollRef}
@@ -648,33 +928,33 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
               <th style={{ minWidth: 95 }} className={thCls}>Priority <SortBtn col="priority" /></th>
               <th style={{ width: 55 }} className={thCls}>RAG <SortBtn col="rag" /></th>
               <th style={{ minWidth: 95 }} className={thCls}>Owner <SortBtn col="assigneeId" /></th>
-              <th style={{ minWidth: 95 }} className={thCls}>Manager <SortBtn col="managerId" /></th>
+              {!isHidden("manager") && <th style={{ minWidth: 95 }} className={thCls}>Manager <SortBtn col="managerId" /></th>}
               <th style={{ minWidth: 90 }} className={thCls}>Plan. Start <SortBtn col="startDate" /></th>
               <th style={{ minWidth: 90 }} className={thCls}>Plan. End <SortBtn col="endDate" /></th>
               <th style={{ minWidth: 90 }} className={thCls}>Act. Start <SortBtn col="actualStart" /></th>
               <th style={{ minWidth: 90 }} className={thCls}>Act. End <SortBtn col="actualEnd" /></th>
               <th style={{ minWidth: 75 }} className={thCls}>Variance <SortBtn col="scheduleVarianceDays" /></th>
-              <th style={{ minWidth: 115 }} className={thCls}>Predecessor</th>
-              <th style={{ minWidth: 125 }} className={thCls}>CFT Team (≤2) <SortBtn col="cftDept" /></th>
-              <th style={{ minWidth: 105 }} className={thCls}>CFT Owner</th>
-              <th style={{ minWidth: 65 }} className={thCls}>Effort <SortBtn col="plannedEffortHours" /></th>
-              <th style={{ minWidth: 70 }} className={thCls}>Actual hrs</th>
-              <th style={{ width: 60 }} className={thCls}>Issues</th>
+              {!isHidden("predecessor") && <th style={{ minWidth: 115 }} className={thCls}>Predecessor</th>}
+              {!isHidden("cft") && <th style={{ minWidth: 125 }} className={thCls}>CFT Team (≤2) <SortBtn col="cftDept" /></th>}
+              {!isHidden("cft") && <th style={{ minWidth: 105 }} className={thCls}>CFT Owner</th>}
+              {!isHidden("effort") && <th style={{ minWidth: 65 }} className={thCls}>Effort <SortBtn col="plannedEffortHours" /></th>}
+              {!isHidden("actualHrs") && <th style={{ minWidth: 70 }} className={thCls}>Actual hrs</th>}
+              {!isHidden("issues") && <th style={{ width: 60 }} className={thCls}>Issues</th>}
               <th style={{ width: 32 }} className={thCls}></th>
             </tr>
           </thead>
           <tbody>
             {/* Top virtual spacer */}
-            {topPad > 0 && <tr aria-hidden style={{ height: topPad }}><td colSpan={20} /></tr>}
+            {topPad > 0 && <tr aria-hidden style={{ height: topPad }}><td colSpan={VISIBLE_COLS} /></tr>}
 
             {flatRows.length === 0 && (
-              <tr><td colSpan={20} className="text-center py-16 text-muted-foreground text-sm">No tasks found.</td></tr>
+              <tr><td colSpan={VISIBLE_COLS} className="text-center py-16 text-muted-foreground text-sm">No tasks found.</td></tr>
             )}
 
             {visibleRows.map((row, i) => renderFlatRow(row, startIdx + i))}
 
             {/* Bottom virtual spacer */}
-            {bottomPad > 0 && <tr aria-hidden style={{ height: bottomPad }}><td colSpan={20} /></tr>}
+            {bottomPad > 0 && <tr aria-hidden style={{ height: bottomPad }}><td colSpan={VISIBLE_COLS} /></tr>}
           </tbody>
         </table>
       </div>

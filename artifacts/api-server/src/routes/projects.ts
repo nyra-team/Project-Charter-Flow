@@ -298,6 +298,48 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
     );
   }
 
+  // Parent status auto-aggregation (worst-case among children).
+  // Triggered when a child's status changes; deterministic precedence.
+  if (parsed.data.status !== undefined && existing.parentTaskId != null) {
+    // Precedence: higher number = worse (wins).
+    const STATUS_RANK: Record<string, number> = {
+      completed: 0,
+      not_started: 1,
+      on_hold: 2,
+      in_progress: 3,
+      at_risk: 4,
+      delayed: 5,
+    };
+    const siblings = await db.select({ status: tasksTable.status })
+      .from(tasksTable)
+      .where(eq(tasksTable.parentTaskId, existing.parentTaskId));
+    if (siblings.length > 0) {
+      const allCompleted = siblings.every(s => s.status === "completed");
+      let derived: string;
+      if (allCompleted) {
+        derived = "completed";
+      } else {
+        derived = siblings.reduce((worst, s) => {
+          const r = STATUS_RANK[s.status as string] ?? 1;
+          const wr = STATUS_RANK[worst] ?? 1;
+          return r > wr ? (s.status as string) : worst;
+        }, "not_started");
+      }
+      const [parentRow] = await db.select().from(tasksTable).where(eq(tasksTable.id, existing.parentTaskId));
+      if (parentRow && parentRow.status !== derived) {
+        await db.update(tasksTable).set({ status: derived as typeof parentRow.status })
+          .where(eq(tasksTable.id, existing.parentTaskId));
+        await logActivity(
+          "task_updated",
+          `Parent task "${parentRow.name}" auto-aggregated to ${derived} from subtasks`,
+          parentRow.projectId,
+          "task",
+          parentRow.id,
+        );
+      }
+    }
+  }
+
   res.json(enriched);
 });
 

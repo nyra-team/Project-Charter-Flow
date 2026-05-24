@@ -12,6 +12,7 @@ import ProjectsList from "./pages/projects";
 import ProjectDetail from "./pages/project-detail";
 import NewTask from "./pages/task-new";
 import PortfolioView from "./pages/portfolio";
+import ProjectsTreeView from "./pages/projects-tree";
 import AdminScoring from "./pages/admin-scoring";
 import DocumentsPage from "./pages/documents";
 import LessonsLearnedPage from "./pages/lessons-learned";
@@ -29,8 +30,9 @@ function Router() {
         <Route path="/charters/:id" component={CharterDetail} />
         <Route path="/approvals" component={ApprovalsList} />
         <Route path="/projects" component={ProjectsList} />
-        <Route path="/projects/:id" component={ProjectDetail} />
+        <Route path="/projects/tree" component={ProjectsTreeView} />
         <Route path="/projects/:id/tasks/new" component={NewTask} />
+        <Route path="/projects/:id" component={ProjectDetail} />
         <Route path="/portfolio" component={PortfolioView} />
         <Route path="/admin/scoring" component={AdminScoring} />
         <Route path="/documents" component={DocumentsPage} />

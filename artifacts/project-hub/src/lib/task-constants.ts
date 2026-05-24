@@ -1,36 +1,34 @@
-const TOKEN = {
-  muted:        { color: "hsl(var(--muted-foreground))", bg: "hsl(var(--muted) / 0.5)" },
-  success:      { color: "hsl(var(--success))",          bg: "hsl(var(--success) / 0.12)" },
-  warn:         { color: "hsl(var(--warn))",             bg: "hsl(var(--warn) / 0.12)" },
-  destructive:  { color: "hsl(var(--destructive))",      bg: "hsl(var(--destructive) / 0.12)" },
-  primary:      { color: "hsl(var(--primary))",          bg: "hsl(var(--primary) / 0.12)" },
-  accent:       { color: "hsl(var(--accent-foreground, var(--primary)))", bg: "hsl(var(--primary) / 0.08)" },
-} as const;
+// Exact FRS-PM-001 (FR-26, FR-37) monday.com-style status & priority palette.
+// Solid colored pills with white text — true monday look.
+
+function withAlpha(hex: string, alphaHex: string) {
+  return `${hex}${alphaHex}`;
+}
 
 export const TASK_STATUSES = [
-  { value: "not_started", label: "To be Started", color: TOKEN.muted.color,       bg: TOKEN.muted.bg },
-  { value: "in_progress", label: "In Progress",   color: TOKEN.success.color,     bg: TOKEN.success.bg },
-  { value: "at_risk",     label: "At Risk",       color: TOKEN.warn.color,        bg: TOKEN.warn.bg },
-  { value: "delayed",     label: "Delayed",       color: TOKEN.destructive.color, bg: TOKEN.destructive.bg },
-  { value: "completed",   label: "Completed",     color: TOKEN.primary.color,     bg: TOKEN.primary.bg },
-  { value: "on_hold",     label: "On-Hold",       color: TOKEN.accent.color,      bg: TOKEN.accent.bg },
+  { value: "not_started", label: "To be Started", color: "#FFFFFF", bg: "#808080", solid: "#808080" },
+  { value: "in_progress", label: "In Progress",   color: "#FFFFFF", bg: "#28A745", solid: "#28A745" },
+  { value: "at_risk",     label: "At Risk",       color: "#1F2937", bg: "#FFC107", solid: "#FFC107" },
+  { value: "delayed",     label: "Delayed",       color: "#FFFFFF", bg: "#DC3545", solid: "#DC3545" },
+  { value: "completed",   label: "Completed",     color: "#FFFFFF", bg: "#007BFF", solid: "#007BFF" },
+  { value: "on_hold",     label: "On-Hold",       color: "#FFFFFF", bg: "#6F42C1", solid: "#6F42C1" },
 ] as const;
 
 export type TaskStatusValue = (typeof TASK_STATUSES)[number]["value"];
 
 export const TASK_PRIORITIES = [
-  { value: "P0", label: "P0 Critical", color: TOKEN.destructive.color, bg: TOKEN.destructive.bg },
-  { value: "P1", label: "P1 High",     color: TOKEN.warn.color,        bg: TOKEN.warn.bg },
-  { value: "P2", label: "P2 Medium",   color: TOKEN.warn.color,        bg: TOKEN.warn.bg },
-  { value: "P3", label: "P3 Low",      color: TOKEN.success.color,     bg: TOKEN.success.bg },
+  { value: "P0", label: "P0 Critical", color: "#FFFFFF", bg: "#DC3545", solid: "#DC3545" },
+  { value: "P1", label: "P1 High",     color: "#FFFFFF", bg: "#FD7E14", solid: "#FD7E14" },
+  { value: "P2", label: "P2 Medium",   color: "#1F2937", bg: "#FFC107", solid: "#FFC107" },
+  { value: "P3", label: "P3 Low",      color: "#FFFFFF", bg: "#28A745", solid: "#28A745" },
 ] as const;
 
 export type TaskPriorityValue = (typeof TASK_PRIORITIES)[number]["value"];
 
 export const RAG_OPTIONS = [
-  { value: "green", label: "Green", color: TOKEN.success.color },
-  { value: "amber", label: "Amber", color: TOKEN.warn.color },
-  { value: "red",   label: "Red",   color: TOKEN.destructive.color },
+  { value: "green", label: "Green", color: "#28A745" },
+  { value: "amber", label: "Amber", color: "#FFC107" },
+  { value: "red",   label: "Red",   color: "#DC3545" },
 ] as const;
 
 export const DEPARTMENTS = [
@@ -39,16 +37,23 @@ export const DEPARTMENTS = [
   "Supply Chain", "Quality", "R&D", "Strategy",
 ];
 
+const FALLBACK_META = { value: "", label: "—", color: "#FFFFFF", bg: "#808080", solid: "#808080" };
+
 export function getStatusMeta(status: string) {
-  return TASK_STATUSES.find(s => s.value === status) ?? { value: status, label: status, color: TOKEN.muted.color, bg: TOKEN.muted.bg };
+  return TASK_STATUSES.find(s => s.value === status) ?? { ...FALLBACK_META, value: status, label: status || "—" };
 }
 
 export function getPriorityMeta(priority: string) {
-  return TASK_PRIORITIES.find(p => p.value === priority) ?? { value: priority, label: priority, color: TOKEN.muted.color, bg: TOKEN.muted.bg };
+  return TASK_PRIORITIES.find(p => p.value === priority) ?? { ...FALLBACK_META, value: priority, label: priority || "—" };
 }
 
 export function getRagColor(rag: string) {
-  return RAG_OPTIONS.find(r => r.value === rag)?.color ?? TOKEN.muted.color;
+  return RAG_OPTIONS.find(r => r.value === rag)?.color ?? "#808080";
+}
+
+// Soft tint of a hex color (group section banding, hover backgrounds, etc.)
+export function tintColor(hex: string, alpha = "1A") {
+  return withAlpha(hex, alpha);
 }
 
 export function calcScheduleVariance(plannedEnd?: string | null, actualEnd?: string | null): number | null {
@@ -60,8 +65,15 @@ export function calcScheduleVariance(plannedEnd?: string | null, actualEnd?: str
 }
 
 export function fmtVariance(days: number | null | undefined): { text: string; color: string } {
-  if (days == null) return { text: "—", color: TOKEN.muted.color };
-  if (days === 0)   return { text: "On Time", color: TOKEN.success.color };
-  if (days > 0)     return { text: `+${days} days`, color: TOKEN.destructive.color };
-  return { text: `${Math.abs(days)} days early`, color: TOKEN.success.color };
+  if (days == null) return { text: "—", color: "#808080" };
+  if (days === 0)   return { text: "On Time", color: "#28A745" };
+  if (days > 0)     return { text: `+${days} days`, color: "#DC3545" };
+  return { text: `${Math.abs(days)} days early`, color: "#28A745" };
+}
+
+// Worst-case RAG aggregation across children (FR-24 portfolio rollup, FR-25 milestone rollup)
+export function aggregateRag(values: Array<string | null | undefined>): "red" | "amber" | "green" {
+  if (values.some(v => v === "red")) return "red";
+  if (values.some(v => v === "amber")) return "amber";
+  return "green";
 }

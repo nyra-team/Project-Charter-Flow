@@ -51,6 +51,7 @@ const MAIN_NAV: NavItem[] = [
 
 const PORTFOLIO_NAV: NavItem[] = [
   { href: "/portfolio", label: "Portfolio View", icon: FolderOpen },
+  { href: "/projects/tree", label: "Project Tree", icon: FolderOpen },
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/lessons-learned", label: "Lessons Learned", icon: BookOpen },
 ];
