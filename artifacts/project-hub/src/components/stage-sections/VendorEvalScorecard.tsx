@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useListProjectStages, useUpdateProjectStage } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Plus, Trash2, Pencil, X, Sparkles, Lightbulb, ArrowRight } from "lucide-react";
 import { AiButton } from "../ai-button";
@@ -57,6 +58,7 @@ function weightedScore(scores: ScoreMap, dims: Dimension[]): number {
 export function VendorEvalScorecard({ projectId }: { projectId: number }) {
  const { data: stages = [] } = useListProjectStages(projectId);
  const updateStage = useUpdateProjectStage();
+ const queryClient = useQueryClient();
  const { toast } = useToast();
 
  const evalRecord = (
@@ -247,7 +249,10 @@ export function VendorEvalScorecard({ projectId }: { projectId: number }) {
  },
  },
  {
- onSuccess: () => { if (!opts.silent && opts.successMsg) toast({ title: opts.successMsg }); },
+ onSuccess: () => {
+ void queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/stages`] });
+ if (!opts.silent && opts.successMsg) toast({ title: opts.successMsg });
+ },
  onError: () => toast({ title: "Failed to save", variant: "destructive" }),
  },
  );

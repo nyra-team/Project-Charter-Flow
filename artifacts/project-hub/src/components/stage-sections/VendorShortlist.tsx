@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useListProjectStages, useUpdateProjectStage } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Trash2, Pencil, X, Globe, Phone, IndianRupee, Sparkles } from "lucide-react";
 import { AiButton } from "../ai-button";
@@ -31,6 +32,7 @@ type AiSuggestedVendor = {
 export function VendorShortlist({ projectId }: { projectId: number }) {
  const { data: stages = [] } = useListProjectStages(projectId);
  const updateStage = useUpdateProjectStage();
+ const queryClient = useQueryClient();
  const { toast } = useToast();
 
  const rfpRecord = (
@@ -62,7 +64,10 @@ export function VendorShortlist({ projectId }: { projectId: number }) {
  data: { notes: JSON.stringify({ ...parsedNotes, __vendors: next }) },
  },
  {
- onSuccess: () => { if (successMsg) toast({ title: successMsg }); },
+ onSuccess: () => {
+ void queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/stages`] });
+ if (successMsg) toast({ title: successMsg });
+ },
  onError: () => toast({ title: "Failed to save vendors", variant: "destructive" }),
  },
  );
