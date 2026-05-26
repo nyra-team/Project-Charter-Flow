@@ -292,18 +292,16 @@ export function ProjectLifecycleCard({
           <div className="relative">
             {visiblePhase.stageKeys.length > 1 && (() => {
               const total = visiblePhase.stageKeys.length;
-              const completed = visiblePhase.stageKeys.filter(
-                (k) => stageStatus(k) === "complete",
-              ).length;
-              const hasActive = visiblePhase.stageKeys.some(
-                (k) => stageStatus(k) === "active",
-              );
-              const progressed = completed + (hasActive ? 0.5 : 0);
-              const trackPct = ((total - 1) / total) * 100; // edge-to-edge of dot centers
-              const fillPct = Math.max(
-                0,
-                Math.min(100, (progressed / (total - 1)) * trackPct),
-              );
+              // Highest dot index that is complete or currently active —
+              // the connector fills from the first dot up to this one.
+              let lastReached = -1;
+              for (let i = 0; i < total; i++) {
+                const s = stageStatus(visiblePhase.stageKeys[i]);
+                if (s === "complete" || s === "active") lastReached = i;
+              }
+              const trackPct = ((total - 1) / total) * 100; // dot-1 centre → last-dot centre
+              const fillPct =
+                lastReached <= 0 ? 0 : (lastReached / (total - 1)) * trackPct;
               const offsetPct = (1 / total) * 50; // half a slot from the left
               return (
                 <>
