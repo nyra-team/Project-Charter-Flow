@@ -55,6 +55,14 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
  toast({ title: "Initialise the Business Case stage first", variant: "destructive" });
  return;
  }
+ if (!bjOk) {
+ toast({ title: "Business Justification is required (min 100 characters)", variant: "destructive" });
+ return;
+ }
+ if (!outcomesOk) {
+ toast({ title: "Expected Outcomes is required", variant: "destructive" });
+ return;
+ }
  const payload: DemandPayload = {
  businessJustification: bj, scopeSummary: scope, expectedOutcomes: outcomes,
  sponsor, capexEstimate: Number(capex) || 0, opexEstimate: Number(opex) || 0,
@@ -112,7 +120,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
 
  <div>
  <div className="flex items-center justify-between mb-1">
- <label className="text-[11px] font-semibold text-foreground">Business Justification</label>
+ <label className="text-[11px] font-semibold text-foreground">Business Justification <span className="text-destructive">*</span></label>
  <Counter ok={bjOk} count={bj.length} min={100} />
  </div>
  <AutoTextarea
@@ -135,7 +143,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
  </div>
 
  <div>
- <label className="text-[11px] font-semibold text-foreground block mb-1">Expected Outcomes</label>
+ <label className="text-[11px] font-semibold text-foreground block mb-1">Expected Outcomes <span className="text-destructive">*</span></label>
  <AutoTextarea
  value={outcomes} onChange={(e) => setOutcomes(e.target.value)}
  minRows={2} placeholder="Measurable outcomes — KPIs, savings, capability"
@@ -186,8 +194,9 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
  </div>
  <button
  onClick={save}
- disabled={updateStage.isPending}
- className="bg-primary hover:bg-primary/90 text-xs font-semibold text-primary-foreground px-3 py-1.5 rounded-lg disabled:opacity-40"
+ disabled={updateStage.isPending || !bjOk || !outcomesOk}
+ title={!bjOk ? "Business Justification needs at least 100 characters" : !outcomesOk ? "Expected Outcomes is required" : undefined}
+ className="bg-primary hover:bg-primary/90 text-xs font-semibold text-primary-foreground px-3 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed"
  >
  {updateStage.isPending ? "Saving…" : "Save Business Case"}
  </button>
