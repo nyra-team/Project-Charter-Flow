@@ -2,7 +2,7 @@ export const LIFECYCLE_STAGES = [
   {
     key: "project_case",
     label: "Business Case",
-    shortLabel: "PC",
+    shortLabel: "BC",
     description: "Business case creation and initial approval routing",
     color: "#6366F1",
     requiredDocs: [
