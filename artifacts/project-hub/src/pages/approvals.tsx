@@ -135,6 +135,139 @@ function DecisionPanel({
   );
 }
 
+const APPROVER_ROLE_LABELS: Record<string, string> = {
+  hod: "Head of Department (HOD)",
+  executive_director: "Executive Director",
+  cfo: "Chief Financial Officer (CFO)",
+  scm: "Supply Chain (SCM)",
+  chairman: "Chairman",
+  finance: "Finance",
+  pmo: "PMO",
+};
+
+type ApprovalLike = {
+  id: number;
+  charterId: number;
+  approverRole?: string | null;
+  stage?: string | null;
+  slaHours?: number;
+  dueAt?: string | null;
+  breachedAt?: string | null;
+  createdAt?: string;
+};
+
+function QuickDecideRow({ approval }: { approval: ApprovalLike & Record<string, unknown> }) {
+  const decideMutation = useDecideApproval();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const roleLabel = approval.approverRole
+    ? (APPROVER_ROLE_LABELS[approval.approverRole] ?? approval.approverRole.replace(/_/g, " "))
+    : "Approver";
+
+  const decide = (decision: "approved" | "rejected") => {
+    const comments = decision === "rejected"
+      ? `[Test] Rejected as ${roleLabel}`
+      : `[Test] Approved as ${roleLabel}`;
+    decideMutation.mutate(
+      { id: approval.id, data: { decision, comments } },
+      {
+        onSuccess: () => {
+          toast({
+            title: decision === "approved" ? `Approved as ${roleLabel}` : `Rejected as ${roleLabel}`,
+          });
+          queryClient.invalidateQueries({ queryKey: ["/api/approvals/pending"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/dashboard/summary"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/dashboard/gamification"] });
+        },
+        onError: () => toast({ title: "Failed to record decision", variant: "destructive" }),
+      },
+    );
+  };
+
+  const charterTitle = (approval.charterTitle as string | undefined) || `Charter #${approval.charterId}`;
+
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card">
+      <div className="flex-1 min-w-0">
+        <Link href={`/charters/${approval.charterId}`}>
+          <p className="text-sm font-medium text-foreground hover:text-primary transition-colors truncate">
+            {charterTitle}
+          </p>
+        </Link>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <span className="text-[11px] text-muted-foreground">
+            {STAGE_LABELS[approval.stage ?? ""] ?? (approval.stage ?? "Review")}
+          </span>
+          <SlaBadge approval={approval} />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        <button
+          onClick={() => decide("rejected")}
+          disabled={decideMutation.isPending}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/15 disabled:opacity-50"
+        >
+          <XCircle size={13} />
+          Reject
+        </button>
+        <button
+          onClick={() => decide("approved")}
+          disabled={decideMutation.isPending}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-success hover:bg-success/90 transition-colors disabled:opacity-50"
+        >
+          <CheckCircle2 size={13} />
+          Approve as {roleLabel.split(" ")[0]}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function InitiatorApproverGroups({ approvals }: { approvals: ApprovalLike[] }) {
+  // Group by approverRole
+  const groups = new Map<string, ApprovalLike[]>();
+  for (const a of approvals) {
+    const key = a.approverRole ?? "unassigned";
+    const list = groups.get(key) ?? [];
+    list.push(a);
+    groups.set(key, list);
+  }
+  const orderedRoles = ["hod", "executive_director", "cfo", "scm", "chairman", "finance", "pmo"];
+  const sortedKeys = [
+    ...orderedRoles.filter(r => groups.has(r)),
+    ...Array.from(groups.keys()).filter(k => !orderedRoles.includes(k)),
+  ];
+
+  return (
+    <div className="space-y-5 stagger-children">
+      {sortedKeys.map(roleKey => {
+        const items = groups.get(roleKey)!;
+        const label = APPROVER_ROLE_LABELS[roleKey] ?? roleKey.replace(/_/g, " ");
+        return (
+          <div key={roleKey} className="glass-surface rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary/10 border border-primary/20">
+                  <FileText size={14} className="text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-foreground capitalize">{label}</h3>
+                  <p className="text-[11px] text-muted-foreground">{items.length} item{items.length === 1 ? "" : "s"} awaiting this approver</p>
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {items.map(a => (
+                <QuickDecideRow key={a.id} approval={a as ApprovalLike & Record<string, unknown>} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ApprovalsList() {
   const { role, userId } = useUserStore();
   // Initiator is a testing/demo role — fetch *all* pending approvals (no
@@ -192,62 +325,61 @@ export default function ApprovalsList() {
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-28 rounded-2xl" />)}
         </div>
       ) : filteredApprovals.length > 0 ? (
-        <div className="space-y-6 stagger-children">
-          {filteredApprovals.map(approval => {
-            const isOpen = expanded === approval.id;
-            return (
-              <div
-                key={approval.id}
-                className={`glass-surface lift-card rounded-2xl p-4 transition-all ${isOpen ? "ring-1 ring-primary/30 shadow-lg" : ""}`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-warn/10 border border-warn/30">
-                    <FileText size={18} className="text-warn" />
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <Link href={`/charters/${approval.charterId}`}>
-                          <h3 className="font-semibold text-foreground hover:text-primary transition-colors">
-                            {(approval as unknown as Record<string, unknown>).charterTitle as string || `Charter #${approval.charterId}`}
-                          </h3>
-                        </Link>
-                        <div className="flex items-center gap-3 mt-1 flex-wrap">
-                          <span className="text-xs text-muted-foreground/80 flex items-center gap-1">
-                            <CheckSquare size={11} />
-                            {STAGE_LABELS[approval.stage ?? ""] ?? (approval.stage ?? "Review")}
-                          </span>
-                          {isInitiator && approval.approverRole && (
-                            <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-primary/10 text-primary border-primary/20">
-                              As {approval.approverRole.replace(/_/g, " ")}
-                            </span>
-                          )}
-                          <SlaBadge approval={approval as unknown as { slaHours?: number; dueAt?: string | null; breachedAt?: string | null; createdAt?: string }} />
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setExpanded(isOpen ? null : approval.id)}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground flex-shrink-0"
-                      >
-                        <MessageSquare size={12} />
-                        Review
-                        <ChevronRight size={12} className={`transition-transform ${isOpen ? "rotate-90" : ""}`} />
-                      </button>
+        isInitiator ? (
+          <InitiatorApproverGroups approvals={filteredApprovals} />
+        ) : (
+          <div className="space-y-6 stagger-children">
+            {filteredApprovals.map(approval => {
+              const isOpen = expanded === approval.id;
+              return (
+                <div
+                  key={approval.id}
+                  className={`glass-surface lift-card rounded-2xl p-4 transition-all ${isOpen ? "ring-1 ring-primary/30 shadow-lg" : ""}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-warn/10 border border-warn/30">
+                      <FileText size={18} className="text-warn" />
                     </div>
 
-                    {isOpen && (
-                      <DecisionPanel
-                        approvalId={approval.id}
-                        onDone={() => setExpanded(null)}
-                      />
-                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <Link href={`/charters/${approval.charterId}`}>
+                            <h3 className="font-semibold text-foreground hover:text-primary transition-colors">
+                              {(approval as unknown as Record<string, unknown>).charterTitle as string || `Charter #${approval.charterId}`}
+                            </h3>
+                          </Link>
+                          <div className="flex items-center gap-3 mt-1 flex-wrap">
+                            <span className="text-xs text-muted-foreground/80 flex items-center gap-1">
+                              <CheckSquare size={11} />
+                              {STAGE_LABELS[approval.stage ?? ""] ?? (approval.stage ?? "Review")}
+                            </span>
+                            <SlaBadge approval={approval as unknown as { slaHours?: number; dueAt?: string | null; breachedAt?: string | null; createdAt?: string }} />
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setExpanded(isOpen ? null : approval.id)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground flex-shrink-0"
+                        >
+                          <MessageSquare size={12} />
+                          Review
+                          <ChevronRight size={12} className={`transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                        </button>
+                      </div>
+
+                      {isOpen && (
+                        <DecisionPanel
+                          approvalId={approval.id}
+                          onDone={() => setExpanded(null)}
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )
       ) : (
         <div className="glass-surface rounded-2xl p-12 text-center ph-rise ph-rise-3">
           <CheckCircle2 size={36} className="text-success/70 mx-auto mb-3" />
