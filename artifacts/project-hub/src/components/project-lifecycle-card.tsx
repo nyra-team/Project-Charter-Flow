@@ -276,10 +276,10 @@ export function ProjectLifecycleCard({
         </div>
       ) : (
         <div
-          className="relative rounded-b-2xl border border-t-0 px-3 pt-4 pb-3 bg-muted/15"
+          className="relative mt-3 rounded-2xl border px-4 pt-4 pb-3 bg-muted/15"
           style={{ borderColor: `${visiblePhase.color}55` }}
         >
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
               {visiblePhase.label} · {visiblePhase.stageKeys.length} stage
               {visiblePhase.stageKeys.length === 1 ? "" : "s"}
@@ -288,8 +288,49 @@ export function ProjectLifecycleCard({
               {visiblePhase.description}
             </p>
           </div>
-          <div className="flex items-start justify-around gap-2">
-            {visiblePhase.stageKeys.map((stageKey) => renderStageDot(stageKey))}
+          {/* Connector line behind the dots */}
+          <div className="relative">
+            {visiblePhase.stageKeys.length > 1 && (() => {
+              const total = visiblePhase.stageKeys.length;
+              const completed = visiblePhase.stageKeys.filter(
+                (k) => stageStatus(k) === "complete",
+              ).length;
+              const hasActive = visiblePhase.stageKeys.some(
+                (k) => stageStatus(k) === "active",
+              );
+              const progressed = completed + (hasActive ? 0.5 : 0);
+              const trackPct = ((total - 1) / total) * 100; // edge-to-edge of dot centers
+              const fillPct = Math.max(
+                0,
+                Math.min(100, (progressed / (total - 1)) * trackPct),
+              );
+              const offsetPct = (1 / total) * 50; // half a slot from the left
+              return (
+                <>
+                  <div
+                    className="absolute h-[3px] bg-border/70 rounded-full"
+                    style={{
+                      top: dotSize / 2 - 1,
+                      left: `${offsetPct}%`,
+                      right: `${offsetPct}%`,
+                    }}
+                  />
+                  <div
+                    className="absolute h-[3px] rounded-full transition-[width] duration-700 ease-out"
+                    style={{
+                      top: dotSize / 2 - 1,
+                      left: `${offsetPct}%`,
+                      width: `${fillPct}%`,
+                      background:
+                        "linear-gradient(90deg, hsl(var(--success)) 0%, hsl(var(--success)) 65%, hsl(var(--primary)) 100%)",
+                    }}
+                  />
+                </>
+              );
+            })()}
+            <div className="relative flex items-start justify-around gap-2">
+              {visiblePhase.stageKeys.map((stageKey) => renderStageDot(stageKey))}
+            </div>
           </div>
         </div>
       )}
