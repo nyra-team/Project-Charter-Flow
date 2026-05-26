@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   DndContext,
   DragEndEvent,
-  DragOverlay,
   DragStartEvent,
   PointerSensor,
   useSensor,
@@ -43,7 +42,6 @@ interface DragData {
   kind: DragKind;
   id: number;
   status: string;
-  width: number;
 }
 
 function encodeId(kind: DragKind, id: number) {
@@ -229,18 +227,22 @@ function DraggableCard({
   onTaskClick?: (id: number) => void;
   onLogTime?: (taskId: number, taskName: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: dragId });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: dragId });
+
+  // Move the card itself with the cursor (no separate floating preview).
+  const style: React.CSSProperties = {
+    touchAction: "none",
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    zIndex: isDragging ? 50 : undefined,
+    position: isDragging ? "relative" : undefined,
+  };
 
   return (
-    <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      style={{ opacity: isDragging ? 0.4 : 1, touchAction: "none" }}
-    >
+    <div ref={setNodeRef} {...listeners} {...attributes} style={style}>
       <TaskCard
         task={task}
         isMilestone={isMilestone}
+        isDragging={isDragging}
         onClick={!isMilestone ? () => onTaskClick?.(task.id) : undefined}
         onLogTime={onLogTime}
       />
@@ -269,23 +271,16 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
 
   // Include ALL tasks (top-level + subtasks) on the board
   const allBoardTasks = tasks.map(t => ({ ...t, subtaskCount: subtaskCountMap[t.id] ?? 0 }));
-  // Keep topLevelTasks reference for drag overlay lookup
-  const topLevelTasks = allBoardTasks.filter(t => !t.parentTaskId);
-
   function handleDragStart(event: DragStartEvent) {
     const decoded = decodeId(event.active.id);
     if (!decoded) return;
     const { kind, id } = decoded;
-    // Measure the actual draggable's rendered width so the DragOverlay
-    // renders at exactly the same size — otherwise the preview is offset
-    // from the cursor.
-    const w = event.active.rect.current.initial?.width ?? 204;
     if (kind === "task") {
       const t = allBoardTasks.find(x => x.id === id);
-      if (t) setActiveDrag({ kind, id, status: t.status, width: w });
+      if (t) setActiveDrag({ kind, id, status: t.status });
     } else {
       const m = milestones.find(x => x.id === id);
-      if (m) setActiveDrag({ kind, id, status: m.status, width: w });
+      if (m) setActiveDrag({ kind, id, status: m.status });
     }
   }
 
@@ -361,28 +356,6 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
           );
         })}
       </div>
-
-      <DragOverlay dropAnimation={null}>
-        {activeDrag && (() => {
-          // Render the overlay at the exact width of the original card AND
-          // with no extra margins so its top-left sits where the cursor
-          // grabbed it.
-          const wrap = (node: React.ReactNode) => (
-            <div style={{ width: activeDrag.width }}>{node}</div>
-          );
-          if (activeDrag.kind === "task") {
-            // Look up across ALL tasks (including subtasks) and strip the
-            // isSubtask marginLeft on the overlay so the card is not shifted.
-            const t = allBoardTasks.find(x => x.id === activeDrag.id);
-            if (!t) return null;
-            return wrap(<TaskCard task={{ ...t, isSubtask: false }} isDragging />);
-          } else {
-            const m = milestones.find(x => x.id === activeDrag.id);
-            if (!m) return null;
-            return wrap(<TaskCard task={{ ...m, endDate: m.dueDate }} isMilestone isDragging />);
-          }
-        })()}
-      </DragOverlay>
 
       {timelogModal && (
         <LogTimeModal
