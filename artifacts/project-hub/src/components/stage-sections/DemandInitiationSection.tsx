@@ -3,6 +3,7 @@ import { useListProjectStages, useUpdateProjectStage } from "@workspace/api-clie
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { AiButton } from "../ai-button";
+import { AutoTextarea } from "../ui/auto-textarea";
 
 type DemandPayload = {
  businessJustification?: string;
@@ -112,10 +113,10 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
  <label className="text-[11px] font-semibold text-foreground">Business Justification</label>
  <Counter ok={bjOk} count={bj.length} min={100} />
  </div>
- <textarea
+ <AutoTextarea
  value={bj} onChange={(e) => setBj(e.target.value)}
- rows={3} placeholder="Why this project, why now, what business problem does it solve?"
- className="w-full text-xs border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary bg-card"
+ minRows={3} placeholder="Why this project, why now, what business problem does it solve?"
+ className="text-xs border border-border rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-primary bg-card"
  />
  </div>
 
@@ -124,19 +125,19 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
  <label className="text-[11px] font-semibold text-foreground">Scope Summary</label>
  <Counter ok={scopeOk} count={scope.length} min={50} />
  </div>
- <textarea
+ <AutoTextarea
  value={scope} onChange={(e) => setScope(e.target.value)}
- rows={2} placeholder="What is in scope, what is explicitly out of scope?"
- className="w-full text-xs border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary bg-card"
+ minRows={2} placeholder="What is in scope, what is explicitly out of scope?"
+ className="text-xs border border-border rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-primary bg-card"
  />
  </div>
 
  <div>
  <label className="text-[11px] font-semibold text-foreground block mb-1">Expected Outcomes</label>
- <textarea
+ <AutoTextarea
  value={outcomes} onChange={(e) => setOutcomes(e.target.value)}
- rows={2} placeholder="Measurable outcomes — KPIs, savings, capability"
- className="w-full text-xs border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary bg-card"
+ minRows={2} placeholder="Measurable outcomes — KPIs, savings, capability"
+ className="text-xs border border-border rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-primary bg-card"
  />
  </div>
 
