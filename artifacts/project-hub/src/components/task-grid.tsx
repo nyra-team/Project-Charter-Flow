@@ -610,18 +610,27 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
     // Subtasks can only be reordered among siblings under the same parent.
     // They cannot change parent, become top-level, or change group field.
     if (dragged.parentTaskId) {
-      if (target.parentTaskId !== dragged.parentTaskId) {
-        toast({ title: "Subtasks can only be reordered within the same parent task" });
-        return;
-      }
+      const parentId = dragged.parentTaskId;
       const subSiblings = tasks
-        .filter(t => t.parentTaskId === dragged.parentTaskId)
+        .filter(t => t.parentTaskId === parentId)
         .slice()
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id - b.id);
+
+      // Decide where to insert. If the drop landed on the parent row, treat
+      // it as "move to the very top of the subtask list" — this handles the
+      // common case where the user overshoots past the first subtask.
+      let insertAt: number;
       const withoutDragged = subSiblings.filter(t => t.id !== draggedId);
-      const targetIdx = withoutDragged.findIndex(t => t.id === targetId);
-      if (targetIdx === -1) return;
-      const insertAt = position === "above" ? targetIdx : targetIdx + 1;
+      if (target.id === parentId) {
+        insertAt = 0;
+      } else if (target.parentTaskId !== parentId) {
+        toast({ title: "Subtasks can only be reordered within the same parent task" });
+        return;
+      } else {
+        const targetIdx = withoutDragged.findIndex(t => t.id === targetId);
+        if (targetIdx === -1) return;
+        insertAt = position === "above" ? targetIdx : targetIdx + 1;
+      }
       const reordered = [
         ...withoutDragged.slice(0, insertAt),
         dragged,
