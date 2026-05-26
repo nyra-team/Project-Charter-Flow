@@ -5,22 +5,24 @@ function withAlpha(hex: string, alphaHex: string) {
   return `${hex}${alphaHex}`;
 }
 
+// Single-hue progression (teal family) — lightest = just started, darkest = completed
 export const TASK_STATUSES = [
-  { value: "not_started", label: "To be Started", color: "#FFFFFF", bg: "#808080", solid: "#808080" },
-  { value: "in_progress", label: "In Progress",   color: "#FFFFFF", bg: "#28A745", solid: "#28A745" },
-  { value: "at_risk",     label: "At Risk",       color: "#1F2937", bg: "#FFC107", solid: "#FFC107" },
-  { value: "delayed",     label: "Delayed",       color: "#FFFFFF", bg: "#DC3545", solid: "#DC3545" },
-  { value: "completed",   label: "Completed",     color: "#FFFFFF", bg: "#007BFF", solid: "#007BFF" },
-  { value: "on_hold",     label: "On-Hold",       color: "#FFFFFF", bg: "#6F42C1", solid: "#6F42C1" },
+  { value: "not_started", label: "To be Started", color: "#1F2937", bg: "#CCFBF1", solid: "#CCFBF1" },
+  { value: "in_progress", label: "In Progress",   color: "#FFFFFF", bg: "#2DD4BF", solid: "#2DD4BF" },
+  { value: "at_risk",     label: "At Risk",       color: "#FFFFFF", bg: "#14B8A6", solid: "#14B8A6" },
+  { value: "delayed",     label: "Delayed",       color: "#FFFFFF", bg: "#0D9488", solid: "#0D9488" },
+  { value: "on_hold",     label: "On-Hold",       color: "#FFFFFF", bg: "#0F766E", solid: "#0F766E" },
+  { value: "completed",   label: "Completed",     color: "#FFFFFF", bg: "#134E4A", solid: "#134E4A" },
 ] as const;
 
 export type TaskStatusValue = (typeof TASK_STATUSES)[number]["value"];
 
+// Single-hue progression (indigo/purple family) — lightest = low, darkest = critical
 export const TASK_PRIORITIES = [
-  { value: "P0", label: "P0 Critical", color: "#FFFFFF", bg: "#DC3545", solid: "#DC3545" },
-  { value: "P1", label: "P1 High",     color: "#FFFFFF", bg: "#FD7E14", solid: "#FD7E14" },
-  { value: "P2", label: "P2 Medium",   color: "#1F2937", bg: "#FFC107", solid: "#FFC107" },
-  { value: "P3", label: "P3 Low",      color: "#FFFFFF", bg: "#28A745", solid: "#28A745" },
+  { value: "P3", label: "P3 Low",      color: "#1F2937", bg: "#C7D2FE", solid: "#C7D2FE" },
+  { value: "P2", label: "P2 Medium",   color: "#FFFFFF", bg: "#818CF8", solid: "#818CF8" },
+  { value: "P1", label: "P1 High",     color: "#FFFFFF", bg: "#4F46E5", solid: "#4F46E5" },
+  { value: "P0", label: "P0 Critical", color: "#FFFFFF", bg: "#312E81", solid: "#312E81" },
 ] as const;
 
 export type TaskPriorityValue = (typeof TASK_PRIORITIES)[number]["value"];
