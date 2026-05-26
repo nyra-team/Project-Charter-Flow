@@ -260,22 +260,37 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  <p className="text-[11px] text-muted-foreground">
  {latestRfpDoc
    ? "On file in the Documents tab."
-   : localBlobUrl
-     ? "Use Download below to save the PDF."
-     : "Click Regenerate to download the PDF again."}
+   : "Download to save the PDF, or Regenerate to pull the latest URS data."}
  </p>
  </div>
- {(localBlobUrl || latestRfpDoc) && (
+ {localBlobUrl ? (
  <a
- href={localBlobUrl ?? latestRfpDoc!.fileUrl}
- {...(localBlobUrl
-   ? { download: localFileName ?? "rfp.pdf" }
-   : { target: "_blank", rel: "noopener noreferrer", download: true })}
+ href={localBlobUrl}
+ download={localFileName ?? "rfp.pdf"}
  className="w-full py-2 rounded-xl text-xs font-semibold bg-success text-success-foreground hover:bg-success/90 transition-all flex items-center justify-center gap-2"
  >
  <Download size={14} />
  Download RFP PDF
  </a>
+ ) : latestRfpDoc ? (
+ <a
+ href={latestRfpDoc.fileUrl}
+ target="_blank"
+ rel="noopener noreferrer"
+ download
+ className="w-full py-2 rounded-xl text-xs font-semibold bg-success text-success-foreground hover:bg-success/90 transition-all flex items-center justify-center gap-2"
+ >
+ <Download size={14} />
+ Download RFP PDF
+ </a>
+ ) : (
+ <button
+ onClick={generateRFPTemplate}
+ className="w-full py-2 rounded-xl text-xs font-semibold bg-success text-success-foreground hover:bg-success/90 transition-all flex items-center justify-center gap-2"
+ >
+ <Download size={14} />
+ Download RFP PDF
+ </button>
  )}
  <button
  onClick={generateRFPTemplate}
