@@ -170,7 +170,9 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
     .filter((i) => i.blocking)
     .every((i) => effectiveChecklist[i.id]);
 
-  const requiredDocsUploaded = stageConfig.requiredDocs.every((rd) =>
+  // Business Case documents are optional — uploads are encouraged but not gated.
+  const docsAreOptional = displayStageKey === "project_case";
+  const requiredDocsUploaded = docsAreOptional || stageConfig.requiredDocs.every((rd) =>
     stageDocs.some((d) => d.name === rd.name),
   );
 
@@ -230,7 +232,9 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
 
   const TABS = [
     { id: "overview" as const, label: "Overview" },
-    { id: "documents" as const, label: `Documents (${stageDocs.length}/${stageConfig.requiredDocs.length})` },
+    { id: "documents" as const, label: docsAreOptional
+        ? `Documents (${stageDocs.length} · optional)`
+        : `Documents (${stageDocs.length}/${stageConfig.requiredDocs.length})` },
     { id: "checklist" as const, label: `Checklist (${stageConfig.checklistItems.filter((i) => effectiveChecklist[i.id]).length}/${stageConfig.checklistItems.length})` },
     { id: "approvals" as const, label: `Approvals (${approvals.length})` },
   ];
