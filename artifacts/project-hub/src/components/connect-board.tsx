@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   DndContext,
   DragEndEvent,
-  DragOverlay,
   DragStartEvent,
   PointerSensor,
   useSensor,
@@ -228,14 +227,17 @@ function DraggableCard({
   onTaskClick?: (id: number) => void;
   onLogTime?: (taskId: number, taskName: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: dragId });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: dragId });
 
-  // The floating drag preview is rendered by <DragOverlay> in the parent so it
-  // stays visible above every column. Here we just keep the source card in
-  // place but hidden while dragging.
+  // Move the card itself with the cursor (no DragOverlay — the canvas iframe
+  // wraps this in a scaled transform, which offsets DragOverlay's portal
+  // coordinates and makes the preview drift away from the cursor).
   const style: React.CSSProperties = {
     touchAction: "none",
-    opacity: isDragging ? 0 : 1,
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    zIndex: isDragging ? 9999 : undefined,
+    position: isDragging ? "relative" : undefined,
+    pointerEvents: isDragging ? "none" : undefined,
   };
 
   return (
@@ -243,6 +245,7 @@ function DraggableCard({
       <TaskCard
         task={task}
         isMilestone={isMilestone}
+        isDragging={isDragging}
         onClick={!isMilestone ? () => onTaskClick?.(task.id) : undefined}
         onLogTime={onLogTime}
       />
@@ -356,31 +359,6 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
           );
         })}
       </div>
-
-      <DragOverlay dropAnimation={null}>
-        {activeDrag ? (() => {
-          if (activeDrag.kind === "task") {
-            const t = allBoardTasks.find(x => x.id === activeDrag.id);
-            if (!t) return null;
-            return (
-              <div className="rotate-2 shadow-2xl ring-2 ring-primary/40">
-                <TaskCard task={{ ...t, isSubtask: !!t.parentTaskId }} isDragging />
-              </div>
-            );
-          }
-          const m = milestones.find(x => x.id === activeDrag.id);
-          if (!m) return null;
-          return (
-            <div className="rotate-2 shadow-2xl ring-2 ring-primary/40">
-              <TaskCard
-                task={{ ...m, endDate: m.dueDate }}
-                isMilestone
-                isDragging
-              />
-            </div>
-          );
-        })() : null}
-      </DragOverlay>
 
       {timelogModal && (
         <LogTimeModal
