@@ -543,15 +543,17 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
     return "not_started";
   }
 
-  // Optimistic patch + rollback on error
+  // Optimistic patch + rollback on error.
+  // We keep pending patches in state until the incoming `tasks` prop reflects
+  // them (see useEffect below) — this avoids the flicker where the row briefly
+  // reverts to the old value between the mutation succeeding and the refetch
+  // arriving with the new data.
   const patch = useCallback((taskId: number, data: Record<string, unknown>) => {
     setPendingPatches(prev => ({ ...prev, [taskId]: { ...(prev[taskId] ?? {}), ...data } }));
     updateTask.mutate(
       { id: taskId, data: data as Parameters<typeof updateTask.mutate>[0]["data"] },
       {
         onSuccess: () => {
-          setPendingPatches(prev => { const n = { ...prev }; delete n[taskId]; return n; });
-
           // Auto-rollup: if a subtask's status changed, recompute & patch the parent
           if ("status" in data) {
             const task = tasks.find(t => t.id === taskId);
@@ -564,11 +566,15 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
               const newParentStatus = rollupParentStatus(siblingStatuses);
               const parent = tasks.find(t => t.id === parentId);
               if (newParentStatus && parent && parent.status !== newParentStatus) {
+                setPendingPatches(prev => ({
+                  ...prev,
+                  [parentId]: { ...(prev[parentId] ?? {}), status: newParentStatus },
+                }));
                 updateTask.mutate({
                   id: parentId,
                   data: { status: newParentStatus } as Parameters<typeof updateTask.mutate>[0]["data"],
                 }, { onSuccess: () => onRefresh() });
-                return; // onRefresh will fire from the parent update
+                return;
               }
             }
           }
@@ -581,6 +587,29 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
       }
     );
   }, [updateTask, onRefresh, toast, tasks]);
+
+  // Reconcile: drop pending fields once the incoming `tasks` prop already
+  // matches them. This guarantees the row stays in its optimistic group until
+  // the refetched data confirms the change, eliminating the flicker.
+  useEffect(() => {
+    setPendingPatches(prev => {
+      let changed = false;
+      const next: Record<number, Record<string, unknown>> = {};
+      for (const [idStr, patchObj] of Object.entries(prev)) {
+        const id = Number(idStr);
+        const task = tasks.find(t => t.id === id) as Record<string, unknown> | undefined;
+        if (!task) { next[id] = patchObj; continue; }
+        const remaining: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(patchObj)) {
+          if (task[k] !== v) remaining[k] = v;
+          else changed = true;
+        }
+        if (Object.keys(remaining).length > 0) next[id] = remaining;
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [tasks]);
 
   function addSubtask(parentId: number) {
     if (!newSubtaskName.trim()) return;
