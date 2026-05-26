@@ -174,7 +174,7 @@ export function ProjectLifecycleCard({
           sits directly above its child dots (in showAllSubStages mode) or so
           the active pill spans a meaningful slice. */}
       <div className="relative">
-        <div className="flex items-stretch gap-1.5">
+        <div className="flex items-stretch gap-3">
           {LIFECYCLE_PHASES.map((phase, idx) => {
             const { total, done, status } = phaseStats(idx);
             const isVisible = idx === visiblePhaseIdx;
@@ -259,7 +259,7 @@ export function ProjectLifecycleCard({
           under each phase using the same flex weights. */}
       {showAllSubStages ? (
         <div className="relative mt-3">
-          <div className="flex items-stretch gap-1.5">
+          <div className="flex items-stretch gap-3">
             {LIFECYCLE_PHASES.map((phase) => (
               <div
                 key={phase.key}
