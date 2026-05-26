@@ -1,12 +1,12 @@
 export const LIFECYCLE_STAGES = [
   {
     key: "project_case",
-    label: "Project Case",
+    label: "Business Case",
     shortLabel: "PC",
     description: "Business case creation and initial approval routing",
     color: "#6366F1",
     requiredDocs: [
-      { id: "pc_form", name: "Project Case Form", description: "Completed PC form with business justification", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+      { id: "pc_form", name: "Business Case Form", description: "Completed business case form with business justification", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
       { id: "business_case", name: "Business Case Document", description: "Detailed business case with ROI analysis", acceptedTypes: ["PDF", "DOCX", "XLSX"], maxSizeMB: 25 },
     ],
     checklistItems: [
@@ -18,7 +18,7 @@ export const LIFECYCLE_STAGES = [
     ],
     prerequisites: [] as string[],
     advanceRoles: ["initiator", "pmo"],
-    advanceLabel: "Submit Project Case",
+    advanceLabel: "Submit Business Case",
     stageSpecific: { hasDemandInitiation: true },
   },
   {

@@ -51,7 +51,7 @@ export default function NewDemand() {
           notes: sponsor ? JSON.stringify({ __projectCase: { sponsor } }) : undefined,
         },
       });
-      toast({ title: "Demand created", description: `${project.name} is now in Project Case stage.` });
+      toast({ title: "Demand created", description: `${project.name} is now in Business Case stage.` });
       navigate(`/projects/${project.id}?stage=project_case`);
     } catch (err) {
       toast({ title: "Failed to create demand", description: String(err), variant: "destructive" });
@@ -144,7 +144,7 @@ export default function NewDemand() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Initial Sponsor" subtitle="Optional — full sponsor details can be added on the Project Case form.">
+        <SectionCard title="Initial Sponsor" subtitle="Optional — full sponsor details can be added on the Business Case form.">
           <input
             type="text" value={sponsor} onChange={(e) => setSponsor(e.target.value)}
             placeholder="Sponsor name or role"
@@ -163,7 +163,7 @@ export default function NewDemand() {
             data-testid="button-create-demand"
           >
             {submitting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-            <span>Create Demand & Open Project Case</span>
+            <span>Create Demand & Open Business Case</span>
           </button>
         </div>
       </form>

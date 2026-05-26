@@ -56,7 +56,7 @@ export default function PipelinePage() {
               Project Pipeline
             </h2>
             <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
-              Every project across every stage — from <span className="font-mono text-card-foreground font-semibold">Project Case</span> to{" "}
+              Every project across every stage — from <span className="font-mono text-card-foreground font-semibold">Business Case</span> to{" "}
               <span className="font-mono text-card-foreground font-semibold">Closure</span>.
               {" "}<span className="font-mono num-tabular text-card-foreground font-semibold">{totalProjects}</span> total ·
               {" "}<span className="font-mono num-tabular text-card-foreground font-semibold">{projectsInExecution}</span> in execution.

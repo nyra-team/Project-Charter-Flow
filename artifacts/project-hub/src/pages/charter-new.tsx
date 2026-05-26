@@ -17,7 +17,7 @@ import { api } from "../lib/extra-api";
 import { useAiStatus } from "../components/ai-button";
 
 const STEPS = [
-  { id: "basics", label: "Project Case", icon: Hash },
+  { id: "basics", label: "Business Case", icon: Hash },
   { id: "scope", label: "Scope & Deliverables", icon: Target },
   { id: "benefits", label: "Business Benefits", icon: TrendingUp },
   { id: "team", label: "Team & Budget", icon: Users },
@@ -339,8 +339,8 @@ export default function NewCharter() {
         <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="text-2xl font-bold text-foreground tracking-tight">New Project Case</h2>
-            <p className="text-muted-foreground text-sm mt-1">Complete the project case to initiate the approval workflow.</p>
+            <h2 className="text-2xl font-bold text-foreground tracking-tight">New Business Case</h2>
+            <p className="text-muted-foreground text-sm mt-1">Complete the business case to initiate the approval workflow.</p>
           </div>
           <div className="text-right">
             <p className="text-[11px] text-muted-foreground uppercase tracking-wider font-semibold">Reference ID</p>
@@ -388,7 +388,7 @@ export default function NewCharter() {
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)}>
-          {/* Step 0: Project Case */}
+          {/* Step 0: Business Case */}
           {step === 0 && (
             <div className="space-y-4">
               <AiDraftFromBasicsButton
@@ -421,7 +421,7 @@ export default function NewCharter() {
                   }
                 }}
               />
-              <SectionCard title="Project Case Information" subtitle="Core identification and strategic alignment">
+              <SectionCard title="Business Case Information" subtitle="Core identification and strategic alignment">
                 <FormField
                   control={form.control}
                   name="title"
@@ -982,7 +982,7 @@ export default function NewCharter() {
                 className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm disabled:opacity-60"
               >
                 {createCharter.isPending && <Loader2 size={14} className="animate-spin" />}
-                Submit Project Case
+                Submit Business Case
                 <Check size={14} />
               </button>
             )}

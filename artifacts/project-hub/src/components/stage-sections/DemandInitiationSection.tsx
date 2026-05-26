@@ -52,7 +52,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
 
  function save() {
  if (!stageRecord?.id) {
- toast({ title: "Initialise the Project Case stage first", variant: "destructive" });
+ toast({ title: "Initialise the Business Case stage first", variant: "destructive" });
  return;
  }
  const payload: DemandPayload = {
@@ -63,8 +63,8 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
  updateStage.mutate(
  { id: stageRecord.id, data: { notes: JSON.stringify({ ...parsed, __demand_initiation: payload }) } },
  {
- onSuccess: () => toast({ title: "Project Case saved" }),
- onError: () => toast({ title: "Failed to save Project Case", variant: "destructive" }),
+ onSuccess: () => toast({ title: "Business Case saved" }),
+ onError: () => toast({ title: "Failed to save Business Case", variant: "destructive" }),
  },
  );
  }
@@ -81,7 +81,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
  <div className="rounded-2xl p-4 space-y-3">
  <div className="flex items-center justify-between">
  <div>
- <p className="text-sm font-bold text-foreground">Project Case Form</p>
+ <p className="text-sm font-bold text-foreground">Business Case Form</p>
  <p className="text-[11px] text-primary">FR-01 · captures business justification, scope, outcomes and preliminary budget</p>
  </div>
  <div className="flex items-center gap-2">
@@ -187,7 +187,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
  disabled={updateStage.isPending}
  className="bg-primary hover:bg-primary/90 text-xs font-semibold text-primary-foreground px-3 py-1.5 rounded-lg disabled:opacity-40"
  >
- {updateStage.isPending ? "Saving…" : "Save Project Case"}
+ {updateStage.isPending ? "Saving…" : "Save Business Case"}
  </button>
  </div>
  </div>

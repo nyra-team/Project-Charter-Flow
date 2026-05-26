@@ -34,7 +34,7 @@ export default function DemandsList() {
               Active Demands
             </h2>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
-              All initiatives in <span className="font-mono text-card-foreground font-semibold">Project Case</span>,{" "}
+              All initiatives in <span className="font-mono text-card-foreground font-semibold">Business Case</span>,{" "}
               <span className="font-mono text-card-foreground font-semibold">URS</span>,{" "}
               <span className="font-mono text-card-foreground font-semibold">RFP</span>, or{" "}
               <span className="font-mono text-card-foreground font-semibold">Vendor Evaluation</span> —
@@ -75,7 +75,7 @@ export default function DemandsList() {
           <AlertCircle size={28} className="mx-auto text-muted-foreground mb-3" />
           <p className="text-base font-semibold text-card-foreground">No active demands yet</p>
           <p className="text-sm text-muted-foreground mt-1 mb-4">
-            Start your governance lifecycle by initiating the first project case.
+            Start your governance lifecycle by initiating the first business case.
           </p>
           <Link href="/demands/new">
             <button className="btn-glossy-cta inline-flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold">
