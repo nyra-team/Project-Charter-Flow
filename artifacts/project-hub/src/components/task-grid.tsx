@@ -639,7 +639,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
       >
         {/* Expand toggle */}
         <td className="px-1 text-center" style={{ width: 28 }}>
-          {!isSubtask && (
+          {!isSubtask && subs.length > 0 && (
             <button onClick={() => toggleExpand(task.id)} className="text-muted-foreground hover:text-primary">
               {isExp ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             </button>
