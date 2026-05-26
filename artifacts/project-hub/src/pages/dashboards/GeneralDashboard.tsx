@@ -9,12 +9,11 @@ import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { format } from "date-fns";
-import { LIFECYCLE_STAGES, getStageConfig, getStageIndex } from "../../lib/lifecycle-config";
+import { LIFECYCLE_STAGES, getStageConfig } from "../../lib/lifecycle-config";
 import { LIFECYCLE_PHASES } from "../../lib/lifecycle-phases";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { KPITile, DashboardCard, useAutoRefresh } from "../../components/dashboard/primitives";
-import { ProjectLifecycleCard } from "../../components/project-lifecycle-card";
 import { StageDetailDialog } from "../../components/stage-detail-dialog";
 
 const DEMAND_STAGES = ["project_case", "urs", "rfp", "vendor_evaluation"] as const;
@@ -202,21 +201,6 @@ export default function GeneralDashboard() {
     return map;
   }, [projects]);
 
-  // Dashboard stepper: most-advanced project stage = "active" for the org;
-  // any stage with at least one project past it is "complete" on the timeline.
-  const { dashboardCurrentStage, syntheticStageRecords } = useMemo(() => {
-    const maxIdx = (projects ?? []).reduce((acc, p) => {
-      const i = getStageIndex(p.stage ?? "project_case");
-      return i > acc ? i : acc;
-    }, 0);
-    const current = LIFECYCLE_STAGES[maxIdx]?.key ?? "project_case";
-    const records = LIFECYCLE_STAGES.map((s, i) => ({
-      stage: s.key,
-      status: i < maxIdx ? "complete" : i === maxIdx ? "in_progress" : "not_started",
-    }));
-    return { dashboardCurrentStage: current, syntheticStageRecords: records };
-  }, [projects]);
-
   const [stageDetail, setStageDetail] = useState<string | null>(null);
   const projectsAtSelectedStage = useMemo(
     () => (stageDetail ? (projects ?? []).filter((p) => (p.stage ?? "project_case") === stageDetail) : []),
@@ -304,19 +288,6 @@ export default function GeneralDashboard() {
           </Link>
         }
       >
-        {/* 16-stage ribbon — same component as project detail */}
-        <div className="mb-4">
-          <ProjectLifecycleCard
-            currentStageKey={dashboardCurrentStage}
-            stageRecords={syntheticStageRecords}
-            counts={Object.fromEntries(lifecycleCounts)}
-            onStageClick={(k) => setStageDetail(k)}
-            variant="compact"
-            hideHeader
-            hideLegend
-            showAllSubStages
-          />
-        </div>
         {/* Phase summary */}
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           {LIFECYCLE_PHASES.map((phase) => {
