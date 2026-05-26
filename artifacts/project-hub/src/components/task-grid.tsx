@@ -266,6 +266,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
   const [timelogModal, setTimelogModal] = useState<{ taskId: number; taskName: string; plannedEffortHours?: number | null } | null>(null);
   const [addingSubtask, setAddingSubtask] = useState<number | null>(null);
   const [newSubtaskName, setNewSubtaskName] = useState("");
+  const [editingNameId, setEditingNameId] = useState<number | null>(null);
 
   // ── Monday-style toolbar state (FR-26 / CR-3) ───────────────────────────────
   const [search, setSearch] = useState("");
@@ -652,7 +653,30 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
             {task.isCritical && !isSubtask && (
               <span className="px-1 rounded-sm font-mono uppercase tracking-wider font-semibold flex-shrink-0 border bg-destructive/10 text-destructive border-destructive/20" style={{ fontSize: 9 }}>CP</span>
             )}
-            <span className="font-medium text-foreground truncate" title={task.name}>{task.name}</span>
+            {editingNameId === task.id ? (
+              <input
+                autoFocus
+                defaultValue={task.name}
+                onBlur={(e) => {
+                  const v = e.target.value.trim();
+                  if (v && v !== task.name) patch(task.id, { name: v });
+                  setEditingNameId(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  if (e.key === "Escape") { setEditingNameId(null); }
+                }}
+                className="flex-1 min-w-0 text-xs font-medium border border-primary/40 bg-background text-foreground rounded-none px-1 py-0.5 outline-none focus:ring-1 focus:ring-primary"
+              />
+            ) : (
+              <span
+                className="font-medium text-foreground truncate cursor-text"
+                title={`${task.name} — double-click to rename`}
+                onDoubleClick={() => setEditingNameId(task.id)}
+              >
+                {task.name}
+              </span>
+            )}
             {!isSubtask && subs.length > 0 && (
               <span className="ml-1 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full flex-shrink-0 border bg-primary/10 text-primary border-primary/20"
                 style={{ fontSize: 9 }}
