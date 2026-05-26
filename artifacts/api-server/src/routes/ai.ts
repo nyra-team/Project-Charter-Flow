@@ -468,15 +468,17 @@ router.post("/ai/demand/draft", async (req, res): Promise<void> => {
   const result = await llm({
     task: "demand_draft",
     system:
-      "You are a senior PMO Business Analyst drafting the Project Case (Demand Initiation) for a new enterprise project at Granules India, an Indian pharmaceuticals manufacturer. Produce realistic, executive-grade first-draft content for each field. Be specific to the project as described. Where numbers appear, mark them illustrative ('e.g.', 'approx.'). Never invent stakeholders, vendors, or hard dates.",
-    prompt: `Project: ${project.name}\nDescription: ${project.description ?? "(none)"}\nFunction: ${(project as { function?: string }).function ?? "(unspecified)"}\nCharter title: ${charter?.title ?? "(no charter yet)"}\nCharter description: ${charter?.description ?? ""}\nUser hint: ${hint ?? "(none)"}\n\nDraft each field below in 80-180 words, in professional decision-grade tone.`,
+      "You are a senior PMO Business Analyst drafting the Business Case (Demand Initiation) for a new enterprise project at Granules India, an Indian pharmaceuticals manufacturer. Produce realistic, executive-grade first-draft content for each field. Be specific to the project as described. Where numbers appear, mark them illustrative ('e.g.', 'approx.'). Never invent stakeholders, vendors, or hard dates. For capexEstimate and opexEstimate, propose order-of-magnitude rupee figures (whole numbers, no commas) that a sponsor would find plausible for a project of this scope at an Indian pharma manufacturer — these are first-draft placeholders the user will refine.",
+    prompt: `Project: ${project.name}\nDescription: ${project.description ?? "(none)"}\nFunction: ${(project as { function?: string }).function ?? "(unspecified)"}\nCharter title: ${charter?.title ?? "(no charter yet)"}\nCharter description: ${charter?.description ?? ""}\nUser hint: ${hint ?? "(none)"}\n\nDraft each text field in 80-180 words, in professional decision-grade tone. Provide plausible CapEx and OpEx rupee estimates.`,
     jsonSchema: z.object({
       businessJustification: z.string().min(100),
       scopeSummary: z.string().min(50),
       expectedOutcomes: z.string().min(20),
       sponsor: z.string().optional(),
+      capexEstimate: z.number().nonnegative().optional(),
+      opexEstimate: z.number().nonnegative().optional(),
     }),
-    jsonSchemaHint: `{ "businessJustification":"...", "scopeSummary":"In-Scope: ...\\nOut-of-Scope: ...", "expectedOutcomes":"- KPI ...\\n- Savings ...", "sponsor":"role / function" }`,
+    jsonSchemaHint: `{ "businessJustification":"...", "scopeSummary":"In-Scope: ...\\nOut-of-Scope: ...", "expectedOutcomes":"- KPI ...\\n- Savings ...", "sponsor":"role / function", "capexEstimate": 2500000, "opexEstimate": 600000 }`,
     maxTokens: 3000,
   });
   if (!result.ok) return aiError(result.reason, result.message, res);

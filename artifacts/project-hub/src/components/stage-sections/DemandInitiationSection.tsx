@@ -92,11 +92,13 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
  size="sm"
  variant="subtle"
  onResult={(d) => {
- const r = d as { businessJustification?: string; scopeSummary?: string; expectedOutcomes?: string; sponsor?: string };
+ const r = d as { businessJustification?: string; scopeSummary?: string; expectedOutcomes?: string; sponsor?: string; capexEstimate?: number; opexEstimate?: number };
  if (r.businessJustification) setBj(r.businessJustification);
  if (r.scopeSummary) setScope(r.scopeSummary);
  if (r.expectedOutcomes) setOutcomes(r.expectedOutcomes);
  if (r.sponsor && !sponsor) setSponsor(r.sponsor);
+ if (typeof r.capexEstimate === "number" && !capex) setCapex(String(Math.round(r.capexEstimate)));
+ if (typeof r.opexEstimate === "number" && !opex) setOpex(String(Math.round(r.opexEstimate)));
  toast({ title: "AI draft applied — review and save" });
  }}
  />
