@@ -349,6 +349,88 @@ router.post("/projects/:id/stages/:stage/advance", async (req, res): Promise<voi
   res.json({ projectId, stages, advancedTo: nextStage ?? null });
 });
 
+// Test-only: bypass ALL gates (role, prerequisites, checklist, docs, dual
+// approvals) and force the project's current stage to "complete" + activate
+// the next stage. Restricted to the "initiator" session role for demo/testing.
+// Records the simulated approver role in the activity log so the audit trail
+// still tells the story of who "approved".
+router.post("/projects/:id/stages/:stage/test-advance", async (req, res): Promise<void> => {
+  const projectId = parseInt(req.params.id);
+  if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const { stage } = req.params;
+  const requestRole = req.session.simulatedRole;
+
+  if (requestRole !== "initiator") {
+    res.status(403).json({ error: "Test-advance is only available in initiator (testing) role." });
+    return;
+  }
+
+  const gate = STAGE_GATES[stage];
+  if (!gate) { res.status(400).json({ error: `Unknown stage: ${stage}` }); return; }
+
+  const [project] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  if (project.status === "closed") {
+    res.status(409).json({ error: "Project is closed and archived." });
+    return;
+  }
+
+  const { simulatedApprover } = (req.body ?? {}) as { simulatedApprover?: string };
+
+  // For URS: also auto-fill the dual-approval flags so the audit story is consistent.
+  if (stage === "urs") {
+    const [ursRecord] = await db.select().from(projectStagesTable)
+      .where(and(eq(projectStagesTable.projectId, projectId), eq(projectStagesTable.stage, "urs")));
+    if (ursRecord) {
+      let notes: Record<string, unknown> = {};
+      try { notes = JSON.parse(ursRecord.notes ?? "{}") as Record<string, unknown>; } catch { /* ignore */ }
+      const now = new Date().toISOString();
+      notes.__urs_biz_approved = true;
+      notes.__urs_biz_approved_at = now;
+      notes.__urs_biz_approver = notes.__urs_biz_approver ?? "hod (test)";
+      notes.__urs_it_approved = true;
+      notes.__urs_it_approved_at = now;
+      notes.__urs_it_approver = notes.__urs_it_approver ?? "pmo (test)";
+      await db.update(projectStagesTable).set({ notes: JSON.stringify(notes) })
+        .where(eq(projectStagesTable.id, ursRecord.id));
+    }
+  }
+
+  // Complete the current stage and activate the next
+  const stageIdx = ORDERED_STAGES.indexOf(stage);
+  await db.update(projectStagesTable)
+    .set({ status: "complete", completedAt: new Date() })
+    .where(and(eq(projectStagesTable.projectId, projectId), eq(projectStagesTable.stage, stage)));
+
+  const nextStage = ORDERED_STAGES[stageIdx + 1];
+  if (nextStage) {
+    const existing = await db.select().from(projectStagesTable)
+      .where(and(eq(projectStagesTable.projectId, projectId), eq(projectStagesTable.stage, nextStage)));
+    if (existing.length === 0) {
+      await db.insert(projectStagesTable).values({ projectId, stage: nextStage, status: "in_progress", enteredAt: new Date() });
+    } else {
+      await db.update(projectStagesTable)
+        .set({ status: "in_progress", enteredAt: new Date() })
+        .where(and(eq(projectStagesTable.projectId, projectId), eq(projectStagesTable.stage, nextStage)));
+    }
+    await db.update(projectsTable).set({ stage: nextStage, updatedAt: new Date() }).where(eq(projectsTable.id, projectId));
+  } else {
+    await db.update(projectsTable)
+      .set({ status: "closed", updatedAt: new Date() })
+      .where(eq(projectsTable.id, projectId));
+  }
+
+  await logActivity(
+    "stage_test_advanced",
+    `[TEST] ${simulatedApprover ?? "initiator"} force-advanced "${stage}" → "${nextStage ?? "(closed)"}"`,
+    projectId,
+    "project",
+  );
+
+  const stages = await db.select().from(projectStagesTable).where(eq(projectStagesTable.projectId, projectId)).orderBy(projectStagesTable.createdAt);
+  res.json({ projectId, stages, advancedTo: nextStage ?? null });
+});
+
 router.delete("/project-stages/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }

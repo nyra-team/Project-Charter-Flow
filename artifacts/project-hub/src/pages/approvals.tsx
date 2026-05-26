@@ -1,5 +1,8 @@
-import { useGetPendingApprovals, useDecideApproval } from "@workspace/api-client-react";
+import {
+  useGetPendingApprovals, useDecideApproval, useListProjects,
+} from "@workspace/api-client-react";
 import { useUserStore } from "../lib/store";
+import { LIFECYCLE_STAGES } from "../lib/lifecycle-config";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
@@ -223,6 +226,120 @@ function QuickDecideRow({ approval }: { approval: ApprovalLike & Record<string, 
   );
 }
 
+// Per-stage testing panel: lists every active project's CURRENT stage and shows
+// one "Approve & Advance as <role>" button per allowed approver. Hits the
+// test-advance endpoint which bypasses all gates and pushes the project to the
+// next stage — the only way (for now) to walk a project through every stage of
+// the lifecycle in initiator/demo mode.
+const STAGE_META: Record<string, { label: string; advanceRoles: string[]; advanceLabel?: string }> = (() => {
+  const out: Record<string, { label: string; advanceRoles: string[]; advanceLabel?: string }> = {};
+  for (const s of LIFECYCLE_STAGES) {
+    out[s.key] = { label: s.label, advanceRoles: s.advanceRoles ?? [], advanceLabel: (s as { advanceLabel?: string }).advanceLabel };
+  }
+  return out;
+})();
+
+function StageAdvanceRow({
+  projectId, projectTitle, stageKey,
+}: { projectId: number; projectTitle: string; stageKey: string }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [pendingRole, setPendingRole] = useState<string | null>(null);
+  const meta = STAGE_META[stageKey];
+  if (!meta) return null;
+
+  const advance = async (approverRole: string) => {
+    setPendingRole(approverRole);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/stages/${stageKey}/test-advance`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ simulatedApprover: approverRole }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast({ title: body.error ?? "Failed to advance stage", variant: "destructive" });
+        return;
+      }
+      toast({ title: `Approved as ${approverRole.toUpperCase()} — moved to next stage` });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/stages`] });
+    } finally {
+      setPendingRole(null);
+    }
+  };
+
+  return (
+    <div className="p-3 rounded-xl border border-border bg-card">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <Link href={`/projects/${projectId}`}>
+            <p className="text-sm font-medium text-foreground hover:text-primary transition-colors truncate">
+              {projectTitle}
+            </p>
+          </Link>
+          <p className="text-[11px] text-muted-foreground mt-0.5">
+            Current stage: <span className="font-semibold text-foreground">{meta.label}</span>
+            {meta.advanceLabel ? <> — {meta.advanceLabel}</> : null}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap mt-2">
+        {meta.advanceRoles.length === 0 ? (
+          <span className="text-[11px] text-muted-foreground italic">No approver roles configured</span>
+        ) : meta.advanceRoles.map(roleKey => {
+          const roleLabel = APPROVER_ROLE_LABELS[roleKey] ?? roleKey.replace(/_/g, " ");
+          const short = roleLabel.split(" ")[0];
+          const isPending = pendingRole === roleKey;
+          return (
+            <button
+              key={roleKey}
+              onClick={() => advance(roleKey)}
+              disabled={pendingRole !== null}
+              title={`Approve and advance as ${roleLabel}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-success hover:bg-success/90 transition-colors disabled:opacity-50"
+            >
+              <CheckCircle2 size={13} />
+              {isPending ? "Advancing..." : `Approve as ${short}`}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function InitiatorStageAdvancePanel() {
+  const { data: projects = [] } = useListProjects();
+  const active = (projects as Array<{ id: number; title: string; stage?: string | null; status?: string | null }>)
+    .filter(p => p.status !== "closed" && p.stage);
+  return (
+    <div className="glass-surface rounded-2xl p-4 ph-rise ph-rise-3">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary/10 border border-primary/20">
+          <FileText size={14} className="text-primary" />
+        </div>
+        <div>
+          <h3 className="text-sm font-bold text-foreground">Stage Approvals (All Projects)</h3>
+          <p className="text-[11px] text-muted-foreground">
+            One row per active project. Click any approver button to approve as that role and push the project to the next stage. Bypasses checklist / document gates — testing only.
+          </p>
+        </div>
+      </div>
+      {active.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic px-1 py-2">No active projects.</p>
+      ) : (
+        <div className="space-y-2">
+          {active.map(p => (
+            <StageAdvanceRow key={p.id} projectId={p.id} projectTitle={p.title} stageKey={p.stage!} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InitiatorApproverGroups({ approvals }: { approvals: ApprovalLike[] }) {
   // Group by approverRole
   const groups = new Map<string, ApprovalLike[]>();
@@ -309,7 +426,7 @@ export default function ApprovalsList() {
         <div className="flex items-start gap-3 p-4 rounded-xl bg-primary/5 border border-primary/30 ph-rise ph-rise-2">
           <AlertCircle size={16} className="text-primary flex-shrink-0 mt-0.5" />
           <p className="text-sm text-foreground/90">
-            Each item below shows which approver it belongs to. Click <span className="font-semibold">Review</span> on any item to approve or reject as that role — useful for walking the project through the lifecycle during testing.
+            Two sections below: <span className="font-semibold">Stage Approvals</span> lets you push any active project to its next stage as any allowed approver (covers every lifecycle stage). <span className="font-semibold">Charter Approvals</span> shows individual sign-offs on the parallel-review / SCM / Chairman / Finance / PMO chain.
           </p>
         </div>
       ) : roleDesc ? (
@@ -319,6 +436,9 @@ export default function ApprovalsList() {
         </div>
       ) : null}
 
+      {/* Initiator-only: per-stage advance panel (covers every lifecycle stage) */}
+      {isInitiator && <InitiatorStageAdvancePanel />}
+
       {/* Approval items */}
       {isLoading ? (
         <div className="space-y-6">
@@ -326,7 +446,10 @@ export default function ApprovalsList() {
         </div>
       ) : filteredApprovals.length > 0 ? (
         isInitiator ? (
-          <InitiatorApproverGroups approvals={filteredApprovals} />
+          <div>
+            <h3 className="text-sm font-bold text-foreground mb-3 mt-2">Charter Approvals</h3>
+            <InitiatorApproverGroups approvals={filteredApprovals} />
+          </div>
         ) : (
           <div className="space-y-6 stagger-children">
             {filteredApprovals.map(approval => {
