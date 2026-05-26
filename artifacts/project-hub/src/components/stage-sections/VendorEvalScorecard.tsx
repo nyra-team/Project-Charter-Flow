@@ -3,6 +3,7 @@ import { useListProjectStages, useUpdateProjectStage } from "@workspace/api-clie
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2 } from "lucide-react";
 import { AiButton } from "../ai-button";
+import { AutoTextarea } from "../ui/auto-textarea";
 
 type AiScoreResult = {
  functional: number; technical: number; commercial: number; track_record: number;
@@ -137,9 +138,9 @@ export function VendorEvalScorecard({ projectId }: { projectId: number }) {
  }}
  />
  </div>
- <textarea
+ <AutoTextarea
  value={vendorNotes} onChange={(e) => setVendorNotes(e.target.value)}
- rows={2} placeholder="Key proposal highlights, pricing, references known so far…"
+ minRows={2} placeholder="Key proposal highlights, pricing, references known so far…"
  className="w-full text-xs border border-border rounded-lg px-2 py-1.5 bg-card outline-none focus:ring-1 focus:ring-warn"
  disabled={!vendorName.trim()}
  />

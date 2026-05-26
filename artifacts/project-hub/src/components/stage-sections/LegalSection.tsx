@@ -3,6 +3,7 @@ import { useListProjectStages, useUpdateProjectStage } from "@workspace/api-clie
 import { useUserStore } from "../../lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, AlertCircle, Scale } from "lucide-react";
+import { AutoTextarea } from "../ui/auto-textarea";
 
 type LegalPayload = {
  contractNumber?: string;
@@ -124,7 +125,7 @@ export function LegalSection({ projectId }: { projectId: number }) {
  {reviewOk ? <CheckCircle2 size={10} /> : <AlertCircle size={10} />} {notes.length}/30
  </span>
  </div>
- <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
+ <AutoTextarea value={notes} onChange={(e) => setNotes(e.target.value)} minRows={3}
  placeholder="Statutory compliance findings, contract terms reviewed, risk flags, indemnity clauses…"
  className="w-full text-xs border border-border rounded-lg px-2 py-1.5 bg-card focus:outline-none focus:ring-1 focus:ring-primary" />
  </div>

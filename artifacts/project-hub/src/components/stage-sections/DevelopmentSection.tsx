@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useListProjectStages, useUpdateProjectStage } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, AlertCircle, Activity } from "lucide-react";
+import { AutoTextarea } from "../ui/auto-textarea";
 
 type Blocker = { id: string; text: string; severity: "low" | "medium" | "high"; resolved: boolean };
 type DevPayload = {
@@ -130,7 +131,7 @@ export function DevelopmentSection({ projectId }: { projectId: number }) {
  {statusOk ? <CheckCircle2 size={10} /> : <AlertCircle size={10} />} {notes.length}/20
  </span>
  </div>
- <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+ <AutoTextarea value={notes} onChange={(e) => setNotes(e.target.value)} minRows={2}
  placeholder="What was built this week? What's planned next? Any risks?"
  className="w-full text-xs border border-border rounded-lg px-2 py-1.5 bg-card focus:outline-none focus:ring-1 focus:ring-primary" />
  </div>

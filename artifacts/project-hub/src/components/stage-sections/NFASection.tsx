@@ -3,6 +3,7 @@ import { useListProjectStages, useUpdateProjectStage } from "@workspace/api-clie
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, Clock, Circle } from "lucide-react";
 import { AiButton } from "../ai-button";
+import { AutoTextarea } from "../ui/auto-textarea";
 
 type NFAApproval = { approver: string; status: "pending" | "approved" | "rejected"; decidedAt?: string; comment?: string };
 type NFAPayload = {
@@ -114,11 +115,11 @@ export function NFASection({ projectId }: { projectId: number }) {
 
  <div>
  <label className="text-[11px] font-semibold text-foreground block mb-1">NFA Note (justification, financial impact, risks)</label>
- <textarea
+ <AutoTextarea
  value={noteDraft}
  onChange={(e) => setNoteDraft(e.target.value)}
  onBlur={() => persist({})}
- rows={6}
+ minRows={6}
  placeholder="Use AI Draft NFA Note above to auto-fill, or write your own…"
  className="w-full text-xs border border-border rounded-lg px-2 py-1.5 bg-card focus:outline-none focus:ring-1 focus:ring-warn font-mono whitespace-pre-wrap"
  />

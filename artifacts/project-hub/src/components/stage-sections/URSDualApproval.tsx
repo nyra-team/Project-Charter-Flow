@@ -4,6 +4,7 @@ import { useUserStore } from "../../lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { formatDate } from "../../lib/format";
 import { AiButton } from "../ai-button";
+import { AutoTextarea } from "../ui/auto-textarea";
 
 export function URSDualApprovalSection({ projectId }: { projectId: number }) {
  const { data: stages = [] } = useListProjectStages(projectId);
@@ -105,17 +106,17 @@ export function URSDualApprovalSection({ projectId }: { projectId: number }) {
  </div>
  <div>
  <label className="text-[11px] font-semibold text-foreground block mb-1">URS Scope</label>
- <textarea
+ <AutoTextarea
  value={scopeText} onChange={(e) => setScopeText(e.target.value)}
- rows={3} placeholder="End-to-end scope — what users need the solution to do"
+ minRows={3} placeholder="End-to-end scope — what users need the solution to do"
  className="w-full text-xs border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary bg-card"
  />
  </div>
  <div>
  <label className="text-[11px] font-semibold text-foreground block mb-1">URS Requirements</label>
- <textarea
+ <AutoTextarea
  value={reqsText} onChange={(e) => setReqsText(e.target.value)}
- rows={6} placeholder="Numbered functional / non-functional / integration / security requirements"
+ minRows={6} placeholder="Numbered functional / non-functional / integration / security requirements"
  className="w-full text-xs border border-border rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary bg-card font-mono"
  />
  </div>

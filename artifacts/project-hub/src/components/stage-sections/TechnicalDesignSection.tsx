@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useListProjectStages, useUpdateProjectStage } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, AlertCircle } from "lucide-react";
+import { AutoTextarea } from "../ui/auto-textarea";
 
 type TDPayload = {
  architectureSummary?: string;
@@ -73,22 +74,22 @@ export function TechnicalDesignSection({ projectId }: { projectId: number }) {
 
  <div>
  <label className="text-[11px] font-semibold text-foreground block mb-1">Architecture Summary</label>
- <textarea value={arch} onChange={(e) => setArch(e.target.value)} onBlur={() => persist({})}
- rows={2} placeholder="High-level architecture, key components, deployment model"
+ <AutoTextarea value={arch} onChange={(e) => setArch(e.target.value)} onBlur={() => persist({})}
+ minRows={2} placeholder="High-level architecture, key components, deployment model"
  className="w-full text-xs border border-border rounded-lg px-2 py-1.5 bg-card focus:outline-none focus:ring-1 focus:ring-primary" />
  </div>
 
  <div className="grid grid-cols-2 gap-2">
  <div>
  <label className="text-[11px] font-semibold text-foreground block mb-1">Integrations</label>
- <textarea value={integ} onChange={(e) => setInteg(e.target.value)} onBlur={() => persist({})}
- rows={2} placeholder="ERP, HRMS, SSO, payment gateway…"
+ <AutoTextarea value={integ} onChange={(e) => setInteg(e.target.value)} onBlur={() => persist({})}
+ minRows={2} placeholder="ERP, HRMS, SSO, payment gateway…"
  className="w-full text-xs border border-border rounded-lg px-2 py-1.5 bg-card focus:outline-none focus:ring-1 focus:ring-primary" />
  </div>
  <div>
  <label className="text-[11px] font-semibold text-foreground block mb-1">Security Review</label>
- <textarea value={sec} onChange={(e) => setSec(e.target.value)} onBlur={() => persist({})}
- rows={2} placeholder="Auth model, data residency, encryption, audit"
+ <AutoTextarea value={sec} onChange={(e) => setSec(e.target.value)} onBlur={() => persist({})}
+ minRows={2} placeholder="Auth model, data residency, encryption, audit"
  className="w-full text-xs border border-border rounded-lg px-2 py-1.5 bg-card focus:outline-none focus:ring-1 focus:ring-primary" />
  </div>
  </div>

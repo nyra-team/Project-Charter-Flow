@@ -9,6 +9,7 @@ import { useUserStore } from "../../lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { FileText } from "lucide-react";
+import { AutoTextarea } from "../ui/auto-textarea";
 
 export function ClosureReport({ projectId }: { projectId: number }) {
  const { userId } = useUserStore();
@@ -188,32 +189,32 @@ export function ClosureReport({ projectId }: { projectId: number }) {
  <div className="space-y-3">
  <div>
  <label className="text-xs font-semibold text-muted-foreground block mb-1">What Went Well</label>
- <textarea
- rows={2}
+ <AutoTextarea
+ minRows={2}
  value={lessonsWentWell}
  onChange={(e) => setLessonsWentWell(e.target.value)}
  placeholder="Describe what worked well in this project..."
- className="w-full rounded-lg px-3 py-2 text-sm border border-border bg-card outline-none resize-none focus:border-primary/40"
+ className="w-full rounded-lg px-3 py-2 text-sm border border-border bg-card outline-none focus:border-primary/40"
  />
  </div>
  <div>
  <label className="text-xs font-semibold text-muted-foreground block mb-1">What Could Be Improved</label>
- <textarea
- rows={2}
+ <AutoTextarea
+ minRows={2}
  value={lessonsImprove}
  onChange={(e) => setLessonsImprove(e.target.value)}
  placeholder="Identify areas for improvement..."
- className="w-full rounded-lg px-3 py-2 text-sm border border-border bg-card outline-none resize-none focus:border-primary/40"
+ className="w-full rounded-lg px-3 py-2 text-sm border border-border bg-card outline-none focus:border-primary/40"
  />
  </div>
  <div>
  <label className="text-xs font-semibold text-muted-foreground block mb-1">Recommendations</label>
- <textarea
- rows={2}
+ <AutoTextarea
+ minRows={2}
  value={lessonsRecs}
  onChange={(e) => setLessonsRecs(e.target.value)}
  placeholder="Recommendations for future similar projects..."
- className="w-full rounded-lg px-3 py-2 text-sm border border-border bg-card outline-none resize-none focus:border-primary/40"
+ className="w-full rounded-lg px-3 py-2 text-sm border border-border bg-card outline-none focus:border-primary/40"
  />
  </div>
  <button

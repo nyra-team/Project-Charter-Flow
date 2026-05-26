@@ -205,30 +205,169 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
     !isCompletedStage &&
     (stageConfig.advanceRoles as readonly string[]).includes(role);
 
-  // Stages whose checklist is derived from form data (not manually toggled).
-  // For these stages we ignore the saved `__checklist` map and compute item
-  // state from the corresponding stage-specific payload, so the user only ever
-  // edits one source of truth (the form).
-  const derivedChecklist: Record<string, boolean> | null = (() => {
-    if (displayStageKey !== "project_case") return null;
-    let demand: Record<string, unknown> = {};
-    try {
-      const parsed = stageRecordEarly?.notes ? JSON.parse(stageRecordEarly.notes) as Record<string, unknown> : {};
-      demand = (parsed.__demand_initiation as Record<string, unknown>) ?? {};
-    } catch {}
-    const str = (k: string) => (typeof demand[k] === "string" ? (demand[k] as string) : "");
-    const num = (k: string) => (typeof demand[k] === "number" ? (demand[k] as number) : Number(demand[k]) || 0);
-    return {
-      biz_just: str("businessJustification").length >= 100,
-      scope_done: str("scopeSummary").length >= 50,
-      outcomes: str("expectedOutcomes").length > 0,
-      sponsor: str("sponsor").trim().length > 0,
-      budget_est: num("capexEstimate") + num("opexEstimate") > 0,
+  // Stages whose checklist items are derived from form data (not manually toggled).
+  // Items present in this map are auto-computed and lock the manual toggle;
+  // items absent from this map remain manually toggleable.
+  const derivedChecklist: Record<string, boolean> = (() => {
+    const parseNotes = (rec: { notes?: string | null } | undefined): Record<string, unknown> => {
+      try { return rec?.notes ? JSON.parse(rec.notes) as Record<string, unknown> : {}; }
+      catch { return {}; }
     };
+    const notes = parseNotes(stageRecordEarly);
+    const allStageRecords = stageRecords as Array<{ stage: string; status: string; notes?: string | null }>;
+    const isComplete = (key: string) => allStageRecords.some(r => r.stage === key && r.status === "complete");
+    const docByName = (name: string) => stageDocs.some(d => d.name === name);
+
+    switch (displayStageKey) {
+      case "project_case": {
+        const demand = (notes.__demand_initiation as Record<string, unknown> | undefined) ?? {};
+        const str = (k: string) => (typeof demand[k] === "string" ? (demand[k] as string) : "");
+        const num = (k: string) => (typeof demand[k] === "number" ? (demand[k] as number) : Number(demand[k]) || 0);
+        return {
+          biz_just: str("businessJustification").length >= 100,
+          scope_done: str("scopeSummary").length >= 50,
+          outcomes: str("expectedOutcomes").length > 0,
+          sponsor: str("sponsor").trim().length > 0,
+          budget_est: num("capexEstimate") + num("opexEstimate") > 0,
+        };
+      }
+      case "urs": {
+        const scope = (notes.__urs_scope as string | undefined) ?? "";
+        const reqs = (notes.__urs_requirements as string | undefined) ?? "";
+        return {
+          biz_req: scope.length >= 30 && reqs.length >= 30,
+          it_review: reqs.length >= 50,
+          biz_owner_approved: !!notes.__urs_biz_approved,
+          it_approved: !!notes.__urs_it_approved,
+          version_ctrl: docByName("URS Document"),
+        };
+      }
+      case "rfp": {
+        const generated = !!notes.__rfp_template_generated;
+        return {
+          urs_approved_gate: isComplete("urs"),
+          rfp_created: generated || docByName("RFP Document"),
+          urs_populated: generated,
+        };
+      }
+      case "vendor_evaluation": {
+        const scores = (notes.__vendor_scores as Record<string, number> | undefined) ?? {};
+        const vendor = (notes.__vendor_name as string | undefined) ?? "";
+        const allScored = ["functional", "technical", "commercial", "track_record"].every(k => scores[k] !== undefined);
+        return {
+          func_eval_done: scores.functional !== undefined,
+          tech_eval_done: scores.technical !== undefined,
+          proposals_analysed: scores.commercial !== undefined,
+          eval_summary: allScored,
+          vendor_selected: vendor.trim().length > 0 && allScored,
+        };
+      }
+      case "charter": {
+        return {
+          charter_drafted: docByName("Project Charter") || docByName("Charter Template"),
+        };
+      }
+      case "nfa": {
+        const nfa = (notes.__nfa as { nfaNumber?: string; chain?: Array<{ status?: string }> } | undefined) ?? {};
+        const chain = nfa.chain ?? [];
+        return {
+          charter_approved_gate: isComplete("charter"),
+          nfa_form_submitted: !!(nfa.nfaNumber && nfa.nfaNumber.length > 0),
+          finance_head_approved: chain[0]?.status === "approved",
+          pmo_nfa_approved: chain[1]?.status === "approved",
+          dept_head_nfa: chain[2]?.status === "approved",
+          mgmt_approved: chain[3]?.status === "approved",
+        };
+      }
+      case "legal": {
+        const lg = (notes.__legal as { contractNumber?: string; complianceNotes?: string; ndaSigned?: boolean; legalApproved?: boolean } | undefined) ?? {};
+        const reviewLen = (lg.complianceNotes ?? "").length;
+        return {
+          contract_uploaded: !!(lg.contractNumber && lg.contractNumber.length > 0),
+          legal_reviewed: reviewLen >= 30,
+          compliance_confirmed: reviewLen >= 30,
+          nda_signed: !!lg.ndaSigned,
+          legal_signoff: !!lg.legalApproved,
+        };
+      }
+      case "pr_po": {
+        const pp = (notes.__pr_po as { prNumber?: string; poNumber?: string } | undefined) ?? {};
+        const legalRec = allStageRecords.find(r => r.stage === "legal");
+        const legalNotes = parseNotes(legalRec);
+        const lg = (legalNotes.__legal as { legalApproved?: boolean } | undefined) ?? {};
+        return {
+          legal_approved_gate: isComplete("legal") || !!lg.legalApproved,
+          pr_submitted: !!(pp.prNumber && pp.prNumber.length > 0),
+          po_released: !!(pp.poNumber && pp.poNumber.length > 0),
+        };
+      }
+      case "kickoff": {
+        const attendees = (notes.__kickoff_attendees as Array<unknown> | undefined) ?? [];
+        return {
+          attendees_defined: attendees.length > 0,
+          minutes_uploaded: docByName("Meeting Minutes"),
+        };
+      }
+      case "technical_design": {
+        const td = (notes.__technical_design as { architectureSummary?: string; integrations?: string; securityReview?: string; techLeadApproved?: boolean } | undefined) ?? {};
+        const archLen = (td.architectureSummary ?? "").length;
+        const secLen = (td.securityReview ?? "").length;
+        return {
+          td_drafted: archLen >= 30 || docByName("Technical Design Document"),
+          arch_uploaded: archLen > 0 || docByName("Architecture Diagram"),
+          integrations_listed: (td.integrations ?? "").length > 0,
+          nfrs_captured: secLen > 0,
+          security_signed: secLen >= 30 || docByName("Security Review"),
+          td_lead_approved: !!td.techLeadApproved,
+        };
+      }
+      case "development": {
+        const dv = (notes.__development as { percentComplete?: number; statusNotes?: string; blockers?: Array<{ resolved?: boolean }> } | undefined) ?? {};
+        const blockers = dv.blockers ?? [];
+        const openBlockers = blockers.filter(b => !b.resolved).length;
+        const pct = dv.percentComplete ?? 0;
+        return {
+          dev_env_ready: pct > 0,
+          dev_progress_50: pct >= 50,
+          status_updated: (dv.statusNotes ?? "").length >= 20,
+          blockers_resolved: openBlockers === 0,
+        };
+      }
+      case "go_live": {
+        return {
+          uat_approved_gate: isComplete("uat"),
+          go_live_date_frozen: !!notes.__goLiveFrozen,
+        };
+      }
+      case "closure_readiness": {
+        const handover = (notes.__handover_items as Record<string, boolean> | undefined) ?? {};
+        const handoverDone = ["training_complete", "runbooks_handed", "support_transitioned", "data_migrated", "vendor_warranties"].every(k => handover[k]);
+        return {
+          csat_complete: !!notes.__csat_survey_complete,
+          doc_handover_done: handoverDone || docByName("Documentation Handover Package"),
+          support_transitioned: !!handover.support_transitioned,
+        };
+      }
+      case "project_closure": {
+        return {
+          lessons_learned_done: !!(notes.__lessonsWentWell && notes.__lessonsImprove && notes.__lessonsRecs),
+          closure_report_generated: !!notes.__closureReportGeneratedAt,
+          all_artifacts_approved: isComplete("closure_readiness"),
+        };
+      }
+      default:
+        return {};
+    }
   })();
 
-  const effectiveChecklist: Record<string, boolean> = derivedChecklist ?? checklist;
-  const checklistIsDerived = derivedChecklist !== null;
+  const derivedKeys = new Set(Object.keys(derivedChecklist));
+  const checklistHasDerived = derivedKeys.size > 0;
+  const effectiveChecklist: Record<string, boolean> = (() => {
+    const merged: Record<string, boolean> = { ...checklist };
+    for (const k of derivedKeys) merged[k] = derivedChecklist[k];
+    return merged;
+  })();
+  const checklistIsDerived = checklistHasDerived; // back-compat alias for the info banner
 
   const allBlockingComplete = stageConfig.checklistItems
     .filter((i) => i.blocking)
@@ -244,7 +383,7 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
 
   function toggleChecklist(itemId: string) {
     if (isCompletedStage) return;
-    if (checklistIsDerived) return; // derived from the form; not manually toggleable
+    if (derivedKeys.has(itemId)) return; // this item is derived from the form; not manually toggleable
     const next = { ...checklist, [itemId]: !checklist[itemId] };
     setChecklist(next);
     saveChecklist(projectId, displayStageKey, next);
@@ -438,7 +577,7 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
               <div className="rounded-xl p-3 bg-primary/10 border border-primary/20">
                 <p className="text-[10px] font-mono uppercase tracking-wider text-primary font-semibold mb-1">Checklist</p>
                 <p className="text-xl font-semibold font-mono num-tabular text-primary">
-                  {stageConfig.checklistItems.filter((i) => checklist[i.id]).length}
+                  {stageConfig.checklistItems.filter((i) => effectiveChecklist[i.id]).length}
                   <span className="text-xs text-primary/70 font-normal">/{stageConfig.checklistItems.length}</span>
                 </p>
                 <p className="text-[11px] text-primary/80">complete</p>
@@ -489,16 +628,17 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
             {checklistIsDerived && (
               <div className="mb-2 flex items-start gap-2 text-xs text-primary p-2 rounded-lg bg-primary/5 border border-primary/20">
                 <CheckCircle2 size={12} className="mt-0.5 flex-shrink-0" />
-                <span>These items are filled in automatically from the Business Case form on the Overview tab — they tick themselves as you complete each field.</span>
+                <span>Items marked “auto” fill themselves from the forms on the Overview tab as you complete each field. Other items stay manually toggleable.</span>
               </div>
             )}
             {stageConfig.checklistItems.map((item) => {
               const done = !!effectiveChecklist[item.id];
+              const isDerivedItem = derivedKeys.has(item.id);
               return (
                 <button
                   key={item.id}
                   onClick={() => toggleChecklist(item.id)}
-                  disabled={isCompletedStage || isLockedStage || checklistIsDerived}
+                  disabled={isCompletedStage || isLockedStage || isDerivedItem}
                   className={`w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all disabled:cursor-default border ${
                     done
                       ? "bg-success/10 border-success/30"
@@ -513,6 +653,11 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
                   <span className={`text-sm flex-1 ${done ? "text-foreground line-through opacity-70" : "text-foreground"}`}>
                     {item.label}
                   </span>
+                  {isDerivedItem && (
+                    <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-primary/10 text-primary border-primary/20 flex-shrink-0">
+                      Auto
+                    </span>
+                  )}
                   {item.blocking && !done && (
                     <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-destructive/10 text-destructive border-destructive/20 flex-shrink-0">
                       Required
