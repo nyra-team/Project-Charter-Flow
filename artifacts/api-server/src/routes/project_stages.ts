@@ -18,7 +18,10 @@ const STAGE_GATES: Record<string, StageGate> = {
   project_case: {
     prerequisites: [],
     blockingChecklistIds: ["biz_just", "scope_done", "outcomes", "budget_est"],
-    requiredDocNames: ["Project Case Form", "Business Case Document"],
+    // Documents are optional for the Business Case stage — the form's structured
+    // fields (BJ / Scope / Outcomes / Budget) are the source of truth, and the
+    // checklist is derived from them. No uploads required to submit.
+    requiredDocNames: [],
     advanceRoles: ["initiator", "pmo"],
   },
   urs: {
