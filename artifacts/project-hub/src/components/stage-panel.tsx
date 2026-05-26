@@ -54,6 +54,70 @@ function saveChecklist(projectId: number, stage: string, state: Record<string, b
 
 type StageSpecific = Record<string, unknown>;
 
+// Inline initiator-only block shown in the per-stage Approvals tab. Mirrors the
+// "Stage Approvals" rows on the /approvals page so the user can advance the
+// current stage as any allowed approver without leaving the project page.
+function InlineStageAdvance({
+  projectId, stageKey, stageLabel, advanceRoles,
+}: { projectId: number; stageKey: string; stageLabel: string; advanceRoles: readonly string[] }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [pending, setPending] = useState<string | null>(null);
+
+  const advance = async (approverRole: string) => {
+    setPending(approverRole);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/stages/${stageKey}/test-advance`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ simulatedApprover: approverRole }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({} as { error?: string }));
+        toast({ title: body.error ?? "Failed to advance stage", variant: "destructive" });
+        return;
+      }
+      toast({ title: `Approved as ${approverRole.toUpperCase()} — moved to next stage` });
+      queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}/stages`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/projects/${projectId}`] });
+    } finally {
+      setPending(null);
+    }
+  };
+
+  return (
+    <div className="p-3 rounded-xl border border-primary/30 bg-primary/5 mb-3">
+      <p className="text-xs font-semibold text-foreground mb-0.5">
+        Testing mode — approve <span className="text-primary">{stageLabel}</span> as any allowed role
+      </p>
+      <p className="text-[11px] text-muted-foreground mb-2">
+        Bypasses all gates (docs, checklist, dual-approval) and advances the project to the next stage.
+      </p>
+      <div className="flex items-center gap-2 flex-wrap">
+        {advanceRoles.length === 0 ? (
+          <span className="text-[11px] text-muted-foreground italic">No approver roles configured for this stage.</span>
+        ) : advanceRoles.map(roleKey => {
+          const label = roleKey.replace(/_/g, " ");
+          const isPending = pending === roleKey;
+          return (
+            <button
+              key={roleKey}
+              onClick={() => advance(roleKey)}
+              disabled={pending !== null}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-success hover:bg-success/90 transition-colors disabled:opacity-50 capitalize"
+            >
+              <CheckCircle2 size={13} />
+              {isPending ? "Advancing..." : `Approve as ${label}`}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function stageHas(cfg: ReturnType<typeof getStageConfig>, flag: string): boolean {
   return !!(cfg && "stageSpecific" in cfg && (cfg as { stageSpecific?: StageSpecific }).stageSpecific?.[flag]);
 }
@@ -468,8 +532,16 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
 
         {activeTab === "approvals" && (
           <div className="space-y-2 stagger-children">
+            {role === "initiator" && isCurrentStage && !isCompletedStage && (
+              <InlineStageAdvance
+                projectId={projectId}
+                stageKey={displayStageKey}
+                stageLabel={stageConfig.label}
+                advanceRoles={(stageConfig.advanceRoles as readonly string[]) ?? []}
+              />
+            )}
             {(approvals as Array<{ id: number; approverRole?: string; approverName?: string; status: string; decidedAt?: string | null; comments?: string | null }>).length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-6">No approval records yet for this project.</p>
+              <p className="text-sm text-muted-foreground text-center py-6">No prior approval records for this project.</p>
             ) : (
               (approvals as Array<{ id: number; approverRole?: string; approverName?: string; status: string; decidedAt?: string | null; comments?: string | null }>).map((a) => (
                 <div key={a.id} className="flex items-start gap-3 p-3 rounded-xl bg-muted/40 border border-border">
