@@ -168,6 +168,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // Close mobile drawer on route change
   useEffect(() => { setMobileOpen(false); }, [location]);
 
+  // Ensure the server-side session knows our current role. Without this, a
+  // fresh page load leaves session.simulatedRole unset and any stage-advance
+  // call fails with "No role set in session" until the user manually picks a
+  // role from the sidebar dropdown.
+  useEffect(() => {
+    fetch("/api/session/role", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role }),
+    }).catch(() => {});
+  }, [role]);
+
   // Lock body scroll when mobile drawer is open
   useEffect(() => {
     if (mobileOpen) {
