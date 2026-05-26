@@ -530,6 +530,124 @@ export function VendorEvalScorecard({ projectId }: { projectId: number }) {
  )}
  </div>
 
+ {/* Side-by-side scoring matrix */}
+ {vendors.length > 0 && dimensions.length > 0 && (
+ <div className="space-y-2 pt-3 border-t border-border">
+ <div>
+ <p className="text-xs font-semibold text-foreground">Scoring Matrix</p>
+ <p className="text-[11px] text-muted-foreground">
+ Type a 0–100 score in each cell. Click a vendor name to score it with sliders + AI below.
+ </p>
+ </div>
+ <div className="overflow-x-auto rounded-xl border border-border">
+ <table className="w-full text-xs border-collapse">
+ <thead>
+ <tr className="bg-card">
+ <th className="text-left p-2 font-semibold text-foreground border-b border-border sticky left-0 bg-card z-10 min-w-[180px]">
+ Dimension
+ </th>
+ <th className="text-center p-2 font-semibold text-foreground border-b border-border w-14">
+ Weight
+ </th>
+ {vendors.map((v) => (
+ <th
+ key={v.id}
+ className={`text-center p-2 font-semibold border-b border-border min-w-[110px] cursor-pointer ${
+ v.id === selectedId ? "bg-primary/10 text-primary" : "text-foreground hover:bg-card"
+ }`}
+ onClick={() => selectVendor(v.id)}
+ title="Click to score with sliders below"
+ >
+ <div className="truncate">{v.name}</div>
+ </th>
+ ))}
+ </tr>
+ </thead>
+ <tbody>
+ {dimensions.map((d) => (
+ <tr key={d.id} className="border-b border-border last:border-b-0">
+ <td className="p-2 sticky left-0 bg-background z-10">
+ <div className="flex items-center gap-1.5">
+ <span className={`text-[9px] font-mono uppercase px-1 py-0.5 rounded flex-shrink-0 ${
+ d.kind === "technical" ? "bg-primary/10 text-primary" : "bg-warn/10 text-warn"
+ }`}>
+ {d.kind === "technical" ? "T" : "C"}
+ </span>
+ <span className="font-medium text-foreground truncate" title={d.label}>{d.label}</span>
+ </div>
+ </td>
+ <td className="p-2 text-center font-mono text-muted-foreground">{d.weight}%</td>
+ {vendors.map((v) => {
+ const cur = scoresByVendor[v.id]?.[d.id];
+ return (
+ <td key={v.id} className={`p-1 text-center ${v.id === selectedId ? "bg-primary/5" : ""}`}>
+ <input
+ type="number"
+ min={0}
+ max={100}
+ step={5}
+ value={cur ?? ""}
+ placeholder="—"
+ onChange={(e) => {
+ const raw = e.target.value;
+ const n = raw === "" ? undefined : Math.max(0, Math.min(100, Number(raw)));
+ setScoresByVendor((prev) => {
+ const vs = { ...(prev[v.id] ?? {}) };
+ if (n === undefined || Number.isNaN(n)) delete vs[d.id];
+ else vs[d.id] = n;
+ return { ...prev, [v.id]: vs };
+ });
+ }}
+ onFocus={() => { if (v.id !== selectedId) selectVendor(v.id); }}
+ className="w-16 text-center text-xs font-mono border border-border rounded px-1 py-1 bg-card outline-none focus:ring-1 focus:ring-primary"
+ />
+ </td>
+ );
+ })}
+ </tr>
+ ))}
+ <tr className="bg-card font-semibold">
+ <td className="p-2 sticky left-0 bg-card z-10 text-foreground">Weighted total</td>
+ <td className="p-2 text-center text-muted-foreground font-mono">—</td>
+ {vendors.map((v) => {
+ const s = scoresByVendor[v.id] ?? {};
+ const fully = dimensions.every((d) => s[d.id] !== undefined);
+ const total = fully ? weightedScore(s, dimensions) : null;
+ const qualifies = total !== null && total >= 60;
+ return (
+ <td key={v.id} className={`p-2 text-center ${v.id === selectedId ? "bg-primary/5" : ""}`}>
+ {total === null ? (
+ <span className="text-muted-foreground font-mono text-[11px]">incomplete</span>
+ ) : (
+ <span
+ className="text-sm font-bold font-mono px-2 py-0.5 rounded"
+ style={{
+ background: qualifies ? "hsl(var(--success) / 0.15)" : "hsl(var(--destructive) / 0.15)",
+ color: qualifies ? "hsl(var(--success))" : "hsl(var(--destructive))",
+ }}
+ >
+ {total}%
+ </span>
+ )}
+ </td>
+ );
+ })}
+ </tr>
+ </tbody>
+ </table>
+ </div>
+ <div className="flex items-center justify-end">
+ <button
+ onClick={saveScores}
+ disabled={updateStage.isPending}
+ className="text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 px-3 py-1.5 rounded-lg disabled:opacity-40"
+ >
+ Save Matrix
+ </button>
+ </div>
+ </div>
+ )}
+
  {/* Scoring panel for selected vendor */}
  {selected && dimensions.length > 0 && (
  <div className="space-y-3 pt-3 border-t border-border">
