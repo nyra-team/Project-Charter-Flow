@@ -577,6 +577,159 @@ router.post("/ai/vendors/score", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/ai/vendors/suggest-list
+// Suggest 3-5 sample vendors based on URS scope so the user can populate the
+// shortlist quickly for testing. Returned vendors are illustrative only.
+// ---------------------------------------------------------------------------
+router.post("/ai/vendors/suggest-list", async (req, res): Promise<void> => {
+  const { projectId } = (req.body || {}) as { projectId?: number };
+  if (!projectId) { res.status(400).json({ error: "projectId is required" }); return; }
+  const ctx = await loadProjectContext(projectId);
+  if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
+  const { project, charter, stageNotes } = ctx;
+  const urs = stageNotes.urs ?? {};
+  const result = await llm({
+    task: "vendor_suggest_list",
+    system:
+      "You are a procurement analyst familiar with the Indian and global vendor landscape for enterprise software, pharma, manufacturing, and digital transformation projects. Given a project's URS scope, suggest 3-5 realistic vendors who could plausibly respond to this RFP. Mix well-known names with credible niche players. Each vendor: a plausible short description, a realistic website host, a sample contact line, indicative pricing in Indian context (Lakh/Crore), and a one-line strengths note. Mark them as ILLUSTRATIVE in the description so users know they are sample data.",
+    prompt: `Project: ${project.name}\nFunction: ${(project as { function?: string }).function ?? ""}\nCharter scope: ${charter?.scope ?? ""}\nURS scope: ${(urs as { __urs_scope?: string }).__urs_scope ?? ""}\nURS requirements: ${(urs as { __urs_requirements?: string }).__urs_requirements ?? ""}\n\nSuggest 3-5 vendors who could realistically respond.`,
+    jsonSchema: z.object({
+      vendors: z.array(z.object({
+        name: z.string().min(2),
+        description: z.string(),
+        contact: z.string().optional(),
+        website: z.string().optional(),
+        pricing: z.string().optional(),
+        notes: z.string().optional(),
+      })).min(1).max(8),
+    }),
+    jsonSchemaHint: `{ "vendors": [ { "name":"Acme ERP", "description":"ILLUSTRATIVE — mid-market ERP …", "contact":"sales@acme.com", "website":"acme.com", "pricing":"₹40-60L CapEx + ₹8L/yr AMC", "notes":"strong in pharma" } ] }`,
+    maxTokens: 2000,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/vendors/suggest-dimensions
+// Suggest additional evaluation dimensions (technical + commercial) tailored
+// to the project's URS, on top of what the user already has.
+// ---------------------------------------------------------------------------
+router.post("/ai/vendors/suggest-dimensions", async (req, res): Promise<void> => {
+  const { projectId, existing } = (req.body || {}) as { projectId?: number; existing?: string[] };
+  if (!projectId) { res.status(400).json({ error: "projectId is required" }); return; }
+  const ctx = await loadProjectContext(projectId);
+  if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
+  const { project, charter, stageNotes } = ctx;
+  const urs = stageNotes.urs ?? {};
+  const result = await llm({
+    task: "vendor_suggest_dimensions",
+    system:
+      "You are an evaluation committee assistant designing a vendor-scoring matrix. Suggest 3-6 evaluation dimensions tailored to the project's URS. Mix technical dimensions (architecture, integration, security, data migration, scalability) with commercial dimensions (TCO, payment terms, vendor stability, support SLAs, training). Avoid duplicating dimensions the user already has. Each dimension: a short label, kind (technical|commercial), a weight 5-30, and a one-line description of how to judge it.",
+    prompt: `Project: ${project.name}\nFunction: ${(project as { function?: string }).function ?? ""}\nCharter scope: ${charter?.scope ?? ""}\nURS scope: ${(urs as { __urs_scope?: string }).__urs_scope ?? ""}\nURS requirements: ${(urs as { __urs_requirements?: string }).__urs_requirements ?? ""}\n\nExisting dimensions (do not duplicate): ${(existing ?? []).join(", ") || "(none)"}\n\nSuggest 3-6 additional dimensions.`,
+    jsonSchema: z.object({
+      dimensions: z.array(z.object({
+        label: z.string().min(3),
+        kind: z.enum(["technical", "commercial"]),
+        weight: z.number().min(1).max(50),
+        description: z.string().optional(),
+      })).min(1).max(8),
+    }),
+    jsonSchemaHint: `{ "dimensions":[ { "label":"Data Migration Readiness", "kind":"technical", "weight":10, "description":"…" } ] }`,
+    maxTokens: 1500,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/vendors/score-matrix
+// Score a single vendor against a caller-supplied list of evaluation
+// dimensions (technical + commercial). Returns scores keyed by dimension id.
+// ---------------------------------------------------------------------------
+router.post("/ai/vendors/score-matrix", async (req, res): Promise<void> => {
+  const { projectId, vendorName, vendorNotes, dimensions } = (req.body || {}) as {
+    projectId?: number;
+    vendorName?: string;
+    vendorNotes?: string;
+    dimensions?: Array<{ id: string; label: string; kind: string; weight: number; description?: string }>;
+  };
+  if (!projectId || !vendorName) { res.status(400).json({ error: "projectId and vendorName are required" }); return; }
+  if (!dimensions || dimensions.length === 0) { res.status(400).json({ error: "dimensions array is required" }); return; }
+  const ctx = await loadProjectContext(projectId);
+  if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
+  const { project, charter, stageNotes } = ctx;
+  const urs = stageNotes.urs ?? {};
+  const dimLines = dimensions.map((d, i) =>
+    `${i + 1}. [${d.id}] ${d.label} (${d.kind}, weight ${d.weight}%) — ${d.description ?? "(no description)"}`,
+  ).join("\n");
+  const result = await llm({
+    task: "vendor_score_matrix",
+    system:
+      "You are an evaluation committee assistant scoring a single vendor against a custom matrix of evaluation dimensions. For EACH dimension supplied, return a score 0-100 and a 1-2 sentence rationale. Be honest — if information is missing, score conservatively and say so. Do not default everything to 70+.",
+    prompt: `Project: ${project.name}\nCharter scope: ${charter?.scope ?? ""}\nURS scope: ${(urs as { __urs_scope?: string }).__urs_scope ?? ""}\nURS requirements: ${(urs as { __urs_requirements?: string }).__urs_requirements ?? ""}\n\nVendor under evaluation: ${vendorName}\nVendor info: ${vendorNotes ?? "(none — score conservatively)"}\n\nDimensions to score:\n${dimLines}\n\nReturn JSON with scores and rationale keyed by dimension id.`,
+    jsonSchema: z.object({
+      scores: z.record(z.string(), z.number().min(0).max(100)),
+      rationale: z.record(z.string(), z.string()),
+      overallNote: z.string(),
+    }),
+    jsonSchemaHint: `{ "scores":{ "d_functional":72, "d_technical":65 }, "rationale":{ "d_functional":"…", "d_technical":"…" }, "overallNote":"…" }`,
+    maxTokens: 2500,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/vendors/insights
+// Comparative insights across all vendors: who is strongest, what URS gaps
+// remain, what each vendor offers/misses, and a recommendation.
+// ---------------------------------------------------------------------------
+router.post("/ai/vendors/insights", async (req, res): Promise<void> => {
+  const { projectId, vendors, dimensions, scores } = (req.body || {}) as {
+    projectId?: number;
+    vendors?: Array<{ id: string; name: string; description?: string; notes?: string; pricing?: string }>;
+    dimensions?: Array<{ id: string; label: string; kind: string; weight: number; description?: string }>;
+    scores?: Record<string, Record<string, number>>;
+  };
+  if (!projectId) { res.status(400).json({ error: "projectId is required" }); return; }
+  if (!vendors || vendors.length === 0) { res.status(400).json({ error: "vendors array is required" }); return; }
+  if (!dimensions || dimensions.length === 0) { res.status(400).json({ error: "dimensions array is required" }); return; }
+  const ctx = await loadProjectContext(projectId);
+  if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
+  const { project, charter, stageNotes } = ctx;
+  const urs = stageNotes.urs ?? {};
+
+  const vendorLines = vendors.map((v) => {
+    const s = scores?.[v.id] ?? {};
+    const scoreLine = dimensions.map((d) => `${d.label}=${s[d.id] ?? "—"}`).join(", ");
+    return `- [${v.id}] ${v.name}\n  Info: ${v.description ?? ""} ${v.notes ?? ""}\n  Pricing: ${v.pricing ?? "n/a"}\n  Scores: ${scoreLine}`;
+  }).join("\n");
+
+  const result = await llm({
+    task: "vendor_insights",
+    system:
+      "You are an evaluation committee assistant producing comparative insights across multiple vendors. Identify the strongest and weakest vendor by weighted score AND by URS fit. Flag gaps where NO vendor covers a URS requirement. For each vendor, summarise what they offer well and what they miss. Finish with a concrete recommendation: which vendor to pick, OR which vendor to ask follow-up questions of, OR whether the shortlist needs to be expanded.",
+    prompt: `Project: ${project.name}\nCharter scope: ${charter?.scope ?? ""}\nURS scope: ${(urs as { __urs_scope?: string }).__urs_scope ?? ""}\nURS requirements: ${(urs as { __urs_requirements?: string }).__urs_requirements ?? ""}\n\nDimensions:\n${dimensions.map((d) => `- ${d.label} (${d.kind}, weight ${d.weight}%) — ${d.description ?? ""}`).join("\n")}\n\nVendors:\n${vendorLines}\n\nGenerate comparative insights.`,
+    jsonSchema: z.object({
+      strongest: z.string(),
+      weakest: z.string(),
+      gaps: z.array(z.string()),
+      recommendation: z.string(),
+      perVendor: z.array(z.object({
+        vendorId: z.string(),
+        whatTheyOffer: z.string(),
+        whatTheyMiss: z.string(),
+      })),
+    }),
+    jsonSchemaHint: `{ "strongest":"Acme — strong functional + commercial", "weakest":"Beta — thin track record", "gaps":["No vendor addresses GxP audit logging"], "recommendation":"Pick Acme; ask Beta for clarifications on …", "perVendor":[ { "vendorId":"v_abc", "whatTheyOffer":"…", "whatTheyMiss":"…" } ] }`,
+    maxTokens: 3000,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/ai/nfa/draft
 // ---------------------------------------------------------------------------
 router.post("/ai/nfa/draft", async (req, res): Promise<void> => {

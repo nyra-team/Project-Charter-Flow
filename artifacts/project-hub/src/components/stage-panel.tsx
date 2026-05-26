@@ -251,15 +251,35 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
         };
       }
       case "vendor_evaluation": {
-        const scores = (notes.__vendor_scores as Record<string, number> | undefined) ?? {};
-        const vendor = (notes.__vendor_name as string | undefined) ?? "";
-        const allScored = ["functional", "technical", "commercial", "track_record"].every(k => scores[k] !== undefined);
+        // New shape: dimensions[] + scores keyed by vendor id; old shape kept as fallback.
+        type Dim = { id: string; kind: "technical" | "commercial" };
+        const dims = (notes.__eval_dimensions as Dim[] | undefined) ?? [];
+        const scoresById = (notes.__vendor_scores_by_id as Record<string, Record<string, number>> | undefined) ?? {};
+        const selectedId = (notes.__selected_vendor_id as string | undefined) ?? "";
+        const legacyScores = (notes.__vendor_scores as Record<string, number> | undefined) ?? {};
+        const legacyVendor = (notes.__vendor_name as string | undefined) ?? "";
+
+        const techDimIds = dims.filter(d => d.kind === "technical").map(d => d.id);
+        const commDimIds = dims.filter(d => d.kind === "commercial").map(d => d.id);
+        const anyVendorScores = Object.values(scoresById);
+
+        const anyTechScored = anyVendorScores.some(s => techDimIds.some(id => s[id] !== undefined));
+        const anyCommScored = anyVendorScores.some(s => commDimIds.some(id => s[id] !== undefined));
+        const anyFullyScored = dims.length > 0 && anyVendorScores.some(s => dims.every(d => s[d.id] !== undefined));
+        const selectedFullyScored =
+          !!selectedId && dims.length > 0 && dims.every(d => scoresById[selectedId]?.[d.id] !== undefined);
+
+        // Fallback to legacy single-vendor shape when new shape is empty.
+        const legacyAllScored = ["functional", "technical", "commercial", "track_record"].every(
+          k => legacyScores[k] !== undefined,
+        );
+
         return {
-          func_eval_done: scores.functional !== undefined,
-          tech_eval_done: scores.technical !== undefined,
-          proposals_analysed: scores.commercial !== undefined,
-          eval_summary: allScored,
-          vendor_selected: vendor.trim().length > 0 && allScored,
+          func_eval_done: anyTechScored || legacyScores.functional !== undefined,
+          tech_eval_done: anyTechScored || legacyScores.technical !== undefined,
+          proposals_analysed: anyCommScored || legacyScores.commercial !== undefined,
+          eval_summary: anyFullyScored || legacyAllScored,
+          vendor_selected: selectedFullyScored || (legacyVendor.trim().length > 0 && legacyAllScored),
         };
       }
       case "charter": {

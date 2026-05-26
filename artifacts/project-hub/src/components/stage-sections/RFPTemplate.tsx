@@ -12,6 +12,7 @@ import { useUserStore } from "../../lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { AiButton } from "../ai-button";
+import { VendorShortlist } from "./VendorShortlist";
 
 type AiSections = { introduction?: string; scopeOfWork?: string; proposalRequirements?: string; evaluationCriteria?: string; termsAndConditions?: string };
 
@@ -225,6 +226,7 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  }
 
  return (
+ <div className="space-y-4">
  <div
  className="rounded-2xl p-4 space-y-3"
  >
@@ -316,6 +318,8 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  {(ursBizApprover || ursItApprover) && <p>• Approvers: {ursApprovalLine}</p>}
  </div>
  )}
+ </div>
+ <VendorShortlist projectId={projectId} />
  </div>
  );
 }
