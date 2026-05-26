@@ -137,10 +137,18 @@ function DecisionPanel({
 
 export default function ApprovalsList() {
   const { role, userId } = useUserStore();
-  const { data: approvals, isLoading } = useGetPendingApprovals({ approverId: userId });
+  // Initiator is a testing/demo role — fetch *all* pending approvals (no
+  // approverId filter) so they can drive the workflow forward by deciding
+  // as any approver. Other roles only see what's assigned to them.
+  const isInitiator = role === "initiator";
+  const { data: approvals, isLoading } = useGetPendingApprovals(
+    isInitiator ? {} : { approverId: userId },
+  );
   const [expanded, setExpanded] = useState<number | null>(null);
 
-  const filteredApprovals = approvals?.filter(a => a.approverRole === role) ?? [];
+  const filteredApprovals = isInitiator
+    ? (approvals ?? [])
+    : (approvals?.filter(a => a.approverRole === role) ?? []);
 
   const roleDesc = ROLE_DESCRIPTIONS[role];
 
@@ -151,7 +159,10 @@ export default function ApprovalsList() {
         <div>
           <h2 className="text-xl font-bold text-foreground">Pending Approvals</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Items awaiting your review as <span className="font-semibold capitalize text-foreground">{role.replace(/_/g, " ")}</span>
+            {isInitiator
+              ? <>Testing mode — showing <span className="font-semibold text-foreground">every approver's queue</span> so you can drive the workflow forward.</>
+              : <>Items awaiting your review as <span className="font-semibold capitalize text-foreground">{role.replace(/_/g, " ")}</span></>
+            }
           </p>
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20">
@@ -161,12 +172,19 @@ export default function ApprovalsList() {
       </div>
 
       {/* Role context info */}
-      {roleDesc && (
+      {isInitiator ? (
+        <div className="flex items-start gap-3 p-4 rounded-xl bg-primary/5 border border-primary/30 ph-rise ph-rise-2">
+          <AlertCircle size={16} className="text-primary flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-foreground/90">
+            Each item below shows which approver it belongs to. Click <span className="font-semibold">Review</span> on any item to approve or reject as that role — useful for walking the project through the lifecycle during testing.
+          </p>
+        </div>
+      ) : roleDesc ? (
         <div className="flex items-start gap-3 p-4 rounded-xl bg-warn/10 border border-warn/30 ph-rise ph-rise-2">
           <AlertCircle size={16} className="text-warn flex-shrink-0 mt-0.5" />
           <p className="text-sm text-foreground/90">{roleDesc}</p>
         </div>
-      )}
+      ) : null}
 
       {/* Approval items */}
       {isLoading ? (
@@ -200,6 +218,11 @@ export default function ApprovalsList() {
                             <CheckSquare size={11} />
                             {STAGE_LABELS[approval.stage ?? ""] ?? (approval.stage ?? "Review")}
                           </span>
+                          {isInitiator && approval.approverRole && (
+                            <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-primary/10 text-primary border-primary/20">
+                              As {approval.approverRole.replace(/_/g, " ")}
+                            </span>
+                          )}
                           <SlaBadge approval={approval as unknown as { slaHours?: number; dueAt?: string | null; breachedAt?: string | null; createdAt?: string }} />
                         </div>
                       </div>
