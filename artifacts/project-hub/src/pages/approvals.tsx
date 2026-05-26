@@ -400,6 +400,18 @@ export default function ApprovalsList() {
     ? (approvals ?? [])
     : (approvals?.filter(a => a.approverRole === role) ?? []);
 
+  // For the initiator (testing) role, also count active projects since each
+  // active project is a stage-approval row in the panel above. Without this
+  // the header reads "0 pending" even though the page is full of test rows.
+  const { data: projectsForCount = [] } = useListProjects(undefined, {
+    query: { enabled: isInitiator } as never,
+  });
+  const stageRowCount = isInitiator
+    ? (projectsForCount as Array<{ status?: string | null; stage?: string | null }>)
+        .filter(p => p.status !== "closed" && p.stage).length
+    : 0;
+  const totalPending = filteredApprovals.length + stageRowCount;
+
   const roleDesc = ROLE_DESCRIPTIONS[role];
 
   return (
@@ -417,7 +429,7 @@ export default function ApprovalsList() {
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20">
           <Clock size={13} className="text-primary" />
-          <span className="text-xs font-semibold text-primary">{filteredApprovals.length} pending</span>
+          <span className="text-xs font-semibold text-primary">{totalPending} pending</span>
         </div>
       </div>
 
