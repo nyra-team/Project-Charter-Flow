@@ -64,7 +64,9 @@ type FlatRow =
 type GroupBy = "none" | "status" | "priority" | "assigneeId";
 type HideableCol = "manager" | "predecessor" | "cft" | "effort" | "actualHrs" | "issues" | "parent" | "rag" | "plannedStart" | "actualStart" | "actualEnd" | "variance";
 
-const DEFAULT_HIDDEN: HideableCol[] = ["manager", "predecessor", "cft", "effort", "actualHrs", "issues", "parent", "rag", "plannedStart", "actualStart", "actualEnd", "variance"];
+// Hide only noisy/secondary columns by default. Meaningful PMO columns
+// (RAG, planned/actual dates, variance, effort, actual hrs) are visible.
+const DEFAULT_HIDDEN: HideableCol[] = ["manager", "predecessor", "cft", "issues", "parent"];
 
 const ROW_HEIGHT = 38; // px per rendered row
 const VIEWPORT_H = 520; // visible table height
