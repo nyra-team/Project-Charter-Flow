@@ -141,9 +141,34 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
     !isCompletedStage &&
     (stageConfig.advanceRoles as readonly string[]).includes(role);
 
+  // Stages whose checklist is derived from form data (not manually toggled).
+  // For these stages we ignore the saved `__checklist` map and compute item
+  // state from the corresponding stage-specific payload, so the user only ever
+  // edits one source of truth (the form).
+  const derivedChecklist: Record<string, boolean> | null = (() => {
+    if (displayStageKey !== "project_case") return null;
+    let demand: Record<string, unknown> = {};
+    try {
+      const parsed = stageRecordEarly?.notes ? JSON.parse(stageRecordEarly.notes) as Record<string, unknown> : {};
+      demand = (parsed.__demand_initiation as Record<string, unknown>) ?? {};
+    } catch {}
+    const str = (k: string) => (typeof demand[k] === "string" ? (demand[k] as string) : "");
+    const num = (k: string) => (typeof demand[k] === "number" ? (demand[k] as number) : Number(demand[k]) || 0);
+    return {
+      biz_just: str("businessJustification").length >= 100,
+      scope_done: str("scopeSummary").length >= 50,
+      outcomes: str("expectedOutcomes").length > 0,
+      sponsor: str("sponsor").trim().length > 0,
+      budget_est: num("capexEstimate") + num("opexEstimate") > 0,
+    };
+  })();
+
+  const effectiveChecklist: Record<string, boolean> = derivedChecklist ?? checklist;
+  const checklistIsDerived = derivedChecklist !== null;
+
   const allBlockingComplete = stageConfig.checklistItems
     .filter((i) => i.blocking)
-    .every((i) => checklist[i.id]);
+    .every((i) => effectiveChecklist[i.id]);
 
   const requiredDocsUploaded = stageConfig.requiredDocs.every((rd) =>
     stageDocs.some((d) => d.name === rd.name),
@@ -153,6 +178,7 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
 
   function toggleChecklist(itemId: string) {
     if (isCompletedStage) return;
+    if (checklistIsDerived) return; // derived from the form; not manually toggleable
     const next = { ...checklist, [itemId]: !checklist[itemId] };
     setChecklist(next);
     saveChecklist(projectId, displayStageKey, next);
@@ -205,7 +231,7 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
   const TABS = [
     { id: "overview" as const, label: "Overview" },
     { id: "documents" as const, label: `Documents (${stageDocs.length}/${stageConfig.requiredDocs.length})` },
-    { id: "checklist" as const, label: `Checklist (${stageConfig.checklistItems.filter((i) => checklist[i.id]).length}/${stageConfig.checklistItems.length})` },
+    { id: "checklist" as const, label: `Checklist (${stageConfig.checklistItems.filter((i) => effectiveChecklist[i.id]).length}/${stageConfig.checklistItems.length})` },
     { id: "approvals" as const, label: `Approvals (${approvals.length})` },
   ];
 
@@ -392,13 +418,19 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
 
         {activeTab === "checklist" && (
           <div className="space-y-2 stagger-children">
+            {checklistIsDerived && (
+              <div className="mb-2 flex items-start gap-2 text-xs text-primary p-2 rounded-lg bg-primary/5 border border-primary/20">
+                <CheckCircle2 size={12} className="mt-0.5 flex-shrink-0" />
+                <span>These items are filled in automatically from the Business Case form on the Overview tab — they tick themselves as you complete each field.</span>
+              </div>
+            )}
             {stageConfig.checklistItems.map((item) => {
-              const done = !!checklist[item.id];
+              const done = !!effectiveChecklist[item.id];
               return (
                 <button
                   key={item.id}
                   onClick={() => toggleChecklist(item.id)}
-                  disabled={isCompletedStage || isLockedStage}
+                  disabled={isCompletedStage || isLockedStage || checklistIsDerived}
                   className={`w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all disabled:cursor-default border ${
                     done
                       ? "bg-success/10 border-success/30"
