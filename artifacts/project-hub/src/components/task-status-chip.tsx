@@ -54,7 +54,7 @@ export function StatusSelect({
       }}
     >
       {TASK_STATUSES.map(s => (
-        <option key={s.value} value={s.value}>{s.label}</option>
+        <option key={s.value} value={s.value} style={{ background: "#FFFFFF", color: "#1F2937" }}>{s.label}</option>
       ))}
     </select>
   );
@@ -80,7 +80,7 @@ export function PrioritySelect({
       }}
     >
       {TASK_PRIORITIES.map(p => (
-        <option key={p.value} value={p.value}>{p.label}</option>
+        <option key={p.value} value={p.value} style={{ background: "#FFFFFF", color: "#1F2937" }}>{p.label}</option>
       ))}
     </select>
   );
