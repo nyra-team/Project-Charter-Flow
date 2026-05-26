@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   DragEndEvent,
@@ -202,11 +203,8 @@ function DroppableColumn({
       </div>
       <div
         ref={setNodeRef}
-        className={`flex-1 p-2 space-y-2 transition-colors border-t-0 border ${isOver ? "border-primary/40" : "border-border"}`}
-        style={{
-          background: isOver ? bg : undefined,
-          minHeight: 120,
-        }}
+        className={`flex-1 p-2 space-y-2 transition-colors border-t-0 border ${isOver ? "border-primary" : "border-border"}`}
+        style={{ minHeight: 120 }}
       >
         {children}
       </div>
