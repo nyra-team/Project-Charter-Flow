@@ -1029,7 +1029,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         className="glass-surface lift-card ph-rise overflow-x-auto overflow-y-auto rounded-sm"
         style={{ height: VIEWPORT_H, position: "relative" }}
       >
-        <table className="border-collapse" style={{ tableLayout: "auto", minWidth: 1750 }}>
+        <table className="border-collapse w-full" style={{ tableLayout: "auto" }}>
           <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
             <tr>
               <th style={{ width: 28 }} className={thCls}></th>
