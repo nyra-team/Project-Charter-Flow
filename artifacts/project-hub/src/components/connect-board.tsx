@@ -358,16 +358,21 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
         })}
       </div>
 
-      <DragOverlay>
+      <DragOverlay dropAnimation={null}>
         {activeDrag && (() => {
+          // Constrain to column inner width (column 220 − 16 padding) so the
+          // drag preview matches the original card and sits under the cursor.
+          const wrap = (node: React.ReactNode) => (
+            <div style={{ width: 204 }}>{node}</div>
+          );
           if (activeDrag.kind === "task") {
             const t = topLevelTasks.find(x => x.id === activeDrag.id);
             if (!t) return null;
-            return <TaskCard task={t} isDragging />;
+            return wrap(<TaskCard task={t} isDragging />);
           } else {
             const m = milestones.find(x => x.id === activeDrag.id);
             if (!m) return null;
-            return <TaskCard task={{ ...m, endDate: m.dueDate }} isMilestone isDragging />;
+            return wrap(<TaskCard task={{ ...m, endDate: m.dueDate }} isMilestone isDragging />);
           }
         })()}
       </DragOverlay>
