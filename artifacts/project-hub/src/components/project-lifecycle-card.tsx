@@ -189,7 +189,7 @@ export function ProjectLifecycleCard({
                     setPinnedPhaseKey(phase.key);
                   }
                 }}
-                className={`relative flex-1 flex items-center gap-2 px-2.5 py-2 rounded-xl border transition-all text-left focus:outline-none focus:ring-2 focus:ring-primary/40 ${tone} ${
+                className={`relative flex-1 flex items-center gap-2 px-2.5 py-2 rounded-xl border overflow-hidden transition-all text-left focus:outline-none focus:ring-2 focus:ring-primary/40 ${tone} ${
                   isVisible && !showAllSubStages ? "ring-2 ring-primary/30 ring-offset-1 ring-offset-card" : ""
                 }`}
                 title={`${phase.label} — ${phase.description}`}
