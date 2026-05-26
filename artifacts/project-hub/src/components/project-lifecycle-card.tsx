@@ -222,7 +222,7 @@ export function ProjectLifecycleCard({
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground/70 leading-none mb-0.5">
-                    P{idx + 1}
+                    Phase {idx + 1}
                   </p>
                   <p
                     className={`${compact ? "text-[11px]" : "text-xs"} font-semibold leading-tight truncate`}
