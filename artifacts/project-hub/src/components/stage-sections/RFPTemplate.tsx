@@ -5,7 +5,9 @@ import {
  useUpdateProjectStage,
  useCreateDocument,
  useGetProject,
+ useListDocuments,
 } from "@workspace/api-client-react";
+import { Download } from "lucide-react";
 import { useUserStore } from "../../lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
@@ -21,6 +23,10 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  const queryClient = useQueryClient();
  const { data: stages = [] } = useListProjectStages(projectId);
  const { data: project } = useGetProject(projectId);
+ const { data: docs = [] } = useListDocuments(projectId);
+ const latestRfpDoc = (docs as Array<{ name: string; fileUrl: string; uploadedAt?: string }>)
+   .filter((d) => d.name === "RFP Document")
+   .sort((a, b) => (b.uploadedAt ?? "").localeCompare(a.uploadedAt ?? ""))[0];
  const [generated, setGenerated] = useState(false);
  const [aiSections, setAiSections] = useState<AiSections | null>(null);
 
@@ -232,6 +238,18 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  <div className="rounded-xl p-3 text-center">
  <p className="text-sm font-bold text-success">✓ RFP Document generated from URS and on file</p>
  </div>
+ {latestRfpDoc && (
+ <a
+ href={latestRfpDoc.fileUrl}
+ target="_blank"
+ rel="noopener noreferrer"
+ download
+ className="w-full py-2 rounded-xl text-xs font-semibold bg-success text-success-foreground hover:bg-success/90 transition-all flex items-center justify-center gap-2"
+ >
+ <Download size={14} />
+ Download RFP PDF
+ </a>
+ )}
  <button
  onClick={generateRFPTemplate}
  className="w-full py-1.5 rounded-xl text-xs font-semibold text-primary border border-border transition-all hover:bg-card"
