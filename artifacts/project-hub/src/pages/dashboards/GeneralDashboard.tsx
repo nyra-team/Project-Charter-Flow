@@ -14,7 +14,7 @@ import { LIFECYCLE_PHASES } from "../../lib/lifecycle-phases";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { KPITile, DashboardCard, useAutoRefresh } from "../../components/dashboard/primitives";
-import { LifecycleStepper } from "../../components/lifecycle-stepper";
+import { ProjectLifecycleCard } from "../../components/project-lifecycle-card";
 import { StageDetailDialog } from "../../components/stage-detail-dialog";
 
 const DEMAND_STAGES = ["project_case", "urs", "rfp", "vendor_evaluation"] as const;
@@ -307,10 +307,10 @@ export default function GeneralDashboard() {
         </div>
       </div>
 
-      {/* Lifecycle Pipeline — full 16-stage funnel grouped by the 4 phases */}
+      {/* Lifecycle Pipeline — full 16-stage funnel grouped by the 5 phases */}
       <DashboardCard
         title="Lifecycle Pipeline"
-        subtitle="Live project distribution across all 16 stages · 4 phases"
+        subtitle="Live project distribution across all 16 stages · 5 phases"
         actions={
           <Link href="/pipeline">
             <button className="text-[11px] text-primary font-medium flex items-center gap-1 hover:opacity-80">
@@ -319,17 +319,21 @@ export default function GeneralDashboard() {
           </Link>
         }
       >
-        {/* 16-stage stepper diagram — same component as project detail */}
-        <div className="px-2 pt-2 pb-4 mb-4">
-          <LifecycleStepper
+        {/* 16-stage ribbon — same component as project detail */}
+        <div className="mb-4">
+          <ProjectLifecycleCard
             currentStageKey={dashboardCurrentStage}
             stageRecords={syntheticStageRecords}
             counts={Object.fromEntries(lifecycleCounts)}
             onStageClick={(k) => setStageDetail(k)}
+            variant="compact"
+            hideHeader
+            hideLegend
+            showAllSubStages
           />
         </div>
         {/* Phase summary */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
           {LIFECYCLE_PHASES.map((phase) => {
             const count = phase.stageKeys.reduce((s, k) => s + (lifecycleCounts.get(k) ?? 0), 0);
             return (

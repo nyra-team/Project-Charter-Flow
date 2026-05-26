@@ -1,51 +1,71 @@
 import { LIFECYCLE_STAGES, type LifecycleStageKey } from "./lifecycle-config";
 
-export type PhaseKey = "initiation" | "approval" | "execution" | "closure";
+// ---------------------------------------------------------------------------
+// Single source of truth for the 5 main lifecycle phases that group the
+// 16 sub-stages. Used by project-lifecycle-card, dashboard funnel, and the
+// pipeline kanban filter chips.
+// ---------------------------------------------------------------------------
 
-export const LIFECYCLE_PHASES: Array<{
+export type PhaseKey = "initiate" | "procure" | "execute" | "deliver" | "close";
+
+export interface LifecyclePhase {
   key: PhaseKey;
   label: string;
   shortLabel: string;
   description: string;
   color: string;
   stageKeys: LifecycleStageKey[];
-}> = [
+}
+
+export const LIFECYCLE_PHASES: LifecyclePhase[] = [
   {
-    key: "initiation",
-    label: "Initiation",
+    key: "initiate",
+    label: "Initiate",
     shortLabel: "INIT",
-    description: "Pre-charter pipeline — demand to vendor selection",
+    description: "Concept & requirements",
     color: "#6366F1",
-    stageKeys: ["project_case", "urs", "rfp", "vendor_evaluation"],
+    stageKeys: ["project_case", "urs"],
   },
   {
-    key: "approval",
-    label: "Approval",
-    shortLabel: "APR",
-    description: "Charter through PO release — governance gates",
+    key: "procure",
+    label: "Procure",
+    shortLabel: "PROC",
+    description: "Sourcing, approvals & contract",
     color: "#EC4899",
-    stageKeys: ["charter", "nfa", "legal", "pr_po"],
+    stageKeys: ["rfp", "vendor_evaluation", "charter", "nfa", "legal", "pr_po"],
   },
   {
-    key: "execution",
-    label: "Execution",
-    shortLabel: "EXE",
-    description: "Kickoff through UAT — build and validate",
+    key: "execute",
+    label: "Execute",
+    shortLabel: "EXEC",
+    description: "Mobilise, design & build",
     color: "#0EA5E9",
-    stageKeys: ["kickoff", "technical_design", "development", "implementation_plan", "uat"],
+    stageKeys: ["kickoff", "technical_design", "development", "implementation_plan"],
   },
   {
-    key: "closure",
-    label: "Closure",
-    shortLabel: "CLS",
-    description: "Go Live through archival — handover and lessons",
+    key: "deliver",
+    label: "Deliver",
+    shortLabel: "DLVR",
+    description: "Test & launch",
+    color: "#F59E0B",
+    stageKeys: ["uat", "go_live"],
+  },
+  {
+    key: "close",
+    label: "Close",
+    shortLabel: "CLOSE",
+    description: "Stabilise & wrap up",
     color: "#10B981",
-    stageKeys: ["go_live", "closure_readiness", "project_closure"],
+    stageKeys: ["closure_readiness", "project_closure"],
   },
 ];
 
-export function getPhaseForStage(stageKey: string): typeof LIFECYCLE_PHASES[number] | null {
+export function getPhaseForStage(stageKey: string): LifecyclePhase | null {
   return LIFECYCLE_PHASES.find((p) => (p.stageKeys as readonly string[]).includes(stageKey)) ?? null;
+}
+
+export function getPhaseIndex(phaseKey: string): number {
+  return LIFECYCLE_PHASES.findIndex((p) => p.key === phaseKey);
 }
 
 export const STAGE_COUNT = LIFECYCLE_STAGES.length;

@@ -406,27 +406,7 @@ export const STRATEGIC_THEMES = [
   "Talent & Culture",
 ] as const;
 
-// ---------------------------------------------------------------------------
-// PHASE GROUPING — 5 main phases that collapse the 16 sub-stages.
-// Used by stage-progress-bar.tsx to render a compact two-row pipeline.
-// ---------------------------------------------------------------------------
-export const LIFECYCLE_PHASES = [
-  { key: "initiate", label: "Initiate",  shortLabel: "Initiate", description: "Concept & requirements",         stageKeys: ["project_case", "urs"] as const },
-  { key: "procure",  label: "Procure",   shortLabel: "Procure",  description: "Sourcing, approvals & contract", stageKeys: ["rfp", "vendor_evaluation", "charter", "nfa", "legal", "pr_po"] as const },
-  { key: "execute",  label: "Execute",   shortLabel: "Execute",  description: "Mobilise, design & build",       stageKeys: ["kickoff", "technical_design", "development", "implementation_plan"] as const },
-  { key: "deliver",  label: "Deliver",   shortLabel: "Deliver",  description: "Test & launch",                  stageKeys: ["uat", "go_live"] as const },
-  { key: "close",    label: "Close",     shortLabel: "Close",    description: "Stabilise & wrap up",            stageKeys: ["closure_readiness", "project_closure"] as const },
-] as const;
-
-export type LifecyclePhaseKey = typeof LIFECYCLE_PHASES[number]["key"];
-
-export function getPhaseForStage(stageKey: string): typeof LIFECYCLE_PHASES[number] | null {
-  return LIFECYCLE_PHASES.find((p) => (p.stageKeys as readonly string[]).includes(stageKey)) ?? null;
-}
-
-export function getPhaseIndex(phaseKey: string): number {
-  return LIFECYCLE_PHASES.findIndex((p) => p.key === phaseKey);
-}
+// Phase grouping lives in `./lifecycle-phases.ts` (single source of truth).
 
 export const FUNCTIONS_LIST = [
   "Finance",

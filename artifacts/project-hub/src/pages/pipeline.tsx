@@ -71,8 +71,8 @@ export default function PipelinePage() {
         </div>
       </div>
 
-      {/* Phase strip — funnel-style summary across the 4 phases */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      {/* Phase strip — funnel-style summary across the 5 phases */}
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         <PhaseChip
           phaseKey="all"
           label="All Phases"
