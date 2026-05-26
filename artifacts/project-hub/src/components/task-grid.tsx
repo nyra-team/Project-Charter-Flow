@@ -770,6 +770,16 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
           <StatusSelect value={d.status} onChange={v => patch(task.id, { status: v })} />
         </td>
 
+        {/* Owner */}
+        <td className="px-1 text-center" style={{ width: 60 }}>
+          <AvatarSelect
+            value={d.assigneeId?.toString() ?? ""}
+            options={userOptions}
+            onSave={v => patch(task.id, { assigneeId: v ? parseInt(v) : null })}
+            label={d.assigneeName ?? userLabel(d.assigneeId)}
+          />
+        </td>
+
         {/* Priority */}
         <td className="p-0" style={{ minWidth: 95, height: ROW_HEIGHT, verticalAlign: "middle" }}>
           <PrioritySelect value={d.priority} onChange={v => patch(task.id, { priority: v })} />
@@ -786,16 +796,6 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
             </div>
           </td>
         )}
-
-        {/* Owner */}
-        <td className="px-1 text-center" style={{ width: 60 }}>
-          <AvatarSelect
-            value={d.assigneeId?.toString() ?? ""}
-            options={userOptions}
-            onSave={v => patch(task.id, { assigneeId: v ? parseInt(v) : null })}
-            label={d.assigneeName ?? userLabel(d.assigneeId)}
-          />
-        </td>
 
         {/* Manager */}
         {!isHidden("manager") && (
@@ -1036,9 +1036,9 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
               <th style={{ minWidth: 190 }} className={thCls}>Task Name <SortBtn col="name" /></th>
               {!isHidden("parent") && <th style={{ minWidth: 105 }} className={thCls}>Parent Task ID <SortBtn col="parentTaskId" /></th>}
               <th style={{ minWidth: 130 }} className={thCls}>Status <SortBtn col="status" /></th>
+              <th style={{ minWidth: 60, width: 60 }} className={thCls}>Owner <SortBtn col="assigneeId" /></th>
               <th style={{ minWidth: 95 }} className={thCls}>Priority <SortBtn col="priority" /></th>
               {!isHidden("rag") && <th style={{ width: 55 }} className={thCls}>RAG <SortBtn col="rag" /></th>}
-              <th style={{ minWidth: 95 }} className={thCls}>Owner <SortBtn col="assigneeId" /></th>
               {!isHidden("manager") && <th style={{ minWidth: 95 }} className={thCls}>Manager <SortBtn col="managerId" /></th>}
               {!isHidden("plannedStart") && <th style={{ minWidth: 90 }} className={thCls}>Plan. Start <SortBtn col="startDate" /></th>}
               <th style={{ minWidth: 90 }} className={thCls}>Due Date <SortBtn col="endDate" /></th>
