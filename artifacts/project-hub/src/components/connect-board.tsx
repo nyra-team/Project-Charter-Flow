@@ -43,6 +43,7 @@ interface DragData {
   kind: DragKind;
   id: number;
   status: string;
+  width: number;
 }
 
 function encodeId(kind: DragKind, id: number) {
@@ -275,13 +276,16 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
     const decoded = decodeId(event.active.id);
     if (!decoded) return;
     const { kind, id } = decoded;
+    // Measure the actual draggable's rendered width so the DragOverlay
+    // renders at exactly the same size — otherwise the preview is offset
+    // from the cursor.
+    const w = event.active.rect.current.initial?.width ?? 204;
     if (kind === "task") {
-      // Search all tasks (including subtasks) for the dragged card
       const t = allBoardTasks.find(x => x.id === id);
-      if (t) setActiveDrag({ kind, id, status: t.status });
+      if (t) setActiveDrag({ kind, id, status: t.status, width: w });
     } else {
       const m = milestones.find(x => x.id === id);
-      if (m) setActiveDrag({ kind, id, status: m.status });
+      if (m) setActiveDrag({ kind, id, status: m.status, width: w });
     }
   }
 
@@ -360,15 +364,18 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
 
       <DragOverlay dropAnimation={null}>
         {activeDrag && (() => {
-          // Constrain to column inner width (column 220 − 16 padding) so the
-          // drag preview matches the original card and sits under the cursor.
+          // Render the overlay at the exact width of the original card AND
+          // with no extra margins so its top-left sits where the cursor
+          // grabbed it.
           const wrap = (node: React.ReactNode) => (
-            <div style={{ width: 204 }}>{node}</div>
+            <div style={{ width: activeDrag.width }}>{node}</div>
           );
           if (activeDrag.kind === "task") {
-            const t = topLevelTasks.find(x => x.id === activeDrag.id);
+            // Look up across ALL tasks (including subtasks) and strip the
+            // isSubtask marginLeft on the overlay so the card is not shifted.
+            const t = allBoardTasks.find(x => x.id === activeDrag.id);
             if (!t) return null;
-            return wrap(<TaskCard task={t} isDragging />);
+            return wrap(<TaskCard task={{ ...t, isSubtask: false }} isDragging />);
           } else {
             const m = milestones.find(x => x.id === activeDrag.id);
             if (!m) return null;
