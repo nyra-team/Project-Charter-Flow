@@ -322,7 +322,7 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 400 }}>
-        {TASK_STATUSES.filter(s => s.value !== "at_risk").map(s => {
+        {TASK_STATUSES.map(s => {
           const msItems = milestones.filter(m => m.status === s.value);
           const colTaskCount = allBoardTasks.filter(t => t.status === s.value).length;
           const totalCount = colTaskCount + msItems.length;

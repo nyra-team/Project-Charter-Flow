@@ -9,7 +9,6 @@ function withAlpha(hex: string, alphaHex: string) {
 export const TASK_STATUSES = [
   { value: "not_started", label: "To be Started", color: "#FFFFFF", bg: "#9CA3AF", solid: "#9CA3AF" }, // grey
   { value: "in_progress", label: "In Progress",   color: "#FFFFFF", bg: "#F59E0B", solid: "#F59E0B" }, // orange (Working on it)
-  { value: "at_risk",     label: "At Risk",       color: "#FFFFFF", bg: "#FB923C", solid: "#FB923C" }, // amber-orange
   { value: "delayed",     label: "Delayed",       color: "#FFFFFF", bg: "#DC2626", solid: "#DC2626" }, // red (Stuck)
   { value: "on_hold",     label: "On-Hold",       color: "#FFFFFF", bg: "#6366F1", solid: "#6366F1" }, // indigo
   { value: "completed",   label: "Completed",     color: "#FFFFFF", bg: "#10B981", solid: "#10B981" }, // green (Done)

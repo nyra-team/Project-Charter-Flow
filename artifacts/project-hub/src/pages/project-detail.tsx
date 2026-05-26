@@ -414,7 +414,7 @@ export default function ProjectDetail() {
 
   const totalTasks = tasks.filter(t => !t.parentTaskId).length;
   const completedTasks = tasks.filter(t => t.status === "completed" && !t.parentTaskId).length;
-  const blockedTasks = tasks.filter(t => (t.status === "delayed" || t.status === "at_risk") && !t.parentTaskId).length;
+  const blockedTasks = tasks.filter(t => t.status === "delayed" && !t.parentTaskId).length;
   const inProgressTasks = tasks.filter(t => t.status === "in_progress" && !t.parentTaskId).length;
 
   const currentStageKey = useMemo(
@@ -573,7 +573,7 @@ export default function ProjectDetail() {
             { label: "Total Tasks",     value: totalTasks,      icon: List,          tone: "primary" as const },
             { label: "Completed",       value: completedTasks,  icon: CheckCircle2,  tone: "success" as const },
             { label: "In Progress",     value: inProgressTasks, icon: Clock,         tone: "info"    as const },
-            { label: "At Risk/Delayed", value: blockedTasks,    icon: AlertTriangle, tone: "warn"    as const },
+            { label: "Delayed", value: blockedTasks,    icon: AlertTriangle, tone: "warn"    as const },
           ]).map(s => {
             const Icon = s.icon;
             const toneClasses = {

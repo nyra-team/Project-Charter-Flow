@@ -48,7 +48,6 @@ function computeConsolidatedStatus(tasks: GridTask[]): string {
   if (!tasks.length) return "not_started";
   if (tasks.every(t => t.status === "completed")) return "completed";
   if (tasks.some(t => t.status === "delayed")) return "delayed";
-  if (tasks.some(t => t.status === "at_risk")) return "at_risk";
   if (tasks.some(t => t.status === "in_progress")) return "in_progress";
   if (tasks.some(t => t.status === "on_hold")) return "on_hold";
   return "not_started";

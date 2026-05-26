@@ -75,7 +75,7 @@ function computeRollupRag(children: GridTask[]): string {
   if (!children.length) return "green";
   const statuses = children.map(t => t.status);
   if (statuses.some(s => s === "delayed")) return "red";
-  if (statuses.some(s => s === "at_risk" || s === "on_hold")) return "amber";
+  if (statuses.some(s => s === "on_hold")) return "amber";
   return "green";
 }
 
@@ -544,7 +544,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
 
   // Roll up a parent's status from its subtasks:
   //   - all completed → completed
-  //   - any in_progress/at_risk/delayed/on_hold → in_progress
+  //   - any in_progress/delayed/on_hold → in_progress
   //   - all not_started → not_started
   function rollupParentStatus(siblingStatuses: string[]): string | null {
     if (siblingStatuses.length === 0) return null;
