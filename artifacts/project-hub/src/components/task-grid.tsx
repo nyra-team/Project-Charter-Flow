@@ -531,6 +531,18 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
   const topPad = startIdx * ROW_HEIGHT;
   const bottomPad = Math.max(0, (flatRows.length - endIdx) * ROW_HEIGHT);
 
+  // Roll up a parent's status from its subtasks:
+  //   - all completed → completed
+  //   - any in_progress/at_risk/delayed/on_hold → in_progress
+  //   - all not_started → not_started
+  function rollupParentStatus(siblingStatuses: string[]): string | null {
+    if (siblingStatuses.length === 0) return null;
+    if (siblingStatuses.every(s => s === "completed")) return "completed";
+    if (siblingStatuses.some(s => s !== "not_started" && s !== "completed")) return "in_progress";
+    if (siblingStatuses.some(s => s === "completed")) return "in_progress"; // mixed completed + not_started
+    return "not_started";
+  }
+
   // Optimistic patch + rollback on error
   const patch = useCallback((taskId: number, data: Record<string, unknown>) => {
     setPendingPatches(prev => ({ ...prev, [taskId]: { ...(prev[taskId] ?? {}), ...data } }));
@@ -539,6 +551,27 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
       {
         onSuccess: () => {
           setPendingPatches(prev => { const n = { ...prev }; delete n[taskId]; return n; });
+
+          // Auto-rollup: if a subtask's status changed, recompute & patch the parent
+          if ("status" in data) {
+            const task = tasks.find(t => t.id === taskId);
+            const parentId = task?.parentTaskId;
+            if (parentId) {
+              const siblings = tasks.filter(t => t.parentTaskId === parentId);
+              const siblingStatuses = siblings.map(s =>
+                s.id === taskId ? String(data.status) : s.status
+              );
+              const newParentStatus = rollupParentStatus(siblingStatuses);
+              const parent = tasks.find(t => t.id === parentId);
+              if (newParentStatus && parent && parent.status !== newParentStatus) {
+                updateTask.mutate({
+                  id: parentId,
+                  data: { status: newParentStatus } as Parameters<typeof updateTask.mutate>[0]["data"],
+                }, { onSuccess: () => onRefresh() });
+                return; // onRefresh will fire from the parent update
+              }
+            }
+          }
           onRefresh();
         },
         onError: () => {
@@ -547,7 +580,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         },
       }
     );
-  }, [updateTask, onRefresh, toast]);
+  }, [updateTask, onRefresh, toast, tasks]);
 
   function addSubtask(parentId: number) {
     if (!newSubtaskName.trim()) return;
