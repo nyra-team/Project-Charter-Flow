@@ -3,6 +3,7 @@ import { useLocation, Link } from "wouter";
 import { useCreateProject, useCreateProjectStage } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ChevronLeft, Sparkles } from "lucide-react";
+import { AiButton } from "../components/ai-button";
 
 function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
@@ -75,6 +76,24 @@ export default function NewDemand() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <SectionCard title="Demand Basics" subtitle="Give the demand a name and a one-line description.">
+          <div className="flex items-center justify-end -mt-2">
+            <AiButton
+              label="AI Draft"
+              endpoint="/api/ai/demand/draft-idea"
+              payload={{ name, description, sponsor }}
+              size="sm"
+              variant="subtle"
+              disabled={!name.trim() && !description.trim() && !sponsor.trim()}
+              disabledTitle="Type at least a rough name, description or sponsor first"
+              onResult={(d) => {
+                const r = d as { name?: string; description?: string; sponsor?: string };
+                if (r.name) setName(r.name);
+                if (r.description) setDescription(r.description);
+                if (r.sponsor && !sponsor) setSponsor(r.sponsor);
+                toast({ title: "AI draft applied — review before creating" });
+              }}
+            />
+          </div>
           <div>
             <label className="text-sm font-medium text-foreground">
               Project / Demand Name <span className="text-red-500">*</span>
@@ -87,7 +106,31 @@ export default function NewDemand() {
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-foreground">Short Description</label>
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-foreground">Short Description</label>
+              <AiButton
+                label="Rephrase"
+                endpoint="/api/ai/improve-text"
+                payload={{
+                  text: description,
+                  tone: "professional, concise, executive",
+                  audience: "PMO executives",
+                  maxWords: 35,
+                  instruction: "Rewrite as a single crisp sentence describing what this demand is about. End with a period.",
+                }}
+                size="sm"
+                variant="ghost"
+                disabled={description.trim().length < 3}
+                disabledTitle="Type a description first to rephrase it"
+                onResult={(d) => {
+                  const r = d as { rewritten?: string };
+                  if (r.rewritten) {
+                    setDescription(r.rewritten.trim());
+                    toast({ title: "Description rephrased" });
+                  }
+                }}
+              />
+            </div>
             <textarea
               value={description} onChange={(e) => setDescription(e.target.value)}
               placeholder="One-line summary of what this demand is about."
@@ -95,6 +138,9 @@ export default function NewDemand() {
               className="mt-1.5 w-full px-3 py-2 rounded-md border border-input bg-background text-sm resize-none"
               data-testid="input-demand-description"
             />
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Tip: type a rough idea, then click AI Draft to polish all three fields, or Rephrase to tighten just the description.
+            </p>
           </div>
         </SectionCard>
 

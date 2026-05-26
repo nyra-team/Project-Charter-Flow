@@ -428,6 +428,35 @@ async function loadProjectContext(projectId: number) {
 }
 
 // ---------------------------------------------------------------------------
+// POST /api/ai/demand/draft-idea
+// Used by the standalone "New Demand" form BEFORE a project exists.
+// Takes whatever the user has typed (name, rough description, sponsor) and
+// returns a polished name + one-line description + suggested sponsor role.
+// ---------------------------------------------------------------------------
+router.post("/ai/demand/draft-idea", async (req, res): Promise<void> => {
+  const { name, description, sponsor, hint } = (req.body || {}) as {
+    name?: string; description?: string; sponsor?: string; hint?: string;
+  };
+  const seed = [name, description, sponsor, hint].filter(Boolean).join(" | ").trim();
+  if (seed.length < 3) { res.status(400).json({ error: "Provide at least a rough name or description" }); return; }
+  const result = await llm({
+    task: "demand_draft_idea",
+    system:
+      "You are a senior PMO Business Analyst at Granules India (an Indian pharmaceuticals manufacturer) helping a colleague capture a new project demand at the very start of governance. Produce a crisp, executive-grade project name, a single-sentence description, and a likely sponsor role. Be specific to what the user typed. Never invent specific people, vendors, dates, or rupee amounts.",
+    prompt: `User has typed so far:\nName: ${name ?? "(empty)"}\nDescription: ${description ?? "(empty)"}\nSponsor: ${sponsor ?? "(empty)"}\nExtra hint: ${hint ?? "(none)"}\n\nReturn a polished project name (max 8 words, Title Case), a one-line description (15-30 words, ends with a period), and a suggested sponsor role (e.g. "Head of Manufacturing IT"). Keep it grounded in what the user typed.`,
+    jsonSchema: z.object({
+      name: z.string().min(3).max(120),
+      description: z.string().min(20).max(400),
+      sponsor: z.string().min(2).max(120),
+    }),
+    jsonSchemaHint: `{ "name":"SAP MM Module Upgrade", "description":"Modernise the materials management module to streamline procurement and inventory across the API and FD plants.", "sponsor":"Head of Supply Chain" }`,
+    maxTokens: 800,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/ai/demand/draft
 // ---------------------------------------------------------------------------
 router.post("/ai/demand/draft", async (req, res): Promise<void> => {

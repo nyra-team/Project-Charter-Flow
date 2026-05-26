@@ -30,9 +30,13 @@ type Props = {
   size?: "sm" | "md";
   className?: string;
   hideWhenNoKey?: boolean;
+  /** Caller-controlled disabled state (e.g. required field is empty). */
+  disabled?: boolean;
+  /** Tooltip text shown when caller-disabled. */
+  disabledTitle?: string;
 };
 
-export function AiButton({ label = "AI Insights", endpoint, payload, onResult, children, variant = "subtle", size = "sm", className, hideWhenNoKey }: Props) {
+export function AiButton({ label = "AI Insights", endpoint, payload, onResult, children, variant = "subtle", size = "sm", className, hideWhenNoKey, disabled: callerDisabled, disabledTitle }: Props) {
   const status = useAiStatus();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<unknown>(null);
@@ -63,8 +67,10 @@ export function AiButton({ label = "AI Insights", endpoint, payload, onResult, c
     subtle: "bg-primary/10 text-primary hover:bg-primary/15 border border-primary/20",
   }[variant];
 
-  const disabled = loading || (status != null && !status.configured);
-  const title = status && !status.configured ? "Add ANTHROPIC_API_KEY in Tools → Secrets to enable" : undefined;
+  const disabled = loading || callerDisabled || (status != null && !status.configured);
+  const title = status && !status.configured
+    ? "Add ANTHROPIC_API_KEY in Tools → Secrets to enable"
+    : callerDisabled ? disabledTitle : undefined;
 
   return (
     <button
