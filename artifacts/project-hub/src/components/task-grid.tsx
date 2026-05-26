@@ -698,12 +698,12 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         </td>
 
         {/* Status */}
-        <td className="p-0" style={{ minWidth: 130 }}>
+        <td className="p-0" style={{ minWidth: 130, height: ROW_HEIGHT, verticalAlign: "middle" }}>
           <StatusSelect value={d.status} onChange={v => patch(task.id, { status: v })} />
         </td>
 
         {/* Priority */}
-        <td className="p-0" style={{ minWidth: 95 }}>
+        <td className="p-0" style={{ minWidth: 95, height: ROW_HEIGHT, verticalAlign: "middle" }}>
           <PrioritySelect value={d.priority} onChange={v => patch(task.id, { priority: v })} />
         </td>
 

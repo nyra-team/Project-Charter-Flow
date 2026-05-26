@@ -42,11 +42,15 @@ export function StatusSelect({
       value={value}
       onChange={e => onChange(e.target.value)}
       disabled={disabled}
-      className="text-xs rounded-none px-2 font-semibold border-0 outline-none cursor-pointer appearance-none w-full h-full text-center"
+      className="text-xs rounded-none px-2 font-semibold border-0 outline-none cursor-pointer appearance-none text-center block"
       style={{
         background: getStatusMeta(value).bg,
         color: getStatusMeta(value).color,
         minWidth: 110,
+        width: "100%",
+        height: "100%",
+        margin: 0,
+        boxSizing: "border-box",
       }}
     >
       {TASK_STATUSES.map(s => (
@@ -64,11 +68,15 @@ export function PrioritySelect({
       value={value}
       onChange={e => onChange(e.target.value)}
       disabled={disabled}
-      className="text-xs rounded-none px-2 font-bold border-0 outline-none cursor-pointer appearance-none w-full h-full text-center"
+      className="text-xs rounded-none px-2 font-bold border-0 outline-none cursor-pointer appearance-none text-center block"
       style={{
         background: getPriorityMeta(value).bg,
         color: getPriorityMeta(value).color,
         minWidth: 90,
+        width: "100%",
+        height: "100%",
+        margin: 0,
+        boxSizing: "border-box",
       }}
     >
       {TASK_PRIORITIES.map(p => (
