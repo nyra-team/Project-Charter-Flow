@@ -192,6 +192,64 @@ function InlineNumberCell({ value, onSave }: { value: number | null | undefined;
 }
 
 // ── Generic inline cell (date / select / text) ────────────────────────────────
+function getInitials(name: string): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function avatarColor(name: string): string {
+  const palette = ["#DC2626", "#EA580C", "#D97706", "#65A30D", "#059669", "#0891B2", "#2563EB", "#7C3AED", "#C026D3", "#DB2777"];
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return palette[h % palette.length];
+}
+
+function AvatarSelect({ value, options, onSave, label }: {
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onSave: (v: string) => void;
+  label: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    return (
+      <select
+        autoFocus
+        value={value}
+        onChange={(e) => { onSave(e.target.value); setEditing(false); }}
+        onBlur={() => setEditing(false)}
+        className="text-xs border border-input bg-background text-foreground rounded-md px-1 py-0.5 w-full outline-none focus:ring-2 focus:ring-ring/40"
+      >
+        <option value="">—</option>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    );
+  }
+  if (!label) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        title="Assign owner"
+        className="w-7 h-7 rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground/60 text-xs flex items-center justify-center hover:bg-accent mx-auto"
+      >
+        +
+      </button>
+    );
+  }
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      title={label}
+      className="w-7 h-7 rounded-full text-white text-[10px] font-bold flex items-center justify-center mx-auto hover:ring-2 hover:ring-offset-1 hover:ring-primary/40"
+      style={{ background: avatarColor(label) }}
+    >
+      {getInitials(label)}
+    </button>
+  );
+}
+
 function InlineCell({ type, value, options, onSave, placeholder, displayLabel }: {
   type: "text" | "date" | "select";
   value: string;
@@ -718,10 +776,13 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         </td>
 
         {/* Owner */}
-        <td className="px-1" style={{ minWidth: 95, maxWidth: 110 }}>
-          <InlineCell type="select" value={d.assigneeId?.toString() ?? ""} options={userOptions}
+        <td className="px-1 text-center" style={{ width: 60 }}>
+          <AvatarSelect
+            value={d.assigneeId?.toString() ?? ""}
+            options={userOptions}
             onSave={v => patch(task.id, { assigneeId: v ? parseInt(v) : null })}
-            displayLabel={d.assigneeName ?? userLabel(d.assigneeId)} placeholder="Owner" />
+            label={d.assigneeName ?? userLabel(d.assigneeId)}
+          />
         </td>
 
         {/* Manager */}
