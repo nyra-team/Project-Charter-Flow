@@ -75,9 +75,9 @@ function TaskCard({
 
   return (
     <div
-      className={`rounded-xl p-3 space-y-2 select-none border transition-all ${
+      className={`p-3 space-y-2 select-none border transition-all ${
         isDragging
-          ? "border-primary shadow-[0_8px_25px_hsl(var(--primary)/0.25)] opacity-90 rotate-1 cursor-grabbing"
+          ? "border-primary shadow-[0_8px_25px_hsl(var(--primary)/0.25)] opacity-90 cursor-grabbing"
           : task.isSubtask
           ? "bg-primary/5 border-primary/20 cursor-grab"
           : isMilestone
