@@ -791,6 +791,20 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
           e.dataTransfer.setData("text/task-id", String(task.id));
           e.dataTransfer.effectAllowed = "move";
         }}
+        onDragOver={(e) => {
+          if (groupBy === "none") return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+        }}
+        onDrop={(e) => {
+          if (groupBy === "none") return;
+          e.preventDefault();
+          const draggedId = parseInt(e.dataTransfer.getData("text/task-id"), 10);
+          if (!draggedId || draggedId === task.id) return;
+          const field: "status" | "priority" | "assigneeId" = groupBy;
+          const newVal = d[field] ?? null;
+          patch(draggedId, { [field]: newVal });
+        }}
         className={`border-b border-border/40 hover:bg-accent/30 transition-colors text-xs ${
           task.isCritical ? "bg-destructive/5" : isSubtask ? "bg-primary/5" : "bg-card"
         } ${groupBy !== "none" ? "cursor-grab active:cursor-grabbing" : ""}`}
