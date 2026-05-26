@@ -603,10 +603,61 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
   // dragged task's group field (cross-group move) or reorders within the
   // same group by rewriting the integer `order` column on affected siblings.
   const handleRowDrop = useCallback((draggedId: number, targetId: number, position: "above" | "below") => {
-    if (groupBy === "none") return;
     const dragged = tasks.find(t => t.id === draggedId);
     const target = tasks.find(t => t.id === targetId);
     if (!dragged || !target) return;
+
+    // Subtasks can only be reordered among siblings under the same parent.
+    // They cannot change parent, become top-level, or change group field.
+    if (dragged.parentTaskId) {
+      if (target.parentTaskId !== dragged.parentTaskId) {
+        toast({ title: "Subtasks can only be reordered within the same parent task" });
+        return;
+      }
+      const subSiblings = tasks
+        .filter(t => t.parentTaskId === dragged.parentTaskId)
+        .slice()
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id - b.id);
+      const withoutDragged = subSiblings.filter(t => t.id !== draggedId);
+      const targetIdx = withoutDragged.findIndex(t => t.id === targetId);
+      if (targetIdx === -1) return;
+      const insertAt = position === "above" ? targetIdx : targetIdx + 1;
+      const reordered = [
+        ...withoutDragged.slice(0, insertAt),
+        dragged,
+        ...withoutDragged.slice(insertAt),
+      ];
+      reordered.forEach((t, i) => {
+        const newOrder = (i + 1) * 1000;
+        if ((t.order ?? 0) !== newOrder) patch(t.id, { order: newOrder });
+      });
+      return;
+    }
+
+    // Top-level task being dropped onto a subtask is not allowed.
+    if (target.parentTaskId) return;
+
+    if (groupBy === "none") {
+      // No grouping → just reorder within all top-level tasks.
+      const siblings = tasks
+        .filter(t => !t.parentTaskId)
+        .slice()
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id - b.id);
+      const withoutDragged = siblings.filter(t => t.id !== draggedId);
+      const targetIdx = withoutDragged.findIndex(t => t.id === targetId);
+      if (targetIdx === -1) return;
+      const insertAt = position === "above" ? targetIdx : targetIdx + 1;
+      const reordered = [
+        ...withoutDragged.slice(0, insertAt),
+        dragged,
+        ...withoutDragged.slice(insertAt),
+      ];
+      reordered.forEach((t, i) => {
+        const newOrder = (i + 1) * 1000;
+        if ((t.order ?? 0) !== newOrder) patch(t.id, { order: newOrder });
+      });
+      return;
+    }
     const field: "status" | "priority" | "assigneeId" = groupBy;
     const draggedGroup = (dragged as unknown as Record<string, unknown>)[field] ?? null;
     const targetGroup = (target as unknown as Record<string, unknown>)[field] ?? null;
@@ -749,6 +800,12 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
                 const taskId = parseInt(e.dataTransfer.getData("text/task-id"), 10);
                 if (!taskId) return;
                 if (groupBy === "none") return;
+                // Subtasks cannot be promoted/moved across groups via header drop.
+                const dragged = tasks.find(t => t.id === taskId);
+                if (dragged?.parentTaskId) {
+                  toast({ title: "Subtasks can only be reordered within the same parent task" });
+                  return;
+                }
                 const field: "status" | "priority" | "assigneeId" = groupBy;
                 let newVal: string | number | null = row.key;
                 if (field === "assigneeId") {
