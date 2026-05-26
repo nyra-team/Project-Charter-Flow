@@ -35,6 +35,7 @@ export interface GridTask {
   plannedEffortHours?: number | null;
   actualHours?: number | null;
   isCritical?: boolean;
+  order?: number | null;
 }
 
 interface TaskGridProps {
@@ -315,6 +316,10 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
   // Optimistic patches (local override before server confirms)
   const [pendingPatches, setPendingPatches] = useState<Record<number, Record<string, unknown>>>({});
 
+  // Drag & drop UI state
+  const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<{ kind: "header"; key: string } | { kind: "row"; id: number; position: "above" | "below" } | null>(null);
+
   // Virtualization
   const scrollRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -493,7 +498,13 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
     }
 
     for (const key of groupOrder) {
-      const members = grouped[key]!;
+      // Respect manual drag-reorder via the integer `order` field.
+      const members = grouped[key]!.slice().sort((a, b) => {
+        const ao = (pendingPatches[a.id]?.order as number | undefined) ?? a.order ?? 0;
+        const bo = (pendingPatches[b.id]?.order as number | undefined) ?? b.order ?? 0;
+        if (ao !== bo) return ao - bo;
+        return a.id - b.id;
+      });
       const meta = groupMeta[key]!;
       const effortSum = members.reduce((s, t) => {
         const d = { ...t, ...pendingPatches[t.id] };
@@ -587,6 +598,51 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
       }
     );
   }, [updateTask, onRefresh, toast, tasks]);
+
+  // Drop handler for dragging a task onto another row. Either changes the
+  // dragged task's group field (cross-group move) or reorders within the
+  // same group by rewriting the integer `order` column on affected siblings.
+  const handleRowDrop = useCallback((draggedId: number, targetId: number, position: "above" | "below") => {
+    if (groupBy === "none") return;
+    const dragged = tasks.find(t => t.id === draggedId);
+    const target = tasks.find(t => t.id === targetId);
+    if (!dragged || !target) return;
+    const field: "status" | "priority" | "assigneeId" = groupBy;
+    const draggedGroup = (dragged as unknown as Record<string, unknown>)[field] ?? null;
+    const targetGroup = (target as unknown as Record<string, unknown>)[field] ?? null;
+
+    // Cross-group move: just change the group field. Order stays as-is.
+    if (draggedGroup !== targetGroup) {
+      patch(draggedId, { [field]: targetGroup });
+      return;
+    }
+
+    // Same group reorder: rebuild ordered list of siblings (top-level only —
+    // subtasks live under their parent and aren't reordered across groups).
+    const siblings = tasks
+      .filter(t => !t.parentTaskId && ((t as unknown as Record<string, unknown>)[field] ?? null) === targetGroup)
+      .slice()
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.id - b.id);
+
+    const withoutDragged = siblings.filter(t => t.id !== draggedId);
+    const targetIdx = withoutDragged.findIndex(t => t.id === targetId);
+    if (targetIdx === -1) return;
+    const insertAt = position === "above" ? targetIdx : targetIdx + 1;
+    const reordered = [
+      ...withoutDragged.slice(0, insertAt),
+      dragged,
+      ...withoutDragged.slice(insertAt),
+    ];
+
+    // Reassign sequential order values (spaced by 1000) and patch only those
+    // whose value actually changed.
+    reordered.forEach((t, i) => {
+      const newOrder = (i + 1) * 1000;
+      if ((t.order ?? 0) !== newOrder) {
+        patch(t.id, { order: newOrder });
+      }
+    });
+  }, [groupBy, tasks, patch]);
 
   // Reconcile: drop pending fields once the incoming `tasks` prop already
   // matches them. This guarantees the row stays in its optimistic group until
@@ -783,6 +839,15 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         })()
       : null;
 
+    const isDragged = draggedTaskId === task.id;
+    const dragOverThis = dragOver && dragOver.kind === "row" && dragOver.id === task.id ? dragOver : null;
+    const indicatorColor = "hsl(var(--primary))";
+    const insertionShadow = dragOverThis
+      ? dragOverThis.position === "above"
+        ? `inset 0 3px 0 0 ${indicatorColor}`
+        : `inset 0 -3px 0 0 ${indicatorColor}`
+      : undefined;
+
     return (
       <tr
         key={`${rowIdx}-${task.id}`}
@@ -790,25 +855,48 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         onDragStart={(e) => {
           e.dataTransfer.setData("text/task-id", String(task.id));
           e.dataTransfer.effectAllowed = "move";
+          setDraggedTaskId(task.id);
+        }}
+        onDragEnd={() => {
+          setDraggedTaskId(null);
+          setDragOver(null);
         }}
         onDragOver={(e) => {
           if (groupBy === "none") return;
           e.preventDefault();
           e.dataTransfer.dropEffect = "move";
+          const rect = (e.currentTarget as HTMLTableRowElement).getBoundingClientRect();
+          const position: "above" | "below" = (e.clientY - rect.top) < rect.height / 2 ? "above" : "below";
+          setDragOver(prev =>
+            prev && prev.kind === "row" && prev.id === task.id && prev.position === position
+              ? prev
+              : { kind: "row", id: task.id, position }
+          );
+        }}
+        onDragLeave={() => {
+          setDragOver(prev => (prev && prev.kind === "row" && prev.id === task.id ? null : prev));
         }}
         onDrop={(e) => {
           if (groupBy === "none") return;
           e.preventDefault();
           const draggedId = parseInt(e.dataTransfer.getData("text/task-id"), 10);
+          const position: "above" | "below" =
+            dragOverThis?.position ??
+            ((e.clientY - (e.currentTarget as HTMLTableRowElement).getBoundingClientRect().top) <
+            (e.currentTarget as HTMLTableRowElement).getBoundingClientRect().height / 2
+              ? "above"
+              : "below");
+          setDragOver(null);
+          setDraggedTaskId(null);
           if (!draggedId || draggedId === task.id) return;
-          const field: "status" | "priority" | "assigneeId" = groupBy;
-          const newVal = d[field] ?? null;
-          patch(draggedId, { [field]: newVal });
+          handleRowDrop(draggedId, task.id, position);
         }}
-        className={`border-b border-border/40 hover:bg-accent/30 transition-colors text-xs ${
+        className={`border-b border-border/40 hover:bg-accent/30 transition-all duration-150 text-xs ${
           task.isCritical ? "bg-destructive/5" : isSubtask ? "bg-primary/5" : "bg-card"
-        } ${groupBy !== "none" ? "cursor-grab active:cursor-grabbing" : ""}`}
-        style={{ height: ROW_HEIGHT }}
+        } ${groupBy !== "none" ? "cursor-grab active:cursor-grabbing" : ""} ${
+          isDragged ? "opacity-40" : ""
+        }`}
+        style={{ height: ROW_HEIGHT, boxShadow: insertionShadow, transition: "box-shadow 120ms ease, opacity 120ms ease" }}
       >
         {/* Expand toggle */}
         <td className="px-1 text-center" style={{ width: 28 }}>
