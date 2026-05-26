@@ -1026,7 +1026,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
       <div
         ref={scrollRef}
         onScroll={e => setScrollTop(e.currentTarget.scrollTop)}
-        className="glass-surface lift-card ph-rise overflow-x-auto overflow-y-auto rounded-2xl"
+        className="glass-surface lift-card ph-rise overflow-x-auto overflow-y-auto rounded-sm"
         style={{ height: VIEWPORT_H, position: "relative" }}
       >
         <table className="border-collapse" style={{ tableLayout: "auto", minWidth: 1750 }}>
