@@ -184,7 +184,7 @@ function DroppableColumn({
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
-    <div className="flex flex-col flex-shrink-0 glass-surface rounded-xl overflow-hidden" style={{ minWidth: 220, width: 220 }}>
+    <div className="flex flex-col flex-shrink-0 glass-surface rounded-xl" style={{ minWidth: 220, width: 220 }}>
       <div
         className="px-3 py-2.5 flex items-center gap-2 border-b-2"
         style={{ background: bg, borderBottomColor: color }}
