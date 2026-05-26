@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { jsPDF } from "jspdf";
 import {
  useListProjectStages,
@@ -29,6 +29,12 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
    .sort((a, b) => (b.uploadedAt ?? "").localeCompare(a.uploadedAt ?? ""))[0];
  const [generated, setGenerated] = useState(false);
  const [aiSections, setAiSections] = useState<AiSections | null>(null);
+ const [localBlobUrl, setLocalBlobUrl] = useState<string | null>(null);
+ const [localFileName, setLocalFileName] = useState<string | null>(null);
+
+ useEffect(() => {
+   return () => { if (localBlobUrl) URL.revokeObjectURL(localBlobUrl); };
+ }, [localBlobUrl]);
 
  const rfpRecord = (
  stages as Array<{ id: number; stage: string; notes?: string | null }>
@@ -150,6 +156,21 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  const pdfBlob = doc.output("blob");
  const fileName = `rfp_${projectTitle.replace(/\s+/g, "_").toLowerCase()}_${now.slice(0, 10)}.pdf`;
 
+ // Always give the user a working download immediately — even if storage upload
+ // below fails. This keeps the in-card Download button functional regardless of
+ // whether object storage is configured.
+ if (localBlobUrl) URL.revokeObjectURL(localBlobUrl);
+ const blobUrl = URL.createObjectURL(pdfBlob);
+ setLocalBlobUrl(blobUrl);
+ setLocalFileName(fileName);
+ const a = document.createElement("a");
+ a.href = blobUrl;
+ a.download = fileName;
+ document.body.appendChild(a);
+ a.click();
+ a.remove();
+ setGenerated(true);
+
  if (rfpRecord?.id) {
  updateStage.mutate(
  { id: rfpRecord.id, data: { notes: JSON.stringify({ ...parsedRfpNotes, __rfp_template_generated: now }) } },
@@ -193,15 +214,14 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  },
  {
  onSuccess: () => {
- setGenerated(true);
- toast({ title: "RFP document generated from URS and added to Documents tab" });
+ toast({ title: "RFP downloaded — also added to Documents tab" });
  void queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "documents"] });
  },
- onError: () => toast({ title: "Failed to register RFP document", variant: "destructive" }),
+ onError: () => toast({ title: "RFP downloaded — but failed to register in Documents tab", variant: "destructive" }),
  },
  );
  })
- .catch(() => toast({ title: "RFP template upload failed", variant: "destructive" }));
+ .catch(() => toast({ title: "RFP downloaded — but couldn't upload to project storage", variant: "destructive" }));
  }
 
  return (
@@ -235,15 +255,22 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
 
  {alreadyGenerated || generated ? (
  <div className="space-y-2">
- <div className="rounded-xl p-3 text-center">
- <p className="text-sm font-bold text-success">✓ RFP Document generated from URS and on file</p>
+ <div className="rounded-xl p-3 text-center space-y-0.5">
+ <p className="text-sm font-bold text-success">✓ RFP Document generated from URS</p>
+ <p className="text-[11px] text-muted-foreground">
+ {latestRfpDoc
+   ? "On file in the Documents tab."
+   : localBlobUrl
+     ? "Use Download below to save the PDF."
+     : "Click Regenerate to download the PDF again."}
+ </p>
  </div>
- {latestRfpDoc && (
+ {(localBlobUrl || latestRfpDoc) && (
  <a
- href={latestRfpDoc.fileUrl}
- target="_blank"
- rel="noopener noreferrer"
- download
+ href={localBlobUrl ?? latestRfpDoc!.fileUrl}
+ {...(localBlobUrl
+   ? { download: localFileName ?? "rfp.pdf" }
+   : { target: "_blank", rel: "noopener noreferrer", download: true })}
  className="w-full py-2 rounded-xl text-xs font-semibold bg-success text-success-foreground hover:bg-success/90 transition-all flex items-center justify-center gap-2"
  >
  <Download size={14} />
