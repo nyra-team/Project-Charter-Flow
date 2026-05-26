@@ -639,62 +639,6 @@ export default function ProjectDetail() {
             selectedStageKey={selectedStageKey}
           />
 
-          {/* All stages quick nav */}
-          <div className="glass-surface lift-card rounded-2xl p-5 ph-rise relative overflow-hidden">
-            <span aria-hidden className="pointer-events-none absolute bottom-0 left-5 right-5 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 border border-primary/20">
-                <Layers size={18} className="text-primary" />
-              </div>
-              <div>
-                <h4 className="text-[14px] font-semibold text-foreground tracking-tight">All Lifecycle Stages</h4>
-                <p className="text-[11px] text-muted-foreground mt-0.5">15-stage governance flow · click to inspect</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2 stagger-children">
-              {LIFECYCLE_STAGES.map((stage, idx) => {
-                const stageRecord = (stageRecords as Array<{ stage: string; status: string }>)
-                  .find(r => r.stage === stage.key);
-                const isComplete = stageRecord?.status === "complete" || idx < LIFECYCLE_STAGES.findIndex(s => s.key === currentStageKey);
-                const isActive = stage.key === currentStageKey;
-                const isSelected = stage.key === (selectedStageKey ?? currentStageKey);
-
-                return (
-                  <button
-                    key={stage.key}
-                    onClick={() => handleStageClick(stage.key)}
-                    className={`flex items-center gap-3 p-3 rounded-xl text-left transition-all border ${
-                      isSelected
-                        ? "bg-primary/5 border-primary/30 shadow-sm"
-                        : "bg-muted/40 border-border hover:bg-accent/40 hover:border-border"
-                    }`}
-                  >
-                    <div
-                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold font-mono flex-shrink-0 ${
-                        isComplete
-                          ? "bg-success text-primary-foreground"
-                          : isActive
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-muted-foreground border border-border"
-                      }`}
-                    >
-                      {isComplete ? "✓" : idx + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-foreground truncate">{stage.label}</p>
-                      <p className="text-[10px] text-muted-foreground truncate">{stage.description.substring(0, 40)}...</p>
-                    </div>
-                    {isActive && (
-                      <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-primary/10 text-primary border-primary/20 flex-shrink-0">Active</span>
-                    )}
-                    {isComplete && !isActive && (
-                      <CheckCircle2 size={14} className="text-success flex-shrink-0" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         </div>
       )}
 
