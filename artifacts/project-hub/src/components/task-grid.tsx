@@ -645,6 +645,29 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
               className="flex items-center gap-2 px-3 py-1.5 border-l-4 cursor-pointer hover:brightness-95 transition"
               style={{ borderLeftColor: row.color, background: `${row.color}1A` }}
               onClick={() => toggleGroupCollapse(row.key)}
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes("text/task-id")) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  (e.currentTarget as HTMLDivElement).style.outline = `2px dashed ${row.color}`;
+                }
+              }}
+              onDragLeave={(e) => {
+                (e.currentTarget as HTMLDivElement).style.outline = "";
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                (e.currentTarget as HTMLDivElement).style.outline = "";
+                const taskId = parseInt(e.dataTransfer.getData("text/task-id"), 10);
+                if (!taskId) return;
+                const field = groupBy === "assigneeId" ? "assigneeId" : groupBy;
+                if (field === "none") return;
+                let newVal: string | number | null = row.key;
+                if (field === "assigneeId") {
+                  newVal = row.key === "unassigned" ? null : parseInt(row.key, 10);
+                }
+                patch(taskId, { [field]: newVal });
+              }}
             >
               {row.collapsed
                 ? <ChevronRight size={14} style={{ color: row.color }} />
@@ -731,9 +754,14 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
     return (
       <tr
         key={`${rowIdx}-${task.id}`}
+        draggable={groupBy !== "none"}
+        onDragStart={(e) => {
+          e.dataTransfer.setData("text/task-id", String(task.id));
+          e.dataTransfer.effectAllowed = "move";
+        }}
         className={`border-b border-border/40 hover:bg-accent/30 transition-colors text-xs ${
           task.isCritical ? "bg-destructive/5" : isSubtask ? "bg-primary/5" : "bg-card"
-        }`}
+        } ${groupBy !== "none" ? "cursor-grab active:cursor-grabbing" : ""}`}
         style={{ height: ROW_HEIGHT }}
       >
         {/* Expand toggle */}
