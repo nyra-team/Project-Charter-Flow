@@ -116,22 +116,6 @@ export function ProjectLifecycleCard({
     return { total, done, status };
   }
 
-  // Progress line: fraction of phases completed (smooth, anchored at pill row).
-  const progressPct =
-    LIFECYCLE_PHASES.length > 1
-      ? Math.max(
-          0,
-          Math.min(
-            100,
-            ((currentPhaseIdx + (currentPhase
-              ? phaseStats(currentPhaseIdx).done / phaseStats(currentPhaseIdx).total
-              : 0)) /
-              LIFECYCLE_PHASES.length) *
-              100,
-          ),
-        )
-      : 0;
-
   const dotSize = compact ? 26 : 32;
   const dotIcon = compact ? 11 : 13;
 
@@ -233,22 +217,25 @@ export function ProjectLifecycleCard({
                     {done}/{total}
                   </p>
                 </div>
+
+                {/* Per-card progress border — only under this pill, never in the gaps. */}
+                <span className="absolute left-0 right-0 bottom-0 h-[3px] rounded-b-xl bg-border/50 overflow-hidden">
+                  <span
+                    className="block h-full rounded-b-xl transition-[width] duration-500 ease-out"
+                    style={{
+                      width: `${total > 0 ? (done / total) * 100 : 0}%`,
+                      background:
+                        status === "complete"
+                          ? "hsl(var(--success))"
+                          : status === "active"
+                            ? "hsl(var(--primary))"
+                            : "hsl(var(--muted-foreground) / 0.4)",
+                    }}
+                  />
+                </span>
               </button>
             );
           })}
-        </div>
-
-        {/* Continuous progress line — sits right under the pill row, ties
-            into the active phase via the notch above. */}
-        <div className="relative h-[3px] mt-0 bg-border/60 rounded-full overflow-hidden">
-          <div
-            className="absolute left-0 top-0 h-full rounded-full transition-[width] duration-700 ease-out"
-            style={{
-              width: `${progressPct}%`,
-              background:
-                "linear-gradient(90deg, hsl(var(--success)) 0%, hsl(var(--success)) 65%, hsl(var(--primary)) 100%)",
-            }}
-          />
         </div>
       </div>
 
