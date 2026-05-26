@@ -329,7 +329,6 @@ export default function GeneralDashboard() {
             variant="compact"
             hideHeader
             hideLegend
-            showAllSubStages
           />
         </div>
         {/* Phase summary */}

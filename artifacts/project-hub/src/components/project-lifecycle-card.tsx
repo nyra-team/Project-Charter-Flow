@@ -206,10 +206,8 @@ export function ProjectLifecycleCard({
                   }
                 }}
                 style={{ flex: phase.stageKeys.length, borderTopColor: phase.color }}
-                className={`relative flex items-center gap-2 px-2.5 py-2 rounded-t-xl border border-t-[3px] transition-all text-left focus:outline-none focus:ring-2 focus:ring-primary/40 ${tone} ${
-                  isVisible && !showAllSubStages
-                    ? "border-b-transparent shadow-[0_4px_0_-1px_var(--background)] z-10"
-                    : "border-b"
+                className={`relative flex items-center gap-2 px-2.5 py-2 rounded-xl border border-t-[3px] transition-all text-left focus:outline-none focus:ring-2 focus:ring-primary/40 ${tone} ${
+                  isVisible && !showAllSubStages ? "ring-2 ring-primary/30 ring-offset-1 ring-offset-card" : ""
                 }`}
                 title={`${phase.label} — ${phase.description}`}
               >
@@ -236,17 +234,6 @@ export function ProjectLifecycleCard({
                     {done}/{total}
                   </p>
                 </div>
-                {/* Down-arrow notch under the active pill (project view only) */}
-                {isVisible && !showAllSubStages && (
-                  <span
-                    aria-hidden
-                    className="absolute left-1/2 -bottom-[7px] -translate-x-1/2 w-3 h-3 rotate-45 border-r border-b z-10"
-                    style={{
-                      background: "hsl(var(--card))",
-                      borderColor: `${phase.color}55`,
-                    }}
-                  />
-                )}
               </button>
             );
           })}
