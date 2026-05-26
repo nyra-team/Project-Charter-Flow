@@ -259,25 +259,34 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
         const legacyScores = (notes.__vendor_scores as Record<string, number> | undefined) ?? {};
         const legacyVendor = (notes.__vendor_name as string | undefined) ?? "";
 
-        const techDimIds = dims.filter(d => d.kind === "technical").map(d => d.id);
-        const commDimIds = dims.filter(d => d.kind === "commercial").map(d => d.id);
+        const techDims = dims.filter(d => d.kind === "technical");
+        const commDims = dims.filter(d => d.kind === "commercial");
         const anyVendorScores = Object.values(scoresById);
 
-        const anyTechScored = anyVendorScores.some(s => techDimIds.some(id => s[id] !== undefined));
-        const anyCommScored = anyVendorScores.some(s => commDimIds.some(id => s[id] !== undefined));
+        // A category is considered "done" when at least one vendor has been
+        // fully scored across every dimension in that category (not merely
+        // touched on one). This avoids marking the checklist complete just
+        // because the slider was nudged once.
+        const anyTechFullyScored =
+          techDims.length > 0 &&
+          anyVendorScores.some(s => techDims.every(d => s[d.id] !== undefined));
+        const anyCommFullyScored =
+          commDims.length > 0 &&
+          anyVendorScores.some(s => commDims.every(d => s[d.id] !== undefined));
         const anyFullyScored = dims.length > 0 && anyVendorScores.some(s => dims.every(d => s[d.id] !== undefined));
         const selectedFullyScored =
           !!selectedId && dims.length > 0 && dims.every(d => scoresById[selectedId]?.[d.id] !== undefined);
 
-        // Fallback to legacy single-vendor shape when new shape is empty.
+        // Fallback to legacy single-vendor shape only when ALL 4 legacy keys
+        // are present AND the vendor name is set — matches old behaviour.
         const legacyAllScored = ["functional", "technical", "commercial", "track_record"].every(
           k => legacyScores[k] !== undefined,
         );
 
         return {
-          func_eval_done: anyTechScored || legacyScores.functional !== undefined,
-          tech_eval_done: anyTechScored || legacyScores.technical !== undefined,
-          proposals_analysed: anyCommScored || legacyScores.commercial !== undefined,
+          func_eval_done: anyTechFullyScored || legacyScores.functional !== undefined,
+          tech_eval_done: anyTechFullyScored || legacyScores.technical !== undefined,
+          proposals_analysed: anyCommFullyScored || legacyScores.commercial !== undefined,
           eval_summary: anyFullyScored || legacyAllScored,
           vendor_selected: selectedFullyScored || (legacyVendor.trim().length > 0 && legacyAllScored),
         };

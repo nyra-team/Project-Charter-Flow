@@ -219,12 +219,14 @@ export function VendorEvalScorecard({ projectId }: { projectId: number }) {
  // mapped to the legacy 4-key shape when those dimensions still exist.
  const sel = vendors.find((v) => v.id === selId) ?? null;
  const selScores = sel ? (scores[sel.id] ?? {}) : {};
+ // Only mirror legacy keys for dimensions that have ACTUALLY been scored.
+ // Defaulting to 0 would make downstream checklist think the eval is done.
  const legacyScores: ScoreMap = {};
  for (const d of dims) {
  const legacyKey = d.id.replace(/^d_/, "");
- if (["functional", "technical", "commercial", "track_record"].includes(legacyKey)) {
- legacyScores[legacyKey] = selScores[d.id] ?? 0;
- }
+ if (!["functional", "technical", "commercial", "track_record"].includes(legacyKey)) continue;
+ const v = selScores[d.id];
+ if (typeof v === "number") legacyScores[legacyKey] = v;
  }
 
  updateStage.mutate(
