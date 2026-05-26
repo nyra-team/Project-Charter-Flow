@@ -42,7 +42,7 @@ export function StatusSelect({
       value={value}
       onChange={e => onChange(e.target.value)}
       disabled={disabled}
-      className="text-xs rounded-none px-2 py-0.5 font-semibold border-0 outline-none cursor-pointer appearance-none"
+      className="text-xs rounded-none px-2 font-semibold border-0 outline-none cursor-pointer appearance-none w-full h-full text-center"
       style={{
         background: getStatusMeta(value).bg,
         color: getStatusMeta(value).color,
@@ -64,7 +64,7 @@ export function PrioritySelect({
       value={value}
       onChange={e => onChange(e.target.value)}
       disabled={disabled}
-      className="text-xs rounded-none px-2 py-0.5 font-bold border-0 outline-none cursor-pointer appearance-none"
+      className="text-xs rounded-none px-2 font-bold border-0 outline-none cursor-pointer appearance-none w-full h-full text-center"
       style={{
         background: getPriorityMeta(value).bg,
         color: getPriorityMeta(value).color,
