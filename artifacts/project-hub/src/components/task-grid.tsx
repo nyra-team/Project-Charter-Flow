@@ -61,7 +61,9 @@ type FlatRow =
   | { type: "groupSummary"; key: string; count: number; effortSum: number };
 
 type GroupBy = "none" | "status" | "priority" | "assigneeId";
-type HideableCol = "manager" | "predecessor" | "cft" | "effort" | "actualHrs" | "issues";
+type HideableCol = "manager" | "predecessor" | "cft" | "effort" | "actualHrs" | "issues" | "parent" | "rag" | "plannedStart" | "actualStart" | "actualEnd" | "variance";
+
+const DEFAULT_HIDDEN: HideableCol[] = ["manager", "predecessor", "cft", "effort", "actualHrs", "issues", "parent", "rag", "plannedStart", "actualStart", "actualEnd", "variance"];
 
 const ROW_HEIGHT = 38; // px per rendered row
 const VIEWPORT_H = 520; // visible table height
@@ -331,7 +333,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
   const [personFilter, setPersonFilter] = useState<number | "all">("all");
   const [groupBy, setGroupBy] = useState<GroupBy>("status");
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const [hiddenCols, setHiddenCols] = useState<Set<HideableCol>>(new Set());
+  const [hiddenCols, setHiddenCols] = useState<Set<HideableCol>>(new Set(DEFAULT_HIDDEN));
   const [hideMenuOpen, setHideMenuOpen] = useState(false);
   const hideMenuRef = useRef<HTMLDivElement>(null);
 
@@ -593,7 +595,13 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
     - (isHidden("cft") ? 2 : 0)  // CFT Team + CFT Owner share one toggle
     - (isHidden("effort") ? 1 : 0)
     - (isHidden("actualHrs") ? 1 : 0)
-    - (isHidden("issues") ? 1 : 0);
+    - (isHidden("issues") ? 1 : 0)
+    - (isHidden("parent") ? 1 : 0)
+    - (isHidden("rag") ? 1 : 0)
+    - (isHidden("plannedStart") ? 1 : 0)
+    - (isHidden("actualStart") ? 1 : 0)
+    - (isHidden("actualEnd") ? 1 : 0)
+    - (isHidden("variance") ? 1 : 0);
 
   function renderFlatRow(row: FlatRow, rowIdx: number): ReactElement {
     if (row.type === "groupHeader") {
@@ -746,14 +754,16 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         </td>
 
         {/* Parent Task ID */}
-        <td className="px-1" style={{ minWidth: 105, maxWidth: 120 }}>
-          {parentDisplay ? (
-            <span className="text-xs truncate block" title={`#${parentDisplay.id} ${parentDisplay.name}`}>
-              <span className="font-mono font-bold text-primary/70">#{parentDisplay.id}</span>
-              {parentDisplay.name && <span className="text-muted-foreground ml-0.5">{parentDisplay.name}</span>}
-            </span>
-          ) : <span className="text-muted-foreground/60 text-xs">—</span>}
-        </td>
+        {!isHidden("parent") && (
+          <td className="px-1" style={{ minWidth: 105, maxWidth: 120 }}>
+            {parentDisplay ? (
+              <span className="text-xs truncate block" title={`#${parentDisplay.id} ${parentDisplay.name}`}>
+                <span className="font-mono font-bold text-primary/70">#{parentDisplay.id}</span>
+                {parentDisplay.name && <span className="text-muted-foreground ml-0.5">{parentDisplay.name}</span>}
+              </span>
+            ) : <span className="text-muted-foreground/60 text-xs">—</span>}
+          </td>
+        )}
 
         {/* Status */}
         <td className="p-0" style={{ minWidth: 130, height: ROW_HEIGHT, verticalAlign: "middle" }}>
@@ -766,14 +776,16 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         </td>
 
         {/* RAG with rollup */}
-        <td className="px-1 text-center" style={{ width: 55 }}>
-          <div className="flex flex-col items-center">
-            <RagDot rag={displayRag} />
-            {rollupRag && rollupRag !== (d.rag ?? "green") && (
-              <span className="text-muted-foreground" style={{ fontSize: 9 }} title="Rolled up from subtasks">↑</span>
-            )}
-          </div>
-        </td>
+        {!isHidden("rag") && (
+          <td className="px-1 text-center" style={{ width: 55 }}>
+            <div className="flex flex-col items-center">
+              <RagDot rag={displayRag} />
+              {rollupRag && rollupRag !== (d.rag ?? "green") && (
+                <span className="text-muted-foreground" style={{ fontSize: 9 }} title="Rolled up from subtasks">↑</span>
+              )}
+            </div>
+          </td>
+        )}
 
         {/* Owner */}
         <td className="px-1 text-center" style={{ width: 60 }}>
@@ -795,29 +807,37 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         )}
 
         {/* Planned Start */}
-        <td className="px-1" style={{ minWidth: 90 }}>
-          <InlineCell type="date" value={d.startDate ?? ""} onSave={v => patch(task.id, { startDate: v || null })} placeholder="Start" />
-        </td>
+        {!isHidden("plannedStart") && (
+          <td className="px-1" style={{ minWidth: 90 }}>
+            <InlineCell type="date" value={d.startDate ?? ""} onSave={v => patch(task.id, { startDate: v || null })} placeholder="Start" />
+          </td>
+        )}
 
-        {/* Planned End */}
+        {/* Planned End (Due Date) */}
         <td className="px-1" style={{ minWidth: 90 }}>
           <InlineCell type="date" value={d.endDate ?? ""} onSave={v => patch(task.id, { endDate: v || null })} placeholder="End" />
         </td>
 
         {/* Actual Start */}
-        <td className="px-1" style={{ minWidth: 90 }}>
-          <InlineCell type="date" value={d.actualStart ?? ""} onSave={v => patch(task.id, { actualStart: v || null })} placeholder="Act. Start" />
-        </td>
+        {!isHidden("actualStart") && (
+          <td className="px-1" style={{ minWidth: 90 }}>
+            <InlineCell type="date" value={d.actualStart ?? ""} onSave={v => patch(task.id, { actualStart: v || null })} placeholder="Act. Start" />
+          </td>
+        )}
 
         {/* Actual End */}
-        <td className="px-1" style={{ minWidth: 90 }}>
-          <InlineCell type="date" value={d.actualEnd ?? ""} onSave={v => patch(task.id, { actualEnd: v || null })} placeholder="Act. End" />
-        </td>
+        {!isHidden("actualEnd") && (
+          <td className="px-1" style={{ minWidth: 90 }}>
+            <InlineCell type="date" value={d.actualEnd ?? ""} onSave={v => patch(task.id, { actualEnd: v || null })} placeholder="Act. End" />
+          </td>
+        )}
 
         {/* Schedule Variance */}
-        <td className="px-1 text-center" style={{ minWidth: 75 }}>
-          <span className="text-xs font-semibold" style={{ color: variance.color }}>{variance.text}</span>
-        </td>
+        {!isHidden("variance") && (
+          <td className="px-1 text-center" style={{ minWidth: 75 }}>
+            <span className="text-xs font-semibold" style={{ color: variance.color }}>{variance.text}</span>
+          </td>
+        )}
 
         {/* Predecessor */}
         {!isHidden("predecessor") && (
@@ -915,7 +935,13 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
   const thCls = "text-left text-xs font-bold text-muted-foreground uppercase tracking-wide py-2.5 px-1 border-b border-border/60 bg-muted/40 whitespace-nowrap";
 
   const HIDEABLE_LABELS: Record<HideableCol, string> = {
+    parent: "Parent Task ID",
+    rag: "RAG",
     manager: "Manager",
+    plannedStart: "Plan. Start",
+    actualStart: "Act. Start",
+    actualEnd: "Act. End",
+    variance: "Variance",
     predecessor: "Predecessor",
     cft: "CFT Team + Owner",
     effort: "Planned Effort",
@@ -1008,17 +1034,17 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
             <tr>
               <th style={{ width: 28 }} className={thCls}></th>
               <th style={{ minWidth: 190 }} className={thCls}>Task Name <SortBtn col="name" /></th>
-              <th style={{ minWidth: 105 }} className={thCls}>Parent Task ID <SortBtn col="parentTaskId" /></th>
+              {!isHidden("parent") && <th style={{ minWidth: 105 }} className={thCls}>Parent Task ID <SortBtn col="parentTaskId" /></th>}
               <th style={{ minWidth: 130 }} className={thCls}>Status <SortBtn col="status" /></th>
               <th style={{ minWidth: 95 }} className={thCls}>Priority <SortBtn col="priority" /></th>
-              <th style={{ width: 55 }} className={thCls}>RAG <SortBtn col="rag" /></th>
+              {!isHidden("rag") && <th style={{ width: 55 }} className={thCls}>RAG <SortBtn col="rag" /></th>}
               <th style={{ minWidth: 95 }} className={thCls}>Owner <SortBtn col="assigneeId" /></th>
               {!isHidden("manager") && <th style={{ minWidth: 95 }} className={thCls}>Manager <SortBtn col="managerId" /></th>}
-              <th style={{ minWidth: 90 }} className={thCls}>Plan. Start <SortBtn col="startDate" /></th>
-              <th style={{ minWidth: 90 }} className={thCls}>Plan. End <SortBtn col="endDate" /></th>
-              <th style={{ minWidth: 90 }} className={thCls}>Act. Start <SortBtn col="actualStart" /></th>
-              <th style={{ minWidth: 90 }} className={thCls}>Act. End <SortBtn col="actualEnd" /></th>
-              <th style={{ minWidth: 75 }} className={thCls}>Variance <SortBtn col="scheduleVarianceDays" /></th>
+              {!isHidden("plannedStart") && <th style={{ minWidth: 90 }} className={thCls}>Plan. Start <SortBtn col="startDate" /></th>}
+              <th style={{ minWidth: 90 }} className={thCls}>Due Date <SortBtn col="endDate" /></th>
+              {!isHidden("actualStart") && <th style={{ minWidth: 90 }} className={thCls}>Act. Start <SortBtn col="actualStart" /></th>}
+              {!isHidden("actualEnd") && <th style={{ minWidth: 90 }} className={thCls}>Act. End <SortBtn col="actualEnd" /></th>}
+              {!isHidden("variance") && <th style={{ minWidth: 75 }} className={thCls}>Variance <SortBtn col="scheduleVarianceDays" /></th>}
               {!isHidden("predecessor") && <th style={{ minWidth: 115 }} className={thCls}>Predecessor</th>}
               {!isHidden("cft") && <th style={{ minWidth: 125 }} className={thCls}>CFT Team (≤2) <SortBtn col="cftDept" /></th>}
               {!isHidden("cft") && <th style={{ minWidth: 105 }} className={thCls}>CFT Owner</th>}
