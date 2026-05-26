@@ -22,6 +22,17 @@ type DemandPayload = {
   capexEstimate?: number;
   opexEstimate?: number;
   recommendation?: string;
+  // BRD additions
+  businessRequirements?: string;
+  asIsProcess?: string;
+  toBeProcess?: string;
+  businessRules?: string;
+  impactAnalysis?: string;
+  processOwners?: string;
+  dataNeeds?: string;
+  reportingNeeds?: string;
+  complianceNeeds?: string;
+  changeManagement?: string;
   savedAt?: string;
 };
 
@@ -79,6 +90,16 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
   const [capex, setCapex] = useState<string>(saved.capexEstimate?.toString() ?? "");
   const [opex, setOpex] = useState<string>(saved.opexEstimate?.toString() ?? "");
   const [recommendation, setRecommendation] = useState(saved.recommendation ?? "");
+  const [bizReqs, setBizReqs] = useState(saved.businessRequirements ?? "");
+  const [asIs, setAsIs] = useState(saved.asIsProcess ?? "");
+  const [toBe, setToBe] = useState(saved.toBeProcess ?? "");
+  const [bizRules, setBizRules] = useState(saved.businessRules ?? "");
+  const [impact, setImpact] = useState(saved.impactAnalysis ?? "");
+  const [procOwners, setProcOwners] = useState(saved.processOwners ?? "");
+  const [dataNeeds, setDataNeeds] = useState(saved.dataNeeds ?? "");
+  const [reportNeeds, setReportNeeds] = useState(saved.reportingNeeds ?? "");
+  const [complNeeds, setComplNeeds] = useState(saved.complianceNeeds ?? "");
+  const [changeMgmt, setChangeMgmt] = useState(saved.changeManagement ?? "");
 
   useEffect(() => {
     setProblem(saved.problemStatement ?? "");
@@ -97,6 +118,16 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
     setCapex(saved.capexEstimate?.toString() ?? "");
     setOpex(saved.opexEstimate?.toString() ?? "");
     setRecommendation(saved.recommendation ?? "");
+    setBizReqs(saved.businessRequirements ?? "");
+    setAsIs(saved.asIsProcess ?? "");
+    setToBe(saved.toBeProcess ?? "");
+    setBizRules(saved.businessRules ?? "");
+    setImpact(saved.impactAnalysis ?? "");
+    setProcOwners(saved.processOwners ?? "");
+    setDataNeeds(saved.dataNeeds ?? "");
+    setReportNeeds(saved.reportingNeeds ?? "");
+    setComplNeeds(saved.complianceNeeds ?? "");
+    setChangeMgmt(saved.changeManagement ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stageRecord?.id]);
 
@@ -147,6 +178,16 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
       capexEstimate: Number(capex) || 0,
       opexEstimate: Number(opex) || 0,
       recommendation,
+      businessRequirements: bizReqs,
+      asIsProcess: asIs,
+      toBeProcess: toBe,
+      businessRules: bizRules,
+      impactAnalysis: impact,
+      processOwners: procOwners,
+      dataNeeds,
+      reportingNeeds: reportNeeds,
+      complianceNeeds: complNeeds,
+      changeManagement: changeMgmt,
       savedAt: new Date().toISOString(),
     };
     updateStage.mutate(
@@ -170,8 +211,8 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
     <div className="rounded-2xl p-4 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-bold text-foreground">Business Case</p>
-          <p className="text-[11px] text-primary">Industry-standard template — problem, justification, scope, outcomes, risks, recommendation</p>
+          <p className="text-sm font-bold text-foreground">Business Case / BRD</p>
+          <p className="text-[11px] text-primary">Combined Business Case + BRD — justification, business requirements, As-Is / To-Be, impact, recommendation</p>
         </div>
         <div className="flex items-center gap-2">
           <AiButton
@@ -265,6 +306,62 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
       <Field label="Key Stakeholders" hint="Name · Role · Interest (one per line)">
         <AutoTextarea value={stakeholders} onChange={(e) => setStakeholders(e.target.value)} minRows={3}
           placeholder="e.g. Mr. Sharma · Plant Head · Approves CapEx&#10;Ms. Iyer · QA Lead · Defines acceptance" className={ta} />
+      </Field>
+
+      {/* BRD Block — business requirements detail */}
+      <p className="text-xs font-bold text-foreground pt-3 border-t border-border">BRD — Business Requirements Detail</p>
+
+      <Field label="Business Requirements" hint="Numbered list — one per line (BR-01, BR-02 …)">
+        <AutoTextarea value={bizReqs} onChange={(e) => setBizReqs(e.target.value)} minRows={6}
+          placeholder="BR-01 The business needs …&#10;BR-02 The business needs …&#10;BR-03 The business needs …" className={`${ta} font-mono`} />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="As-Is Process" hint="How the business operates today">
+          <AutoTextarea value={asIs} onChange={(e) => setAsIs(e.target.value)} minRows={4}
+            placeholder="Step 1 → Step 2 → Step 3 — current pain points highlighted" className={ta} />
+        </Field>
+        <Field label="To-Be Process" hint="How the business will operate after the project">
+          <AutoTextarea value={toBe} onChange={(e) => setToBe(e.target.value)} minRows={4}
+            placeholder="Step 1 → Step 2 → Step 3 — improvements highlighted" className={ta} />
+        </Field>
+      </div>
+
+      <Field label="Business Rules" hint="Policies, validations, calculations the business enforces">
+        <AutoTextarea value={bizRules} onChange={(e) => setBizRules(e.target.value)} minRows={3}
+          placeholder="• Batch can only be released after QA sign-off&#10;• Material code must follow X format&#10;• Discount cannot exceed Y% without HOD approval" className={ta} />
+      </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Process Owners" hint="Department · Owner · Function">
+          <AutoTextarea value={procOwners} onChange={(e) => setProcOwners(e.target.value)} minRows={3}
+            placeholder="QA · Ms. Iyer · Owns batch release process&#10;Production · Mr. Rao · Owns batch execution" className={ta} />
+        </Field>
+        <Field label="Impact Analysis" hint="Departments / systems / SOPs affected">
+          <AutoTextarea value={impact} onChange={(e) => setImpact(e.target.value)} minRows={3}
+            placeholder="Departments: QA, Production, Warehouse&#10;Systems: SAP, LIMS&#10;SOPs to revise: SOP-QA-014, SOP-PR-022" className={ta} />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Data Needs (Business View)" hint="What data the business needs to capture / see">
+          <AutoTextarea value={dataNeeds} onChange={(e) => setDataNeeds(e.target.value)} minRows={3}
+            placeholder="Inputs the business will provide, outputs the business needs back" className={ta} />
+        </Field>
+        <Field label="Reporting Needs (Business View)" hint="Reports / dashboards business users need">
+          <AutoTextarea value={reportNeeds} onChange={(e) => setReportNeeds(e.target.value)} minRows={3}
+            placeholder="Daily / weekly / monthly reports, KPI dashboards, ad-hoc analytics" className={ta} />
+        </Field>
+      </div>
+
+      <Field label="Compliance Needs (Business View)" hint="Regulatory or policy obligations the business must meet">
+        <AutoTextarea value={complNeeds} onChange={(e) => setComplNeeds(e.target.value)} minRows={2}
+          placeholder="e.g. GxP, 21 CFR Part 11, EU Annex 11, internal SOP-IT-007 audit trail" className={ta} />
+      </Field>
+
+      <Field label="Change Management & Training" hint="Who needs training, communication plan, adoption">
+        <AutoTextarea value={changeMgmt} onChange={(e) => setChangeMgmt(e.target.value)} minRows={2}
+          placeholder="Roles to train, channels (classroom / e-learning), comms plan, adoption KPIs" className={ta} />
       </Field>
 
       {/* Alternatives & Risks */}
