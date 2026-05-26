@@ -674,23 +674,26 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
               className="flex items-center gap-2 px-3 py-1.5 border-l-4 cursor-pointer hover:brightness-95 transition"
               style={{ borderLeftColor: row.color, background: `${row.color}1A` }}
               onClick={() => toggleGroupCollapse(row.key)}
+              onDragEnter={(e) => {
+                e.preventDefault();
+                (e.currentTarget as HTMLDivElement).style.outline = `2px dashed ${row.color}`;
+              }}
               onDragOver={(e) => {
-                if (e.dataTransfer.types.includes("text/task-id")) {
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                  (e.currentTarget as HTMLDivElement).style.outline = `2px dashed ${row.color}`;
-                }
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
               }}
               onDragLeave={(e) => {
-                (e.currentTarget as HTMLDivElement).style.outline = "";
+                if (e.currentTarget === e.target) {
+                  (e.currentTarget as HTMLDivElement).style.outline = "";
+                }
               }}
               onDrop={(e) => {
                 e.preventDefault();
                 (e.currentTarget as HTMLDivElement).style.outline = "";
                 const taskId = parseInt(e.dataTransfer.getData("text/task-id"), 10);
                 if (!taskId) return;
-                const field = groupBy === "assigneeId" ? "assigneeId" : groupBy;
-                if (field === "none") return;
+                if (groupBy === "none") return;
+                const field: "status" | "priority" | "assigneeId" = groupBy;
                 let newVal: string | number | null = row.key;
                 if (field === "assigneeId") {
                   newVal = row.key === "unassigned" ? null : parseInt(row.key, 10);
