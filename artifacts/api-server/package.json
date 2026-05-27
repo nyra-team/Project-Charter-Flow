@@ -11,10 +11,10 @@
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",
+    "@supabase/supabase-js": "^2.106.2",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
     "@workspace/llm": "workspace:*",
-    "zod": "catalog:",
     "cookie-parser": "^1.4.7",
     "cors": "^2",
     "drizzle-orm": "catalog:",
@@ -22,7 +22,8 @@
     "express-session": "^1.19.0",
     "google-auth-library": "^10.6.2",
     "pino": "^9",
-    "pino-http": "^10"
+    "pino-http": "^10",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",

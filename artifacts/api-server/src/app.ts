@@ -4,6 +4,7 @@ import pinoHttp from "pino-http";
 import session from "express-session";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { requireAuth } from "./middlewares/requireAuth";
 
 declare module "express-session" {
   interface SessionData {
@@ -59,6 +60,6 @@ app.use(
   }),
 );
 
-app.use("/api", router);
+app.use("/api", requireAuth, router);
 
 export default app;
