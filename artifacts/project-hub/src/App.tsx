@@ -3,6 +3,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "./components/Layout";
+import { AuthConsumer } from "./auth/AuthConsumer";
+import { SessionExpiredModal } from "./components/SessionExpiredModal";
 import Dashboard from "./pages/dashboard";
 import ChartersList from "./pages/charters";
 import NewCharter from "./pages/charter-new";
@@ -52,12 +54,15 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Router />
-        </WouterRouter>
-        <Toaster />
-      </TooltipProvider>
+      <AuthConsumer>
+        <TooltipProvider>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
+            <Router />
+          </WouterRouter>
+          <Toaster />
+          <SessionExpiredModal />
+        </TooltipProvider>
+      </AuthConsumer>
     </QueryClientProvider>
   );
 }

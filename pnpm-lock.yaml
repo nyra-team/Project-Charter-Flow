@@ -431,6 +431,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.1.0)
+      '@supabase/supabase-js':
+        specifier: ^2.106.2
+        version: 2.106.2
       jspdf:
         specifier: ^4.2.1
         version: 4.2.1
