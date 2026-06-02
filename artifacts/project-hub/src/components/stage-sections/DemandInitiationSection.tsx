@@ -4,6 +4,8 @@ import { useToast } from "@/hooks/use-toast";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { AiButton } from "../ai-button";
 import { AutoTextarea } from "../ui/auto-textarea";
+import { useUserStore } from "../../lib/store";
+import { formatDate } from "../../lib/format";
 
 type DemandPayload = {
   problemStatement?: string;
@@ -65,9 +67,10 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
   const { data: stages = [] } = useListProjectStages(projectId);
   const updateStage = useUpdateProjectStage();
   const { toast } = useToast();
+  const { role } = useUserStore();
 
   const stageRecord = (stages as Array<{ id: number; stage: string; notes?: string | null }>)
-    .find((s) => s.stage === "project_case");
+    .find((s) => s.stage === "initiation");
 
   const parsed: Record<string, unknown> = (() => {
     try { return JSON.parse(stageRecord?.notes ?? "{}"); } catch { return {}; }
@@ -196,6 +199,31 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
         onSuccess: () => toast({ title: "Business Case saved" }),
         onError: () => toast({ title: "Failed to save Business Case", variant: "destructive" }),
       },
+    );
+  }
+
+  // ── Business Case approval (sub-gate) ───────────────────────────────────────
+  // Distinct, audited go/no-go on the Business Case. Gates URS sign-off + stage
+  // advance (Option D). Requires the BC blocking checklist to be complete first.
+  const bcApproved = parsed.__bc_approved === true;
+  const bcApprovedAt = parsed.__bc_approved_at as string | undefined;
+  const bcApprover = parsed.__bc_approver as string | undefined;
+  const bcChecklistOk = bjOk && scopeOk && outcomesOk && budgetOk;
+  const canApproveBC = role === "hod" || role === "executive_director" || role === "pmo";
+
+  function approveBC() {
+    if (!stageRecord?.id) { toast({ title: "Initialise the stage first", variant: "destructive" }); return; }
+    const now = new Date().toISOString();
+    updateStage.mutate(
+      { id: stageRecord.id, data: { notes: JSON.stringify({ ...parsed, __bc_approved: true, __bc_approved_at: now, __bc_approver: role ?? "hod" }) } },
+      { onSuccess: () => toast({ title: "Business Case approved" }), onError: () => toast({ title: "Failed to approve", variant: "destructive" }) },
+    );
+  }
+  function revokeBC() {
+    if (!stageRecord?.id) return;
+    updateStage.mutate(
+      { id: stageRecord.id, data: { notes: JSON.stringify({ ...parsed, __bc_approved: false, __bc_approved_at: null, __bc_approver: null }) } },
+      { onError: () => toast({ title: "Failed to revoke", variant: "destructive" }) },
     );
   }
 
@@ -432,6 +460,34 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
         >
           {updateStage.isPending ? "Saving…" : "Save Business Case"}
         </button>
+      </div>
+
+      {/* Business Case approval — the go/no-go gate before URS sign-off */}
+      <div className={`rounded-xl p-3 border-2 ${bcApproved ? "border-success/40 bg-card" : "border-border bg-card"}`}>
+        <p className="text-sm font-bold mb-1" style={{ color: bcApproved ? "hsl(var(--success) / 1)" : "hsl(var(--warn) / 1)" }}>
+          Business Case Approval
+        </p>
+        {bcApproved ? (
+          <>
+            <p className="text-xs text-success">✓ Approved by <strong>{bcApprover}</strong>{bcApprovedAt ? ` · ${formatDate(bcApprovedAt)}` : ""}</p>
+            <p className="text-[11px] text-muted-foreground mt-1">URS sign-off and stage advance are now unlocked.</p>
+            {canApproveBC && <button onClick={revokeBC} className="mt-2 text-xs text-destructive underline">Revoke</button>}
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-warn mb-2">Pending approval — this is the go/no-go before requirements (URS) are signed off.</p>
+            {!bcChecklistOk ? (
+              <p className="text-xs text-muted-foreground italic">Complete the Business Case (justification, scope, outcomes, budget) before it can be approved.</p>
+            ) : canApproveBC ? (
+              <button onClick={approveBC} disabled={updateStage.isPending}
+                className="bg-primary hover:bg-primary/90 text-xs font-semibold text-primary-foreground px-3 py-1.5 rounded-lg disabled:opacity-50">
+                Approve Business Case
+              </button>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">Requires PMO / HOD / Exec Director role</p>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

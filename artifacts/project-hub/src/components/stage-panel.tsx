@@ -23,6 +23,7 @@ import { VendorEvalScorecard } from "./stage-sections/VendorEvalScorecard";
 import { ClosureReadinessSection } from "./stage-sections/ClosureReadinessSection";
 import { DocumentUploadRow } from "./stage-sections/DocumentUploadRow";
 import { DemandInitiationSection } from "./stage-sections/DemandInitiationSection";
+import { InitiationSubGates } from "./stage-sections/InitiationSubGates";
 import { NFASection } from "./stage-sections/NFASection";
 import { PRPOSection } from "./stage-sections/PRPOSection";
 import { TechnicalDesignSection } from "./stage-sections/TechnicalDesignSection";
@@ -208,7 +209,7 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
   // Stages whose checklist items are derived from form data (not manually toggled).
   // Items present in this map are auto-computed and lock the manual toggle;
   // items absent from this map remain manually toggleable.
-  const derivedChecklist: Record<string, boolean> = (() => {
+  const derivedChecklist: Record<string, boolean> = ((): Record<string, boolean> => {
     const parseNotes = (rec: { notes?: string | null } | undefined): Record<string, unknown> => {
       try { return rec?.notes ? JSON.parse(rec.notes) as Record<string, unknown> : {}; }
       catch { return {}; }
@@ -219,22 +220,19 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
     const docByName = (name: string) => stageDocs.some(d => d.name === name);
 
     switch (displayStageKey) {
-      case "project_case": {
+      case "initiation": {
+        // Business Case / BRD (from __demand_initiation) + URS dual-approval (from __urs_*)
         const demand = (notes.__demand_initiation as Record<string, unknown> | undefined) ?? {};
         const str = (k: string) => (typeof demand[k] === "string" ? (demand[k] as string) : "");
         const num = (k: string) => (typeof demand[k] === "number" ? (demand[k] as number) : Number(demand[k]) || 0);
+        const scope = (notes.__urs_scope as string | undefined) ?? "";
+        const reqs = (notes.__urs_requirements as string | undefined) ?? "";
         return {
           biz_just: str("businessJustification").length >= 100,
           scope_done: str("scopeSummary").length >= 50,
           outcomes: str("expectedOutcomes").length > 0,
           sponsor: str("sponsor").trim().length > 0,
           budget_est: num("capexEstimate") + num("opexEstimate") > 0,
-        };
-      }
-      case "urs": {
-        const scope = (notes.__urs_scope as string | undefined) ?? "";
-        const reqs = (notes.__urs_requirements as string | undefined) ?? "";
-        return {
           biz_req: scope.length >= 30 && reqs.length >= 30,
           it_review: reqs.length >= 50,
           biz_owner_approved: !!notes.__urs_biz_approved,
@@ -242,16 +240,9 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
           version_ctrl: docByName("URS Document"),
         };
       }
-      case "rfp": {
+      case "vendor_selection": {
+        // RFP issuance + Vendor Evaluation scorecard
         const generated = !!notes.__rfp_template_generated;
-        return {
-          urs_approved_gate: isComplete("urs"),
-          rfp_created: generated || docByName("RFP Document"),
-          urs_populated: generated,
-        };
-      }
-      case "vendor_evaluation": {
-        // New shape: dimensions[] + scores keyed by vendor id; old shape kept as fallback.
         type Dim = { id: string; kind: "technical" | "commercial" };
         const dims = (notes.__eval_dimensions as Dim[] | undefined) ?? [];
         const scoresById = (notes.__vendor_scores_by_id as Record<string, Record<string, number>> | undefined) ?? {};
@@ -284,6 +275,9 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
         );
 
         return {
+          urs_approved_gate: isComplete("initiation"),
+          rfp_created: generated || docByName("RFP Document"),
+          urs_populated: generated,
           func_eval_done: anyTechFullyScored || legacyScores.functional !== undefined,
           tech_eval_done: anyTechFullyScored || legacyScores.technical !== undefined,
           proposals_analysed: anyCommFullyScored || legacyScores.commercial !== undefined,
@@ -291,16 +285,12 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
           vendor_selected: selectedFullyScored || (legacyVendor.trim().length > 0 && legacyAllScored),
         };
       }
-      case "charter": {
-        return {
-          charter_drafted: docByName("Project Charter") || docByName("Charter Template"),
-        };
-      }
-      case "nfa": {
+      case "investment_authorization": {
+        // Charter sign-off + NFA multi-level financial chain
         const nfa = (notes.__nfa as { nfaNumber?: string; chain?: Array<{ status?: string }> } | undefined) ?? {};
         const chain = nfa.chain ?? [];
         return {
-          charter_approved_gate: isComplete("charter"),
+          charter_drafted: docByName("Project Charter") || docByName("Charter Template"),
           nfa_form_submitted: !!(nfa.nfaNumber && nfa.nfaNumber.length > 0),
           finance_head_approved: chain[0]?.status === "approved",
           pmo_nfa_approved: chain[1]?.status === "approved",
@@ -308,40 +298,30 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
           mgmt_approved: chain[3]?.status === "approved",
         };
       }
-      case "legal": {
+      case "contract_po": {
+        // Legal review/sign-off + PR/PO release (both live in this stage's notes now)
         const lg = (notes.__legal as { contractNumber?: string; complianceNotes?: string; ndaSigned?: boolean; legalApproved?: boolean } | undefined) ?? {};
         const reviewLen = (lg.complianceNotes ?? "").length;
+        const pp = (notes.__pr_po as { prNumber?: string; poNumber?: string } | undefined) ?? {};
         return {
           contract_uploaded: !!(lg.contractNumber && lg.contractNumber.length > 0),
           legal_reviewed: reviewLen >= 30,
           compliance_confirmed: reviewLen >= 30,
           nda_signed: !!lg.ndaSigned,
           legal_signoff: !!lg.legalApproved,
-        };
-      }
-      case "pr_po": {
-        const pp = (notes.__pr_po as { prNumber?: string; poNumber?: string } | undefined) ?? {};
-        const legalRec = allStageRecords.find(r => r.stage === "legal");
-        const legalNotes = parseNotes(legalRec);
-        const lg = (legalNotes.__legal as { legalApproved?: boolean } | undefined) ?? {};
-        return {
-          legal_approved_gate: isComplete("legal") || !!lg.legalApproved,
           pr_submitted: !!(pp.prNumber && pp.prNumber.length > 0),
           po_released: !!(pp.poNumber && pp.poNumber.length > 0),
         };
       }
-      case "kickoff": {
+      case "design": {
+        // Kickoff + Technical Design
         const attendees = (notes.__kickoff_attendees as Array<unknown> | undefined) ?? [];
-        return {
-          attendees_defined: attendees.length > 0,
-          minutes_uploaded: docByName("Meeting Minutes"),
-        };
-      }
-      case "technical_design": {
         const td = (notes.__technical_design as { architectureSummary?: string; integrations?: string; securityReview?: string; techLeadApproved?: boolean } | undefined) ?? {};
         const archLen = (td.architectureSummary ?? "").length;
         const secLen = (td.securityReview ?? "").length;
         return {
+          attendees_defined: attendees.length > 0,
+          minutes_uploaded: docByName("Meeting Minutes"),
           td_drafted: archLen >= 30 || docByName("Technical Design Document"),
           arch_uploaded: archLen > 0 || docByName("Architecture Diagram"),
           integrations_listed: (td.integrations ?? "").length > 0,
@@ -350,7 +330,8 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
           td_lead_approved: !!td.techLeadApproved,
         };
       }
-      case "development": {
+      case "build": {
+        // Development progress (Implementation Plan items remain manually toggleable)
         const dv = (notes.__development as { percentComplete?: number; statusNotes?: string; blockers?: Array<{ resolved?: boolean }> } | undefined) ?? {};
         const blockers = dv.blockers ?? [];
         const openBlockers = blockers.filter(b => !b.resolved).length;
@@ -368,20 +349,16 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
           go_live_date_frozen: !!notes.__goLiveFrozen,
         };
       }
-      case "closure_readiness": {
+      case "closure": {
+        // Closure readiness + project closure
         const handover = (notes.__handover_items as Record<string, boolean> | undefined) ?? {};
         const handoverDone = ["training_complete", "runbooks_handed", "support_transitioned", "data_migrated", "vendor_warranties"].every(k => handover[k]);
         return {
           csat_complete: !!notes.__csat_survey_complete,
           doc_handover_done: handoverDone || docByName("Documentation Handover Package"),
           support_transitioned: !!handover.support_transitioned,
-        };
-      }
-      case "project_closure": {
-        return {
           lessons_learned_done: !!(notes.__lessonsWentWell && notes.__lessonsImprove && notes.__lessonsRecs),
           closure_report_generated: !!notes.__closureReportGeneratedAt,
-          all_artifacts_approved: isComplete("closure_readiness"),
         };
       }
       default:
@@ -402,9 +379,10 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
     .filter((i) => i.blocking)
     .every((i) => effectiveChecklist[i.id]);
 
-  // Business Case documents are optional — uploads are encouraged but not gated.
-  const docsAreOptional = displayStageKey === "project_case";
-  const requiredDocsUploaded = docsAreOptional || stageConfig.requiredDocs.every((rd) =>
+  // Documents flagged `optional` in lifecycle-config (e.g. the Business Case
+  // docs) are uploadable but not gated. Only non-optional docs block advance.
+  const requiredDocList = stageConfig.requiredDocs.filter((rd) => !(rd as { optional?: boolean }).optional);
+  const requiredDocsUploaded = requiredDocList.every((rd) =>
     stageDocs.some((d) => d.name === rd.name),
   );
 
@@ -464,9 +442,7 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
 
   const TABS = [
     { id: "overview" as const, label: "Overview" },
-    { id: "documents" as const, label: docsAreOptional
-        ? `Documents (${stageDocs.length} · optional)`
-        : `Documents (${stageDocs.length}/${stageConfig.requiredDocs.length})` },
+    { id: "documents" as const, label: `Documents (${stageDocs.length}/${requiredDocList.length})` },
     { id: "checklist" as const, label: `Checklist (${stageConfig.checklistItems.filter((i) => effectiveChecklist[i.id]).length}/${stageConfig.checklistItems.length})` },
     { id: "approvals" as const, label: `Approvals (${approvals.length})` },
   ];
@@ -578,8 +554,15 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
             )}
 
             {/* Stage-specific workflow sections */}
-            {stageHas(stageConfig, "hasDemandInitiation") && <DemandInitiationSection projectId={projectId} />}
-            {stageHas(stageConfig, "hasURSDualApproval") && <URSDualApprovalSection projectId={projectId} />}
+            {/* Initiation: BC + URS as two governed sub-gates in one tabbed panel (Option D). */}
+            {stageHas(stageConfig, "hasDemandInitiation") && stageHas(stageConfig, "hasURSDualApproval") ? (
+              <InitiationSubGates projectId={projectId} />
+            ) : (
+              <>
+                {stageHas(stageConfig, "hasDemandInitiation") && <DemandInitiationSection projectId={projectId} />}
+                {stageHas(stageConfig, "hasURSDualApproval") && <URSDualApprovalSection projectId={projectId} />}
+              </>
+            )}
             {stageHas(stageConfig, "hasRFPTemplate") && <RFPTemplateSection projectId={projectId} />}
             {stageHas(stageConfig, "hasVendorEvalScorecard") && <VendorEvalScorecard projectId={projectId} />}
             {stageHas(stageConfig, "hasCharter") && <CharterSection projectId={projectId} />}
@@ -599,7 +582,7 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
               <div className="rounded-xl p-3 bg-success/10 border border-success/20">
                 <p className="text-[10px] font-mono uppercase tracking-wider text-success font-semibold mb-1">Documents</p>
                 <p className="text-xl font-semibold font-mono num-tabular text-success">
-                  {stageDocs.length}<span className="text-xs text-success/70 font-normal">/{stageConfig.requiredDocs.length}</span>
+                  {stageDocs.length}<span className="text-xs text-success/70 font-normal">/{requiredDocList.length}</span>
                 </p>
                 <p className="text-[11px] text-success/80">uploaded</p>
               </div>

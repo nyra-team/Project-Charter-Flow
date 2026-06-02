@@ -1,7 +1,9 @@
 import { Router, type IRouter } from "express";
-import { db, chartersTable, approvalsTable, projectsTable, tasksTable, milestonesTable, usersTable, risksTable, scoringCriteriaTable, projectScoresTable, resourceAllocationsTable } from "@workspace/db";
-import { eq, ne } from "drizzle-orm";
+import { db, chartersTable, approvalsTable, projectsTable, projectStagesTable, tasksTable, milestonesTable, usersTable, risksTable, scoringCriteriaTable, projectScoresTable, resourceAllocationsTable, stageEscalationPolicyTable, escalationLogTable } from "@workspace/db";
+import { eq, ne, and, gte } from "drizzle-orm";
 import { getRecentActivityWithUsers } from "./activity";
+import { computeStageCriticalPath, type CriticalPathStage } from "../lib/critical-path";
+import { resolveRole } from "../lib/role-resolver";
 
 const router: IRouter = Router();
 
@@ -403,6 +405,237 @@ router.get("/dashboard/delivery-stats", async (_req, res): Promise<void> => {
       unowned,
     },
   });
+});
+
+// Portfolio-level stage-governance critical path: how many projects are on track /
+// at risk / blocked, the most common bottleneck stages, and the blocked-project list.
+router.get("/dashboard/critical-path-portfolio", async (_req, res): Promise<void> => {
+  const projects = await db.select({ id: projectsTable.id, status: projectsTable.status })
+    .from(projectsTable).where(ne(projectsTable.status, "closed"));
+
+  let onTrack = 0, atRisk = 0, blocked = 0, unmapped = 0;
+  const bottleneckCounts = new Map<string, { label: string; count: number }>();
+  const blockedProjects: Array<{ id: number; name: string; blockedStageKey: string; stageLabel: string; daysOverdue: number; owner: { id: number; name: string } | null }> = [];
+
+  // Per-phase rollup for the Pipeline page (4 phase lanes). Seed all four so the
+  // UI always renders every lane even when a phase is empty.
+  const PHASE_ORDER = ["initiate", "procure", "execute", "release_close"];
+  const byPhaseMap = new Map<string, { phaseKey: string; projects: number; blocked: number; overdue: number; activeApprovals: number }>();
+  for (const k of PHASE_ORDER) byPhaseMap.set(k, { phaseKey: k, projects: 0, blocked: 0, overdue: 0, activeApprovals: 0 });
+
+  for (const p of projects) {
+    const cp = await computeStageCriticalPath(p.id);
+    if (!cp) continue;
+    // Projects on legacy stage keys (pre-Option-B data) can't be placed on the
+    // critical path — count them separately rather than inflating "on track".
+    if (!cp.currentStageRecognized) { unmapped++; continue; }
+    if (cp.health === "blocked") blocked++;
+    else if (cp.health === "at_risk") atRisk++;
+    else onTrack++;
+
+    // Phase placement = phase of the project's current stage. The focus stage
+    // (blocked, else active) drives the per-phase overdue / active-approval tallies.
+    const currentStage = cp.stages.find((s) => s.key === cp.currentStageKey);
+    const focus = cp.stages.find((s) => s.status === "blocked") ?? cp.stages.find((s) => s.status === "active");
+    const phaseKey = currentStage?.phaseKey ?? focus?.phaseKey;
+    if (phaseKey) {
+      const ph = byPhaseMap.get(phaseKey) ?? { phaseKey, projects: 0, blocked: 0, overdue: 0, activeApprovals: 0 };
+      ph.projects++;
+      if (cp.health === "blocked") ph.blocked++;
+      if ((focus?.daysOverdue ?? 0) > 0) ph.overdue++;
+      if (focus?.pendingApprover) ph.activeApprovals++;
+      byPhaseMap.set(phaseKey, ph);
+    }
+
+    // Bottleneck = the stage that is blocked, or the at-risk active stage.
+    const pinch = cp.stages.find((s) => s.status === "blocked") ?? cp.stages.find((s) => s.status === "active" && (s.daysOverdue > 0 || s.blockingReasons.length > 0));
+    if (pinch && cp.health !== "on_track") {
+      const e = bottleneckCounts.get(pinch.key) ?? { label: pinch.label, count: 0 };
+      e.count++;
+      bottleneckCounts.set(pinch.key, e);
+    }
+
+    if (cp.blockedStageKey) {
+      const bs = cp.stages.find((s) => s.key === cp.blockedStageKey)!;
+      blockedProjects.push({
+        id: cp.projectId, name: cp.projectName,
+        blockedStageKey: cp.blockedStageKey, stageLabel: bs.label,
+        daysOverdue: bs.daysOverdue, owner: bs.owner,
+      });
+    }
+  }
+
+  const bottlenecks = [...bottleneckCounts.entries()]
+    .map(([stageKey, v]) => ({ stageKey, label: v.label, count: v.count }))
+    .sort((a, b) => b.count - a.count);
+  blockedProjects.sort((a, b) => b.daysOverdue - a.daysOverdue);
+
+  const byPhase = PHASE_ORDER.map((k) => byPhaseMap.get(k)!);
+
+  res.json({ onTrack, atRisk, blocked, unmapped, total: projects.length, bottlenecks, blockedProjects, byPhase });
+});
+
+// Org-wide Initiation sub-gate aggregate — how many projects currently in the
+// Initiation stage have their Business Case / URS gate approved. Lets the shared
+// lifecycle card show "BC x/n · URS y/n" under INIT in counts (org-wide) mode,
+// matching the per-project view.
+router.get("/dashboard/initiation-subgates", async (_req, res): Promise<void> => {
+  const projs = await db.select({ id: projectsTable.id })
+    .from(projectsTable).where(and(eq(projectsTable.stage, "initiation"), ne(projectsTable.status, "closed")));
+  let bcDone = 0, ursDone = 0;
+  for (const p of projs) {
+    const [st] = await db.select({ notes: projectStagesTable.notes }).from(projectStagesTable)
+      .where(and(eq(projectStagesTable.projectId, p.id), eq(projectStagesTable.stage, "initiation")));
+    let n: Record<string, unknown> = {};
+    try { n = JSON.parse(st?.notes ?? "{}"); } catch { n = {}; }
+    if (n.__bc_approved === true) bcDone++;
+    if (n.__urs_biz_approved === true && n.__urs_it_approved === true) ursDone++;
+  }
+  res.json({ inInitiation: projs.length, bcDone, ursDone });
+});
+
+// ---------------------------------------------------------------------------
+// BOTTLENECKS BY PERSON — make the blockage visible by who owns it, not just
+// by stage. All four widgets below derive from the live critical path (no
+// dependency on legacy pmo_approvals being populated).
+// ---------------------------------------------------------------------------
+
+type FocusStage = {
+  projectId: number;
+  projectName: string;
+  stage: CriticalPathStage;
+};
+
+// Walk every active, recognized project once and return its single active/blocked
+// stage. Shared by the by-person widgets.
+async function collectFocusStages(): Promise<FocusStage[]> {
+  const projects = await db.select({ id: projectsTable.id })
+    .from(projectsTable).where(ne(projectsTable.status, "closed"));
+  const out: FocusStage[] = [];
+  for (const p of projects) {
+    const cp = await computeStageCriticalPath(p.id);
+    if (!cp || !cp.currentStageRecognized) continue;
+    const stage = cp.stages.find((s) => s.status === "blocked") ?? cp.stages.find((s) => s.status === "active");
+    if (!stage) continue;
+    out.push({ projectId: cp.projectId, projectName: cp.projectName, stage });
+  }
+  return out;
+}
+
+// Group key for a (possibly unassigned) waiting-on person.
+function personKey(w: CriticalPathStage["waitingOn"]): string {
+  if (w?.person?.id != null) return `u${w.person.id}`;
+  if (w?.person?.name) return `n${w.person.name}`;
+  return `role:${w?.role ?? "unknown"}`;
+}
+
+// GET /api/dashboard/pending-approvals-by-person
+// Everyone currently being waited on, with the projects/stages stalled on them.
+router.get("/dashboard/pending-approvals-by-person", async (_req, res): Promise<void> => {
+  const focus = await collectFocusStages();
+  const byPerson = new Map<string, { person: { id: number | null; name: string } | null; role: string; count: number; projects: Array<{ id: number; name: string; stage: string; daysPending: number; daysOverdue: number }> }>();
+  for (const f of focus) {
+    const w = f.stage.waitingOn;
+    if (!w) continue;
+    const key = personKey(w);
+    const e = byPerson.get(key) ?? { person: w.person, role: w.role, count: 0, projects: [] };
+    e.count++;
+    e.projects.push({ id: f.projectId, name: f.projectName, stage: f.stage.label, daysPending: f.stage.daysPending, daysOverdue: f.stage.daysOverdue });
+    byPerson.set(key, e);
+  }
+  const rows = [...byPerson.values()].sort((a, b) => b.count - a.count);
+  res.json(rows);
+});
+
+// GET /api/dashboard/overdue-actions-by-person
+// Same, but only stages past their SLA, ranked by total overdue days.
+router.get("/dashboard/overdue-actions-by-person", async (_req, res): Promise<void> => {
+  const focus = await collectFocusStages();
+  const byPerson = new Map<string, { person: { id: number | null; name: string } | null; role: string; count: number; totalOverdueDays: number; projects: Array<{ id: number; name: string; stage: string; daysOverdue: number }> }>();
+  for (const f of focus) {
+    if (f.stage.daysOverdue <= 0) continue;
+    const w = f.stage.waitingOn;
+    if (!w) continue;
+    const key = personKey(w);
+    const e = byPerson.get(key) ?? { person: w.person, role: w.role, count: 0, totalOverdueDays: 0, projects: [] };
+    e.count++;
+    e.totalOverdueDays += f.stage.daysOverdue;
+    e.projects.push({ id: f.projectId, name: f.projectName, stage: f.stage.label, daysOverdue: f.stage.daysOverdue });
+    byPerson.set(key, e);
+  }
+  const rows = [...byPerson.values()].sort((a, b) => b.totalOverdueDays - a.totalOverdueDays);
+  res.json(rows);
+});
+
+// GET /api/dashboard/escalations-required
+// Policy tiers that are DUE (threshold crossed, work still pending) but not yet fired
+// today — i.e. what the next ladder tick (or a human) should action, grouped by target.
+router.get("/dashboard/escalations-required", async (_req, res): Promise<void> => {
+  const policy = await db.select().from(stageEscalationPolicyTable).where(eq(stageEscalationPolicyTable.isActive, true));
+  const byStage = new Map<string, typeof policy>();
+  for (const p of policy) { const l = byStage.get(p.stage) ?? []; l.push(p); byStage.set(p.stage, l as typeof policy); }
+
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const focus = await collectFocusStages();
+  const items: Array<{ projectId: number; projectName: string; stage: string; stageLabel: string; tier: number; action: string; targetRole: string; person: { id: number | null; name: string } | null; daysPending: number; daysOverdue: number }> = [];
+
+  for (const f of focus) {
+    const tiers = byStage.get(f.stage.key);
+    if (!tiers) continue;
+    const hasPendingWork = f.stage.blockingReasons.length > 0 || f.stage.daysOverdue > 0;
+    if (!hasPendingWork) continue;
+    for (const t of tiers) {
+      if (f.stage.daysPending < t.afterDays) continue;
+      if (t.subGateKey) { const sg = f.stage.subGates?.find((g) => g.key === t.subGateKey); if (!sg || sg.satisfied) continue; }
+      const fired = await db.select({ id: escalationLogTable.id }).from(escalationLogTable)
+        .where(and(eq(escalationLogTable.projectId, f.projectId), eq(escalationLogTable.stage, f.stage.key), eq(escalationLogTable.tier, t.tier), gte(escalationLogTable.sentAt, since))).limit(1);
+      if (fired.length) continue;
+      const [r] = await resolveRole(t.targetRole, f.projectId);
+      items.push({
+        projectId: f.projectId, projectName: f.projectName, stage: f.stage.key, stageLabel: f.stage.label,
+        tier: t.tier, action: t.action, targetRole: t.targetRole,
+        person: r ? { id: r.userId, name: r.name } : null,
+        daysPending: f.stage.daysPending, daysOverdue: f.stage.daysOverdue,
+      });
+    }
+  }
+  items.sort((a, b) => b.daysOverdue - a.daysOverdue || b.daysPending - a.daysPending);
+  res.json(items);
+});
+
+// GET /api/dashboard/approval-sla-performance
+// Per person owing approvals: how many of their current waits are within vs past SLA,
+// plus how often they've been reminded/escalated in the last 30 days (from the log).
+router.get("/dashboard/approval-sla-performance", async (_req, res): Promise<void> => {
+  const focus = await collectFocusStages();
+  const byPerson = new Map<string, { person: { id: number | null; name: string } | null; role: string; totalWaiting: number; overdueWaiting: number; remindersReceived: number; escalationsReceived: number }>();
+  for (const f of focus) {
+    const w = f.stage.waitingOn;
+    if (!w) continue;
+    const key = personKey(w);
+    const e = byPerson.get(key) ?? { person: w.person, role: w.role, totalWaiting: 0, overdueWaiting: 0, remindersReceived: 0, escalationsReceived: 0 };
+    e.totalWaiting++;
+    if (f.stage.daysOverdue > 0) e.overdueWaiting++;
+    byPerson.set(key, e);
+  }
+
+  // Fold in the last 30 days of fired escalations, attributed by recipient user id.
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const logs = await db.select().from(escalationLogTable).where(gte(escalationLogTable.sentAt, since));
+  for (const log of logs) {
+    const ids = Array.isArray(log.recipientIds) ? (log.recipientIds as unknown[]).filter((x): x is number => typeof x === "number") : [];
+    for (const id of ids) {
+      const key = `u${id}`;
+      const e = byPerson.get(key);
+      if (!e) continue; // only attribute to people who are currently a bottleneck
+      if (log.action === "escalate") e.escalationsReceived++; else e.remindersReceived++;
+    }
+  }
+
+  const rows = [...byPerson.values()]
+    .map((e) => ({ ...e, onTimePct: e.totalWaiting > 0 ? Math.round(((e.totalWaiting - e.overdueWaiting) / e.totalWaiting) * 100) : 100 }))
+    .sort((a, b) => a.onTimePct - b.onTimePct || b.overdueWaiting - a.overdueWaiting);
+  res.json(rows);
 });
 
 export default router;

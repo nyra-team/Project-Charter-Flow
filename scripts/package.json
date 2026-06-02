@@ -6,7 +6,12 @@
   "scripts": {
     "hello": "tsx ./src/hello.ts",
     "seed": "tsx ./src/seed.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "migrate:lifecycle-option-b": "tsx ./src/migrate-lifecycle-option-b.ts",
+    "migrate:critical-path": "tsx ./src/migrate-critical-path.ts",
+    "migrate:person-triggers": "tsx ./src/migrate-person-triggers.ts",
+    "migrate:work-layer": "tsx ./src/migrate-work-layer.ts",
+    "migrate:wbs": "tsx ./src/migrate-wbs.ts"
   },
   "dependencies": {
     "@workspace/db": "workspace:*"

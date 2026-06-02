@@ -2,7 +2,7 @@ import { pgTable, text, serial, timestamp, integer, numeric } from "drizzle-orm/
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const timelogsTable = pgTable("timelogs", {
+export const timelogsTable = pgTable("pmo_timelogs", {
   id: serial("id").primaryKey(),
   taskId: integer("task_id").notNull(),
   userId: integer("user_id"),

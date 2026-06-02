@@ -19,8 +19,8 @@ export function PRPOSection({ projectId }: { projectId: number }) {
  const { toast } = useToast();
 
  const allStages = stages as Array<{ id: number; stage: string; status: string; notes?: string | null }>;
- const stageRecord = allStages.find((s) => s.stage === "pr_po");
- const nfaRecord = allStages.find((s) => s.stage === "legal");
+ const stageRecord = allStages.find((s) => s.stage === "contract_po");
+ const nfaRecord = allStages.find((s) => s.stage === "contract_po");
 
  // Read Legal sign-off state (Legal is now the immediate hard gate before PR/PO)
  const nfaApproved = (() => {

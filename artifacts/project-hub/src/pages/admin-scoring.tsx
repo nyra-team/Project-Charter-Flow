@@ -12,7 +12,6 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Save, AlertTriangle, CheckCircle2, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useUserStore } from "../lib/store";
 
 type Criterion = { id: number; name: string; weightPct: number; description?: string | null; isActive?: boolean };
 
@@ -162,25 +161,7 @@ function ProjectScoringModal({
   );
 }
 
-const PMO_ROLES = new Set(["pmo", "executive_director", "chairman"]);
-
-function AccessDenied() {
-  return (
-    <div className="flex flex-col items-center justify-center py-24 gap-4">
-      <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "#FEF2F2" }}>
-        <span className="text-2xl">🔒</span>
-      </div>
-      <h2 className="text-xl font-bold text-gray-900">Access Restricted</h2>
-      <p className="text-sm text-gray-500 text-center max-w-sm">
-        The Scoring Configuration page is only accessible to <strong>PMO</strong>, <strong>Executive Director</strong>, or <strong>Chairman</strong> roles.
-      </p>
-      <p className="text-xs text-gray-400">Switch your role using the Simulate Role selector in the sidebar.</p>
-    </div>
-  );
-}
-
 function AdminScoringInner() {
-  const { role } = useUserStore();
   const qc = useQueryClient();
   const { data: criteria, isLoading } = useListScoringCriteria();
   const { data: projects } = useListProjects();
@@ -193,7 +174,7 @@ function AdminScoringInner() {
   const [saving, setSaving] = useState<Record<number, boolean>>({});
   const [scoringProject, setScoringProject] = useState<{ id: number; name: string } | null>(null);
 
-  const isPMO = ["pmo", "executive_director", "chairman"].includes(role);
+  const isPMO = true; // scoring config is open to all roles (access gate removed)
 
   const totalWeight = useMemo(() => {
     return (criteria ?? []).reduce((sum, c) => sum + (editing[c.id]?.weightPct ?? c.weightPct), 0);
@@ -474,7 +455,5 @@ function AdminScoringInner() {
 }
 
 export default function AdminScoring() {
-  const { role } = useUserStore();
-  if (!PMO_ROLES.has(role)) return <AccessDenied />;
   return <AdminScoringInner />;
 }

@@ -10,6 +10,9 @@ export interface PmoUser {
   isAdmin: boolean;
   isSuperAdmin: boolean;
   accessPmo: boolean;
+  /** Per-app role from employee_auth.pmo_role. NULL = regular Project Hub
+   *  user; 'admin' = PMO admin (grants access to /api/admin/* routes). */
+  pmoRole: "admin" | null;
 }
 
 declare global {
@@ -88,10 +91,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const authUser = authData.user;
   const emailLower = authUser.email!.toLowerCase();
 
+  // Master DB `employees` table has split name columns (first_name /
+  // middle_name / last_name), not a single full_name. Pull all three and
+  // compose at use-time. The previous "full_name" select threw 42703 and
+  // 500'd every auth-gated request.
   const { data: employee, error: empError } = await masterDb
     .from("employees")
-    .select("id, employee_code, full_name, email, employee_auth!inner(access_pmo, is_admin, is_super_admin)")
-    .ilike("email", emailLower)
+    .select("id, employee_code, first_name, middle_name, last_name, office_email, employee_auth!inner(access_pmo, pmo_role, is_admin, is_super_admin)")
+    .ilike("office_email", emailLower)
     .maybeSingle();
 
   if (empError) {
@@ -110,21 +117,53 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const accessPmo: boolean = !!authRow?.access_pmo;
   const isSuperAdmin: boolean = !!authRow?.is_super_admin;
   const isAdmin: boolean = !!authRow?.is_admin;
+  const pmoRole: "admin" | null = authRow?.pmo_role === "admin" ? "admin" : null;
 
   if (!accessPmo && !isSuperAdmin) {
     res.status(403).json({ error: "Project Hub access not granted" });
     return;
   }
 
+  // Compose fullName from the split columns. Empty middle drops cleanly.
+  const composedFullName = [employee.first_name, employee.middle_name, employee.last_name]
+    .filter((p): p is string => !!p && p.trim().length > 0)
+    .join(" ")
+    .trim() || null;
+
   req.user = {
     authUserId: authUser.id,
     email: authUser.email!,
     employeeId: employee.id ?? null,
     employeeCode: employee.employee_code ?? null,
-    fullName: employee.full_name ?? null,
+    fullName: composedFullName,
     isAdmin,
     isSuperAdmin,
     accessPmo,
+    pmoRole,
   };
   next();
+}
+
+/**
+ * Companion middleware for admin-only routes. Mirrors the ADMIN_ROUTES
+ * pattern in backend/recruit/server.js — must run AFTER requireAuth, so
+ * `req.user` is already populated.
+ *
+ * Allows the request through if the user is either a super-admin
+ * (cross-app) or has pmo_role === 'admin'. Otherwise 403.
+ *
+ * Usage:
+ *   router.use("/admin", requireAdmin);
+ *   router.post("/admin/scoring", handler);
+ */
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user) {
+    res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
+  if (req.user.isSuperAdmin || req.user.pmoRole === "admin") {
+    next();
+    return;
+  }
+  res.status(403).json({ error: "Project Hub admin role required" });
 }

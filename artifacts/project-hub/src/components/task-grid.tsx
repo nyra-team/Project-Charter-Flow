@@ -847,8 +847,8 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
     if (row.type === "groupSummary") {
       return (
         <tr key={`gs-${row.key}-${rowIdx}`} style={{ height: ROW_HEIGHT - 6 }} className="border-b border-border/60">
-          <td />
-          <td className="text-xs text-muted-foreground font-semibold px-2" style={{ paddingLeft: 8 }}>
+          <td style={{ position: "sticky", left: 0, zIndex: 2, background: "hsl(var(--card))" }} />
+          <td className="text-xs text-muted-foreground font-semibold px-2" style={{ paddingLeft: 8, position: "sticky", left: 28, zIndex: 2, background: "hsl(var(--card))", borderRight: "1px solid hsl(var(--border))" }}>
             {row.count} item{row.count !== 1 ? "s" : ""}
           </td>
           <td colSpan={Math.max(1, VISIBLE_COLS - 4)} />
@@ -967,7 +967,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         style={{ height: ROW_HEIGHT, boxShadow: insertionShadow, transition: "box-shadow 120ms ease, opacity 120ms ease" }}
       >
         {/* Expand toggle */}
-        <td className="px-1 text-center" style={{ width: 28 }}>
+        <td className="px-1 text-center" style={{ width: 28, position: "sticky", left: 0, zIndex: 2, background: "hsl(var(--card))" }}>
           {!isSubtask && subs.length > 0 && (
             <button onClick={() => toggleExpand(task.id)} className="text-muted-foreground hover:text-primary">
               {isExp ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
@@ -976,7 +976,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         </td>
 
         {/* Name */}
-        <td className="pr-2" style={{ paddingLeft: isSubtask ? 22 : 8, minWidth: 190, maxWidth: 220 }}>
+        <td className="pr-2" style={{ paddingLeft: isSubtask ? 22 : 8, minWidth: 190, maxWidth: 220, position: "sticky", left: 28, zIndex: 2, background: "hsl(var(--card))", borderRight: "1px solid hsl(var(--border))" }}>
           <div className="flex items-center gap-1.5 min-w-0">
             {isSubtask && <div className="w-1.5 h-1.5 rounded-full bg-primary/50 flex-shrink-0" />}
             {task.isCritical && !isSubtask && (
@@ -1195,7 +1195,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
     );
   }
 
-  const thCls = "text-left text-xs font-bold text-muted-foreground uppercase tracking-wide py-2.5 px-1 border-b border-border/60 bg-muted/40 whitespace-nowrap";
+  const thCls = "text-left text-xs font-bold text-muted-foreground uppercase tracking-wide py-2.5 px-1 border-b border-border/60 bg-muted whitespace-nowrap";
 
   const HIDEABLE_LABELS: Record<HideableCol, string> = {
     parent: "Parent Task ID",
@@ -1295,8 +1295,8 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         <table className="border-collapse w-full" style={{ tableLayout: "auto" }}>
           <thead style={{ position: "sticky", top: 0, zIndex: 10 }}>
             <tr>
-              <th style={{ width: 28 }} className={thCls}></th>
-              <th style={{ minWidth: 190 }} className={thCls}>Task Name <SortBtn col="name" /></th>
+              <th style={{ width: 28, position: "sticky", left: 0, zIndex: 11, background: "hsl(var(--muted))" }} className={thCls}></th>
+              <th style={{ minWidth: 190, position: "sticky", left: 28, zIndex: 11, background: "hsl(var(--muted))", borderRight: "1px solid hsl(var(--border))" }} className={thCls}>Task Name <SortBtn col="name" /></th>
               {!isHidden("parent") && <th style={{ minWidth: 105 }} className={thCls}>Parent Task ID <SortBtn col="parentTaskId" /></th>}
               <th style={{ minWidth: 130 }} className={thCls}>Status <SortBtn col="status" /></th>
               <th style={{ minWidth: 60, width: 60 }} className={thCls}>Owner <SortBtn col="assigneeId" /></th>

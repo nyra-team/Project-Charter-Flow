@@ -2,7 +2,7 @@ import { pgTable, text, serial, timestamp, integer, numeric, boolean, jsonb } fr
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const escalationRulesTable = pgTable("escalation_rules", {
+export const escalationRulesTable = pgTable("pmo_escalation_rules", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id"),
   triggerType: text("trigger_type").notNull(),

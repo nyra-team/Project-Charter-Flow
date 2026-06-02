@@ -62,6 +62,9 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: true,
+    proxy: {
+      "/api": process.env.API_TARGET ?? "http://localhost:3008",
+    },
     fs: {
       strict: true,
       deny: ["**/.*"],
@@ -71,5 +74,8 @@ export default defineConfig({
     port,
     host: "0.0.0.0",
     allowedHosts: true,
+    proxy: {
+      "/api": process.env.API_TARGET ?? "http://localhost:3008",
+    },
   },
 });

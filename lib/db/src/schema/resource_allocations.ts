@@ -2,7 +2,7 @@ import { pgTable, text, serial, timestamp, integer, numeric } from "drizzle-orm/
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const resourceAllocationsTable = pgTable("resource_allocations", {
+export const resourceAllocationsTable = pgTable("pmo_resource_allocations", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   workstreamId: integer("workstream_id"),
@@ -15,7 +15,7 @@ export const resourceAllocationsTable = pgTable("resource_allocations", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const raciMatrixTable = pgTable("raci_matrix", {
+export const raciMatrixTable = pgTable("pmo_raci_matrix", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   taskId: integer("task_id"),

@@ -10,24 +10,37 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   CheckSquare, CheckCircle2, XCircle, ChevronRight,
-  Clock, FileText, MessageSquare, AlertCircle,
+  Clock, FileText, MessageSquare, AlertCircle, Stamp, AlertOctagon,
 } from "lucide-react";
+import { PageHeader } from "@/components/ui-kit";
 
+// SLA badge — token-driven (success / warn / destructive), consistent with the
+// rest of the redesigned surfaces.
 function SlaBadge({ approval }: { approval: { slaHours?: number; dueAt?: string | null; breachedAt?: string | null; createdAt?: string } }) {
   const due = approval.dueAt ? new Date(approval.dueAt) : null;
   const now = new Date();
   const breached = approval.breachedAt || (due && due < now);
+  const pill = "text-xs font-medium flex items-center gap-1 px-2 py-0.5 rounded-full border";
   if (!due) {
     return <span className="text-xs text-muted-foreground/80 flex items-center gap-1"><Clock size={11} />Awaiting your review</span>;
   }
   const hoursLeft = (due.getTime() - now.getTime()) / 3_600_000;
   if (breached) {
-    return <span className="text-xs font-bold flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200"><AlertCircle size={11} /> SLA BREACHED · {Math.abs(Math.round(hoursLeft))}h overdue</span>;
+    return <span className={`${pill} font-bold bg-destructive/10 text-destructive border-destructive/20`}><AlertOctagon size={11} /> SLA breached · {Math.abs(Math.round(hoursLeft))}h overdue</span>;
   }
   if (hoursLeft < 4) {
-    return <span className="text-xs font-bold flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200"><Clock size={11} /> Due in {Math.round(hoursLeft)}h</span>;
+    return <span className={`${pill} font-bold bg-warn/10 text-warn border-warn/20`}><Clock size={11} /> Due in {Math.round(hoursLeft)}h</span>;
   }
-  return <span className="text-xs flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100"><Clock size={11} /> SLA {approval.slaHours ?? 48}h · due {due.toLocaleString()}</span>;
+  return <span className={`${pill} bg-success/10 text-success border-success/20`}><Clock size={11} /> SLA {approval.slaHours ?? 48}h · due {due.toLocaleString()}</span>;
+}
+
+// Days an approval has been pending (since createdAt).
+function daysPending(createdAt?: string): number {
+  if (!createdAt) return 0;
+  return Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 86_400_000));
+}
+function isEscalated(a: { dueAt?: string | null; breachedAt?: string | null }): boolean {
+  return !!a.breachedAt || (!!a.dueAt && new Date(a.dueAt) < new Date());
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -416,22 +429,19 @@ export default function ApprovalsList() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 ph-rise">
-        <div>
-          <h2 className="text-xl font-bold text-foreground">Pending Approvals</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            {isInitiator
-              ? <>Testing mode — showing <span className="font-semibold text-foreground">every approver's queue</span> so you can drive the workflow forward.</>
-              : <>Items awaiting your review as <span className="font-semibold capitalize text-foreground">{role.replace(/_/g, " ")}</span></>
-            }
-          </p>
-        </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20">
-          <Clock size={13} className="text-primary" />
-          <span className="text-xs font-semibold text-primary">{totalPending} pending</span>
-        </div>
-      </div>
+      <PageHeader
+        title="Approvals"
+        subtitle={isInitiator
+          ? "Testing mode — every approver's queue, so you can drive the workflow forward"
+          : `Items awaiting your review as ${role.replace(/_/g, " ")}`}
+        icon={Stamp}
+        actions={
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20">
+            <Clock size={13} className="text-primary" />
+            <span className="text-xs font-semibold text-primary">{totalPending} pending</span>
+          </div>
+        }
+      />
 
       {/* Role context info */}
       {isInitiator ? (
@@ -462,59 +472,83 @@ export default function ApprovalsList() {
             <h3 className="text-sm font-bold text-foreground mb-3 mt-2">Charter Approvals</h3>
             <InitiatorApproverGroups approvals={filteredApprovals} />
           </div>
-        ) : (
-          <div className="space-y-6 stagger-children">
-            {filteredApprovals.map(approval => {
-              const isOpen = expanded === approval.id;
-              return (
-                <div
-                  key={approval.id}
-                  className={`glass-surface lift-card rounded-2xl p-4 transition-all ${isOpen ? "ring-1 ring-primary/30 shadow-lg" : ""}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-warn/10 border border-warn/30">
-                      <FileText size={18} className="text-warn" />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <Link href={`/charters/${approval.charterId}`}>
-                            <h3 className="font-semibold text-foreground hover:text-primary transition-colors">
-                              {(approval as unknown as Record<string, unknown>).charterTitle as string || `Charter #${approval.charterId}`}
-                            </h3>
-                          </Link>
-                          <div className="flex items-center gap-3 mt-1 flex-wrap">
-                            <span className="text-xs text-muted-foreground/80 flex items-center gap-1">
-                              <CheckSquare size={11} />
-                              {STAGE_LABELS[approval.stage ?? ""] ?? (approval.stage ?? "Review")}
-                            </span>
-                            <SlaBadge approval={approval as unknown as { slaHours?: number; dueAt?: string | null; breachedAt?: string | null; createdAt?: string }} />
-                          </div>
+        ) : (() => {
+          // Visual workflow: Escalated (SLA-breached) lane first, then Pending.
+          const escalated = filteredApprovals.filter(a => isEscalated(a as { dueAt?: string | null; breachedAt?: string | null }));
+          const pending = filteredApprovals.filter(a => !isEscalated(a as { dueAt?: string | null; breachedAt?: string | null }));
+          const renderCard = (approval: typeof filteredApprovals[number], lane: "pending" | "escalated") => {
+            const isOpen = expanded === approval.id;
+            const a = approval as unknown as Record<string, unknown>;
+            const roleKey = approval.approverRole ?? "";
+            const roleLbl = APPROVER_ROLE_LABELS[roleKey] ?? roleKey.replace(/_/g, " ");
+            const dp = daysPending((approval as { createdAt?: string }).createdAt);
+            const accent = lane === "escalated" ? "bg-destructive/10 border-destructive/30" : "bg-warn/10 border-warn/30";
+            const accentText = lane === "escalated" ? "text-destructive" : "text-warn";
+            return (
+              <div
+                key={approval.id}
+                className={`glass-surface lift-card rounded-2xl p-4 transition-all ${isOpen ? "ring-1 ring-primary/30 shadow-lg" : ""}`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border ${accent}`}>
+                    {lane === "escalated" ? <AlertOctagon size={18} className={accentText} /> : <FileText size={18} className={accentText} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <Link href={`/charters/${approval.charterId}`}>
+                          <h3 className="font-semibold text-foreground hover:text-primary transition-colors truncate">
+                            {(a.charterTitle as string) || `Charter #${approval.charterId}`}
+                          </h3>
+                        </Link>
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          {roleLbl && <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{roleLbl}</span>}
+                          <span className="text-xs text-muted-foreground/80 flex items-center gap-1">
+                            <CheckSquare size={11} />
+                            {STAGE_LABELS[approval.stage ?? ""] ?? (approval.stage ?? "Review")}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">· {dp}d pending</span>
+                          <SlaBadge approval={approval as unknown as { slaHours?: number; dueAt?: string | null; breachedAt?: string | null; createdAt?: string }} />
                         </div>
-                        <button
-                          onClick={() => setExpanded(isOpen ? null : approval.id)}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground flex-shrink-0"
-                        >
-                          <MessageSquare size={12} />
-                          Review
-                          <ChevronRight size={12} className={`transition-transform ${isOpen ? "rotate-90" : ""}`} />
-                        </button>
                       </div>
-
-                      {isOpen && (
-                        <DecisionPanel
-                          approvalId={approval.id}
-                          onDone={() => setExpanded(null)}
-                        />
-                      )}
+                      <button
+                        onClick={() => setExpanded(isOpen ? null : approval.id)}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground flex-shrink-0"
+                      >
+                        <MessageSquare size={12} />
+                        Review
+                        <ChevronRight size={12} className={`transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                      </button>
                     </div>
+                    {isOpen && <DecisionPanel approvalId={approval.id} onDone={() => setExpanded(null)} />}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )
+              </div>
+            );
+          };
+          return (
+            <div className="space-y-6">
+              {escalated.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <AlertOctagon size={15} className="text-destructive" />
+                    <h3 className="text-sm font-bold text-destructive">Escalated · SLA breached</h3>
+                    <span className="text-xs font-semibold text-muted-foreground">{escalated.length}</span>
+                  </div>
+                  <div className="space-y-3 stagger-children">{escalated.map(a => renderCard(a, "escalated"))}</div>
+                </div>
+              )}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Clock size={15} className="text-warn" />
+                  <h3 className="text-sm font-bold text-foreground">Pending review</h3>
+                  <span className="text-xs font-semibold text-muted-foreground">{pending.length}</span>
+                </div>
+                <div className="space-y-3 stagger-children">{pending.map(a => renderCard(a, "pending"))}</div>
+              </div>
+            </div>
+          );
+        })()
       ) : (
         <div className="glass-surface rounded-2xl p-12 text-center ph-rise ph-rise-3">
           <CheckCircle2 size={36} className="text-success/70 mx-auto mb-3" />

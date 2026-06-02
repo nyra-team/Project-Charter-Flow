@@ -23,7 +23,7 @@ export function ClosureReadinessSection({ projectId }: { projectId: number }) {
 
  const readinessRecord = (
  stages as Array<{ id: number; stage: string; notes?: string | null }>
- ).find((s) => s.stage === "closure_readiness");
+ ).find((s) => s.stage === "closure");
 
  const parsedNotes: Record<string, unknown> = (() => {
  try { return JSON.parse(readinessRecord?.notes ?? "{}"); }

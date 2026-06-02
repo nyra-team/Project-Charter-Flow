@@ -807,7 +807,10 @@ export const CreateMilestoneBody = zod.object({
   name: zod.string(),
   description: zod.string().optional(),
   dueDate: zod.string().optional(),
+  startDate: zod.string().optional(),
   priority: zod.string().optional(),
+  // Lifecycle stage this milestone gates (work-management layer).
+  stage: zod.string().optional(),
   order: zod.number().optional(),
 });
 
@@ -832,6 +835,9 @@ export const UpdateMilestoneBody = zod.object({
   scheduleVarianceDays: zod.number().optional(),
   readinessChecklist: zod.array(zod.object({}).passthrough()).optional(),
   gateDecision: zod.string().optional(),
+  startDate: zod.string().optional(),
+  // Lifecycle stage this milestone gates (work-management layer).
+  stage: zod.string().optional(),
   order: zod.number().optional(),
 });
 
@@ -952,6 +958,9 @@ export const CreateTaskBody = zod.object({
       }),
     )
     .optional(),
+  // Work-management layer: lifecycle stage + completion %.
+  stage: zod.string().optional(),
+  progressPct: zod.number().optional(),
   order: zod.number().optional(),
 });
 
@@ -1042,6 +1051,9 @@ export const UpdateTaskBody = zod.object({
       }),
     )
     .optional(),
+  // Work-management layer: lifecycle stage + completion %.
+  stage: zod.string().optional(),
+  progressPct: zod.number().optional(),
   order: zod.number().optional(),
 });
 

@@ -7,7 +7,7 @@ import { z } from "zod/v4";
  * Once `locked = true`, baselined fields (budget, schedule, scope) can only change
  * via an approved Change Request.
  */
-export const baselinesTable = pgTable("baselines", {
+export const baselinesTable = pgTable("pmo_baselines", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   baselineType: text("baseline_type").notNull(), // budget | schedule | scope | full

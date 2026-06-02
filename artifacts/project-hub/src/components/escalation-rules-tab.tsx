@@ -20,6 +20,7 @@ const TRIGGERS = [
   { value: "schedule_slip_days", label: "Milestone slips by N days" },
   { value: "risk_score", label: "Risk score reaches threshold" },
   { value: "issue_open_days", label: "Issue open for N days" },
+  { value: "stage_blocked_days", label: "Lifecycle stage overdue by N days" },
 ];
 
 const ADMIN_ROLES = ["pmo", "executive_director", "chairman"];

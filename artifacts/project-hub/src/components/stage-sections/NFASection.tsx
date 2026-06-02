@@ -27,7 +27,7 @@ export function NFASection({ projectId }: { projectId: number }) {
  const { toast } = useToast();
 
  const stageRecord = (stages as Array<{ id: number; stage: string; notes?: string | null }>)
- .find((s) => s.stage === "nfa");
+ .find((s) => s.stage === "investment_authorization");
  const parsed: Record<string, unknown> = (() => {
  try { return JSON.parse(stageRecord?.notes ?? "{}"); } catch { return {}; }
  })();

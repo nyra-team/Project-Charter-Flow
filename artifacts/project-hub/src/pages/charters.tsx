@@ -2,7 +2,7 @@ import { useListCharters } from "@workspace/api-client-react";
 import { formatCurrency, formatDate } from "../lib/format";
 import { StatusBadge } from "../components/status-badge";
 import { Link } from "wouter";
-import { Search, FileText, Plus, ChevronRight, DollarSign, Calendar } from "lucide-react";
+import { Search, FileText, Plus, ChevronRight, IndianRupee, Calendar } from "lucide-react";
 import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -113,7 +113,7 @@ export default function ChartersList() {
                   </div>
                   <div className="flex items-center gap-4 text-xs text-muted-foreground/80">
                     <span className="flex items-center gap-1">
-                      <DollarSign size={11} />
+                      <IndianRupee size={11} />
                       {formatCurrency(charter.tentativeBudget)}
                     </span>
                     <span className="flex items-center gap-1">

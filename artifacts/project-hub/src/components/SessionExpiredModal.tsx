@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase, getPortalLoginUrl } from "../lib/supabase";
 import {
   SESSION_EXPIRED_EVENT,
   resetFetchInterceptorDispatchFlag,
@@ -21,8 +21,7 @@ export function SessionExpiredModal() {
 
   if (!open) return null;
 
-  const loginUrl =
-    (import.meta.env["VITE_PORTAL_LOGIN_URL"] as string | undefined) ?? "/login";
+  const loginUrl = getPortalLoginUrl();
 
   const handleLogin = async () => {
     if (supabase) await supabase.auth.signOut();

@@ -1,10 +1,11 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useListProjectStages, useUpdateProjectStage } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Trash2, Pencil, X, Globe, Phone, IndianRupee, Sparkles } from "lucide-react";
+import { Plus, Trash2, Pencil, X, Globe, Phone, IndianRupee, Sparkles, Building2 } from "lucide-react";
 import { AiButton } from "../ai-button";
 import { AutoTextarea } from "../ui/auto-textarea";
+import { api } from "../../lib/extra-api";
 
 export type Vendor = {
  id: string;
@@ -14,6 +15,22 @@ export type Vendor = {
  website?: string;
  pricing?: string;
  notes?: string;
+ /**
+  * Pointer into pmo_vendor_master. Set when this row was picked from the
+  * vendor master (post-2026-05). Legacy rows have this null until the
+  * migrate-vendor-json-to-master.ts script backfills them.
+  */
+ masterVendorId?: number;
+};
+
+type VendorMasterRow = {
+ id: number;
+ name: string;
+ segment: string;
+ riskStatus: string;
+ category: string | null;
+ region: string | null;
+ email: string | null;
 };
 
 function newId() {
@@ -37,7 +54,7 @@ export function VendorShortlist({ projectId }: { projectId: number }) {
 
  const rfpRecord = (
  stages as Array<{ id: number; stage: string; notes?: string | null }>
- ).find((s) => s.stage === "rfp");
+ ).find((s) => s.stage === "vendor_selection");
 
  const parsedNotes: Record<string, unknown> = useMemo(() => {
  try { return JSON.parse(rfpRecord?.notes ?? "{}"); }
@@ -52,6 +69,17 @@ export function VendorShortlist({ projectId }: { projectId: number }) {
  const [showAddForm, setShowAddForm] = useState(false);
  const [editingId, setEditingId] = useState<string | null>(null);
  const [draft, setDraft] = useState<Vendor>({ id: "", name: "" });
+ const [showPicker, setShowPicker] = useState(false);
+ const [masterRows, setMasterRows] = useState<VendorMasterRow[]>([]);
+ const [pickerSearch, setPickerSearch] = useState("");
+
+ useEffect(() => {
+  if (!showPicker) return;
+  api.get<VendorMasterRow[]>("/api/vendors").then(setMasterRows).catch(() => {
+   toast({ title: "Could not load vendor master", variant: "destructive" });
+  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+ }, [showPicker]);
 
  function persist(next: Vendor[], successMsg?: string) {
  if (!rfpRecord?.id) {
@@ -140,6 +168,15 @@ export function VendorShortlist({ projectId }: { projectId: number }) {
  persist([...vendors, ...added], `Added ${added.length} sample vendors`);
  }}
  />
+ {!showAddForm && (
+ <button
+ onClick={() => setShowPicker(true)}
+ className="text-xs font-semibold text-primary inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border hover:bg-card"
+ title="Pick from the vendor master — pre-qualified suppliers"
+ >
+ <Building2 size={12} /> Pick from master
+ </button>
+ )}
  {!showAddForm && (
  <button
  onClick={startAdd}
@@ -286,6 +323,63 @@ export function VendorShortlist({ projectId }: { projectId: number }) {
  </div>
  )}
  </div>
+
+ {showPicker && (
+ <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowPicker(false)}>
+ <div className="bg-background rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+ <div className="p-4 border-b border-border flex items-center justify-between">
+ <div>
+ <p className="text-sm font-bold">Pick from vendor master</p>
+ <p className="text-xs text-muted-foreground mt-0.5">Pre-qualified suppliers across all charters. Blocked vendors are hidden.</p>
+ </div>
+ <button onClick={() => setShowPicker(false)} className="p-1 rounded hover:bg-card text-muted-foreground"><X size={14} /></button>
+ </div>
+ <div className="p-3 border-b border-border">
+ <input
+ value={pickerSearch}
+ onChange={(e) => setPickerSearch(e.target.value)}
+ placeholder="Search by name / category / region"
+ className="w-full text-sm border border-border rounded-lg px-3 py-2 bg-card outline-none focus:ring-1 focus:ring-primary"
+ />
+ </div>
+ <div className="flex-1 overflow-y-auto p-3 space-y-1">
+ {masterRows.filter(r => r.segment !== "blocked" && (
+ !pickerSearch.trim() || [r.name, r.category, r.region].some(x => x?.toLowerCase().includes(pickerSearch.toLowerCase()))
+ )).map(r => {
+ const already = vendors.some(v => v.masterVendorId === r.id);
+ return (
+ <button
+ key={r.id}
+ disabled={already}
+ onClick={() => {
+ const next: Vendor = {
+ id: newId(),
+ name: r.name,
+ description: r.category || undefined,
+ contact: r.email || undefined,
+ masterVendorId: r.id,
+ };
+ persist([...vendors, next], `Added ${r.name} from master`);
+ setShowPicker(false);
+ }}
+ className={`w-full text-left rounded-lg p-2.5 border border-border ${already ? "opacity-40 cursor-not-allowed" : "hover:border-primary/40 hover:bg-card"}`}
+ >
+ <div className="flex items-center justify-between gap-2">
+ <span className="text-sm font-semibold">{r.name}</span>
+ <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{r.segment}</span>
+ </div>
+ <p className="text-[11px] text-muted-foreground">
+ {[r.category, r.region].filter(Boolean).join(" • ")}
+ {already ? " • already added" : ""}
+ </p>
+ </button>
+ );
+ })}
+ {masterRows.length === 0 && <p className="text-xs text-muted-foreground text-center p-4">No vendors in master. Register one at /vendors first.</p>}
+ </div>
+ </div>
+ </div>
+ )}
  </div>
  );
 }

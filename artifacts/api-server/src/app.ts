@@ -3,6 +3,8 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import session from "express-session";
 import router from "./routes";
+import vendorAuthRouter from "./routes/vendor_auth";
+import vendorPortalRouter from "./routes/vendor_portal";
 import { logger } from "./lib/logger";
 import { requireAuth } from "./middlewares/requireAuth";
 
@@ -59,6 +61,15 @@ app.use(
     },
   }),
 );
+
+// Vendor portal traffic — mount BEFORE the master-DB requireAuth chain so
+// the vendor JWT (validated against the vendor-auth Supabase project) is
+// the only credential the vendor portal needs. /api/auth/vendor/* is the
+// public OTP flow; /api/vendor/* runs behind requireVendorAuth inside the
+// router itself. Both bypass the master-DB gate by virtue of being mounted
+// before it.
+app.use("/api", vendorAuthRouter);
+app.use("/api", vendorPortalRouter);
 
 app.use("/api", requireAuth, router);
 

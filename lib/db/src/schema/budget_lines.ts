@@ -2,7 +2,7 @@ import { pgTable, text, serial, timestamp, integer, numeric } from "drizzle-orm/
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const budgetLinesTable = pgTable("budget_lines", {
+export const budgetLinesTable = pgTable("pmo_budget_lines", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   category: text("category").notNull().default("OpEx"),

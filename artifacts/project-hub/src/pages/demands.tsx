@@ -5,20 +5,20 @@ import { Sparkles, ArrowUpRight, Clock, Layers, AlertCircle } from "lucide-react
 import { getStageConfig } from "../lib/lifecycle-config";
 import { formatDate } from "../lib/format";
 
-const DEMAND_STAGES = ["project_case", "urs", "rfp", "vendor_evaluation"] as const;
+const DEMAND_STAGES = ["initiation", "vendor_selection"] as const;
 
 export default function DemandsList() {
   const { data: projects, isLoading } = useListProjects();
 
   const demands = (projects ?? []).filter(
-    (p) => DEMAND_STAGES.includes((p.stage ?? "project_case") as typeof DEMAND_STAGES[number]),
+    (p) => DEMAND_STAGES.includes((p.stage ?? "initiation") as typeof DEMAND_STAGES[number]),
   );
 
   const byStage = DEMAND_STAGES.map((key, idx) => ({
     key,
     idx,
     cfg: getStageConfig(key)!,
-    items: demands.filter((d) => (d.stage ?? "project_case") === key),
+    items: demands.filter((d) => (d.stage ?? "initiation") === key),
   }));
 
   return (
@@ -94,7 +94,7 @@ export default function DemandsList() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {items.map((p) => (
-                  <Link key={p.id} href={`/projects/${p.id}?stage=${p.stage ?? "project_case"}`}>
+                  <Link key={p.id} href={`/projects/${p.id}?stage=${p.stage ?? "initiation"}`}>
                     <div className="glass-surface lift-card rounded-2xl p-5 cursor-pointer h-full flex flex-col">
                       <div className="flex items-start justify-between mb-3">
                         <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full"

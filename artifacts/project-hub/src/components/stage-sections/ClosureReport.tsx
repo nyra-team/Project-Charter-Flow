@@ -21,7 +21,7 @@ export function ClosureReport({ projectId }: { projectId: number }) {
 
  const closureRecord = (
  stageRecords as Array<{ id: number; stage: string; notes?: string | null }>
- ).find((r) => r.stage === "project_closure");
+ ).find((r) => r.stage === "closure");
 
  const parsedNotes = (() => {
  try { return closureRecord?.notes ? (JSON.parse(closureRecord.notes) as Record<string, unknown>) : {}; }
@@ -157,7 +157,7 @@ export function ClosureReport({ projectId }: { projectId: number }) {
  id: projectId,
  data: {
  name: "Closure Report",
- stage: "project_closure",
+ stage: "closure",
  fileUrl: `/api/storage${objectPath}`,
  fileType: "application/pdf",
  fileSize: pdfBlob.size,

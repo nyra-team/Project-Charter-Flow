@@ -18,17 +18,17 @@ import {
   Rocket,
   Flag,
   FileText,
+  ClipboardCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 // ---------------------------------------------------------------------------
-// ProjectLifecycleCard
-// ONE component used by:
-//   - project-detail (per-project — shows 5 phase pills + the ACTIVE/SELECTED
-//     phase's sub-stage dots underneath, visually connected by a continuous
-//     progress line)
-//   - dashboard       (org-wide — full 16-stage funnel with per-stage counts;
-//     opt in via showAllSubStages)
+// ProjectLifecycleCard — the ONE lifecycle visualization for the whole app.
+// Renders 4 phase pills + the ACTIVE/SELECTED phase's sub-stage dots underneath,
+// connected by a continuous progress line, with an optional per-stage count
+// badge. No variants. Used everywhere via two thin data adapters:
+//   - project-detail → stage-progress-bar  (single project: real stageRecords)
+//   - dashboard + pipeline → lifecycle-overview  (org-wide: frontier + counts)
 // ---------------------------------------------------------------------------
 
 const PHASE_ICONS: Record<string, LucideIcon> = {
@@ -43,11 +43,13 @@ type StageStatus = "complete" | "active" | "upcoming";
 
 export interface ProjectLifecycleCardProps {
   currentStageKey: string;
-  stageRecords?: Array<{ stage: string; status: string }>;
+  stageRecords?: Array<{ stage: string; status: string; notes?: string | null }>;
   selectedStageKey?: string;
   onStageClick?: (stageKey: string) => void;
   /** Optional per-stage badge (e.g. project counts on the dashboard). */
   counts?: Record<string, number>;
+  /** Org-wide Initiation BC/URS aggregate (counts mode) — shows "BC x/n · URS y/n" under INIT. */
+  initiationAggregate?: { inInitiation: number; bcDone: number; ursDone: number };
   /** Compact = smaller padding & dots, no description footer. */
   variant?: "full" | "compact";
   /** Hide the header row with "Project Lifecycle" + counters. */
@@ -58,9 +60,6 @@ export interface ProjectLifecycleCardProps {
   title?: string;
   /** Optional secondary text in the header (right side). */
   subtitle?: string;
-  /** Dashboard mode: show all 16 sub-stages grouped under their phases.
-   *  Default (false) only shows the active/selected phase's sub-stages. */
-  showAllSubStages?: boolean;
 }
 
 export function ProjectLifecycleCard({
@@ -69,12 +68,12 @@ export function ProjectLifecycleCard({
   selectedStageKey,
   onStageClick,
   counts,
+  initiationAggregate,
   variant = "full",
   hideHeader = false,
   hideLegend = false,
   title = "Project Lifecycle",
   subtitle,
-  showAllSubStages = false,
 }: ProjectLifecycleCardProps) {
   const compact = variant === "compact";
   const currentIdx = getStageIndex(currentStageKey);
@@ -82,7 +81,7 @@ export function ProjectLifecycleCard({
   const currentPhase = getPhaseForStage(currentStageKey);
   const currentPhaseIdx = currentPhase ? getPhaseIndex(currentPhase.key) : 0;
 
-  // Which phase to expand below (only matters when !showAllSubStages).
+  // Which phase to expand below.
   const selectedPhase =
     (selectedStageKey ? getPhaseForStage(selectedStageKey) : null) ?? currentPhase ?? LIFECYCLE_PHASES[0];
   const [pinnedPhaseKey, setPinnedPhaseKey] = useState<string | null>(null);
@@ -99,6 +98,31 @@ export function ProjectLifecycleCard({
     if (idx === currentIdx) return "active";
     return "upcoming";
   }
+
+  // Initiation sub-gate status. BC + URS are two checkpoints inside the single
+  // Initiation stage; we compute each one's StageStatus so they render with the
+  // SAME dot + connector visual language as every other stage (just two nodes).
+  const showInitSub = !counts;
+  const initNotes: Record<string, unknown> = (() => {
+    try { return JSON.parse(stageRecords.find((r) => r.stage === "initiation")?.notes ?? "{}"); } catch { return {}; }
+  })();
+  const initStageSt = stageStatus("initiation");
+  const initTotal = initiationAggregate?.inInitiation ?? 0;
+  const subGateStatus = (singleDone: boolean, aggDone: number): StageStatus => {
+    const done = counts ? initStageSt === "complete" || (initTotal > 0 && aggDone >= initTotal) : initStageSt === "complete" || singleDone;
+    return done ? "complete" : initStageSt === "upcoming" ? "upcoming" : "active";
+  };
+  const bcStatus = subGateStatus(initNotes.__bc_approved === true, initiationAggregate?.bcDone ?? 0);
+  const ursStatus = subGateStatus(initNotes.__urs_biz_approved === true && initNotes.__urs_it_approved === true, initiationAggregate?.ursDone ?? 0);
+  const bcDone = bcStatus === "complete";
+  const ursDone = ursStatus === "complete";
+
+  // Sub-stage nodes for the currently-visible phase. For Initiate this is the two
+  // sub-gates (BC, URS); for every other phase it's the phase's real stages. Drives
+  // BOTH the connector line and the dot row, so all phases render identically.
+  const visibleNodeStatuses: StageStatus[] = visiblePhase.key === "initiate"
+    ? [bcStatus, ursStatus]
+    : visiblePhase.stageKeys.map((k) => stageStatus(k));
 
   function phaseStats(phaseIdx: number) {
     const phase = LIFECYCLE_PHASES[phaseIdx];
@@ -132,10 +156,10 @@ export function ProjectLifecycleCard({
 
       {!hideHeader && (
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <span className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-wider">
+          <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
             {title}
           </span>
-          <div className="flex items-center gap-3 text-[11px] font-mono">
+          <div className="flex items-center gap-3 text-[11px]">
             {subtitle ? (
               <span className="text-muted-foreground">{subtitle}</span>
             ) : (
@@ -154,9 +178,8 @@ export function ProjectLifecycleCard({
       )}
 
       {/* === PHASE PILLS ROW =================================================
-          Each pill's flex weight matches its sub-stage count, so the pill
-          sits directly above its child dots (in showAllSubStages mode) or so
-          the active pill spans a meaningful slice. */}
+          Each pill is equal-weight (flex-1); click a pill to expand that
+          phase's sub-stage dots below. */}
       <div className="relative">
         <div className="flex items-stretch gap-3">
           {LIFECYCLE_PHASES.map((phase, idx) => {
@@ -182,15 +205,9 @@ export function ProjectLifecycleCard({
               <button
                 key={phase.key}
                 type="button"
-                onClick={() => {
-                  if (showAllSubStages) {
-                    onStageClick?.(phase.stageKeys[0]);
-                  } else {
-                    setPinnedPhaseKey(phase.key);
-                  }
-                }}
+                onClick={() => setPinnedPhaseKey(phase.key)}
                 className={`relative flex-1 flex items-center gap-2 px-2.5 py-2 rounded-xl border overflow-hidden transition-all text-left focus:outline-none focus:ring-2 focus:ring-primary/40 ${tone} ${
-                  isVisible && !showAllSubStages ? "ring-2 ring-primary/30 ring-offset-1 ring-offset-card" : ""
+                  isVisible ? "ring-2 ring-primary/30 ring-offset-1 ring-offset-card" : ""
                 }`}
                 title={`${phase.label} — ${phase.description}`}
               >
@@ -205,7 +222,7 @@ export function ProjectLifecycleCard({
                   )}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground/70 leading-none mb-0.5">
+                  <p className="text-[9px] uppercase tracking-wider text-muted-foreground/70 leading-none mb-0.5">
                     Phase {idx + 1}
                   </p>
                   <p
@@ -213,9 +230,25 @@ export function ProjectLifecycleCard({
                   >
                     {phase.label}
                   </p>
-                  <p className="text-[9px] font-mono leading-none mt-0.5 opacity-80">
-                    {done}/{total}
-                  </p>
+                  {phase.key === "initiate" && showInitSub ? (
+                    /* Single project: live BC/URS status */
+                    <p className="text-[9px] leading-none mt-0.5 flex items-center gap-1 font-semibold">
+                      <span className={bcDone ? "text-success" : "text-warn"}>BC {bcDone ? "✓" : "⏳"}</span>
+                      <span className="opacity-40">·</span>
+                      <span className={ursDone ? "text-success" : "text-warn"}>URS {ursDone ? "✓" : "⏳"}</span>
+                    </p>
+                  ) : phase.key === "initiate" && counts && initiationAggregate && initiationAggregate.inInitiation > 0 ? (
+                    /* Org-wide: BC/URS approved-count among projects in Initiation */
+                    <p className="text-[9px] leading-none mt-0.5 flex items-center gap-1 font-semibold">
+                      <span className="text-muted-foreground">BC {initiationAggregate.bcDone}/{initiationAggregate.inInitiation}</span>
+                      <span className="opacity-40">·</span>
+                      <span className="text-muted-foreground">URS {initiationAggregate.ursDone}/{initiationAggregate.inInitiation}</span>
+                    </p>
+                  ) : (
+                    <p className="text-[9px] leading-none mt-0.5 opacity-80">
+                      {done}/{total}
+                    </p>
+                  )}
                 </div>
 
                 {/* Per-card progress border — only under this pill, never in the gaps. */}
@@ -239,50 +272,33 @@ export function ProjectLifecycleCard({
         </div>
       </div>
 
-      {/* === SUB-STAGE ROW ===================================================
-          Default: shows ONLY the active/selected phase's sub-stages, in a
-          panel that visually attaches to the pill above via the notch.
-          Dashboard mode (showAllSubStages): renders all 16 dots, grouped
-          under each phase using the same flex weights. */}
-      {showAllSubStages ? (
-        <div className="relative mt-3">
-          <div className="flex items-stretch gap-3">
-            {LIFECYCLE_PHASES.map((phase) => (
-              <div
-                key={phase.key}
-                style={{ flex: phase.stageKeys.length, borderColor: `${phase.color}40` }}
-                className="flex items-start justify-around rounded-xl border px-1 pt-2 pb-2 bg-muted/20"
-              >
-                {phase.stageKeys.map((stageKey) =>
-                  renderStageDot(stageKey),
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div
-          className="relative mt-3 rounded-2xl border px-4 pt-4 pb-3 bg-muted/15"
-          style={{ borderColor: `${visiblePhase.color}55` }}
-        >
+      {/* === SUB-STAGE ROW — the active/selected phase's sub-stages, in a
+          panel that visually attaches to the pill above. === */}
+      <div
+        className="relative mt-3 rounded-2xl border px-4 pt-4 pb-3 bg-muted/15"
+        style={{ borderColor: `${visiblePhase.color}55` }}
+      >
           <div className="flex items-center justify-between mb-3">
-            <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-              {visiblePhase.label} · {visiblePhase.stageKeys.length} stage
-              {visiblePhase.stageKeys.length === 1 ? "" : "s"}
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              {visiblePhase.label} ·{" "}
+              {visiblePhase.key === "initiate"
+                ? "Business Case + URS gates"
+                : `${visiblePhase.stageKeys.length} stage${visiblePhase.stageKeys.length === 1 ? "" : "s"}`}
             </p>
             <p className="text-[10px] text-muted-foreground/80 italic truncate ml-3">
               {visiblePhase.description}
             </p>
           </div>
-          {/* Connector line behind the dots */}
+          {/* Connector line behind the dots — uses visibleNodeStatuses so the
+              Initiate phase (BC + URS) gets the SAME connector as every other phase. */}
           <div className="relative">
-            {visiblePhase.stageKeys.length > 1 && (() => {
-              const total = visiblePhase.stageKeys.length;
+            {visibleNodeStatuses.length > 1 && (() => {
+              const total = visibleNodeStatuses.length;
               // Highest dot index that is complete or currently active —
               // the connector fills from the first dot up to this one.
               let lastReached = -1;
               for (let i = 0; i < total; i++) {
-                const s = stageStatus(visiblePhase.stageKeys[i]);
+                const s = visibleNodeStatuses[i];
                 if (s === "complete" || s === "active") lastReached = i;
               }
               const trackPct = ((total - 1) / total) * 100; // dot-1 centre → last-dot centre
@@ -313,11 +329,17 @@ export function ProjectLifecycleCard({
               );
             })()}
             <div className="relative flex items-start justify-around gap-2">
-              {visiblePhase.stageKeys.map((stageKey) => renderStageDot(stageKey))}
+              {visiblePhase.stageKeys.map((stageKey) =>
+                // Initiation always expands into its two sub-gates (BC + URS) — both
+                // single-project (live status) and org-wide (per-gate approved counts) —
+                // so every surface shows the internal structure, never a bare INIT dot.
+                stageKey === "initiation"
+                  ? renderInitiationSubGates()
+                  : renderStageDot(stageKey),
+              )}
             </div>
           </div>
         </div>
-      )}
 
       {/* FOOTER */}
       {!hideLegend && (
@@ -351,6 +373,64 @@ export function ProjectLifecycleCard({
       )}
     </div>
   );
+
+  // Initiation = one stage, two governed sub-gates (Business Case → URS). Rendered
+  // with the SAME circle-dot + label + count-badge styling as every other stage
+  // (renderStageDot), placed in the same justify-around row with the shared
+  // connector line behind them — so Initiate reads identically to Procure/Execute/
+  // Release, just with two nodes (BC, URS) that are checkpoints inside one stage.
+  function renderInitiationSubGates() {
+    const agg = initiationAggregate;
+    const total = agg?.inInitiation ?? 0;
+    const subs: Array<{ short: string; label: string; Icon: LucideIcon; status: StageStatus; aggDone: number }> = [
+      { short: "BC", label: "Business Case", Icon: FileText, status: bcStatus, aggDone: agg?.bcDone ?? 0 },
+      { short: "URS", label: "URS", Icon: ClipboardCheck, status: ursStatus, aggDone: agg?.ursDone ?? 0 },
+    ];
+    const isSelected = selectedStageKey === "initiation";
+
+    return subs.map((sub) => {
+      const badge = counts && total > 0 ? sub.aggDone : undefined;
+      const dotClass =
+        sub.status === "complete"
+          ? "bg-success text-primary-foreground border-success"
+          : sub.status === "active"
+            ? "bg-primary text-primary-foreground border-primary lifecycle-pulse"
+            : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-primary";
+      return (
+        <button
+          key={sub.short}
+          type="button"
+          onClick={() => onStageClick?.("initiation")}
+          title={`Initiation · ${sub.label}${counts ? ` — ${sub.aggDone}/${total} approved` : ` — ${sub.status}`}`}
+          className="group flex flex-col items-center gap-1 min-w-0 cursor-pointer focus:outline-none flex-1"
+        >
+          <div className="relative">
+            <span
+              className={`flex items-center justify-center rounded-full border-2 transition-all duration-200 ${dotClass} ${
+                isSelected ? "ring-2 ring-primary/40 ring-offset-2 ring-offset-card" : ""
+              }`}
+              style={{ width: dotSize, height: dotSize }}
+            >
+              {sub.status === "complete" ? <Check size={dotIcon} strokeWidth={3} /> : <sub.Icon size={dotIcon} strokeWidth={2.2} />}
+            </span>
+            {badge != null && badge > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-amber-accent text-[9px] font-bold text-background flex items-center justify-center border-2 border-card">
+                {badge}
+              </span>
+            )}
+          </div>
+          <span
+            className={`text-[9px] text-center leading-tight font-medium tracking-tight truncate w-full ${
+              sub.status === "complete" ? "text-success" : sub.status === "active" ? "text-primary font-semibold" : "text-muted-foreground/80 group-hover:text-primary"
+            }`}
+          >
+            {sub.short}
+          </span>
+          <span className="text-[8px] text-muted-foreground/60 leading-none">{counts && total > 0 ? `${sub.aggDone}/${total}` : "gate"}</span>
+        </button>
+      );
+    });
+  }
 
   function renderStageDot(stageKey: string) {
     const stage = LIFECYCLE_STAGES.find((s) => s.key === stageKey)!;
@@ -389,7 +469,7 @@ export function ProjectLifecycleCard({
             )}
           </span>
           {count != null && count > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-amber-accent text-[9px] font-mono font-bold text-background flex items-center justify-center border-2 border-card">
+            <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-amber-accent text-[9px] font-bold text-background flex items-center justify-center border-2 border-card">
               {count}
             </span>
           )}
@@ -405,7 +485,7 @@ export function ProjectLifecycleCard({
         >
           {stage.shortLabel}
         </span>
-        <span className="text-[8px] font-mono text-muted-foreground/60 leading-none">
+        <span className="text-[8px] text-muted-foreground/60 leading-none">
           {String(globalIdx + 1).padStart(2, "0")}
         </span>
       </button>

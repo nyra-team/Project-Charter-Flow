@@ -1,12 +1,12 @@
 import { LIFECYCLE_STAGES, type LifecycleStageKey } from "./lifecycle-config";
 
 // ---------------------------------------------------------------------------
-// Single source of truth for the 5 main lifecycle phases that group the
-// 16 sub-stages. Used by project-lifecycle-card, dashboard funnel, and the
-// pipeline kanban filter chips.
+// Single source of truth for the 4 main lifecycle phases that group the
+// 9 sub-stages (Option B simplification). Used by project-lifecycle-card,
+// dashboard funnel, and the pipeline kanban filter chips.
 // ---------------------------------------------------------------------------
 
-export type PhaseKey = "initiate" | "procure" | "execute" | "deliver" | "close";
+export type PhaseKey = "initiate" | "procure" | "execute" | "release_close";
 
 export interface LifecyclePhase {
   key: PhaseKey;
@@ -22,41 +22,33 @@ export const LIFECYCLE_PHASES: LifecyclePhase[] = [
     key: "initiate",
     label: "Initiate",
     shortLabel: "INIT",
-    description: "Concept & requirements",
+    description: "Business case & requirements",
     color: "#6366F1",
-    stageKeys: ["project_case", "urs"],
+    stageKeys: ["initiation"],
   },
   {
     key: "procure",
     label: "Procure",
     shortLabel: "PROC",
-    description: "Sourcing, approvals & contract",
+    description: "Sourcing, authorization & contract",
     color: "#EC4899",
-    stageKeys: ["rfp", "vendor_evaluation", "charter", "nfa", "legal", "pr_po"],
+    stageKeys: ["vendor_selection", "investment_authorization", "contract_po"],
   },
   {
     key: "execute",
     label: "Execute",
     shortLabel: "EXEC",
-    description: "Mobilise, design & build",
+    description: "Design & build",
     color: "#0EA5E9",
-    stageKeys: ["kickoff", "technical_design", "development", "implementation_plan"],
+    stageKeys: ["design", "build"],
   },
   {
-    key: "deliver",
-    label: "Deliver",
-    shortLabel: "DLVR",
-    description: "Test & launch",
+    key: "release_close",
+    label: "Release & Close",
+    shortLabel: "REL",
+    description: "Test, launch & wrap up",
     color: "#F59E0B",
-    stageKeys: ["uat", "go_live"],
-  },
-  {
-    key: "close",
-    label: "Close",
-    shortLabel: "CLOSE",
-    description: "Stabilise & wrap up",
-    color: "#10B981",
-    stageKeys: ["closure_readiness", "project_closure"],
+    stageKeys: ["uat", "go_live", "closure"],
   },
 ];
 

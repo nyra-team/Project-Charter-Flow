@@ -63,11 +63,11 @@ export function VendorEvalScorecard({ projectId }: { projectId: number }) {
 
  const evalRecord = (
  stages as Array<{ id: number; stage: string; notes?: string | null }>
- ).find((s) => s.stage === "vendor_evaluation");
+ ).find((s) => s.stage === "vendor_selection");
 
  const rfpRecord = (
  stages as Array<{ id: number; stage: string; notes?: string | null }>
- ).find((s) => s.stage === "rfp");
+ ).find((s) => s.stage === "vendor_selection");
 
  const parsedEvalNotes: Record<string, unknown> = useMemo(() => {
  try { return JSON.parse(evalRecord?.notes ?? "{}"); }

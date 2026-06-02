@@ -2,15 +2,20 @@ import { useQuery } from "@tanstack/react-query";
 import { useListProjects, useListScoringCriteria, useGetDashboardSummary } from "@workspace/api-client-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell,
 } from "recharts";
-import { AlertTriangle, CheckSquare, Clock, TrendingUp, Trophy, AlertCircle } from "lucide-react";
+import { AlertTriangle, CheckSquare, Clock, TrendingUp, Trophy, AlertCircle, AlertOctagon, CheckCircle2, Activity, FolderKanban, Bell, Gauge, LayoutDashboard } from "lucide-react";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useMemo, useEffect } from "react";
 import { Slider } from "@/components/ui/slider";
+import { ViewsMenu } from "../../components/views-menu";
+import { useUserView } from "../../hooks/use-user-view";
 import {
   KPITile, RAGBadge, DashboardCard, FilterBar, useAutoRefresh, exportCSV,
 } from "../../components/dashboard/primitives";
+import { BottlenecksByPerson } from "../../components/dashboard/bottlenecks-by-person";
+import { PageHeader, MetricCard } from "@/components/ui-kit";
 
 type StuckApproval = { id: number; charterId: number; charterTitle: string; stage: string; approverName: string; approverRole: string; daysWaiting: number; severity: "red" | "amber" | "green" };
 type Achiever = { userId: number; name: string; role: string; department: string; completed: number; onTimeOrEarly: number; late: number; onTimePct: number; avgDaysVsPlan: number };
@@ -70,6 +75,24 @@ function useStuckApprovals(refetchInterval: number | false) {
   });
 }
 
+type CPPortfolio = {
+  onTrack: number; atRisk: number; blocked: number; unmapped: number; total: number;
+  bottlenecks: Array<{ stageKey: string; label: string; count: number }>;
+  blockedProjects: Array<{ id: number; name: string; blockedStageKey: string; stageLabel: string; daysOverdue: number; owner: { id: number; name: string } | null }>;
+};
+
+function useCriticalPathPortfolio(refetchInterval: number | false) {
+  return useQuery({
+    queryKey: ["/api/dashboard/critical-path-portfolio"],
+    queryFn: async () => {
+      const r = await fetch("/api/dashboard/critical-path-portfolio");
+      if (!r.ok) throw new Error("Failed");
+      return r.json() as Promise<CPPortfolio>;
+    },
+    refetchInterval,
+  });
+}
+
 function useMilestoneAchievers(refetchInterval: number | false) {
   return useQuery({
     queryKey: ["/api/dashboard/milestone-achievers"],
@@ -102,7 +125,7 @@ function CapacityHeatmap({ data }: { data: ReturnType<typeof useCapacityDemand>[
           <tr>
             <th className="text-left pb-2 pr-3 text-muted-foreground font-semibold w-28">Function</th>
             {data.months.map(m => (
-              <th key={m} className="pb-2 px-1 text-center text-muted-foreground font-semibold font-mono">{m}</th>
+              <th key={m} className="pb-2 px-1 text-center text-muted-foreground font-semibold">{m}</th>
             ))}
           </tr>
         </thead>
@@ -117,7 +140,7 @@ function CapacityHeatmap({ data }: { data: ReturnType<typeof useCapacityDemand>[
                 return (
                   <td key={m} className="px-1 py-1">
                     <div
-                      className={`rounded text-center py-1.5 font-bold font-mono ${cls.bg} ${cls.text}`}
+                      className={`rounded text-center py-1.5 font-bold ${cls.bg} ${cls.text}`}
                       style={{ minWidth: 40 }}
                       title={`${fn} · ${m}: ${u}% utilized (${cell?.demand ?? 0}% demand / ${cell?.capacity ?? 0}% capacity)`}
                     >
@@ -140,6 +163,40 @@ function severityTone(s: "red" | "amber" | "green"): { wrap: string; text: strin
   return { wrap: "bg-success/10 border-l-2 border-success", text: "text-success" };
 }
 
+function CriticalPathHealthDonut({ data }: { data?: CPPortfolio }) {
+  if (!data) return <Skeleton className="h-40 rounded-xl" />;
+  const slices = [
+    { name: "On Track", value: data.onTrack, color: "hsl(var(--success))" },
+    { name: "At Risk", value: data.atRisk, color: "hsl(var(--warn))" },
+    { name: "Blocked", value: data.blocked, color: "hsl(var(--destructive))" },
+    { name: "Pre-lifecycle", value: data.unmapped, color: "hsl(var(--muted-foreground) / 0.5)" },
+  ].filter((s) => s.value > 0);
+  const total = slices.reduce((s, x) => s + x.value, 0);
+  if (total === 0) return <p className="text-sm text-muted-foreground text-center py-8">No active projects.</p>;
+  return (
+    <div className="flex items-center gap-4">
+      <ResponsiveContainer width={140} height={140}>
+        <PieChart>
+          <Pie data={slices} dataKey="value" nameKey="name" innerRadius={42} outerRadius={62} paddingAngle={2} stroke="none">
+            {slices.map((s, i) => <Cell key={i} fill={s.color} />)}
+          </Pie>
+          <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--popover-border))", borderRadius: 8, fontSize: 12 }} />
+        </PieChart>
+      </ResponsiveContainer>
+      <div className="space-y-1.5 flex-1">
+        {slices.map((s) => (
+          <div key={s.name} className="flex items-center gap-2 text-xs">
+            <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: s.color }} />
+            <span className="text-muted-foreground flex-1">{s.name}</span>
+            <span className="font-semibold text-foreground num-tabular">{s.value}</span>
+            <span className="text-muted-foreground/60 w-9 text-right">{Math.round((s.value / total) * 100)}%</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function PortfolioDashboard() {
   const { refetchInterval, markRefreshed, RefreshButton } = useAutoRefresh();
   const { data: summary } = useGetDashboardSummary({ query: { refetchInterval } as never });
@@ -150,11 +207,43 @@ export default function PortfolioDashboard() {
   const { data: criteria } = useListScoringCriteria({ query: { refetchInterval } as never });
   const { data: stuck, isLoading: loadingStuck, isError: stuckError } = useStuckApprovals(refetchInterval);
   const { data: achievers, isLoading: loadingAchievers, isError: achieversError } = useMilestoneAchievers(refetchInterval);
+  const { data: cpPortfolio } = useCriticalPathPortfolio(refetchInterval);
+
+  // Governance metric-row sources — escalations due now + per-person SLA on-time.
+  const { data: escRows } = useQuery({
+    queryKey: ["/api/dashboard/escalations-required"],
+    queryFn: async () => { const r = await fetch("/api/dashboard/escalations-required"); if (!r.ok) throw new Error("Failed"); return r.json() as Promise<unknown[]>; },
+    refetchInterval,
+  });
+  const { data: slaRows } = useQuery({
+    queryKey: ["/api/dashboard/approval-sla-performance"],
+    queryFn: async () => { const r = await fetch("/api/dashboard/approval-sla-performance"); if (!r.ok) throw new Error("Failed"); return r.json() as Promise<Array<{ onTimePct: number }>>; },
+    refetchInterval,
+  });
+  const avgSla = useMemo(() => {
+    if (!slaRows || slaRows.length === 0) return null;
+    return Math.round(slaRows.reduce((s, r) => s + (r.onTimePct ?? 0), 0) / slaRows.length);
+  }, [slaRows]);
+  const mostDelayedStage = cpPortfolio?.bottlenecks?.[0] ?? null;
 
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [sortBy, setSortBy] = useState<"score" | "name" | "priority">("score");
   const [scenarioWeights, setScenarioWeights] = useState<Record<number, number>>({});
   const [showScenario, setShowScenario] = useState(false);
+
+  // ── Saved scenarios (Stage 3 — Customization). Persists the slider state
+  // as named what-if scenarios per user, so a CXO can flip between e.g.
+  // "Speed-to-market focus" and "Cash-cost focus" without re-dragging
+  // sliders every session.
+  const scenarioViews = useUserView<{ scenarioWeights: Record<number, number> }>({
+    scope: "portfolio_dashboard",
+    fallback: { scenarioWeights: {} },
+  });
+  useEffect(() => {
+    if (scenarioViews.activeId == null) return;
+    setScenarioWeights(scenarioViews.activeConfig.scenarioWeights ?? {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scenarioViews.activeId]);
 
   const handleFilter = (k: string, v: string) => setFilters(f => ({ ...f, [k]: v }));
 
@@ -198,15 +287,22 @@ export default function PortfolioDashboard() {
 
   return (
     <div className="space-y-5" data-print-target>
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h2 className="text-xl font-bold text-foreground">Portfolio / PMO Dashboard</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Portfolio intake, prioritization, and capacity management</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <RefreshButton />
-        </div>
+      <PageHeader
+        title="Portfolio / PMO Dashboard"
+        subtitle="Executive governance · critical path · approvals & escalations"
+        icon={LayoutDashboard}
+        actions={<RefreshButton />}
+      />
+
+      {/* ── Executive governance metric row ──────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+        <MetricCard label="Total Projects" value={cpPortfolio?.total ?? 0} icon={FolderKanban} tone="muted" sub={cpPortfolio?.unmapped ? `${cpPortfolio.unmapped} pre-lifecycle` : undefined} />
+        <MetricCard label="On Track" value={cpPortfolio?.onTrack ?? 0} icon={CheckCircle2} tone="success" />
+        <MetricCard label="At Risk" value={cpPortfolio?.atRisk ?? 0} icon={Clock} tone="warn" />
+        <MetricCard label="Blocked" value={cpPortfolio?.blocked ?? 0} icon={AlertOctagon} tone="danger" highlight />
+        <MetricCard label="Pending Approvals" value={summary?.pendingApprovals ?? 0} icon={CheckSquare} tone="primary" />
+        <MetricCard label="Escalations Req." value={escRows?.length ?? 0} icon={Bell} tone="danger" highlight={(escRows?.length ?? 0) > 0} />
+        <MetricCard label="Avg Approval SLA" value={avgSla == null ? "—" : `${avgSla}%`} icon={Gauge} tone={avgSla == null ? "muted" : avgSla >= 80 ? "success" : avgSla >= 50 ? "warn" : "danger"} sub="on-time" />
       </div>
 
       {/* Intake Pipeline KPIs */}
@@ -216,6 +312,87 @@ export default function PortfolioDashboard() {
         <KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0} icon={CheckSquare} tone="success" sub="Awaiting sign-off" />
         <KPITile label="Active Projects" value={health?.active ?? 0} icon={AlertTriangle} tone="primary" sub="In execution" />
       </div>
+
+      {/* ── Critical Path Health ─────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+        {/* Health donut + most delayed stage + bottlenecks */}
+        <div className="xl:col-span-2 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <DashboardCard title="Critical Path Health" subtitle="Distribution across active projects">
+              <CriticalPathHealthDonut data={cpPortfolio} />
+            </DashboardCard>
+            <DashboardCard title="Most Delayed Stage" subtitle="Lifecycle stage blocking the most projects">
+              {mostDelayedStage ? (
+                <div className="flex flex-col items-center justify-center py-4 text-center">
+                  <p className="text-4xl font-bold font-mono text-destructive num-tabular">{mostDelayedStage.count}</p>
+                  <p className="text-sm font-semibold text-foreground mt-2">{mostDelayedStage.label}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">project{mostDelayedStage.count === 1 ? "" : "s"} blocked / at risk here</p>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-8">No bottleneck stage — all clear.</p>
+              )}
+            </DashboardCard>
+          </div>
+          <DashboardCard
+            title="Most Common Bottlenecks"
+            subtitle="Lifecycle stages blocking the most projects"
+            onExportCSV={() => exportCSV("critical-path-bottlenecks.csv", (cpPortfolio?.bottlenecks ?? []).map(b => ({ Stage: b.label, Projects: b.count })))}
+          >
+            {!cpPortfolio ? (
+              <Skeleton className="h-32 rounded-xl" />
+            ) : cpPortfolio.bottlenecks.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-6">No bottlenecks — every active project is on track.</p>
+            ) : (
+              <div className="space-y-3 pt-1">
+                {(() => {
+                  const max = Math.max(1, ...cpPortfolio.bottlenecks.map(b => b.count));
+                  return cpPortfolio.bottlenecks.map(b => (
+                    <div key={b.stageKey} className="flex items-center gap-3">
+                      <span className="text-xs font-medium text-muted-foreground w-40 flex-shrink-0 truncate">{b.label}</span>
+                      <div className="flex-1 h-5 bg-muted rounded-md overflow-hidden">
+                        <div className="h-full rounded-md bg-destructive flex items-center justify-end pr-2" style={{ width: `${Math.max(8, (b.count / max) * 100)}%` }}>
+                          <span className="text-[10px] text-destructive-foreground font-bold">{b.count}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            )}
+          </DashboardCard>
+        </div>
+
+        {/* Blocked projects drill list */}
+        <DashboardCard
+          title="Top Delayed Projects"
+          subtitle="Most overdue first"
+          onExportCSV={() => exportCSV("blocked-projects.csv", (cpPortfolio?.blockedProjects ?? []).map(p => ({ Project: p.name, Stage: p.stageLabel, "Days Overdue": p.daysOverdue, Owner: p.owner?.name ?? "—" })))}
+        >
+          {!cpPortfolio ? (
+            <Skeleton className="h-40 rounded-xl" />
+          ) : cpPortfolio.blockedProjects.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No blocked projects.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {cpPortfolio.blockedProjects.slice(0, 7).map(p => (
+                <Link key={p.id} href={`/projects/${p.id}`}>
+                  <div className="flex items-center gap-3 p-3 rounded-lg cursor-pointer hover:translate-x-0.5 transition-transform bg-destructive/10 border-l-2 border-destructive">
+                    <Activity size={14} className="flex-shrink-0 text-destructive" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-foreground truncate">{p.name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{p.stageLabel}{p.owner ? ` · ${p.owner.name}` : ""}</p>
+                    </div>
+                    <p className="text-lg font-bold text-destructive flex-shrink-0">{p.daysOverdue}d</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </DashboardCard>
+      </div>
+
+      {/* ── Bottlenecks by Person ─────────────────────────────────────────── */}
+      <BottlenecksByPerson />
 
       {/* Filters + Ranked table */}
       <DashboardCard
@@ -259,13 +436,25 @@ export default function PortfolioDashboard() {
         {/* Scenario Planning Panel */}
         {showScenario && criteria && criteria.length > 0 && (
           <div className="mb-4 p-4 rounded-xl bg-primary/5 border border-primary/20">
-            <p className="text-xs font-semibold text-primary mb-3">Scenario Planning — Adjust weights to preview rank changes</p>
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <p className="text-xs font-semibold text-primary">Scenario Planning — Adjust weights to preview rank changes</p>
+              <ViewsMenu
+                views={scenarioViews.views}
+                activeView={scenarioViews.activeView}
+                setActive={scenarioViews.setActive}
+                setDefault={scenarioViews.setDefault}
+                deleteView={scenarioViews.deleteView}
+                saveAs={scenarioViews.saveAs}
+                currentConfig={{ scenarioWeights }}
+                triggerLabel="Saved scenarios"
+              />
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {criteria.map((c: { id: number; name: string; weightPct: number }) => (
                 <div key={c.id} className="space-y-1">
                   <div className="flex justify-between text-xs">
                     <span className="text-foreground font-medium truncate flex-1 mr-2">{c.name}</span>
-                    <span className="text-primary font-bold font-mono">{scenarioWeights[c.id] ?? c.weightPct}%</span>
+                    <span className="text-primary font-bold">{scenarioWeights[c.id] ?? c.weightPct}%</span>
                   </div>
                   <Slider
                     value={[scenarioWeights[c.id] ?? c.weightPct]}
@@ -300,7 +489,7 @@ export default function PortfolioDashboard() {
               ) : filteredRanked.length > 0 ? filteredRanked.map(p => (
                 <tr key={p.id} className="hover:bg-accent/30 transition-colors">
                   <td className="py-3">
-                    <span className="text-base font-bold text-muted-foreground/60 font-mono">#{p.rank}</span>
+                    <span className="text-base font-bold text-muted-foreground/60">#{p.rank}</span>
                   </td>
                   <td className="py-3 pr-4">
                     <Link href={`/projects/${p.id}`}>
@@ -312,7 +501,7 @@ export default function PortfolioDashboard() {
                   </td>
                   <td className="py-3 pr-4 hidden sm:table-cell"><RAGBadge status={p.ragStatus} size="xs" /></td>
                   <td className="py-3 pr-4">
-                    <span className="text-base font-bold text-primary font-mono">{p.scoringTotal?.toFixed(1) ?? "—"}</span>
+                    <span className="text-base font-bold text-primary">{p.scoringTotal?.toFixed(1) ?? "—"}</span>
                   </td>
                   <td className="py-3 hidden lg:table-cell">
                     <span className="text-xs px-2 py-0.5 rounded-md font-medium bg-secondary text-secondary-foreground">{p.priority}</span>
@@ -352,7 +541,7 @@ export default function PortfolioDashboard() {
                   <div key={a.userId} className="flex items-center gap-3 p-3 rounded-lg bg-muted/40 hover:bg-muted/60 transition-colors">
                     <div className="flex items-center gap-1.5 w-10 flex-shrink-0">
                       {i < 3 && <Trophy size={14} className={podium} />}
-                      <span className={`text-sm font-bold font-mono ${podium}`}>#{i + 1}</span>
+                      <span className={`text-sm font-bold ${podium}`}>#{i + 1}</span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-foreground truncate">{a.name}</p>
@@ -361,8 +550,8 @@ export default function PortfolioDashboard() {
                       </p>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className="text-sm font-bold text-success font-mono">{a.onTimeOrEarly}<span className="text-muted-foreground font-normal">/{a.completed}</span></p>
-                      <p className="text-[10px] text-muted-foreground font-mono">{a.onTimePct}% on time</p>
+                      <p className="text-sm font-bold text-success">{a.onTimeOrEarly}<span className="text-muted-foreground font-normal">/{a.completed}</span></p>
+                      <p className="text-[10px] text-muted-foreground">{a.onTimePct}% on time</p>
                     </div>
                   </div>
                 );
@@ -401,7 +590,7 @@ export default function PortfolioDashboard() {
                         </p>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className={`text-lg font-bold font-mono ${tone.text}`}>{a.daysWaiting}d</p>
+                        <p className={`text-lg font-bold ${tone.text}`}>{a.daysWaiting}d</p>
                       </div>
                     </div>
                   </Link>
@@ -444,10 +633,10 @@ export default function PortfolioDashboard() {
                           className={`h-full rounded-md flex items-center justify-end pr-2 transition-all ${i === funnel.length - 1 ? "bg-success" : "bg-primary"}`}
                           style={{ width: `${Math.max(4, (f.count / maxCount) * 100)}%` }}
                         >
-                          {f.count > 0 && <span className="text-[10px] text-primary-foreground font-bold font-mono">{f.count}</span>}
+                          {f.count > 0 && <span className="text-[10px] text-primary-foreground font-bold">{f.count}</span>}
                         </div>
                       </div>
-                      {f.count === 0 && <span className="text-xs text-muted-foreground font-mono">0</span>}
+                      {f.count === 0 && <span className="text-xs text-muted-foreground">0</span>}
                     </div>
                   ))}
                 </div>
@@ -460,10 +649,10 @@ export default function PortfolioDashboard() {
           {/* Intake Cycle Time KPI */}
           <div className="rounded-2xl p-5 bg-card border border-card-border glass-surface lift-card">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground mb-1">Avg Intake Cycle Time</p>
-            <div className="text-3xl font-bold text-foreground font-mono num-tabular tracking-tight">
+            <div className="text-3xl font-bold text-foreground num-tabular tracking-tight">
               {(summary as unknown as Record<string, unknown>)?.avgCycleTimeDays != null ? `${(summary as unknown as Record<string, unknown>).avgCycleTimeDays}d` : "—"}
             </div>
-            <p className="text-[10px] text-muted-foreground font-mono mt-2">Submission to approval (approved charters)</p>
+            <p className="text-[10px] text-muted-foreground mt-2">Submission to approval (approved charters)</p>
           </div>
 
           {/* SLA Warnings */}
@@ -480,8 +669,8 @@ export default function PortfolioDashboard() {
                     <div key={f.stage} className="flex items-center justify-between p-2 rounded-lg bg-warn/10 border-l-2 border-warn">
                       <span className="text-xs font-medium text-foreground capitalize">{f.stage.replace(/_/g, " ")}</span>
                       <div className="text-right">
-                        <span className="text-xs font-bold text-warn font-mono">{f.count} charter{f.count > 1 ? "s" : ""}</span>
-                        <p className="text-[10px] text-muted-foreground font-mono">SLA: {avgDays}d avg</p>
+                        <span className="text-xs font-bold text-warn">{f.count} charter{f.count > 1 ? "s" : ""}</span>
+                        <p className="text-[10px] text-muted-foreground">SLA: {avgDays}d avg</p>
                       </div>
                     </div>
                   ))}

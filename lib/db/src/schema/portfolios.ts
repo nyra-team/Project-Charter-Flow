@@ -2,7 +2,7 @@ import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const portfoliosTable = pgTable("portfolios", {
+export const portfoliosTable = pgTable("pmo_portfolios", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description").default(""),
@@ -10,7 +10,7 @@ export const portfoliosTable = pgTable("portfolios", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const programsTable = pgTable("programs", {
+export const programsTable = pgTable("pmo_programs", {
   id: serial("id").primaryKey(),
   portfolioId: integer("portfolio_id"),
   name: text("name").notNull(),

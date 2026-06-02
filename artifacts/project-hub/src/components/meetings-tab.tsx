@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Calendar, Plus, Loader2, X, Sparkles, CheckSquare } from "lucide-react";
+import { Calendar, Plus, Loader2, X, Sparkles, CheckSquare, Download, Send, Cloud } from "lucide-react";
 import { useUserStore } from "../lib/store";
 import { api } from "../lib/extra-api";
 import { AiResultPanel } from "./ai-button";
@@ -8,6 +8,13 @@ type Meeting = {
   id: number; title: string; type: string; projectId: number | null;
   scheduledDate: string; scheduledTime: string | null; status: string;
   location: string; agenda: string; notes: string; isFlashMode: boolean;
+  // Stage 6 — Teams MoM integration. All optional so meetings without a
+  // Teams origin render exactly as before.
+  teamsMeetingId?: string | null;
+  teamsTranscriptRaw?: string | null;
+  teamsSyncedAt?: string | null;
+  momPostedToChannelId?: string | null;
+  momPostedAt?: string | null;
 };
 
 type Item = {
@@ -32,6 +39,11 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
   const [aiResult, setAiResult] = useState<unknown>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  // ── Stage 6 — Teams integration UI state ────────────────────────────
+  const [teamsImporting, setTeamsImporting] = useState(false);
+  const [teamsImportSummary, setTeamsImportSummary] = useState<string | null>(null);
+  const [teamsSyncing, setTeamsSyncing] = useState(false);
+  const [teamsMomPosting, setTeamsMomPosting] = useState(false);
 
   const [form, setForm] = useState({
     title: "", type: "status", scheduledDate: new Date().toISOString().slice(0, 10),
@@ -79,6 +91,79 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
 
   useEffect(() => { if (selected) void loadItems(selected.id); }, [selected?.id]);
 
+  // ── Teams integration handlers ──────────────────────────────────────
+  // Pulls recent meetings from the active adapter (mock fixtures by default;
+  // real Graph when TEAMS_MODE=real). Upserts pmo_meetings on the server
+  // keyed on teamsMeetingId, so re-clicking is idempotent — only NEW Teams
+  // meetings appear, existing rows just bump teamsSyncedAt.
+  async function handleTeamsImport() {
+    setTeamsImporting(true);
+    setTeamsImportSummary(null);
+    try {
+      const r = await api.post<{ created: number; updated: number; total: number }>(
+        "/api/integrations/teams/import-meetings",
+        { projectId },
+      );
+      setTeamsImportSummary(`Imported ${r.created} new · refreshed ${r.updated}`);
+      void load();
+    } catch (e) {
+      setTeamsImportSummary(`Import failed: ${(e as Error).message}`);
+    } finally {
+      setTeamsImporting(false);
+    }
+  }
+
+  // Pulls the transcript via the Teams adapter and (server-side) auto-runs
+  // the existing extract-action-items LLM call. The server writes the
+  // transcript to BOTH teamsTranscriptRaw and notes, so the UI refresh
+  // shows the transcript in the same notes textarea the user already knows.
+  async function handleSyncTranscript() {
+    if (!selected) return;
+    setTeamsSyncing(true);
+    setAiError(null);
+    setAiResult(null);
+    try {
+      const r = await api.post<{ meeting: Meeting; extracted: { count?: number; skipped?: string } }>(
+        `/api/integrations/teams/${selected.id}/sync-transcript`,
+        { autoExtract: true },
+      );
+      setSelected(r.meeting);
+      await loadItems(selected.id);
+      setAiResult(r.extracted);
+    } catch (e) {
+      setAiError(`Teams sync failed: ${(e as Error).message}`);
+    } finally {
+      setTeamsSyncing(false);
+    }
+  }
+
+  // Sends the MoM body to the channel the meeting was associated with.
+  // Body composition is intentionally simple — title + open action items.
+  // The real MoM-rendering UI is a future polish (Markdown editor).
+  async function handlePostMom() {
+    if (!selected || !selected.momPostedToChannelId) return;
+    const openActions = items.filter(i => i.status === "open" || i.status === "in_progress");
+    const momBody = [
+      `**${selected.title}** — ${selected.scheduledDate}${selected.scheduledTime ? ` ${selected.scheduledTime}` : ""}`,
+      "",
+      "**Action items:**",
+      ...openActions.map(it => `- ${it.description}${it.dueDate ? ` (due ${it.dueDate})` : ""}${it.notes ? ` — ${it.notes}` : ""}`),
+    ].join("\n");
+    setTeamsMomPosting(true);
+    try {
+      await api.post<{ postId: string; postedAt: string }>(
+        `/api/integrations/teams/${selected.id}/post-mom`,
+        { channelId: selected.momPostedToChannelId, title: `MoM: ${selected.title}`, body: momBody },
+      );
+      void load();
+      setSelected({ ...selected, momPostedAt: new Date().toISOString() });
+    } catch (e) {
+      setAiError(`Post MoM failed: ${(e as Error).message}`);
+    } finally {
+      setTeamsMomPosting(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="glass-surface lift-card ph-rise rounded-2xl p-5 relative overflow-hidden">
@@ -93,10 +178,25 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
               <p className="text-[11px] text-muted-foreground mt-0.5">Capture meeting notes; AI extracts action items into the tracker.</p>
             </div>
           </div>
-          <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm">
-            <Plus size={14} /> New Meeting
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => void handleTeamsImport()}
+              disabled={teamsImporting}
+              title="Pull recent meetings from Microsoft Teams (mock fixtures unless TEAMS_MODE=real)"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-border bg-card hover:bg-accent transition-colors disabled:opacity-50"
+              data-testid="btn-teams-import"
+            >
+              {teamsImporting ? <Loader2 size={14} className="animate-spin" /> : <Cloud size={14} />}
+              {teamsImporting ? "Importing…" : "Import from Teams"}
+            </button>
+            <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm">
+              <Plus size={14} /> New Meeting
+            </button>
+          </div>
         </div>
+        {teamsImportSummary && (
+          <p className="text-[11px] text-muted-foreground mt-2">{teamsImportSummary}</p>
+        )}
       </div>
 
       {loading ? (
@@ -118,7 +218,19 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
                     {m.scheduledDate}{m.scheduledTime ? ` · ${m.scheduledTime}` : ""} · {m.type} · {m.status}
                   </div>
                 </div>
-                {m.isFlashMode && <span className="text-[10px] uppercase font-mono tracking-wider font-semibold px-2 py-0.5 rounded-sm border bg-warn/10 text-warn border-warn/20">Flash</span>}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {m.teamsMeetingId && (
+                    <span title={m.teamsSyncedAt ? `Last synced ${m.teamsSyncedAt}` : "From Microsoft Teams"} className="text-[10px] uppercase font-mono tracking-wider font-semibold px-2 py-0.5 rounded-sm border bg-primary/10 text-primary border-primary/20 inline-flex items-center gap-1">
+                      <Cloud size={9} /> Teams
+                    </span>
+                  )}
+                  {m.momPostedAt && (
+                    <span title={`MoM posted ${m.momPostedAt}`} className="text-[10px] uppercase font-mono tracking-wider font-semibold px-2 py-0.5 rounded-sm border bg-success/10 text-success border-success/20">
+                      MoM ✓
+                    </span>
+                  )}
+                  {m.isFlashMode && <span className="text-[10px] uppercase font-mono tracking-wider font-semibold px-2 py-0.5 rounded-sm border bg-warn/10 text-warn border-warn/20">Flash</span>}
+                </div>
               </div>
             </div>
           ))}
@@ -170,12 +282,38 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
             </div>
             {selected.agenda && <div className="text-xs rounded-md bg-muted/50 border border-border p-2.5"><span className="font-semibold text-foreground">Agenda:</span> <span className="text-muted-foreground">{selected.agenda}</span></div>}
             <textarea value={selected.notes ?? ""} onChange={e => setSelected({ ...selected, notes: e.target.value })} placeholder="Meeting notes / transcript — paste here so AI can extract action items" rows={6} className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-sm font-mono focus:outline-none focus:ring-2 focus:ring-ring/40" />
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center flex-wrap gap-2">
               <button onClick={() => void handleSaveNotes()} className="px-3 py-1.5 rounded-md text-sm font-medium text-foreground bg-muted hover:bg-accent transition-colors">Save Notes</button>
-              <button onClick={() => void handleExtract()} disabled={aiLoading} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all">
-                {aiLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                Extract Action Items
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {selected.teamsMeetingId && !selected.teamsTranscriptRaw && (
+                  <button
+                    onClick={() => void handleSyncTranscript()}
+                    disabled={teamsSyncing}
+                    title="Pull the transcript from Teams and auto-extract action items"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-border bg-card hover:bg-accent transition-colors disabled:opacity-50"
+                    data-testid="btn-teams-sync-transcript"
+                  >
+                    {teamsSyncing ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                    Sync transcript
+                  </button>
+                )}
+                {selected.momPostedToChannelId && items.length > 0 && (
+                  <button
+                    onClick={() => void handlePostMom()}
+                    disabled={teamsMomPosting}
+                    title={selected.momPostedAt ? `Already posted ${selected.momPostedAt}; re-posting will create a duplicate channel message` : "Post MoM (action items) back to the Teams channel"}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border border-border bg-card hover:bg-accent transition-colors disabled:opacity-50"
+                    data-testid="btn-teams-post-mom"
+                  >
+                    {teamsMomPosting ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                    {selected.momPostedAt ? "Re-post MoM" : "Post MoM to Teams"}
+                  </button>
+                )}
+                <button onClick={() => void handleExtract()} disabled={aiLoading} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 shadow-sm transition-all">
+                  {aiLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                  Extract Action Items
+                </button>
+              </div>
             </div>
             <AiResultPanel title="AI Extraction" loading={aiLoading} error={aiError} result={aiResult} render={(r) => {
               const x = r as { extracted?: number; created?: number };

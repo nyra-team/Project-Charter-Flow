@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { AiButton } from "../ai-button";
 import { VendorShortlist } from "./VendorShortlist";
+import { registerLetterFont } from "../../lib/pdf-fonts";
 
 type AiSections = { introduction?: string; scopeOfWork?: string; proposalRequirements?: string; evaluationCriteria?: string; termsAndConditions?: string };
 
@@ -39,10 +40,10 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
 
  const rfpRecord = (
  stages as Array<{ id: number; stage: string; notes?: string | null }>
- ).find((s) => s.stage === "rfp");
+ ).find((s) => s.stage === "vendor_selection");
  const ursRecord = (
  stages as Array<{ id: number; stage: string; notes?: string | null }>
- ).find((s) => s.stage === "urs");
+ ).find((s) => s.stage === "initiation");
 
  const parsedRfpNotes: Record<string, unknown> = (() => {
  try { return JSON.parse(rfpRecord?.notes ?? "{}"); }
@@ -64,9 +65,10 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  const ursApprovalLine =
  [ursBizApprover, ursItApprover].filter(Boolean).join(" and ") || "Business Owner and IT Team";
 
- function generateRFPTemplate() {
+ async function generateRFPTemplate() {
  const now = new Date().toISOString();
  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+ const letterFont = await registerLetterFont(doc);
  const pageW = doc.internal.pageSize.getWidth();
  const marginX = 20;
  const contentW = pageW - marginX * 2;
@@ -75,10 +77,10 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  doc.rect(0, 0, pageW, 18, "F");
  doc.setTextColor(255, 255, 255);
  doc.setFontSize(13);
- doc.setFont("helvetica", "bold");
+ doc.setFont(letterFont, "bold");
  doc.text("REQUEST FOR PROPOSAL (RFP)", marginX, 12);
  doc.setFontSize(8);
- doc.setFont("helvetica", "normal");
+ doc.setFont(letterFont, "normal");
  doc.text(
  `Generated: ${new Date(now).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`,
  pageW - marginX,
@@ -88,14 +90,14 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
 
  doc.setTextColor(30, 64, 175);
  doc.setFontSize(9);
- doc.setFont("helvetica", "bold");
+ doc.setFont(letterFont, "bold");
  doc.text(`Project: ${projectTitle}`, marginX, 23);
- doc.setFont("helvetica", "normal");
+ doc.setFont(letterFont, "normal");
  doc.text(`URS Approved by: ${ursApprovalLine}`, marginX + contentW / 2, 23);
 
  let y = 32;
  const addSection = (title: string, body: string) => {
- doc.setFont("helvetica", "bold");
+ doc.setFont(letterFont, "bold");
  doc.setFontSize(11);
  doc.setTextColor(30, 64, 175);
  doc.text(title, marginX, y);
@@ -104,7 +106,7 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  doc.setLineWidth(0.4);
  doc.line(marginX, y, marginX + contentW, y);
  y += 5;
- doc.setFont("helvetica", "normal");
+ doc.setFont(letterFont, "normal");
  doc.setFontSize(10);
  doc.setTextColor(75, 85, 99);
  const lines = doc.splitTextToSize(body, contentW);
@@ -205,7 +207,7 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  id: projectId,
  data: {
  name: "RFP Document",
- stage: "rfp",
+ stage: "vendor_selection",
  fileUrl: `/api/storage${objectPath}`,
  fileType: "application/pdf",
  fileSize: pdfBlob.size,

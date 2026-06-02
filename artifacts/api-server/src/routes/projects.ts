@@ -23,6 +23,9 @@ import {
   GetBurndownParams,
 } from "@workspace/api-zod";
 import { logActivity } from "./activity";
+import { computeStageCriticalPath } from "../lib/critical-path";
+import { runCriticalPathAction } from "../lib/critical-path-actions";
+import { generateGateMilestones, ensureUnscheduledMilestone } from "../lib/gate-milestones";
 
 const router: IRouter = Router();
 
@@ -65,6 +68,9 @@ router.post("/projects", async (req, res): Promise<void> => {
     await db.update(chartersTable).set({ projectId: project.id, status: "active" }).where(eq(chartersTable.id, parsed.data.charterId));
   }
   await logActivity("project_created", `Project "${project.name}" created`, project.id, "project");
+  // Seed the standard gate milestones (BC Approved, URS Approved, …) for new
+  // projects so the lifecycle gates exist as milestones from day one.
+  try { await generateGateMilestones(project.id); } catch { /* non-fatal */ }
   res.status(201).json(formatProject(project as unknown as Record<string, unknown>));
 });
 
@@ -219,11 +225,29 @@ router.post("/projects/:id/tasks", async (req, res): Promise<void> => {
   const predecessorIds = parsed.data.predecessorIds ?? [];
   const crossProjectPreds = (parsed.data as Record<string, unknown>).crossProjectPredecessors ?? [];
   const pd = parsed.data as Record<string, unknown>;
+  // Resolve milestone + stage, soft-enforcing "every task belongs to a milestone":
+  //  - subtask (parentTaskId set) inherits its parent's milestone + stage
+  //  - a task with an explicit milestone inherits that milestone's stage
+  //  - a task with neither lands in the project's "Unscheduled" milestone
+  let milestoneId = parsed.data.milestoneId ?? undefined;
+  let stage = pd.stage as string | undefined;
+  const parentTaskId = pd.parentTaskId as number | undefined;
+  if (parentTaskId != null) {
+    const [parent] = await db.select({ milestoneId: tasksTable.milestoneId, stage: tasksTable.stage }).from(tasksTable).where(eq(tasksTable.id, parentTaskId));
+    if (parent) { milestoneId = milestoneId ?? parent.milestoneId ?? undefined; stage = stage ?? parent.stage ?? undefined; }
+  }
+  if (milestoneId == null) {
+    milestoneId = await ensureUnscheduledMilestone(params.data.id);
+  }
+  if (!stage && milestoneId != null) {
+    const [ms] = await db.select({ stage: milestonesTable.stage }).from(milestonesTable).where(eq(milestonesTable.id, milestoneId));
+    stage = ms?.stage ?? undefined;
+  }
   const [task] = await db.insert(tasksTable).values({
     projectId: params.data.id,
-    milestoneId: parsed.data.milestoneId,
+    milestoneId,
     workstreamId: pd.workstreamId as number | undefined,
-    parentTaskId: pd.parentTaskId as number | undefined,
+    parentTaskId,
     managerId: pd.managerId as number | undefined,
     name: parsed.data.name,
     description: parsed.data.description,
@@ -232,6 +256,8 @@ router.post("/projects/:id/tasks", async (req, res): Promise<void> => {
     cftDept: pd.cftDept as string | undefined,
     priority: parsed.data.priority,
     rag: pd.rag as string | undefined,
+    stage,
+    progressPct: typeof pd.progressPct === "number" ? pd.progressPct : undefined,
     startDate: parsed.data.startDate,
     endDate: parsed.data.endDate,
     predecessorIds: JSON.stringify(predecessorIds),
@@ -339,6 +365,17 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
           parentRow.id,
         );
       }
+    }
+  }
+
+  // Parent progress roll-up: a parent task's progress % = average of its
+  // children's progress. Triggered whenever a child's status or progress changes.
+  if ((parsed.data.status !== undefined || (parsed.data as Record<string, unknown>).progressPct !== undefined) && existing.parentTaskId != null) {
+    const kids = await db.select({ progressPct: tasksTable.progressPct }).from(tasksTable)
+      .where(eq(tasksTable.parentTaskId, existing.parentTaskId));
+    if (kids.length > 0) {
+      const avg = Math.round(kids.reduce((s, k) => s + (k.progressPct ?? 0), 0) / kids.length);
+      await db.update(tasksTable).set({ progressPct: avg }).where(eq(tasksTable.id, existing.parentTaskId));
     }
   }
 
@@ -555,6 +592,30 @@ router.get("/projects/:id/critical-path", async (req, res): Promise<void> => {
     totalDurationDays: maxFinish,
     criticalPathLength: criticalTasks.length,
   });
+});
+
+// Stage-governance critical path — which lifecycle stage is blocking, who owns it,
+// days overdue, and why. Distinct from the task-schedule CPM above (/critical-path).
+router.get("/projects/:id/critical-path-stages", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const result = await computeStageCriticalPath(id);
+  if (!result) { res.status(404).json({ error: "Project not found" }); return; }
+  res.json(result);
+});
+
+// Escalate / remind on a project's blocked stage. Writes in-app notifications to
+// the pending approver + owner (escalate) or owner (remind), logs an audit entry,
+// and sends a best-effort email.
+router.post("/projects/:id/critical-path/escalate", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const { stageKey, action, subGateKey } = (req.body ?? {}) as { stageKey?: string; action?: string; subGateKey?: string };
+  if (!stageKey) { res.status(400).json({ error: "stageKey is required" }); return; }
+  const act = action === "remind" ? "remind" : "escalate";
+  const result = await runCriticalPathAction(id, stageKey, act, subGateKey);
+  if (!result.ok) { res.status(422).json(result); return; }
+  res.json(result);
 });
 
 // Burndown

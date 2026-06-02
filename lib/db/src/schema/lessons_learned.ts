@@ -7,7 +7,7 @@ import { z } from "zod/v4";
  * Each project can contribute multiple entries; entries are searchable
  * across the whole organisation by tag, category, and (via AI) by free-text query.
  */
-export const lessonsLearnedTable = pgTable("lessons_learned", {
+export const lessonsLearnedTable = pgTable("pmo_lessons_learned", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   title: text("title").notNull(),

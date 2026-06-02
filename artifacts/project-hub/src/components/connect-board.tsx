@@ -28,6 +28,8 @@ export interface BoardTask {
   parentTaskId?: number | null;
   isCritical?: boolean;
   subtaskCount?: number;
+  /** Shown on the card in global (cross-project) mode. */
+  projectName?: string | null;
 }
 
 interface ConnectBoardProps {
@@ -63,7 +65,7 @@ function TaskCard({
   onClick,
   onLogTime,
 }: {
-  task: { id: number; name: string; status: string; priority: string; rag?: string | null; assigneeName?: string | null; endDate?: string | null; dueDate?: string | null; isCritical?: boolean; subtaskCount?: number; isSubtask?: boolean };
+  task: { id: number; name: string; status: string; priority: string; rag?: string | null; assigneeName?: string | null; endDate?: string | null; dueDate?: string | null; isCritical?: boolean; subtaskCount?: number; isSubtask?: boolean; projectName?: string | null };
   isDragging?: boolean;
   isMilestone?: boolean;
   onClick?: () => void;
@@ -111,6 +113,9 @@ function TaskCard({
           </span>
         )}
       </div>
+      {task.projectName && (
+        <p className="text-[10px] text-muted-foreground/80 truncate -mt-1">{task.projectName}</p>
+      )}
 
       <div className="flex items-center justify-between gap-2">
         <span

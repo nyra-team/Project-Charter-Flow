@@ -1,6 +1,15 @@
 import { Link, useLocation } from "wouter";
 import { useUserStore } from "../lib/store";
 import { useTheme } from "../lib/use-theme";
+import { useAuth } from "../auth/context";
+
+function getInitials(name: string | null | undefined): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return ((parts[0]![0] ?? "") + (parts[parts.length - 1]![0] ?? "")).toUpperCase();
+}
 import {
   BarChart3,
   Briefcase,
@@ -19,14 +28,27 @@ import {
   FolderOpen,
   PieChart,
   BookOpen,
+  Library,
+  ClipboardList,
+  Sparkles as SparklesIcon,
   Moon,
   Sun,
   Command,
   Menu,
   X,
+  Plug,
+  Building2,
+  ScrollText,
+  ShoppingCart,
+  Timer,
+  Users,
+  BellRing,
+  ListChecks,
+  UserCheck,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { NotificationBell } from "./notification-bell";
+import { ConnectorsPopup } from "./ConnectorsPopup";
 
 const SIDEBAR_COLLAPSED_KEY = "ph:sidebar:collapsed";
 
@@ -43,31 +65,125 @@ const ROLES = [
   { value: "team_member", label: "Team Member", initials: "TM" },
 ];
 
-type NavItem = { href: string; label: string; icon: React.ComponentType<{ size?: number; className?: string }> };
+type NavLeaf = { href: string; label: string; icon: React.ComponentType<{ size?: number; className?: string }> };
+type NavGroup = { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; children: NavLeaf[] };
+type NavNode = NavLeaf | NavGroup;
 
-const MAIN_NAV: NavItem[] = [
+function isGroup(n: NavNode): n is NavGroup {
+  return (n as NavGroup).children !== undefined;
+}
+
+// Primary navigation — collapsed from 9 flat items to 5 destinations.
+// The pre-execution funnel (Requests · Demands · Charters · Overview) now
+// lives under one "Pipeline" parent; Vendors + Sourcing(RFx) are siblings
+// under "Procurement"; Portfolio + Tree nest under "Projects". Every child
+// points at an existing route — no page, route, or API changed. Labels are
+// plain-English (PIFs → Requests, RFx → Sourcing); routes keep their old
+// paths so bookmarks and the API surface are untouched.
+const PRIMARY_NAV: NavNode[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/pipeline", label: "Pipeline", icon: Workflow },
-  { href: "/demands", label: "Demands", icon: Inbox },
-  { href: "/charters", label: "Charters", icon: FileText },
+  {
+    label: "Pipeline",
+    icon: Workflow,
+    children: [
+      { href: "/pifs", label: "Requests", icon: ClipboardList },
+      { href: "/demands", label: "Demands", icon: Inbox },
+      { href: "/charters", label: "Charters", icon: FileText },
+      { href: "/pipeline", label: "Overview", icon: Workflow },
+    ],
+  },
+  {
+    label: "Projects",
+    icon: BarChart3,
+    children: [
+      { href: "/projects", label: "Active", icon: BarChart3 },
+      { href: "/portfolio", label: "Portfolio", icon: FolderOpen },
+      { href: "/projects/tree", label: "Tree", icon: FolderOpen },
+    ],
+  },
+  {
+    label: "Work",
+    icon: Briefcase,
+    children: [
+      { href: "/my-tasks", label: "My Tasks", icon: UserCheck },
+      { href: "/tasks", label: "Work Breakdown", icon: ListChecks },
+    ],
+  },
+  {
+    label: "Procurement",
+    icon: ShoppingCart,
+    children: [
+      { href: "/vendors", label: "Vendors", icon: Building2 },
+      { href: "/rfx", label: "Sourcing", icon: ScrollText },
+    ],
+  },
   { href: "/approvals", label: "Approvals", icon: CheckSquare },
-  { href: "/projects", label: "Projects", icon: BarChart3 },
 ];
 
-const PORTFOLIO_NAV: NavItem[] = [
-  { href: "/portfolio", label: "Portfolio View", icon: FolderOpen },
-  { href: "/projects/tree", label: "Project Tree", icon: FolderOpen },
+const WORKSPACE_NAV: NavLeaf[] = [
   { href: "/documents", label: "Documents", icon: FileText },
+  { href: "/templates", label: "Templates", icon: Library },
   { href: "/lessons-learned", label: "Lessons Learned", icon: BookOpen },
+  { href: "/nudges", label: "Nudges", icon: SparklesIcon },
+  // Connectors stays reachable here; page-level role gate still applies for
+  // who can actually create/edit (see admin-integrations.tsx).
+  { href: "/admin/integrations", label: "Connectors", icon: Plug },
 ];
 
-const ADMIN_NAV: NavItem[] = [
+const ADMIN_NAV: NavLeaf[] = [
   { href: "/admin/scoring", label: "Scoring Config", icon: PieChart },
+  { href: "/admin/stage-slas", label: "Stage SLAs", icon: Timer },
+  { href: "/admin/role-directory", label: "Role Directory", icon: Users },
+  { href: "/admin/stage-escalation", label: "Escalation Ladders", icon: BellRing },
 ];
+
+// Presentation-layer titles for the top header — keeps the plain-English
+// labels (Requests, Sourcing) consistent without touching any route.
+const PAGE_TITLES: Record<string, string> = {
+  "/": "Dashboard",
+  "/pipeline": "Pipeline",
+  "/demands": "Demands",
+  "/pifs": "Requests",
+  "/charters": "Charters",
+  "/projects": "Projects",
+  "/projects/tree": "Project Tree",
+  "/portfolio": "Portfolio View",
+  "/vendors": "Vendors",
+  "/rfx": "Sourcing",
+  "/approvals": "Approvals",
+  "/my-tasks": "My Tasks",
+  "/tasks": "Work Breakdown",
+  "/documents": "Documents",
+  "/lessons-learned": "Lessons Learned",
+  "/templates": "Templates",
+  "/nudges": "Nudges",
+  "/admin/scoring": "Scoring Configuration",
+  "/admin/stage-slas": "Stage SLA Configuration",
+  "/admin/role-directory": "Role Directory",
+  "/admin/stage-escalation": "Escalation Ladders",
+  "/admin/integrations": "MCP Integrations",
+};
+
+function leafActive(href: string, location: string): boolean {
+  if (href === "/") return location === "/";
+  return location === href || location.startsWith(href + "/");
+}
+
+// Within a group, only the most specific matching child is "active" so that
+// /projects/tree highlights Tree, not Active (/projects is a prefix of both).
+function activeChildHref(group: NavGroup, location: string): string | null {
+  let best: string | null = null;
+  for (const c of group.children) {
+    if (leafActive(c.href, location) && (!best || c.href.length > best.length)) {
+      best = c.href;
+    }
+  }
+  return best;
+}
 
 const ADMIN_ROLES = ["pmo", "executive_director", "chairman"];
 
-function NavSection({ label, items, location, collapsed }: { label: string; items: NavItem[]; location: string; collapsed: boolean }) {
+function NavSection({ label, items, location, collapsed }: { label: string; items: NavLeaf[]; location: string; collapsed: boolean }) {
   return (
     <div>
       <div className={`mt-5 mb-2 ${collapsed ? "px-0 flex justify-center" : "px-3"}`}>
@@ -121,6 +237,186 @@ function NavSection({ label, items, location, collapsed }: { label: string; item
   );
 }
 
+// A single nav pill (leaf). Used for top-level leaves and, indented, for the
+// children rendered inside an expanded group.
+function LinkPill({ href, label, Icon, isActive, collapsed, indented }: {
+  href: string;
+  label: string;
+  Icon: React.ComponentType<{ size?: number; className?: string }>;
+  isActive: boolean;
+  collapsed: boolean;
+  indented?: boolean;
+}) {
+  return (
+    <Link href={href} aria-label={collapsed ? label : undefined} aria-current={isActive ? "page" : undefined}>
+      <div
+        data-active={isActive}
+        title={collapsed ? label : undefined}
+        className={`nav-pill group relative flex items-center cursor-pointer text-[13px] font-medium ${
+          collapsed
+            ? "justify-center w-10 h-10 mx-auto rounded-lg"
+            : `gap-3 ${indented ? "pl-9 pr-3" : "px-3"} py-2 mx-1.5 rounded-md`
+        } ${
+          isActive
+            ? "bg-sidebar-accent text-sidebar-foreground"
+            : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+        }`}
+      >
+        <Icon
+          size={collapsed ? 17 : indented ? 15 : 16}
+          className={`transition-all duration-300 ${
+            isActive
+              ? "text-sidebar-primary scale-110"
+              : !collapsed ? "group-hover:text-sidebar-foreground group-hover:translate-x-0.5" : "group-hover:text-sidebar-foreground"
+          }`}
+        />
+        {!collapsed && (
+          <span className="truncate transition-transform duration-300 group-hover:translate-x-0.5">{label}</span>
+        )}
+        {!collapsed && isActive && (
+          <span className="ml-auto w-1.5 h-1.5 rounded-full bg-sidebar-primary shadow-[0_0_8px_hsl(var(--sidebar-primary))]" />
+        )}
+      </div>
+    </Link>
+  );
+}
+
+// A collapsible parent with child subtabs. Expanded: header row + indented
+// children. Collapsed (icon rail): parent icon with a hover flyout of children.
+function NavGroupItem({ group, location, collapsed, open, onToggle }: {
+  group: NavGroup;
+  location: string;
+  collapsed: boolean;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const activeHref = activeChildHref(group, location);
+  const groupActive = activeHref !== null;
+  const Icon = group.icon;
+
+  if (collapsed) {
+    return (
+      <div className="relative group/navgrp flex justify-center">
+        <button
+          type="button"
+          title={group.label}
+          aria-label={group.label}
+          data-active={groupActive}
+          className={`nav-pill flex items-center justify-center w-10 h-10 mx-auto rounded-lg cursor-pointer ${
+            groupActive
+              ? "bg-sidebar-accent text-sidebar-foreground"
+              : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+          }`}
+        >
+          <Icon size={17} className={groupActive ? "text-sidebar-primary scale-110" : ""} />
+        </button>
+        {/* Hover flyout — the only way to reach subtabs while the rail is collapsed. */}
+        <div className="invisible opacity-0 translate-x-1 group-hover/navgrp:visible group-hover/navgrp:opacity-100 group-hover/navgrp:translate-x-0 transition-all duration-150 absolute left-full top-0 ml-2 z-50 w-52 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
+          <div className="px-3 py-1.5 text-[10px] font-semibold tracking-[0.18em] uppercase text-muted-foreground">{group.label}</div>
+          {group.children.map((c) => {
+            const Ci = c.icon;
+            const active = c.href === activeHref;
+            return (
+              <Link key={c.href} href={c.href}>
+                <div className={`flex items-center gap-2.5 px-3 py-2 text-xs cursor-pointer transition-colors ${
+                  active ? "bg-accent text-primary" : "hover:bg-accent/60"
+                }`}>
+                  <Ci size={14} />
+                  <span className="truncate">{c.label}</span>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        data-active={groupActive}
+        className={`nav-pill group w-[calc(100%-12px)] flex items-center gap-3 px-3 py-2 mx-1.5 rounded-md cursor-pointer text-[13px] font-medium ${
+          groupActive
+            ? "text-sidebar-foreground"
+            : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+        }`}
+      >
+        <Icon size={16} className={`transition-all duration-300 ${groupActive ? "text-sidebar-primary" : "group-hover:text-sidebar-foreground group-hover:translate-x-0.5"}`} />
+        <span className="truncate transition-transform duration-300 group-hover:translate-x-0.5">{group.label}</span>
+        <ChevronDown size={13} className={`ml-auto transition-transform duration-200 ${open ? "" : "-rotate-90"} ${groupActive ? "text-sidebar-primary/70" : "text-sidebar-foreground/40"}`} />
+      </button>
+      {open && (
+        <div className="mt-0.5 space-y-0.5">
+          {group.children.map((c) => (
+            <LinkPill
+              key={c.href}
+              href={c.href}
+              label={c.label}
+              Icon={c.icon}
+              isActive={c.href === activeHref}
+              collapsed={false}
+              indented
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Primary navigation block — mixes top-level leaves with collapsible groups.
+function PrimaryNav({ nodes, location, collapsed, openGroups, toggleGroup }: {
+  nodes: NavNode[];
+  location: string;
+  collapsed: boolean;
+  openGroups: Record<string, boolean>;
+  toggleGroup: (label: string, active: boolean) => void;
+}) {
+  return (
+    <div>
+      <div className={`mt-5 mb-2 ${collapsed ? "px-0 flex justify-center" : "px-3"}`}>
+        {collapsed ? (
+          <span className="block h-px w-6 bg-sidebar-foreground/15" />
+        ) : (
+          <span className="text-[10px] font-semibold tracking-[0.18em] uppercase text-sidebar-foreground/40">Navigation</span>
+        )}
+      </div>
+      <div className="space-y-0.5">
+        {nodes.map((n) => {
+          if (!isGroup(n)) {
+            return (
+              <LinkPill
+                key={n.href}
+                href={n.href}
+                label={n.label}
+                Icon={n.icon}
+                isActive={leafActive(n.href, location)}
+                collapsed={collapsed}
+              />
+            );
+          }
+          const active = activeChildHref(n, location) !== null;
+          const open = openGroups[n.label] ?? active;
+          return (
+            <NavGroupItem
+              key={n.label}
+              group={n}
+              location={location}
+              collapsed={collapsed}
+              open={open}
+              onToggle={() => toggleGroup(n.label, active)}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
   return (
@@ -139,6 +435,9 @@ function ThemeToggle() {
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { role, setRole } = useUserStore();
+  const { profile, signOut } = useAuth();
+  const displayName = profile?.full_name || profile?.email || "Signed in";
+  const initials = getInitials(profile?.full_name ?? profile?.email ?? null);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const roleMenuRef = useRef<HTMLDivElement | null>(null);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -146,6 +445,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
   });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [connectorsOpen, setConnectorsOpen] = useState(false);
+  // Manual open/close overrides for nav groups. When a group has no entry
+  // here it defaults to open iff one of its children is the active route, so
+  // navigating into a section auto-reveals it; users can still collapse it.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const toggleGroup = (label: string, active: boolean) =>
+    setOpenGroups((s) => ({ ...s, [label]: !(s[label] ?? active) }));
   const [isDesktop, setIsDesktop] = useState<boolean>(() =>
     typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
   );
@@ -210,13 +516,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const isAdmin = ADMIN_ROLES.includes(role);
 
   const pageTitle = (() => {
-    if (location === "/") return "Dashboard";
-    if (location === "/portfolio") return "Portfolio View";
-    if (location === "/admin/scoring") return "Scoring Configuration";
+    if (PAGE_TITLES[location]) return PAGE_TITLES[location];
     const segment = location.split("/")[1];
     if (!segment) return "Dashboard";
-    const item = [...MAIN_NAV, ...PORTFOLIO_NAV, ...ADMIN_NAV].find(n => n.href === "/" + segment);
-    return item?.label || segment.charAt(0).toUpperCase() + segment.slice(1);
+    const bySegment = PAGE_TITLES["/" + segment];
+    return bySegment || segment.charAt(0).toUpperCase() + segment.slice(1);
   })();
 
   return (
@@ -292,8 +596,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Navigation */}
         <nav className="relative flex-1 py-2 overflow-y-auto scrollbar-thin">
-          <NavSection label="Navigation" items={MAIN_NAV} location={location} collapsed={effectiveCollapsed} />
-          <NavSection label="Portfolio" items={PORTFOLIO_NAV} location={location} collapsed={effectiveCollapsed} />
+          <PrimaryNav nodes={PRIMARY_NAV} location={location} collapsed={effectiveCollapsed} openGroups={openGroups} toggleGroup={toggleGroup} />
+          <NavSection label="Workspace" items={WORKSPACE_NAV} location={location} collapsed={effectiveCollapsed} />
           {isAdmin && <NavSection label="Admin" items={ADMIN_NAV} location={location} collapsed={effectiveCollapsed} />}
         </nav>
 
@@ -376,16 +680,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
           {/* User Info */}
           <div className={`flex items-center ${effectiveCollapsed ? "justify-center" : "gap-3 px-1"}`}>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-sm" title={effectiveCollapsed ? "John Doe" : undefined}>
-              JD
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-sm" title={effectiveCollapsed ? displayName : undefined}>
+              {initials}
             </div>
             {!effectiveCollapsed && (
               <>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-sidebar-foreground truncate">John Doe</div>
+                  <div className="text-sm font-semibold text-sidebar-foreground truncate">{displayName}</div>
                   <div className="text-[11px] capitalize truncate text-sidebar-foreground/50">{role.replace(/_/g, " ")}</div>
                 </div>
-                <button className="p-1.5 rounded-md text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
+                <button
+                  onClick={() => { void signOut(); }}
+                  title="Sign out"
+                  className="p-1.5 rounded-md text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                >
                   <LogOut size={14} />
                 </button>
               </>
@@ -432,6 +740,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </button>
             <ThemeToggle />
             <NotificationBell />
+            {isAdmin && (
+              <button
+                onClick={() => setConnectorsOpen(true)}
+                title="Connectors & Data Sources"
+                aria-label="Open connectors and data sources"
+                className="hidden sm:flex w-9 h-9 rounded-md items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-200"
+              >
+                <Plug size={16} />
+              </button>
+            )}
             <Link href="/admin/scoring">
               <button className="hidden sm:flex w-9 h-9 rounded-md items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-200" title="Scoring Configuration">
                 <Settings size={16} />
@@ -452,6 +770,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </main>
+
+      {/* Connectors & data-sources popup — globally available to admins,
+          additive (does not modify any existing page or route). */}
+      <ConnectorsPopup open={connectorsOpen} onClose={() => setConnectorsOpen(false)} />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { pgTable, text, serial, timestamp, integer, numeric, boolean } from "dri
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const scoringCriteriaTable = pgTable("scoring_criteria", {
+export const scoringCriteriaTable = pgTable("pmo_scoring_criteria", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   weightPct: numeric("weight_pct", { precision: 5, scale: 2 }).notNull().default("0"),
@@ -11,7 +11,7 @@ export const scoringCriteriaTable = pgTable("scoring_criteria", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const projectScoresTable = pgTable("project_scores", {
+export const projectScoresTable = pgTable("pmo_project_scores", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   criterionId: integer("criterion_id").notNull(),

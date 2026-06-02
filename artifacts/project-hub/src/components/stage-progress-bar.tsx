@@ -2,7 +2,7 @@ import { ProjectLifecycleCard } from "./project-lifecycle-card";
 
 interface StageProgressBarProps {
   currentStageKey: string;
-  stageRecords: Array<{ stage: string; status: string }>;
+  stageRecords: Array<{ stage: string; status: string; notes?: string | null }>;
   onStageClick?: (stageKey: string) => void;
   selectedStageKey?: string;
   role?: string;

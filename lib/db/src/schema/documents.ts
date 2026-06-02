@@ -2,7 +2,7 @@ import { pgTable, text, serial, timestamp, integer, jsonb } from "drizzle-orm/pg
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const documentsTable = pgTable("documents", {
+export const documentsTable = pgTable("pmo_documents", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   stage: text("stage"),
@@ -22,7 +22,7 @@ export const documentsTable = pgTable("documents", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const documentVersionsTable = pgTable("document_versions", {
+export const documentVersionsTable = pgTable("pmo_document_versions", {
   id: serial("id").primaryKey(),
   documentId: integer("document_id").notNull(),
   version: integer("version").notNull(),

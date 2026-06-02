@@ -38,7 +38,7 @@ export default function NewDemand() {
         data: {
           name: name.trim(),
           description: description.trim() || undefined,
-          stage: "project_case",
+          stage: "initiation",
           priority: "p2_medium",
           ragStatus: "green",
         },
@@ -46,13 +46,13 @@ export default function NewDemand() {
       await createStage.mutateAsync({
         id: project.id,
         data: {
-          stage: "project_case",
+          stage: "initiation",
           status: "in_progress",
-          notes: sponsor ? JSON.stringify({ __projectCase: { sponsor } }) : undefined,
+          notes: sponsor ? JSON.stringify({ __demand_initiation: { sponsor } }) : undefined,
         },
       });
-      toast({ title: "Demand created", description: `${project.name} is now in Business Case stage.` });
-      navigate(`/projects/${project.id}?stage=project_case`);
+      toast({ title: "Demand created", description: `${project.name} is now in the Initiation stage (Business Case).` });
+      navigate(`/projects/${project.id}?stage=initiation`);
     } catch (err) {
       toast({ title: "Failed to create demand", description: String(err), variant: "destructive" });
     }
@@ -65,7 +65,7 @@ export default function NewDemand() {
           <ChevronLeft size={14} /> Back to Dashboard
         </Link>
         <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground">
-          Stage 1 of 16 · FR-01 · Demand Initiation
+          Stage 1 of 9 · Initiation
         </p>
         <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-card-foreground mt-1">New Demand</h1>
         <p className="text-sm text-muted-foreground mt-2 max-w-2xl">

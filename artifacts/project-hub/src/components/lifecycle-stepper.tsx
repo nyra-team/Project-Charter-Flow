@@ -1,28 +1,22 @@
 import { LIFECYCLE_STAGES, getStageIndex } from "../lib/lifecycle-config";
 import {
-  Check, FileSearch, ClipboardList, FileText, Scale, ScrollText,
-  ShieldCheck, Gavel, Receipt, Rocket, Compass, Code2, Workflow,
-  TestTube, Zap, ClipboardCheck, Flag,
+  Check, FileText, FileSearch, Scale, ShieldCheck,
+  Gavel, Compass, Code2,
+  TestTube, Zap, Flag,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+// Keyed by the 9 Option-B stage keys (see lifecycle-config.ts).
 export const STAGE_ICONS: Record<string, LucideIcon> = {
-  project_case:        FileSearch,
-  urs:                 ClipboardList,
-  rfp:                 FileText,
-  vendor_evaluation:   Scale,
-  charter:             ScrollText,
-  nfa:                 ShieldCheck,
-  legal:               Gavel,
-  pr_po:               Receipt,
-  kickoff:             Rocket,
-  technical_design:    Compass,
-  development:         Code2,
-  implementation_plan: Workflow,
-  uat:                 TestTube,
-  go_live:             Zap,
-  closure_readiness:   ClipboardCheck,
-  project_closure:     Flag,
+  initiation:               FileSearch,
+  vendor_selection:         Scale,
+  investment_authorization: ShieldCheck,
+  contract_po:              Gavel,
+  design:                   Compass,
+  build:                    Code2,
+  uat:                      TestTube,
+  go_live:                  Zap,
+  closure:                  Flag,
 };
 
 export type StageStatus = "complete" | "active" | "upcoming";
@@ -124,7 +118,7 @@ export function LifecycleStepper({
                       : <Icon size={iconSize} strokeWidth={2.2} />}
                   </span>
                   {count != null && count > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-accent text-[10px] font-mono font-bold text-background flex items-center justify-center border-2 border-card">
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-amber-accent text-[10px] font-bold text-background flex items-center justify-center border-2 border-card">
                       {count}
                     </span>
                   )}
@@ -137,7 +131,7 @@ export function LifecycleStepper({
                 >
                   {stage.shortLabel}
                 </span>
-                <span className="text-[9px] font-mono text-muted-foreground/60 leading-none">
+                <span className="text-[9px] text-muted-foreground/60 leading-none">
                   {String(idx + 1).padStart(2, "0")}
                 </span>
               </button>

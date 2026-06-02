@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ChevronLeft, Edit2, Send, FolderOpen,
-  CheckCircle2, XCircle, Clock, DollarSign,
+  CheckCircle2, XCircle, Clock, IndianRupee,
   Users, AlertTriangle, Building2, Target, TrendingUp, Save, X,
 } from "lucide-react";
 
@@ -277,7 +277,7 @@ export default function CharterDetail() {
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-white"
                 style={{ background: "linear-gradient(135deg,#F59E0B,#D97706)" }}
               >
-                <DollarSign size={14} />
+                <IndianRupee size={14} />
                 Enter Negotiated Price
               </button>
             )}

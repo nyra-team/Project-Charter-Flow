@@ -49,7 +49,7 @@ export function URSDualApprovalSection({ projectId }: { projectId: number }) {
 
   const ursRecord = (
     stages as Array<{ id: number; stage: string; notes?: string | null }>
-  ).find((s) => s.stage === "urs");
+  ).find((s) => s.stage === "initiation");
 
   const parsedNotes: Record<string, unknown> = (() => {
     try { return JSON.parse(ursRecord?.notes ?? "{}"); }
@@ -159,8 +159,11 @@ export function URSDualApprovalSection({ projectId }: { projectId: number }) {
     );
   }
 
-  const canApproveBiz = role === "hod" || role === "executive_director";
-  const canApproveIT = role === "pmo" || role === "hod";
+  // URS sign-off is gated on Business Case approval (Option D sequencing).
+  // Drafting/saving the URS is always allowed; only the approvals wait for BC.
+  const bcApproved = parsedNotes.__bc_approved === true;
+  const canApproveBiz = (role === "hod" || role === "executive_director") && bcApproved;
+  const canApproveIT = (role === "pmo" || role === "hod") && bcApproved;
 
   const reqCount = funcReqs.split("\n").filter(l => l.trim().length > 0).length;
   const funcOk = reqCount >= 3;
@@ -302,7 +305,12 @@ export function URSDualApprovalSection({ projectId }: { projectId: number }) {
 
       {/* Dual approval */}
       <p className="text-sm font-bold text-foreground pt-3 border-t border-border">URS Dual-Approval</p>
-      <p className="text-xs text-primary">Both Business Owner and IT Team must approve before advancing to RFP.</p>
+      <p className="text-xs text-primary">Both Business Owner and IT Team must approve before advancing.</p>
+      {!bcApproved && (
+        <div className="rounded-lg p-2.5 bg-warn/10 border border-warn/30">
+          <p className="text-xs text-warn font-medium">URS sign-off is locked until the Business Case is approved. You can keep drafting the URS in the meantime — approve the Business Case (in its tab) to unlock these buttons.</p>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div className={`rounded-xl p-3 border-2 ${bizApproved ? "border-success/40 bg-card" : "border-border bg-card"}`}>
           <p className="text-xs font-bold mb-1" style={{ color: bizApproved ? "hsl(var(--success) / 1)" : "hsl(var(--warn) / 1)" }}>

@@ -1,7 +1,35 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { supabase } from "../lib/supabase";
+import { supabase, getPortalLoginUrl } from "../lib/supabase";
 import { AuthContext } from "./context";
 import type { AuthUser, Profile } from "./types";
+import { useUserStore } from "../lib/store";
+
+/**
+ * Hydrate the legacy zustand `useUserStore` (numeric pmo_users.id +
+ * simulated role) from the authenticated employee's real pmo_users row.
+ *
+ * The backend `/api/users/me` endpoint auto-provisions a pmo_users row on
+ * first sight, so this works for any newly-granted access_pmo employee
+ * without any DB seeding. Failures are logged but non-fatal — the app
+ * still renders, just with the seeded mock user id as a fallback.
+ */
+async function hydrateLocalUser(): Promise<void> {
+  try {
+    const res = await fetch("/api/users/me");
+    if (!res.ok) {
+      console.warn("[auth] /api/users/me returned", res.status);
+      return;
+    }
+    const row = await res.json() as { id: number; role: string };
+    if (typeof row?.id === "number") {
+      const store = useUserStore.getState();
+      store.setUserId(row.id);
+      if (row.role) store.setRole(row.role);
+    }
+  } catch (err) {
+    console.warn("[auth] /api/users/me failed", err);
+  }
+}
 
 const SESSION_TIMEOUT_MS = 8 * 60 * 60 * 1000;
 const SESSION_START_KEY = "granules-session-start";
@@ -23,7 +51,7 @@ async function fetchProfile(userId: string, userEmail: string): Promise<Profile 
 
   const { data: emp } = await supabase
     .from("employees")
-    .select("id, employee_code, first_name, last_name, office_email, employee_auth(access_pmo, is_admin, is_super_admin)")
+    .select("id, employee_code, first_name, last_name, office_email, employee_auth(access_pmo, pmo_role, is_admin, is_super_admin)")
     .ilike("office_email", emailLower)
     .maybeSingle();
 
@@ -36,6 +64,7 @@ async function fetchProfile(userId: string, userEmail: string): Promise<Profile 
       employee_code: emp.employee_code ?? null,
       employee_id: emp.id ?? null,
       access_pmo: auth?.access_pmo ?? false,
+      pmo_role: auth?.pmo_role === "admin" ? "admin" : null,
       is_admin: auth?.is_admin ?? false,
       is_super_admin: auth?.is_super_admin ?? false,
     };
@@ -43,7 +72,7 @@ async function fetchProfile(userId: string, userEmail: string): Promise<Profile 
 
   const { data: ct } = await supabase
     .from("contractual_employees")
-    .select("id, employee_code, first_name, last_name, office_email, employee_auth(access_pmo, is_admin, is_super_admin)")
+    .select("id, employee_code, first_name, last_name, office_email, employee_auth(access_pmo, pmo_role, is_admin, is_super_admin)")
     .ilike("office_email", emailLower)
     .maybeSingle();
 
@@ -56,6 +85,7 @@ async function fetchProfile(userId: string, userEmail: string): Promise<Profile 
       employee_code: ct.employee_code ?? null,
       employee_id: ct.id ?? null,
       access_pmo: auth?.access_pmo ?? false,
+      pmo_role: auth?.pmo_role === "admin" ? "admin" : null,
       is_admin: auth?.is_admin ?? false,
       is_super_admin: auth?.is_super_admin ?? false,
     };
@@ -66,6 +96,9 @@ async function fetchProfile(userId: string, userEmail: string): Promise<Profile 
 
 interface AuthConsumerProps {
   children: ReactNode;
+  /** Optional override. Default: derived from window.location via
+   *  getPortalLoginUrl() so the redirect works across same-machine
+   *  localhost, LAN-IP dev, and prod subdomain access. */
   loginUrl?: string;
 }
 
@@ -80,8 +113,7 @@ interface AuthConsumerProps {
  *   - No sign-in UI here — auth happens in Portal.
  */
 export function AuthConsumer({ children, loginUrl }: AuthConsumerProps) {
-  const portalLoginUrl =
-    loginUrl ?? (import.meta.env["VITE_PORTAL_LOGIN_URL"] as string | undefined) ?? "/login";
+  const portalLoginUrl = loginUrl ?? getPortalLoginUrl();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -134,6 +166,10 @@ export function AuthConsumer({ children, loginUrl }: AuthConsumerProps) {
       }
 
       setProfile(dbProfile);
+      // Fire-and-forget hydration of the local pmo_users id/role. Doesn't
+      // block render — the app shows the master DB name immediately;
+      // useUserStore.userId catches up moments later.
+      void hydrateLocalUser();
       setLoading(false);
       setProfileReady(true);
     }).catch((err) => {

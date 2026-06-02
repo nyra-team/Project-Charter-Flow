@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useRoute, Link, useSearch } from "wouter";
 import {
   useGetProject, useListMilestones, useListTasks,
@@ -21,13 +21,28 @@ import {
   LayoutGrid, Kanban, Table2, Star, Users, DollarSign, FileText,
   Shield, AlertCircle, UserCheck, Zap, MessageSquare, History,
   TrendingUp, GitBranch, Calendar as CalendarIcon, Sparkles,
+  ShoppingCart, ZoomIn, ZoomOut, Maximize2, MoreHorizontal, Check,
+  Eye, Stamp, Lightbulb, ListTree,
 } from "lucide-react";
+import { RAGBadge } from "../components/dashboard/primitives";
+import { PhaseChip } from "@/components/ui-kit";
+import { api } from "@/lib/extra-api";
+import { useToast } from "@/hooks/use-toast";
+import { WbsTree, type WbsTask, type WbsMilestone } from "../components/wbs-tree";
+import { TaskDetailModal } from "../components/task-detail-modal";
+import type { AggTask } from "@/lib/work-types";
+import { ProjectApprovalsTab } from "../components/project-approvals-tab";
+import { LessonsLearnedTab } from "../components/lessons-learned-tab";
+import {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { MessagesTab } from "../components/messages-tab";
 import { AuditTab } from "../components/audit-tab";
 import { BenefitsTab } from "../components/benefits-tab";
 import { ChangeRequestsTab } from "../components/change-requests-tab";
 import { MeetingsTab } from "../components/meetings-tab";
 import { AiButton, AiResultPanel } from "../components/ai-button";
+import { JiraExportButton } from "../components/jira-sync";
 import { EffortBurnChart } from "../components/effort-burn-chart";
 import { ResourceTab } from "../components/resource-tab";
 import { BudgetTab } from "../components/budget-tab";
@@ -37,6 +52,7 @@ import { IssuesTab } from "../components/issues-tab";
 import { RaciTab } from "../components/raci-tab";
 import { EscalationRulesTab } from "../components/escalation-rules-tab";
 import { StageProgressBar } from "../components/stage-progress-bar";
+import { CriticalPathLane } from "../components/critical-path-lane";
 import { StagePanel } from "../components/stage-panel";
 import { getCurrentStageKey, LIFECYCLE_STAGES } from "../lib/lifecycle-config";
 import { useUserStore } from "../lib/store";
@@ -45,13 +61,214 @@ import { MilestoneGrid, type GridMilestone } from "../components/milestone-grid"
 import { ConnectBoard } from "../components/connect-board";
 import { ProgressTrackingPanel } from "../components/progress-tracking-panel";
 import { TaskFilterBar, applyTaskFilters, type TaskFilters } from "../components/task-filter-bar";
+import { SaveAsTemplateButton } from "../components/save-as-template-button";
+import { ViewsMenu } from "../components/views-menu";
+import { useUserView } from "../hooks/use-user-view";
+import { ProcurementTab } from "../components/procurement-tab";
+import { RichDescription } from "../components/speed-champion";
 import { getStatusMeta, fmtVariance, getPriorityMeta, TASK_PRIORITIES } from "../lib/task-constants";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const DAY_MS = 86_400_000;
 const ROW_H = 40;
 const LEFT_W = 260;
-const DAY_W = 28;
+// Default day-width is now derived from the active zoom preset (see
+// ZOOM_PRESETS below). DAY_W is kept as the "Week" preset's value so any
+// non-Gantt site that still references it (none today) doesn't break.
+const DAY_W = 24;
+
+// ── Gantt zoom presets ──────────────────────────────────────────────────────
+//
+// Discrete levels keep header labels legible at every zoom — continuous
+// zoom would make labels collide / cut off below ~1 px/day. Each preset
+// owns:
+//   - dayWidth     : px per calendar day (drives the SVG width + bar geometry)
+//   - bucketBuilder: takes (minDate, maxDate, dayWidth) → header tiles
+//                    aligned to natural calendar boundaries (Sunday-start
+//                    weeks, calendar month, calendar Q, calendar H)
+//   - description  : tooltip copy for the toolbar
+//
+// Step zoom in/out walks left/right through this ordered array.
+type ZoomKey = "week" | "fortnight" | "month" | "quarter" | "half";
+
+type GanttBucket = { x: number; w: number; label: string };
+
+interface ZoomPreset {
+  key: ZoomKey;
+  label: string;
+  shortLabel: string;
+  dayWidth: number;
+  description: string;
+  buildBuckets: (minDate: Date, maxDate: Date, dayWidth: number) => GanttBucket[];
+}
+
+const ZOOM_PRESETS: ZoomPreset[] = [
+  {
+    key: "week",
+    label: "Week",
+    shortLabel: "W",
+    dayWidth: 24,
+    description: "Weekly granularity — date labels per Sunday",
+    buildBuckets: weekBuckets,
+  },
+  {
+    key: "fortnight",
+    label: "Fortnight",
+    shortLabel: "2W",
+    dayWidth: 12,
+    description: "2-week buckets — useful for monthly stand-up reviews",
+    buildBuckets: fortnightBuckets,
+  },
+  {
+    key: "month",
+    label: "Month",
+    shortLabel: "M",
+    dayWidth: 5,
+    description: "Calendar month buckets",
+    buildBuckets: monthBuckets,
+  },
+  {
+    key: "quarter",
+    label: "Quarter",
+    shortLabel: "Q",
+    dayWidth: 2,
+    description: "Calendar quarter buckets — Q1 (Jan–Mar) etc.",
+    buildBuckets: quarterBuckets,
+  },
+  {
+    key: "half",
+    label: "Half-year",
+    shortLabel: "H",
+    dayWidth: 1.2,
+    description: "Half-year buckets — H1 (Jan–Jun), H2 (Jul–Dec)",
+    buildBuckets: halfBuckets,
+  },
+];
+
+function dayXFor(d: Date, minDate: Date, dayWidth: number) {
+  return ((d.getTime() - minDate.getTime()) / DAY_MS) * dayWidth;
+}
+
+// ── Bucket builders ─────────────────────────────────────────────────────────
+//
+// Each returns header tiles for the chart's date range. Labels are dropped
+// (kept as "" so the tile still draws the divider) when the tile is narrower
+// than ~40px — otherwise text would clash at coarse zoom.
+
+const LABEL_MIN_WIDTH = 36;
+
+function weekBuckets(min: Date, max: Date, dayWidth: number): GanttBucket[] {
+  const out: GanttBucket[] = [];
+  const d = new Date(min);
+  d.setDate(d.getDate() - d.getDay()); // back to Sunday
+  while (d < max) {
+    const x = Math.max(0, dayXFor(d, min, dayWidth));
+    const nd = new Date(d); nd.setDate(nd.getDate() + 7);
+    const nx = dayXFor(nd, min, dayWidth);
+    if (nx > x) {
+      out.push({
+        x,
+        w: nx - x,
+        label: nx - x >= LABEL_MIN_WIDTH ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "",
+      });
+    }
+    d.setDate(d.getDate() + 7);
+  }
+  return out;
+}
+
+function fortnightBuckets(min: Date, max: Date, dayWidth: number): GanttBucket[] {
+  const out: GanttBucket[] = [];
+  const d = new Date(min);
+  d.setDate(d.getDate() - d.getDay()); // align to Sunday
+  while (d < max) {
+    const x = Math.max(0, dayXFor(d, min, dayWidth));
+    const nd = new Date(d); nd.setDate(nd.getDate() + 14);
+    const nx = dayXFor(nd, min, dayWidth);
+    if (nx > x) {
+      const labelEnd = new Date(d); labelEnd.setDate(labelEnd.getDate() + 13);
+      const label = nx - x >= LABEL_MIN_WIDTH
+        ? `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${labelEnd.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+        : "";
+      out.push({ x, w: nx - x, label });
+    }
+    d.setDate(d.getDate() + 14);
+  }
+  return out;
+}
+
+function monthBuckets(min: Date, max: Date, dayWidth: number): GanttBucket[] {
+  const out: GanttBucket[] = [];
+  const d = new Date(min.getFullYear(), min.getMonth(), 1);
+  while (d < max) {
+    const nd = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+    const x = Math.max(0, dayXFor(d, min, dayWidth));
+    const nx = dayXFor(nd, min, dayWidth);
+    if (nx > x) {
+      out.push({
+        x,
+        w: nx - x,
+        label: nx - x >= LABEL_MIN_WIDTH ? d.toLocaleDateString("en-US", { month: "short", year: "2-digit" }) : "",
+      });
+    }
+    d.setMonth(d.getMonth() + 1);
+  }
+  return out;
+}
+
+function quarterBuckets(min: Date, max: Date, dayWidth: number): GanttBucket[] {
+  const out: GanttBucket[] = [];
+  const startMonth = Math.floor(min.getMonth() / 3) * 3;
+  const d = new Date(min.getFullYear(), startMonth, 1);
+  while (d < max) {
+    const nd = new Date(d.getFullYear(), d.getMonth() + 3, 1);
+    const x = Math.max(0, dayXFor(d, min, dayWidth));
+    const nx = dayXFor(nd, min, dayWidth);
+    if (nx > x) {
+      const q = Math.floor(d.getMonth() / 3) + 1;
+      out.push({
+        x,
+        w: nx - x,
+        label: nx - x >= LABEL_MIN_WIDTH ? `Q${q} ${d.getFullYear()}` : `Q${q}`,
+      });
+    }
+    d.setMonth(d.getMonth() + 3);
+  }
+  return out;
+}
+
+function halfBuckets(min: Date, max: Date, dayWidth: number): GanttBucket[] {
+  const out: GanttBucket[] = [];
+  const startMonth = min.getMonth() < 6 ? 0 : 6;
+  const d = new Date(min.getFullYear(), startMonth, 1);
+  while (d < max) {
+    const nd = new Date(d.getFullYear(), d.getMonth() + 6, 1);
+    const x = Math.max(0, dayXFor(d, min, dayWidth));
+    const nx = dayXFor(nd, min, dayWidth);
+    if (nx > x) {
+      const h = d.getMonth() < 6 ? 1 : 2;
+      out.push({
+        x,
+        w: nx - x,
+        label: nx - x >= LABEL_MIN_WIDTH ? `H${h} ${d.getFullYear()}` : `H${h}`,
+      });
+    }
+    d.setMonth(d.getMonth() + 6);
+  }
+  return out;
+}
+
+/**
+ * Pick the smallest preset (highest day-width) whose total chart width
+ * still fits inside the available viewport. Used by the "Fit to project"
+ * button.
+ */
+function pickFitZoom(totalDays: number, viewportW: number): ZoomKey {
+  for (const p of ZOOM_PRESETS) {
+    if (totalDays * p.dayWidth <= viewportW) return p.key;
+  }
+  return "half";
+}
 
 function toDate(s?: string | null): Date | null {
   if (!s) return null;
@@ -60,7 +277,12 @@ function toDate(s?: string | null): Date | null {
 }
 
 type MilestoneRaw = {
-  id: number; name: string; dueDate?: string | null; status: string;
+  id: number; name: string;
+  // startDate is optional — when present alongside dueDate, the Gantt renders
+  // the milestone as a duration bar instead of a diamond. Backed by the
+  // pmo_milestones.start_date column (see add-milestone-start-date.sql).
+  startDate?: string | null;
+  dueDate?: string | null; status: string;
   description?: string | null; priority?: string; rag?: string | null;
   actualStart?: string | null; actualEnd?: string | null;
   plannedEffortHours?: number | null; scheduleVarianceDays?: number | null;
@@ -86,7 +308,12 @@ function datesForProject(project: { startDate?: string | null; endDate?: string 
   if (p) dates.push(p);
   const ep = toDate(project.endDate);
   if (ep) dates.push(ep);
-  for (const m of milestones) { const d = toDate(m.dueDate); if (d) dates.push(d); }
+  for (const m of milestones) {
+    const s = toDate(m.startDate);
+    const d = toDate(m.dueDate);
+    if (s) dates.push(s);
+    if (d) dates.push(d);
+  }
   for (const t of tasks) {
     const s = toDate(t.startDate); const e = toDate(t.endDate);
     if (s) dates.push(s); if (e) dates.push(e);
@@ -99,14 +326,41 @@ function datesForProject(project: { startDate?: string | null; endDate?: string 
 }
 
 // ── Gantt SVG ────────────────────────────────────────────────────────────────
+//
+// `zoomKey` selects one of ZOOM_PRESETS. The component is intentionally
+// stateless on zoom — the parent owns the zoomKey + scrollRef so the
+// toolbar can switch presets and preserve the date-at-center on re-render.
 function GanttChart({
-  milestones, tasks, criticalIds, minDate, maxDate,
+  milestones, tasks, criticalIds, minDate, maxDate, zoomKey, scrollRef,
 }: {
   milestones: MilestoneRaw[]; tasks: TaskRaw[];
   criticalIds: Set<number>; minDate: Date; maxDate: Date;
+  zoomKey: ZoomKey;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
 }) {
+  const preset = ZOOM_PRESETS.find(p => p.key === zoomKey) ?? ZOOM_PRESETS[0];
+  const dayWidth = preset.dayWidth;
   const totalDays = Math.ceil((maxDate.getTime() - minDate.getTime()) / DAY_MS);
-  const svgW = totalDays * DAY_W;
+  const svgW = totalDays * dayWidth;
+
+  // ── Milestone hover state ──────────────────────────────────────────────
+  // When a milestone bar / diamond is hovered, we draw vertical guide-lines
+  // at its startDate and dueDate plus floating date pills at the top of
+  // the chart, and brighten the bar fill. SVG-native so it scales with
+  // the chart at any zoom level.
+  type HoverInfo = {
+    id: number;
+    name: string;
+    startX?: number;
+    endX: number;
+    startDate?: Date;
+    dueDate: Date;
+    bandTop: number;   // y of the row's top edge
+    bandHeight: number; // ROW_H
+  };
+  const [hover, setHover] = useState<HoverInfo | null>(null);
+  const fmtHoverDate = (d: Date) =>
+    d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
   type Row = { type: "milestone"; item: MilestoneRaw } | { type: "task"; item: TaskRaw };
   const rows: Row[] = [];
@@ -125,36 +379,38 @@ function GanttChart({
   const svgH = rows.length * ROW_H + 56;
 
   function dayX(d: Date) {
-    return ((d.getTime() - minDate.getTime()) / DAY_MS) * DAY_W;
+    return ((d.getTime() - minDate.getTime()) / DAY_MS) * dayWidth;
   }
 
   function rowBarProps(row: Row) {
     if (row.type === "milestone") {
+      const ss = toDate(row.item.startDate);
       const dd = toDate(row.item.dueDate);
-      if (!dd) return null;
-      const cx = dayX(dd);
-      return { cx, type: "milestone" as const };
+      if (!dd && !ss) return null;
+      // When both dates exist, render as a duration bar (with the diamond
+      // marker kept at the dueDate end so the milestone identity stays
+      // visible). Falls back to the legacy diamond-only rendering when
+      // only dueDate is set.
+      if (ss && dd) {
+        const startX = dayX(ss);
+        const endX = dayX(dd);
+        const w = Math.max(endX - startX, 8);
+        return { x: startX, w, cx: endX, type: "milestone-bar" as const, startDate: ss, dueDate: dd };
+      }
+      const cx = dayX(dd ?? ss!);
+      return { cx, type: "milestone" as const, dueDate: (dd ?? ss!) };
     }
     const t = row.item as TaskRaw;
     const s = toDate(t.startDate); const e = toDate(t.endDate);
     if (!s) return null;
     const startX = dayX(s);
-    const endX = e ? dayX(e) : startX + (t.estimatedHours ? (t.estimatedHours / 8) * DAY_W : 3 * DAY_W);
+    const endX = e ? dayX(e) : startX + (t.estimatedHours ? (t.estimatedHours / 8) * dayWidth : 3 * dayWidth);
     const w = Math.max(endX - startX, 6);
     return { x: startX, w, type: "task" as const };
   }
 
-  const weeks: { label: string; x: number; w: number }[] = [];
-  const d = new Date(minDate); d.setDate(d.getDate() - d.getDay());
-  while (d < maxDate) {
-    const wx = Math.max(0, dayX(d));
-    const nd = new Date(d); nd.setDate(nd.getDate() + 7);
-    const nwx = Math.min(svgW, dayX(nd));
-    if (nwx > wx) {
-      weeks.push({ label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }), x: wx, w: nwx - wx });
-    }
-    d.setDate(d.getDate() + 7);
-  }
+  // Header buckets delegated to the active preset.
+  const weeks = preset.buildBuckets(minDate, maxDate, dayWidth);
 
   const todayX = dayX(new Date());
 
@@ -230,7 +486,7 @@ function GanttChart({
         ))}
       </div>
 
-      <div className="flex-1 overflow-x-auto">
+      <div ref={scrollRef} className="flex-1 overflow-x-auto">
         <svg width={svgW} height={svgH} style={{ display: "block" }}>
           {rows.map((row, i) => (
             <rect key={`bg-${i}`} x={0} y={56 + i * ROW_H} width={svgW} height={ROW_H} fill={i % 2 === 0 ? "hsl(var(--card))" : "hsl(var(--muted) / 0.25)"} />
@@ -268,12 +524,71 @@ function GanttChart({
             const isDone = row.item.status === "completed";
             if (bp.type === "milestone") {
               const size = 9;
+              const m = row.item as MilestoneRaw;
+              const isHovered = hover?.id === m.id;
               return (
-                <g key={`bar-${i}`}>
+                <g
+                  key={`bar-${i}`}
+                  style={{ cursor: "pointer" }}
+                  onMouseEnter={() => setHover({
+                    id: m.id, name: m.name, endX: bp.cx, dueDate: bp.dueDate,
+                    bandTop: y, bandHeight: ROW_H,
+                  })}
+                  onMouseLeave={() => setHover(h => (h?.id === m.id ? null : h))}
+                >
+                  {/* Wider invisible hit target so users don't have to land pixel-perfect on the diamond */}
+                  <rect x={bp.cx - 14} y={y} width={28} height={ROW_H} fill="transparent" />
                   <polygon
                     points={`${bp.cx},${y + ROW_H / 2 - size} ${bp.cx + size},${y + ROW_H / 2} ${bp.cx},${y + ROW_H / 2 + size} ${bp.cx - size},${y + ROW_H / 2}`}
-                    fill="hsl(var(--primary))" opacity={0.9}
+                    fill="hsl(var(--primary))"
+                    opacity={isHovered ? 1 : 0.9}
+                    stroke={isHovered ? "hsl(var(--primary))" : "none"}
+                    strokeWidth={isHovered ? 2 : 0}
                   />
+                  <title>{`${m.name}\nDue: ${fmtHoverDate(bp.dueDate)}`}</title>
+                </g>
+              );
+            }
+            if (bp.type === "milestone-bar") {
+              // Milestone with planned start AND due → render as a slimmer
+              // bar (visually distinct from task bars) capped with a diamond
+              // at the dueDate end so the row still reads as "milestone".
+              const barH = 10;
+              const by = y + (ROW_H - barH) / 2;
+              const size = 8;
+              const dx = bp.cx;
+              const m = row.item as MilestoneRaw;
+              const isHovered = hover?.id === m.id;
+              const fill = isDone ? "hsl(var(--success))" : "hsl(var(--primary))";
+              return (
+                <g
+                  key={`bar-${i}`}
+                  style={{ cursor: "pointer" }}
+                  onMouseEnter={() => setHover({
+                    id: m.id, name: m.name, startX: bp.x, endX: bp.cx,
+                    startDate: bp.startDate, dueDate: bp.dueDate,
+                    bandTop: y, bandHeight: ROW_H,
+                  })}
+                  onMouseLeave={() => setHover(h => (h?.id === m.id ? null : h))}
+                >
+                  <rect
+                    x={bp.x}
+                    y={by}
+                    width={bp.w}
+                    height={barH}
+                    rx={5}
+                    fill={fill}
+                    opacity={isHovered ? 0.95 : (isDone ? 0.55 : 0.7)}
+                    stroke={fill}
+                    strokeWidth={isHovered ? 2 : 1}
+                    strokeDasharray={isHovered ? "0" : "3 2"}
+                  />
+                  <polygon
+                    points={`${dx},${y + ROW_H / 2 - size} ${dx + size},${y + ROW_H / 2} ${dx},${y + ROW_H / 2 + size} ${dx - size},${y + ROW_H / 2}`}
+                    fill={fill}
+                    opacity={isHovered ? 1 : 0.95}
+                  />
+                  <title>{`${m.name}\nStart: ${fmtHoverDate(bp.startDate)}\nDue: ${fmtHoverDate(bp.dueDate)}`}</title>
                 </g>
               );
             }
@@ -299,8 +614,285 @@ function GanttChart({
               </g>
             );
           })}
+
+          {/* ── Hover overlay — guide lines + floating date pills ─────── */}
+          {hover && (() => {
+            // Date pill geometry. Width is generous enough for "01 Jan 2026".
+            const pillW = 88;
+            const pillH = 18;
+            const pillY = 36; // sits inside the 56-px header band
+
+            // Pin pills within the chart area so they don't render off-screen
+            // at the very start / end of the project span.
+            const clampX = (x: number) => Math.max(pillW / 2 + 2, Math.min(svgW - pillW / 2 - 2, x));
+
+            const lines: React.ReactNode[] = [];
+            const pills: React.ReactNode[] = [];
+
+            // Start-date guide (only when present — diamond-only milestones
+            // have no startDate).
+            if (hover.startX !== undefined && hover.startDate) {
+              const x = hover.startX;
+              const px = clampX(x);
+              lines.push(
+                <line key="start-line" x1={x} y1={0} x2={x} y2={svgH}
+                      stroke="hsl(var(--primary))" strokeWidth={1.5}
+                      strokeDasharray="4 3" opacity={0.7} />
+              );
+              pills.push(
+                <g key="start-pill">
+                  <rect x={px - pillW / 2} y={pillY} width={pillW} height={pillH} rx={4}
+                        fill="hsl(var(--primary))" />
+                  <text x={px} y={pillY + 12} textAnchor="middle"
+                        fontSize={10} fontWeight={600} fill="hsl(var(--primary-foreground))">
+                    Start · {fmtHoverDate(hover.startDate)}
+                  </text>
+                </g>
+              );
+            }
+
+            // End-date guide (always present — every milestone has a dueDate
+            // or it wouldn't have rendered a bar/diamond).
+            {
+              const x = hover.endX;
+              const px = clampX(x);
+              lines.push(
+                <line key="end-line" x1={x} y1={0} x2={x} y2={svgH}
+                      stroke="hsl(var(--primary))" strokeWidth={1.5}
+                      strokeDasharray="4 3" opacity={0.7} />
+              );
+              pills.push(
+                <g key="end-pill">
+                  <rect x={px - pillW / 2} y={pillY} width={pillW} height={pillH} rx={4}
+                        fill="hsl(var(--primary))" />
+                  <text x={px} y={pillY + 12} textAnchor="middle"
+                        fontSize={10} fontWeight={600} fill="hsl(var(--primary-foreground))">
+                    Due · {fmtHoverDate(hover.dueDate)}
+                  </text>
+                </g>
+              );
+            }
+
+            // Subtle row highlight band so users can tell which row the
+            // hover belongs to when scrolled.
+            return (
+              <g style={{ pointerEvents: "none" }}>
+                <rect x={0} y={hover.bandTop} width={svgW} height={hover.bandHeight}
+                      fill="hsl(var(--primary) / 0.06)" />
+                {lines}
+                {pills}
+              </g>
+            );
+          })()}
         </svg>
       </div>
+    </div>
+  );
+}
+
+// ── Gantt tab wrapper — owns zoom state + toolbar + scroll preservation ─────
+//
+// Lifted out of project-detail.tsx's main render so the zoom controls don't
+// re-trigger the whole project-detail tree on every preset change. The
+// wrapper captures the date at scroll-center BEFORE a zoom change and
+// re-applies it AFTER the re-render, so "zoom in" doesn't lose your place.
+function GanttTab({
+  milestones, tasks, criticalIds, minDate, maxDate,
+  availableComponents = [], componentFilter = "", onComponentChange,
+}: {
+  milestones: MilestoneRaw[]; tasks: TaskRaw[];
+  criticalIds: Set<number>; minDate: Date; maxDate: Date;
+  availableComponents?: string[]; componentFilter?: string;
+  onComponentChange?: (v: string) => void;
+}) {
+  const [zoomKey, setZoomKey] = useState<ZoomKey>("week");
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  // Pending date-to-recenter-on, captured at the moment zoom changes.
+  const pendingCenterDateRef = useRef<Date | null>(null);
+  const lastZoomKeyRef = useRef<ZoomKey>(zoomKey);
+
+  function changeZoom(next: ZoomKey) {
+    if (next === zoomKey) return;
+    // Snapshot the date currently at the horizontal centre of the viewport
+    // so the post-render effect can scroll back to it.
+    const el = scrollRef.current;
+    if (el) {
+      const oldPreset = ZOOM_PRESETS.find((p) => p.key === zoomKey)!;
+      const centerX = el.scrollLeft + el.clientWidth / 2;
+      const dayOffset = centerX / oldPreset.dayWidth;
+      pendingCenterDateRef.current = new Date(minDate.getTime() + dayOffset * DAY_MS);
+    }
+    setZoomKey(next);
+  }
+
+  useEffect(() => {
+    if (zoomKey === lastZoomKeyRef.current) return;
+    lastZoomKeyRef.current = zoomKey;
+    const el = scrollRef.current;
+    const date = pendingCenterDateRef.current;
+    if (!el || !date) return;
+    const newPreset = ZOOM_PRESETS.find((p) => p.key === zoomKey)!;
+    const dayOffset = (date.getTime() - minDate.getTime()) / DAY_MS;
+    el.scrollLeft = Math.max(0, dayOffset * newPreset.dayWidth - el.clientWidth / 2);
+    pendingCenterDateRef.current = null;
+  }, [zoomKey, minDate]);
+
+  function zoomIn() {
+    const i = ZOOM_PRESETS.findIndex((p) => p.key === zoomKey);
+    if (i > 0) changeZoom(ZOOM_PRESETS[i - 1].key);
+  }
+  function zoomOut() {
+    const i = ZOOM_PRESETS.findIndex((p) => p.key === zoomKey);
+    if (i < ZOOM_PRESETS.length - 1) changeZoom(ZOOM_PRESETS[i + 1].key);
+  }
+  function handleFit() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const totalDays = Math.ceil((maxDate.getTime() - minDate.getTime()) / DAY_MS);
+    const next = pickFitZoom(totalDays, el.clientWidth);
+    changeZoom(next);
+  }
+  function scrollToToday() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const preset = ZOOM_PRESETS.find((p) => p.key === zoomKey)!;
+    const todayOffset = (Date.now() - minDate.getTime()) / DAY_MS;
+    el.scrollLeft = Math.max(0, todayOffset * preset.dayWidth - el.clientWidth / 2);
+  }
+
+  const currentIdx = ZOOM_PRESETS.findIndex((p) => p.key === zoomKey);
+  const canZoomIn = currentIdx > 0;
+  const canZoomOut = currentIdx < ZOOM_PRESETS.length - 1;
+
+  return (
+    <div className="glass-surface lift-card rounded-2xl overflow-hidden ph-rise">
+      {/* ── Toolbar — zoom + Fit + Today + legend ───────────────────── */}
+      <div className="flex items-center gap-3 px-4 py-2 border-b border-border/60 bg-muted/40 flex-wrap">
+        {/* Step zoom (− / +) */}
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            onClick={zoomIn}
+            disabled={!canZoomIn}
+            title="Zoom in (finer detail)"
+            className="inline-flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            data-testid="gantt-zoom-in"
+          >
+            <ZoomIn size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={zoomOut}
+            disabled={!canZoomOut}
+            title="Zoom out (broader view)"
+            className="inline-flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            data-testid="gantt-zoom-out"
+          >
+            <ZoomOut size={14} />
+          </button>
+        </div>
+
+        <div className="h-5 w-px bg-border/60" />
+
+        {/* Segmented preset picker */}
+        <div className="flex items-center gap-0.5 bg-background/60 rounded-md p-0.5 border border-border/50">
+          {ZOOM_PRESETS.map((p) => {
+            const isActive = p.key === zoomKey;
+            return (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => changeZoom(p.key)}
+                title={p.description}
+                aria-pressed={isActive}
+                className={`px-2.5 h-6 rounded text-[11px] font-medium transition-colors ${
+                  isActive
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                }`}
+                data-testid={`gantt-zoom-${p.key}`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="h-5 w-px bg-border/60" />
+
+        <button
+          type="button"
+          onClick={handleFit}
+          title="Auto-pick the smallest zoom that fits the whole project"
+          className="inline-flex items-center gap-1 px-2 h-7 rounded-md text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          data-testid="gantt-fit"
+        >
+          <Maximize2 size={12} />
+          Fit
+        </button>
+        <button
+          type="button"
+          onClick={scrollToToday}
+          title="Scroll horizontally to today's date"
+          className="inline-flex items-center gap-1 px-2 h-7 rounded-md text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          data-testid="gantt-today"
+        >
+          <CalendarIcon size={12} />
+          Today
+        </button>
+
+        {availableComponents.length > 0 && onComponentChange && (
+          <>
+            <div className="h-5 w-px bg-border/60" />
+            <select
+              value={componentFilter}
+              onChange={(e) => onComponentChange(e.target.value)}
+              className="h-7 rounded-md border border-border/50 bg-background/60 px-2 text-[11px] font-medium"
+              title="Filter the Gantt by Jira component"
+              data-testid="gantt-component-filter"
+            >
+              <option value="">All components</option>
+              {availableComponents.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </>
+        )}
+
+        {/* Legend (right-justified) */}
+        <div className="ml-auto flex items-center gap-3 flex-wrap text-[11px]">
+          {[
+            { cls: "bg-primary",     label: "Task" },
+            { cls: "bg-destructive", label: "Critical" },
+            { cls: "bg-success",     label: "Done" },
+          ].map((l) => (
+            <div key={l.label} className="flex items-center gap-1">
+              <div className={`w-5 h-2.5 rounded ${l.cls}`} />
+              <span className="text-muted-foreground">{l.label}</span>
+            </div>
+          ))}
+          <div className="flex items-center gap-1">
+            <div className="w-3 h-3 rotate-45 bg-primary" />
+            <span className="text-muted-foreground">Milestone</span>
+          </div>
+        </div>
+      </div>
+
+      {milestones.length === 0 && tasks.length === 0 ? (
+        <div className="p-12 text-center text-muted-foreground text-sm">
+          Add tasks with start/end dates to see the Gantt chart.
+        </div>
+      ) : (
+        <GanttChart
+          milestones={milestones}
+          tasks={tasks}
+          criticalIds={criticalIds}
+          minDate={minDate}
+          maxDate={maxDate}
+          zoomKey={zoomKey}
+          scrollRef={scrollRef}
+        />
+      )}
     </div>
   );
 }
@@ -353,7 +945,7 @@ export default function ProjectDetail() {
   const { role } = useUserStore();
   const projectId = parseInt(params?.id || "0");
 
-  const [activeTab, setActiveTab] = useState<"lifecycle" | "grid" | "gantt" | "board" | "resources" | "budget" | "documents" | "risks" | "issues" | "raci" | "escalation" | "messages" | "audit" | "analytics" | "scoring" | "meetings" | "changes" | "benefits">("lifecycle");
+  const [activeTab, setActiveTab] = useState<"overview" | "lifecycle" | "work" | "grid" | "gantt" | "milestones" | "board" | "resources" | "budget" | "procurement" | "documents" | "risks" | "issues" | "raci" | "escalation" | "messages" | "audit" | "analytics" | "scoring" | "meetings" | "changes" | "benefits" | "approvals" | "lessons">("overview");
   const [aiSummary, setAiSummary] = useState<{ summary?: string; highlights?: string[]; concerns?: string[] } | null>(null);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
@@ -368,11 +960,11 @@ export default function ProjectDetail() {
     if (!tab) return;
     if (tab === "milestones") { setActiveTab("grid"); setGridSubTab("milestones"); return; }
     if (tab === "tasks") { setActiveTab("grid"); setGridSubTab("tasks"); return; }
-    const allowed = ["lifecycle","grid","gantt","board","resources","budget","documents","risks","issues","raci","escalation","messages","audit","analytics","scoring","meetings","changes","benefits"] as const;
+    const allowed = ["overview","lifecycle","work","grid","gantt","milestones","board","resources","budget","documents","risks","issues","raci","escalation","messages","audit","analytics","scoring","meetings","changes","benefits","approvals","lessons"] as const;
     if ((allowed as readonly string[]).includes(tab)) setActiveTab(tab as typeof allowed[number]);
   }, [search]);
 
-  // Deep-link to a specific lifecycle stage via ?stage=project_case
+  // Deep-link to a specific lifecycle stage via ?stage=initiation
   useEffect(() => {
     const params = new URLSearchParams(search);
     const stageParam = params.get("stage");
@@ -386,8 +978,35 @@ export default function ProjectDetail() {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
   // Filters
-  const [taskFilters, setTaskFilters] = useState<TaskFilters>({ search: "", status: "", priority: "", rag: "", dateFrom: "", dateTo: "" });
+  const TASK_FILTER_FALLBACK: TaskFilters = { search: "", status: "", priority: "", rag: "", dateFrom: "", dateTo: "" };
+  const [taskFilters, setTaskFilters] = useState<TaskFilters>(TASK_FILTER_FALLBACK);
   const [ownerFilter, setOwnerFilter] = useState("");
+  const [componentFilter, setComponentFilter] = useState("");
+
+  // ── Saved views — Stage 3 (Customization). The config shape stored per
+  // view is { filters, ownerFilter }; the surface owns this shape. When the
+  // user picks a saved view from the dropdown the activeConfig flows back
+  // into local state via the effect below.
+  const taskViewsFallback = useMemo(
+    () => ({ filters: TASK_FILTER_FALLBACK, ownerFilter: "" }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const taskViews = useUserView<{ filters: TaskFilters; ownerFilter: string }>({
+    scope: "task_grid",
+    fallback: taskViewsFallback,
+  });
+
+  // Sync the active view's config → local state whenever the user picks a
+  // saved view (id-change is the trigger; the config payload comes from the
+  // hook). Manual edits to filters don't re-sync because activeId stays the
+  // same until the user explicitly switches.
+  useEffect(() => {
+    if (taskViews.activeId == null) return;
+    setTaskFilters(taskViews.activeConfig.filters ?? TASK_FILTER_FALLBACK);
+    setOwnerFilter(taskViews.activeConfig.ownerFilter ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskViews.activeId]);
 
   const { data: project, isLoading: loadingProject, refetch: refetchProject } = useGetProject(projectId);
   const { data: rawMilestones, refetch: refetchMilestones } = useListMilestones(projectId);
@@ -433,12 +1052,37 @@ export default function ProjectDetail() {
     setLastUpdated(new Date());
   }
 
+  const { toast } = useToast();
+  const [generatingGates, setGeneratingGates] = useState(false);
+  const [wbsTask, setWbsTask] = useState<WbsTask | null>(null);
+  async function handleGenerateGates() {
+    setGeneratingGates(true);
+    try {
+      const res = await api.post<{ created: number }>(`/api/projects/${projectId}/milestones/generate-gates`);
+      toast({ title: res.created > 0 ? `Created ${res.created} gate milestone(s)` : "All gate milestones already exist" });
+      refetchMilestones();
+    } catch {
+      toast({ title: "Couldn't generate gate milestones", variant: "destructive" });
+    } finally {
+      setGeneratingGates(false);
+    }
+  }
+
   const usersArr = users as Array<{ id: number; name: string }>;
+
+  // Jira component (module) filter — derived from imported tasks' jira_component.
+  const availableComponents = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tasks) { const c = (t as { jiraComponent?: string | null }).jiraComponent; if (c) set.add(c); }
+    return Array.from(set).sort();
+  }, [tasks]);
 
   const filteredTasks = useMemo(() => {
     const top = tasks.filter(t => !t.parentTaskId);
-    return applyTaskFilters(top, taskFilters, ownerFilter);
-  }, [tasks, taskFilters, ownerFilter]);
+    const base = applyTaskFilters(top, taskFilters, ownerFilter);
+    if (!componentFilter) return base;
+    return base.filter(t => (t as { jiraComponent?: string | null }).jiraComponent === componentFilter);
+  }, [tasks, taskFilters, ownerFilter, componentFilter]);
 
   // Include subtasks of filtered tasks
   const filteredTasksWithSubs = useMemo(() => {
@@ -458,22 +1102,28 @@ export default function ProjectDetail() {
   if (!project) return <div className="text-center py-16 text-muted-foreground">Project not found</div>;
 
   const TABS = [
+    { id: "overview" as const, label: "Overview", icon: Eye },
     { id: "lifecycle" as const, label: "Lifecycle", icon: Layers },
-    { id: "grid" as const, label: "Grid", icon: Table2 },
-    { id: "gantt" as const, label: "Gantt", icon: BarChart2 },
+    { id: "work" as const, label: "Work", icon: ListTree },
+    { id: "gantt" as const, label: "Timeline", icon: BarChart2 },
+    { id: "documents" as const, label: "Documents", icon: FileText },
+    { id: "approvals" as const, label: "Approvals", icon: Stamp },
+    { id: "audit" as const, label: "Activity", icon: History },
+    { id: "milestones" as const, label: "Milestones", icon: Flag },
+    { id: "grid" as const, label: "Tasks (grid)", icon: Table2 },
+    { id: "risks" as const, label: "Risks", icon: Shield },
+    { id: "lessons" as const, label: "Lessons Learned", icon: Lightbulb },
     { id: "board" as const, label: "Board", icon: Kanban },
     { id: "resources" as const, label: "Resources", icon: Users },
     { id: "budget" as const, label: "Budget", icon: DollarSign },
-    { id: "documents" as const, label: "Documents", icon: FileText },
-    { id: "risks" as const, label: "Risks", icon: Shield },
+    { id: "procurement" as const, label: "Procurement", icon: ShoppingCart },
     { id: "issues" as const, label: "Issues", icon: AlertCircle },
     { id: "raci" as const, label: "RACI", icon: UserCheck },
     { id: "escalation" as const, label: "Escalation", icon: Zap },
-    { id: "meetings" as const, label: "Meetings", icon: CalendarIcon },
+    { id: "meetings" as const, label: "MOM", icon: CalendarIcon },
     { id: "changes" as const, label: "Changes", icon: GitBranch },
     { id: "benefits" as const, label: "Benefits", icon: TrendingUp },
     { id: "messages" as const, label: "Messages", icon: MessageSquare },
-    { id: "audit" as const, label: "Audit", icon: History },
     { id: "analytics" as const, label: "Analytics", icon: LayoutGrid },
     { id: "scoring" as const, label: "Scoring", icon: Star },
   ];
@@ -516,19 +1166,28 @@ export default function ProjectDetail() {
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-foreground tracking-tight">{project.name}</h1>
-            <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <div className="flex items-center gap-2 mt-2.5 flex-wrap">
+              {/* Health */}
+              <span className="inline-flex items-center gap-1.5">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Health</span>
+                <RAGBadge status={(project as { ragStatus?: string }).ragStatus ?? "green"} size="sm" />
+              </span>
+              <span className="w-px h-4 bg-border" />
+              {/* Phase */}
+              {currentStageKey && <PhaseChip stageKey={currentStageKey} size="sm" />}
               <StatusBadge status={project.status} />
-              {project.startDate && (
-                <span className="text-[11px] font-mono text-muted-foreground">
-                  {formatDate(project.startDate)} — {formatDate(project.endDate)}
-                </span>
-              )}
-              {project.stage && (
-                <span className="inline-flex items-center text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-sm border bg-primary/10 text-primary border-primary/20 font-semibold">
-                  {LIFECYCLE_STAGES.find(s => s.key === currentStageKey)?.label ?? currentStageKey}
-                </span>
-              )}
-              {/* Project-level Priority — inline editable */}
+              {/* Budget */}
+              {(() => {
+                const capex = Number((project as { capexBudget?: string | number }).capexBudget ?? 0);
+                const opex = Number((project as { opexBudget?: string | number }).opexBudget ?? 0);
+                const total = capex + opex;
+                return total > 0 ? (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-muted text-foreground border border-border">
+                    <DollarSign size={11} className="text-muted-foreground" />{formatCurrency(total)}
+                  </span>
+                ) : null;
+              })()}
+              {/* Priority — inline editable */}
               {(() => {
                 const rawPriority = (project as { priority?: string }).priority ?? "P2";
                 const priMeta = getPriorityMeta(rawPriority);
@@ -542,7 +1201,7 @@ export default function ProjectDetail() {
                           { onSuccess: () => refetchProject() }
                         );
                       }}
-                      className="text-[10px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded-sm border-0 outline-none appearance-none cursor-pointer pr-5"
+                      className="text-[10px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full border-0 outline-none appearance-none cursor-pointer pr-5"
                       style={{ background: priMeta.bg, color: priMeta.color }}
                       title="Project priority"
                     >
@@ -554,17 +1213,31 @@ export default function ProjectDetail() {
                   </div>
                 );
               })()}
+              {project.startDate && (
+                <span className="text-[11px] font-mono text-muted-foreground">
+                  {formatDate(project.startDate)} — {formatDate(project.endDate)}
+                </span>
+              )}
             </div>
             {project.description && (
-              <p className="text-sm text-muted-foreground mt-2 max-w-2xl leading-relaxed">{project.description}</p>
+              <div className="mt-3 max-w-3xl">
+                {/* Auto-resolves "Owner: <name>" / "Sponsor: <name>" lines into
+                    Speed Champion chips with master-DB-backed avatars + popover
+                    details. Plain text rows render unchanged. */}
+                <RichDescription text={project.description} />
+              </div>
             )}
           </div>
-          <Link href={`/projects/${project.id}/tasks/new`}>
-            <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm flex-shrink-0">
-              <Plus size={14} />
-              Add Task
-            </button>
-          </Link>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <JiraExportButton projectId={project.id} onDone={() => { void refetchProject(); }} />
+            <SaveAsTemplateButton projectId={project.id} projectName={project.name} />
+            <Link href={`/projects/${project.id}/tasks/new`}>
+              <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm">
+                <Plus size={14} />
+                Add Task
+              </button>
+            </Link>
+          </div>
         </div>
 
         {/* Quick stats */}
@@ -595,33 +1268,169 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex items-center gap-2 overflow-x-auto scrollbar-thin">
-        <div className="flex gap-1 p-1 rounded-xl bg-muted/60 border border-border backdrop-blur-sm">
-          {TABS.map(tab => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
-                  active
-                    ? "bg-card text-primary shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Icon size={14} />
-                {tab.label}
-              </button>
-            );
-          })}
+      {/* Tab bar — top 5 priority tabs always visible; rest collapsed under "More" */}
+      {(() => {
+        // Day-to-day PM workflow priorities. Change this array to re-rank.
+        // Keeping it as a tuple of literal IDs keeps TypeScript narrowing
+        // honest and lets the filter find them by identity.
+        const PRIMARY_TAB_IDS = ["overview", "lifecycle", "work", "gantt", "documents", "approvals", "audit"] as const;
+        const primaryTabs = TABS.filter(t => (PRIMARY_TAB_IDS as readonly string[]).includes(t.id));
+        const overflowTabs = TABS.filter(t => !(PRIMARY_TAB_IDS as readonly string[]).includes(t.id));
+        const activeOverflow = overflowTabs.find(t => t.id === activeTab);
+        const moreActive = !!activeOverflow;
+
+        return (
+          <div className="flex items-center gap-2">
+            <div className="flex gap-1 p-1 rounded-xl bg-muted/60 border border-border backdrop-blur-sm">
+              {primaryTabs.map(tab => {
+                const Icon = tab.icon;
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+                      active
+                        ? "bg-card text-primary shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Icon size={14} />
+                    {tab.label}
+                  </button>
+                );
+              })}
+
+              {/* Overflow trigger — labels the currently-active overflow tab
+                  (if any) so the user always knows where they are without
+                  having to open the menu first. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${
+                      moreActive
+                        ? "bg-card text-primary shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                    aria-label="More tabs"
+                    data-testid="project-tabs-more"
+                  >
+                    <MoreHorizontal size={14} />
+                    {moreActive ? `More · ${activeOverflow!.label}` : "More"}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  {overflowTabs.map(tab => {
+                    const Icon = tab.icon;
+                    const isActive = activeTab === tab.id;
+                    return (
+                      <DropdownMenuItem
+                        key={tab.id}
+                        onSelect={() => setActiveTab(tab.id)}
+                        className={isActive ? "bg-accent text-foreground font-semibold" : ""}
+                      >
+                        <Icon size={14} className="mr-2" />
+                        <span className="flex-1">{tab.label}</span>
+                        {isActive && <Check size={12} className="text-primary" />}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Overview Tab — high-level snapshot, routes into detail ─────── */}
+      {activeTab === "overview" && (
+        <div className="space-y-5">
+          {/* Task progress summary */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {([
+              { label: "Total Tasks", value: totalTasks, icon: List, tone: "primary" as const },
+              { label: "Completed", value: completedTasks, icon: CheckCircle2, tone: "success" as const },
+              { label: "In Progress", value: inProgressTasks, icon: Clock, tone: "info" as const },
+              { label: "Delayed", value: blockedTasks, icon: AlertTriangle, tone: "warn" as const },
+            ]).map(s => {
+              const Icon = s.icon;
+              const tc = {
+                primary: "bg-primary/10 border-primary/20 text-primary",
+                success: "bg-success/10 border-success/20 text-success",
+                info: "bg-primary/10 border-primary/20 text-primary",
+                warn: "bg-warn/10 border-warn/20 text-warn",
+              }[s.tone];
+              return (
+                <div key={s.label} className={`rounded-xl p-3 border ${tc}`}>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Icon size={14} />
+                    <span className="text-[10px] font-mono uppercase tracking-wider font-semibold opacity-80">{s.label}</span>
+                  </div>
+                  <div className="text-2xl font-semibold font-mono num-tabular tracking-tight">{s.value}</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* The single most important governance view */}
+          <CriticalPathLane projectId={projectId} />
+
+          {/* Lifecycle snapshot — click a stage to jump to the Lifecycle tab */}
+          <StageProgressBar
+            currentStageKey={currentStageKey}
+            stageRecords={stageRecords as Array<{ stage: string; status: string }>}
+            onStageClick={key => { setSelectedStageKey(key); setActiveTab("lifecycle"); }}
+            selectedStageKey={selectedStageKey}
+            role={role}
+          />
         </div>
-      </div>
+      )}
+
+      {/* ── Work Tab — WBS: Stage → Milestone → Task → Subtask ────────── */}
+      {activeTab === "work" && (() => {
+        const wbsTasks = tasks as unknown as WbsTask[];
+        const wbsMilestones = milestones as unknown as WbsMilestone[];
+        const msName = (id: number | null) => milestones.find(m => m.id === id)?.name ?? null;
+        const toAgg = (t: WbsTask): AggTask => ({
+          id: t.id, projectId, projectName: project.name, milestoneId: t.milestoneId,
+          milestoneName: msName(t.milestoneId), parentTaskId: t.parentTaskId, name: t.name,
+          status: t.status, priority: t.priority, stage: t.stage, phase: null,
+          assigneeId: t.assigneeId, assigneeName: t.assigneeName, startDate: null, endDate: t.endDate,
+          progressPct: t.progressPct, predecessorIds: t.predecessorIds ?? [],
+          estimatedHours: null, actualHours: null, isCritical: t.isCritical, gate: null,
+        });
+        return (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <h3 className="text-[15px] font-semibold text-foreground tracking-tight">Work Breakdown</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Stage → Milestone → Task → Subtask · drag to move, click a task for detail</p>
+              </div>
+              <button onClick={handleGenerateGates} disabled={generatingGates} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 transition-colors disabled:opacity-50">
+                <Flag size={14} />{generatingGates ? "Generating…" : "Generate gate milestones"}
+              </button>
+            </div>
+            <WbsTree
+              projectId={projectId}
+              projectType={(project as { projectType?: string | null }).projectType}
+              milestones={wbsMilestones}
+              tasks={wbsTasks}
+              onOpenTask={(t) => setWbsTask(t)}
+              onRefresh={handleRefresh}
+            />
+            {wbsTask && (
+              <TaskDetailModal task={toAgg(wbsTask)} allTasks={wbsTasks.map(toAgg)} onClose={() => setWbsTask(null)} onRefresh={handleRefresh} />
+            )}
+          </div>
+        );
+      })()}
 
       {/* ── Lifecycle Tab ────────────────────────────────────────────── */}
       {activeTab === "lifecycle" && (
         <div className="space-y-5">
+          <CriticalPathLane projectId={projectId} />
+
           <StageProgressBar
             currentStageKey={currentStageKey}
             stageRecords={stageRecords as Array<{ stage: string; status: string }>}
@@ -641,6 +1450,12 @@ export default function ProjectDetail() {
 
         </div>
       )}
+
+      {/* ── Approvals Tab — project governance gates ──────────────────── */}
+      {activeTab === "approvals" && <ProjectApprovalsTab projectId={projectId} />}
+
+      {/* ── Lessons Learned Tab ───────────────────────────────────────── */}
+      {activeTab === "lessons" && <LessonsLearnedTab projectId={projectId} />}
 
       {/* ── Grid Tab ─────────────────────────────────────────────────── */}
       {activeTab === "grid" && (
@@ -673,14 +1488,38 @@ export default function ProjectDetail() {
             </span>
           </div>
 
-          {/* Filter bar */}
-          <div className="glass-surface lift-card ph-rise rounded-2xl px-4 py-2">
-            <TaskFilterBar
-              filters={taskFilters}
-              onChange={setTaskFilters}
-              owners={usersArr}
-              ownerFilter={ownerFilter}
-              onOwnerChange={setOwnerFilter}
+          {/* Filter bar + saved-views dropdown (Stage 3 — Customization) */}
+          <div className="glass-surface lift-card ph-rise rounded-2xl px-4 py-2 flex items-center gap-3 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <TaskFilterBar
+                filters={taskFilters}
+                onChange={setTaskFilters}
+                owners={usersArr}
+                ownerFilter={ownerFilter}
+                onOwnerChange={setOwnerFilter}
+              />
+            </div>
+            {availableComponents.length > 0 && (
+              <select
+                value={componentFilter}
+                onChange={(e) => setComponentFilter(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+                title="Filter by Jira component"
+              >
+                <option value="">All components</option>
+                {availableComponents.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            )}
+            <ViewsMenu
+              views={taskViews.views}
+              activeView={taskViews.activeView}
+              setActive={taskViews.setActive}
+              setDefault={taskViews.setDefault}
+              deleteView={taskViews.deleteView}
+              saveAs={taskViews.saveAs}
+              currentConfig={{ filters: taskFilters, ownerFilter }}
             />
           </div>
 
@@ -709,39 +1548,45 @@ export default function ProjectDetail() {
         </div>
       )}
 
-      {/* ── Gantt Tab ────────────────────────────────────────────────── */}
-      {activeTab === "gantt" && (
-        <div className="glass-surface lift-card rounded-2xl overflow-hidden ph-rise">
-          <div className="flex items-center gap-5 px-4 py-2.5 border-b border-border/60 bg-muted/40 flex-wrap">
-            <span className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-wider">Gantt Legend</span>
-            {[
-              { cls: "bg-primary",     label: "Task" },
-              { cls: "bg-destructive", label: "Critical Path" },
-              { cls: "bg-success",     label: "Completed" },
-            ].map(l => (
-              <div key={l.label} className="flex items-center gap-1.5">
-                <div className={`w-8 h-3 rounded ${l.cls}`} />
-                <span className="text-[11px] text-muted-foreground">{l.label}</span>
-              </div>
-            ))}
-            <div className="flex items-center gap-1.5">
-              <div className="w-4 h-4 rotate-45 bg-primary" />
-              <span className="text-[11px] text-muted-foreground">Milestone</span>
+      {/* ── Milestones Tab ───────────────────────────────────────────── */}
+      {activeTab === "milestones" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="text-[15px] font-semibold text-foreground tracking-tight">Milestones</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Gate milestones map to lifecycle stages (BC Approved, URS Approved, …)</p>
             </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-6 h-0.5 border-t-2 border-dashed border-destructive/70" />
-              <span className="text-[11px] text-muted-foreground">Today</span>
-            </div>
+            <button
+              onClick={handleGenerateGates}
+              disabled={generatingGates}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 transition-colors disabled:opacity-50"
+            >
+              <Flag size={14} />
+              {generatingGates ? "Generating…" : "Generate gate milestones"}
+            </button>
           </div>
-
-          {milestones.length === 0 && tasks.length === 0 ? (
-            <div className="p-12 text-center text-muted-foreground text-sm">
-              Add tasks with start/end dates to see the Gantt chart.
-            </div>
-          ) : (
-            <GanttChart milestones={milestones} tasks={tasks} criticalIds={criticalIds} minDate={minDate} maxDate={maxDate} />
-          )}
+          <MilestoneGrid
+            milestones={milestones as GridMilestone[]}
+            tasks={tasks}
+            projectId={projectId}
+            onRefresh={handleRefresh}
+            users={usersArr}
+          />
         </div>
+      )}
+
+      {/* ── Gantt / Timeline Tab ─────────────────────────────────────── */}
+      {activeTab === "gantt" && (
+        <GanttTab
+          milestones={milestones}
+          tasks={componentFilter ? tasks.filter(t => (t as { jiraComponent?: string | null }).jiraComponent === componentFilter) : tasks}
+          criticalIds={criticalIds}
+          minDate={minDate}
+          maxDate={maxDate}
+          availableComponents={availableComponents}
+          componentFilter={componentFilter}
+          onComponentChange={setComponentFilter}
+        />
       )}
 
       {/* ── Board Tab ────────────────────────────────────────────────── */}
@@ -842,7 +1687,7 @@ export default function ProjectDetail() {
                     {t.isCritical && (
                       <div className="flex items-center gap-2">
                         <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded-sm border bg-destructive/10 text-destructive border-destructive/20">
-                          Critical Path
+                          Schedule Critical Path
                         </span>
                       </div>
                     )}
@@ -968,6 +1813,11 @@ export default function ProjectDetail() {
           projectId={projectId}
           budgetThresholdPct={Number((project as { budgetThresholdPct?: number }).budgetThresholdPct ?? 10)}
         />
+      )}
+
+      {/* ── Procurement Tab (Stage 5 — SAP PR/PO) ───────────────────── */}
+      {activeTab === "procurement" && (
+        <ProcurementTab projectId={projectId} />
       )}
 
       {/* ── Documents Tab ────────────────────────────────────────────── */}
@@ -1110,8 +1960,8 @@ export default function ProjectDetail() {
                 <Zap size={18} className="text-destructive" />
               </div>
               <div>
-                <h3 className="text-[14px] font-semibold text-foreground tracking-tight">Critical Path</h3>
-                <p className="text-[11px] text-muted-foreground mt-0.5">Tasks that directly impact the project end date</p>
+                <h3 className="text-[14px] font-semibold text-foreground tracking-tight">Schedule Critical Path</h3>
+                <p className="text-[11px] text-muted-foreground mt-0.5">Tasks with zero float that directly impact the project end date</p>
               </div>
             </div>
             {criticalPath?.criticalTasks?.length ? (

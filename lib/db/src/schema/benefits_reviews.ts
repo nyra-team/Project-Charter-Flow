@@ -6,7 +6,7 @@ import { z } from "zod/v4";
  * Benefits Realization Reviews — post-implementation reviews at
  * +3, +6, +12 months after Go Live to compare actual benefit vs charter projection.
  */
-export const benefitsReviewsTable = pgTable("benefits_reviews", {
+export const benefitsReviewsTable = pgTable("pmo_benefits_reviews", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   reviewPeriod: text("review_period").notNull(), // "3m" | "6m" | "12m"

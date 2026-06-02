@@ -18,7 +18,7 @@ export function KickoffAttendeesSection({ projectId }: { projectId: number }) {
 
  const kickoffRecord = (
  stages as Array<{ id: number; stage: string; notes?: string | null }>
- ).find((s) => s.stage === "kickoff");
+ ).find((s) => s.stage === "design");
 
  const parsedNotes: Record<string, unknown> = (() => {
  try { return JSON.parse(kickoffRecord?.notes ?? "{}"); }

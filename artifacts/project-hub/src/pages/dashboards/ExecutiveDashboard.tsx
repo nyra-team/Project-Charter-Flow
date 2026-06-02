@@ -4,8 +4,13 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import {
-  BarChart3, DollarSign, Calendar, AlertTriangle, CheckSquare, FileText, Clock,
+  BarChart3, DollarSign, Calendar, AlertTriangle, CheckSquare, FileText, Clock, Sliders,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { ViewsMenu } from "../../components/views-menu";
+import { useUserView } from "../../hooks/use-user-view";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, addDays } from "date-fns";
@@ -19,8 +24,12 @@ type IssueRow = { id: number; projectId: number; type?: string | null; status?: 
 type StuckApproval = { id: number; charterId: number; charterTitle: string; stage: string; approverName: string; approverRole: string; daysWaiting: number; severity: "red" | "amber" | "green" };
 
 function useAllProjectIssues(projectIds: number[], refetchInterval: number | false) {
+  // Stable key — array references change on every render, so without the
+  // sort+join the React Query cache is invalidated continuously and the
+  // 20-request N+1 fan-out reruns on every parent render.
+  const stableKey = [...projectIds].sort((a, b) => a - b).join(",");
   return useQuery({
-    queryKey: ["/api/all-project-issues", projectIds],
+    queryKey: ["/api/all-project-issues", stableKey],
     enabled: projectIds.length > 0,
     refetchInterval,
     queryFn: async () => {
@@ -137,6 +146,37 @@ export default function ExecutiveDashboard() {
 
   const isLoading = loadingSummary || loadingProjects;
 
+  // ── Tile customization (Stage 3 — Customization). Stable keys for each
+  // KPI tile let the user hide/reorder per-saved-view. Re-ordering is a
+  // follow-up; for v1 we ship hide-only because it covers the highest-value
+  // "this number is noise for me" complaint without rewriting the JSX.
+  const TILE_KEYS = [
+    { key: "active", label: "Total Active Projects" },
+    { key: "green", label: "On Track (Green)" },
+    { key: "amber", label: "At Risk (Amber)" },
+    { key: "red", label: "Delayed (Red)" },
+    { key: "budgetVar", label: "Budget Variance" },
+    { key: "schedVar", label: "Schedule Variance" },
+    { key: "dueIn30", label: "Due in 30 Days" },
+    { key: "pendingApprovals", label: "Pending Approvals" },
+  ] as const;
+  type TileKey = (typeof TILE_KEYS)[number]["key"];
+  const tileViews = useUserView<{ hiddenKeys: TileKey[] }>({
+    scope: "exec_dashboard",
+    fallback: { hiddenKeys: [] },
+  });
+  const hiddenKeys = new Set(tileViews.activeConfig.hiddenKeys ?? []);
+  const isShown = (k: TileKey) => !hiddenKeys.has(k);
+
+  // The popover edits the active-view's hiddenKeys live and writes via
+  // saveAs against the active key (or "Custom" if no view is active).
+  async function toggleTile(k: TileKey) {
+    const next = new Set(hiddenKeys);
+    if (next.has(k)) next.delete(k); else next.add(k);
+    const keyName = tileViews.activeView?.key ?? "Custom";
+    await tileViews.saveAs(keyName, { hiddenKeys: Array.from(next) as TileKey[] }, { setDefault: tileViews.activeView?.isDefault });
+  }
+
   return (
     <div className="space-y-5" data-print-target>
       {/* Header */}
@@ -146,6 +186,47 @@ export default function ExecutiveDashboard() {
           <p className="text-sm text-muted-foreground mt-0.5">Portfolio-wide view for executive leadership</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          {/* Customize tiles (Stage 3) — hide noise per user. */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 px-3 h-9 rounded-md text-sm border border-border bg-card hover:bg-accent transition-colors"
+                data-testid="btn-customize-tiles"
+              >
+                <Sliders size={14} />
+                Customize tiles
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64 p-3">
+              <p className="text-xs font-semibold text-foreground mb-2">Show / hide KPI tiles</p>
+              <div className="space-y-2">
+                {TILE_KEYS.map((t) => (
+                  <div key={t.key} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`tile-${t.key}`}
+                      checked={isShown(t.key)}
+                      onCheckedChange={() => toggleTile(t.key)}
+                    />
+                    <Label htmlFor={`tile-${t.key}`} className="text-xs cursor-pointer">{t.label}</Label>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-muted-foreground mt-3 leading-snug">
+                Changes auto-save to the active view (or "Custom" if none is active).
+              </p>
+            </PopoverContent>
+          </Popover>
+          <ViewsMenu
+            views={tileViews.views}
+            activeView={tileViews.activeView}
+            setActive={tileViews.setActive}
+            setDefault={tileViews.setDefault}
+            deleteView={tileViews.deleteView}
+            saveAs={tileViews.saveAs}
+            currentConfig={{ hiddenKeys: Array.from(hiddenKeys) as TileKey[] }}
+            triggerLabel="My layout"
+          />
           <RefreshButton />
         </div>
       </div>
@@ -188,30 +269,34 @@ export default function ExecutiveDashboard() {
             }, 0) / Math.max(1, activeProjects.filter(p => p.startDate && p.endDate).length));
             return (
               <>
-                <KPITile label="Total Active Projects" value={health?.active ?? 0} icon={BarChart3} tone="primary" />
-                <KPITile label="On Track (Green)" value={greenCount} icon={CheckSquare} tone="success" />
-                <KPITile label="At Risk (Amber)" value={amberCount} icon={AlertTriangle} tone="warn" />
-                <KPITile label="Delayed (Red)" value={redCount} icon={AlertTriangle} tone="danger" highlight={redCount > 0} />
-                <KPITile
-                  label="Budget Variance"
-                  value={`${budgetVariancePct >= 0 ? "+" : ""}${budgetVariancePct}%`}
-                  icon={DollarSign}
-                  tone={budgetVariancePct > 10 ? "danger" : budgetVariancePct > 0 ? "warn" : "success"}
-                  sub={`Portfolio: ${formatCurrency(totalPlanned)}`}
-                  trend={budgetVariancePct > 5 ? "down" : budgetVariancePct < -5 ? "up" : "flat"}
-                  trendLabel={budgetVariancePct > 0 ? "Over baseline" : "Under baseline"}
-                />
-                <KPITile
-                  label="Schedule Variance"
-                  value={`${schedVarianceDays >= 0 ? "+" : ""}${schedVarianceDays}d`}
-                  icon={Calendar}
-                  tone={schedVarianceDays < -5 ? "danger" : schedVarianceDays < 0 ? "warn" : "success"}
-                  sub="Avg across active projects"
-                  trend={schedVarianceDays >= 0 ? "up" : "down"}
-                  trendLabel={schedVarianceDays >= 0 ? "Ahead of plan" : "Behind plan"}
-                />
-                <KPITile label="Due in 30 Days" value={upcomingIn30.length} icon={Clock} tone="amber" sub="Upcoming deadlines" />
-                <KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0} icon={FileText} tone="primary" sub="Awaiting action" />
+                {isShown("active") && <KPITile label="Total Active Projects" value={health?.active ?? 0} icon={BarChart3} tone="primary" />}
+                {isShown("green") && <KPITile label="On Track (Green)" value={greenCount} icon={CheckSquare} tone="success" />}
+                {isShown("amber") && <KPITile label="At Risk (Amber)" value={amberCount} icon={AlertTriangle} tone="warn" />}
+                {isShown("red") && <KPITile label="Delayed (Red)" value={redCount} icon={AlertTriangle} tone="danger" highlight={redCount > 0} />}
+                {isShown("budgetVar") && (
+                  <KPITile
+                    label="Budget Variance"
+                    value={`${budgetVariancePct >= 0 ? "+" : ""}${budgetVariancePct}%`}
+                    icon={DollarSign}
+                    tone={budgetVariancePct > 10 ? "danger" : budgetVariancePct > 0 ? "warn" : "success"}
+                    sub={`Portfolio: ${formatCurrency(totalPlanned)}`}
+                    trend={budgetVariancePct > 5 ? "down" : budgetVariancePct < -5 ? "up" : "flat"}
+                    trendLabel={budgetVariancePct > 0 ? "Over baseline" : "Under baseline"}
+                  />
+                )}
+                {isShown("schedVar") && (
+                  <KPITile
+                    label="Schedule Variance"
+                    value={`${schedVarianceDays >= 0 ? "+" : ""}${schedVarianceDays}d`}
+                    icon={Calendar}
+                    tone={schedVarianceDays < -5 ? "danger" : schedVarianceDays < 0 ? "warn" : "success"}
+                    sub="Avg across active projects"
+                    trend={schedVarianceDays >= 0 ? "up" : "down"}
+                    trendLabel={schedVarianceDays >= 0 ? "Ahead of plan" : "Behind plan"}
+                  />
+                )}
+                {isShown("dueIn30") && <KPITile label="Due in 30 Days" value={upcomingIn30.length} icon={Clock} tone="amber" sub="Upcoming deadlines" />}
+                {isShown("pendingApprovals") && <KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0} icon={FileText} tone="primary" sub="Awaiting action" />}
               </>
             );
           })()}
@@ -270,7 +355,7 @@ export default function ExecutiveDashboard() {
                           <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden min-w-[60px]">
                             <div className="h-full rounded-full bg-primary" style={{ width: `${p.progress ?? 0}%` }} />
                           </div>
-                          <span className="text-xs font-bold text-muted-foreground w-8 font-mono">{p.progress ?? 0}%</span>
+                          <span className="text-xs font-bold text-muted-foreground w-8">{p.progress ?? 0}%</span>
                         </div>
                       </td>
                       <td className="py-3 pr-4 hidden lg:table-cell">
@@ -309,13 +394,13 @@ export default function ExecutiveDashboard() {
                 return (
                   <div key={risk.id} className={`p-3 rounded-xl ${tone.wrap}`}>
                     <div className="flex items-start gap-2">
-                      <span className="text-xs font-bold text-muted-foreground/70 w-4 flex-shrink-0 mt-0.5 font-mono">#{i + 1}</span>
+                      <span className="text-xs font-bold text-muted-foreground/70 w-4 flex-shrink-0 mt-0.5">#{i + 1}</span>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-foreground truncate">{risk.title}</p>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className="text-xs text-muted-foreground capitalize">{risk.impact} impact</span>
                           <span className="text-muted-foreground/40">·</span>
-                          <span className={`text-xs font-bold font-mono ${tone.text}`}>
+                          <span className={`text-xs font-bold ${tone.text}`}>
                             Score: {risk.riskScore}
                           </span>
                         </div>
@@ -362,7 +447,7 @@ export default function ExecutiveDashboard() {
                       </p>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className={`text-lg font-bold font-mono ${tone.text}`}>{a.daysWaiting}d</p>
+                      <p className={`text-lg font-bold ${tone.text}`}>{a.daysWaiting}d</p>
                       <p className="text-[10px] text-muted-foreground uppercase tracking-wider">waiting</p>
                     </div>
                   </div>
@@ -431,11 +516,11 @@ export default function ExecutiveDashboard() {
                           <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden min-w-[50px]">
                             <div className={`h-full rounded-full ${p.progress >= 70 ? "bg-success" : "bg-primary"}`} style={{ width: `${p.progress}%` }} />
                           </div>
-                          <span className="text-xs font-bold text-muted-foreground w-8 font-mono">{p.progress}%</span>
+                          <span className="text-xs font-bold text-muted-foreground w-8">{p.progress}%</span>
                         </div>
                       </td>
                       <td className="py-2 pr-4 hidden md:table-cell">
-                        <span className={`text-xs font-bold font-mono ${p.schedVariance >= 0 ? "text-success" : "text-destructive"}`}>
+                        <span className={`text-xs font-bold ${p.schedVariance >= 0 ? "text-success" : "text-destructive"}`}>
                           {p.schedVariance >= 0 ? "+" : ""}{p.schedVariance}d
                         </span>
                       </td>
@@ -478,7 +563,7 @@ export default function ExecutiveDashboard() {
                       style={{ width: `${(p.count / maxCount) * 100}%` }}
                     />
                   </div>
-                  <span className="text-xs font-bold text-foreground w-6 text-right font-mono">{p.count}</span>
+                  <span className="text-xs font-bold text-foreground w-6 text-right">{p.count}</span>
                 </div>
               ))}
             </div>
@@ -555,7 +640,7 @@ export default function ExecutiveDashboard() {
                           <div className="w-12 h-1.5 bg-muted rounded-full overflow-hidden">
                             <div className="h-full rounded-full bg-primary" style={{ width: `${p.progress ?? 0}%` }} />
                           </div>
-                          <span className="text-[10px] text-muted-foreground font-mono">{p.progress ?? 0}%</span>
+                          <span className="text-[10px] text-muted-foreground">{p.progress ?? 0}%</span>
                         </div>
                       </td>
                     </tr>
@@ -610,7 +695,7 @@ export default function ExecutiveDashboard() {
                       <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
                         <div className={`h-full rounded-full ${r.bar}`} style={{ width: `${Math.min(100, r.pct * 100)}%` }} />
                       </div>
-                      <span className={`text-xs font-bold w-5 text-right font-mono ${r.text}`}>{r.value}</span>
+                      <span className={`text-xs font-bold w-5 text-right ${r.text}`}>{r.value}</span>
                     </div>
                   </div>
                 ))}
@@ -663,7 +748,7 @@ export default function ExecutiveDashboard() {
                         <Link key={p.id} href={`/projects/${p.id}`}>
                           <div className="flex items-center justify-between p-2 rounded-lg hover:bg-destructive/10 cursor-pointer transition-colors">
                             <span className="text-sm text-foreground truncate flex-1">{p.name}</span>
-                            <span className="text-xs text-destructive font-semibold ml-2 flex-shrink-0 font-mono">
+                            <span className="text-xs text-destructive font-semibold ml-2 flex-shrink-0">
                               {p.endDate ? format(new Date(p.endDate), "MMM d") : ""}
                             </span>
                           </div>
@@ -680,7 +765,7 @@ export default function ExecutiveDashboard() {
                         <Link key={p.id} href={`/projects/${p.id}`}>
                           <div className="flex items-center justify-between p-2 rounded-lg hover:bg-warn/10 cursor-pointer transition-colors">
                             <span className="text-sm text-foreground truncate flex-1">{p.name}</span>
-                            <span className="text-xs text-warn font-semibold ml-2 flex-shrink-0 font-mono">
+                            <span className="text-xs text-warn font-semibold ml-2 flex-shrink-0">
                               {p.endDate ? format(new Date(p.endDate), "MMM d") : ""}
                             </span>
                           </div>

@@ -2,7 +2,7 @@ import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const approvalsTable = pgTable("approvals", {
+export const approvalsTable = pgTable("pmo_approvals", {
   id: serial("id").primaryKey(),
   charterId: integer("charter_id").notNull(),
   approverId: integer("approver_id"),

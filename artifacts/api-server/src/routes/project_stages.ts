@@ -1,132 +1,15 @@
 import { Router, type IRouter } from "express";
-import { db, projectStagesTable, projectsTable, documentsTable, issuesTable } from "@workspace/db";
-import { eq, and, inArray, ne } from "drizzle-orm";
+import { db, projectStagesTable, projectsTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { logActivity } from "./activity";
+import { STAGE_GATES, evaluateStageGate, nextStageFor } from "../lib/stage-gates";
 
 const router: IRouter = Router();
 
-// Server-side lifecycle gate config (mirrors lifecycle-config.ts in the frontend)
-// This is the authoritative enforcement layer — the UI gates are UX only.
-type StageGate = {
-  prerequisites: string[];
-  blockingChecklistIds: string[];
-  requiredDocNames: string[];
-  advanceRoles: string[];
-};
-
-const STAGE_GATES: Record<string, StageGate> = {
-  project_case: {
-    prerequisites: [],
-    blockingChecklistIds: ["biz_just", "scope_done", "outcomes", "budget_est"],
-    // Documents are optional for the Business Case stage — the form's structured
-    // fields (BJ / Scope / Outcomes / Budget) are the source of truth, and the
-    // checklist is derived from them. No uploads required to submit.
-    requiredDocNames: [],
-    advanceRoles: ["initiator", "pmo"],
-  },
-  urs: {
-    prerequisites: ["project_case"],
-    blockingChecklistIds: ["biz_req", "it_review", "biz_owner_approved", "it_approved"],
-    requiredDocNames: ["URS Document", "URS Review Sign-off"],
-    advanceRoles: ["hod", "pmo"],
-  },
-  rfp: {
-    prerequisites: ["urs"],
-    blockingChecklistIds: ["urs_approved_gate", "rfp_created", "vendor_invited", "deadline_set"],
-    requiredDocNames: ["RFP Document", "Vendor Shortlist"],
-    advanceRoles: ["scm", "pmo"],
-  },
-  vendor_evaluation: {
-    prerequisites: ["rfp"],
-    blockingChecklistIds: [
-      "proposals_received", "func_eval_done", "tech_eval_done", "eval_summary",
-      "proposals_analysed", "negotiation_complete", "scm_uploaded", "finance_reviewed", "vendor_selected",
-    ],
-    requiredDocNames: [
-      "Functional Scorecard", "Technical Evaluation Report",
-      "Commercial Proposals", "Negotiation Log", "Finalized Commercials",
-    ],
-    advanceRoles: ["scm", "finance", "hod", "pmo"],
-  },
-  charter: {
-    prerequisites: ["vendor_evaluation"],
-    blockingChecklistIds: ["charter_drafted", "pmo_review", "dept_head_approved", "budget_confirmed"],
-    requiredDocNames: ["Project Charter", "Charter Template"],
-    advanceRoles: ["pmo", "hod"],
-  },
-  nfa: {
-    prerequisites: ["charter"],
-    blockingChecklistIds: ["charter_approved_gate", "nfa_form_submitted", "finance_head_approved", "pmo_nfa_approved", "dept_head_nfa", "mgmt_approved"],
-    requiredDocNames: ["NFA Form", "Budget Breakdown"],
-    advanceRoles: ["cfo", "chairman"],
-  },
-  legal: {
-    prerequisites: ["nfa"],
-    blockingChecklistIds: ["contract_uploaded", "legal_reviewed", "compliance_confirmed", "legal_signoff"],
-    requiredDocNames: ["Vendor Contract", "Legal Review Note"],
-    advanceRoles: ["legal", "pmo"],
-  },
-  pr_po: {
-    prerequisites: ["legal"],
-    blockingChecklistIds: ["legal_approved_gate", "vendor_contract_uploaded", "pr_submitted", "po_released"],
-    requiredDocNames: ["PR Form", "PO Document", "Vendor Contract"],
-    advanceRoles: ["finance", "scm"],
-  },
-  kickoff: {
-    prerequisites: ["pr_po"],
-    blockingChecklistIds: ["kickoff_date_set", "attendees_defined", "kickoff_held", "minutes_uploaded", "project_activated"],
-    requiredDocNames: ["Meeting Minutes", "Kickoff Presentation"],
-    advanceRoles: ["pm", "pmo"],
-  },
-  technical_design: {
-    prerequisites: ["kickoff"],
-    blockingChecklistIds: ["td_drafted", "arch_uploaded", "integrations_listed", "security_signed", "td_lead_approved"],
-    requiredDocNames: ["Technical Design Document", "Architecture Diagram", "Security Review"],
-    advanceRoles: ["pm", "pmo", "hod"],
-  },
-  development: {
-    prerequisites: ["technical_design"],
-    blockingChecklistIds: ["dev_env_ready", "status_updated"],
-    requiredDocNames: ["Build Specifications", "Development Status Report"],
-    advanceRoles: ["pm", "pmo"],
-  },
-  implementation_plan: {
-    prerequisites: ["development"],
-    blockingChecklistIds: ["impl_plan_uploaded", "milestones_defined", "stakeholder_signoff", "cutover_plan_approved"],
-    requiredDocNames: ["Implementation Plan", "Cutover Plan"],
-    advanceRoles: ["pm", "pmo"],
-  },
-  uat: {
-    prerequisites: ["implementation_plan"],
-    blockingChecklistIds: ["uat_plan_approved", "test_cases_executed", "critical_defects_closed", "uat_signed"],
-    requiredDocNames: ["UAT Test Plan", "UAT Sign-off Document", "Defect Log"],
-    advanceRoles: ["pm", "hod"],
-  },
-  go_live: {
-    prerequisites: ["uat"],
-    blockingChecklistIds: ["uat_approved_gate", "go_live_date_frozen", "training_uploaded", "stakeholders_notified"],
-    requiredDocNames: ["Go Live Checklist", "Training Materials", "Communications Plan"],
-    advanceRoles: ["pm", "pmo"],
-  },
-  closure_readiness: {
-    prerequisites: ["go_live"],
-    blockingChecklistIds: ["csat_complete", "doc_handover_done", "all_deliverables_signed", "support_transitioned"],
-    requiredDocNames: ["CSAT Survey Results", "Documentation Handover Package", "Deliverable Sign-offs"],
-    advanceRoles: ["pm", "pmo"],
-  },
-  project_closure: {
-    prerequisites: ["closure_readiness"],
-    blockingChecklistIds: ["all_artifacts_approved", "lessons_learned_done", "closure_report_generated", "final_financials_uploaded", "stakeholder_closed"],
-    requiredDocNames: ["Lessons Learned Report", "Closure Report", "Final Financial Report"],
-    advanceRoles: ["pm", "pmo", "chairman"],
-  },
-};
-
-const ORDERED_STAGES = [
-  "project_case", "urs", "rfp", "vendor_evaluation",
-  "charter", "nfa", "legal", "pr_po", "kickoff", "technical_design", "development",
-  "implementation_plan", "uat", "go_live", "closure_readiness", "project_closure",
-];
+// Lifecycle gate config + evaluation now live in ../lib/stage-gates.ts (the single
+// source of truth shared by this advance endpoint and the read-only critical-path /
+// portfolio / escalation consumers). Stage ordering and prerequisites are PATH-AWARE
+// (vendor vs internal) via nextStageFor() / the evaluator's prerequisite check.
 
 router.get("/projects/:id/stages", async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
@@ -186,7 +69,8 @@ router.post("/projects/:id/stages/:stage/advance", async (req, res): Promise<voi
   if (!gate) { res.status(400).json({ error: `Unknown stage: ${stage}` }); return; }
 
   // 0. Closed projects are read-only — no further stage advances are permitted
-  const [project] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  const [project] = await db.select({ status: projectsTable.status, projectType: projectsTable.projectType })
+    .from(projectsTable).where(eq(projectsTable.id, projectId));
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
   if (project.status === "closed") {
     res.status(409).json({ error: "Project is closed and archived. No further stage advances are permitted." });
@@ -205,113 +89,65 @@ router.post("/projects/:id/stages/:stage/advance", async (req, res): Promise<voi
     return;
   }
 
-  // 2. Prerequisite stages must all be complete
-  if (gate.prerequisites.length > 0) {
-    const prereqRecords = await db.select()
-      .from(projectStagesTable)
-      .where(and(
-        eq(projectStagesTable.projectId, projectId),
-        inArray(projectStagesTable.stage, gate.prerequisites),
-      ));
-    const completedPrereqs = prereqRecords.filter(r => r.status === "complete").map(r => r.stage);
-    const missing = gate.prerequisites.filter(p => !completedPrereqs.includes(p));
-    if (missing.length > 0) {
-      res.status(422).json({ error: `Prerequisites not yet complete: ${missing.join(", ")}` });
-      return;
-    }
+  // 2-5. All other gates (prerequisites, blocking checklist, URS dual-approval,
+  // UAT defects, required docs) evaluated by the single shared evaluator — same
+  // logic that powers the read-only critical-path view, so they never drift.
+  // Prerequisites are path-aware (vendor vs internal) inside the evaluator.
+  const ev = await evaluateStageGate(projectId, stage, project.projectType);
+  if (ev.prerequisitesMissing.length > 0) {
+    res.status(422).json({ error: `Prerequisites not yet complete: ${ev.prerequisitesMissing.join(", ")}` });
+    return;
   }
-
-  // 3. Blocking checklist items must all be checked (read from persisted stage notes)
-  if (gate.blockingChecklistIds.length > 0) {
-    const [stageRecord] = await db.select()
-      .from(projectStagesTable)
-      .where(and(eq(projectStagesTable.projectId, projectId), eq(projectStagesTable.stage, stage)));
-    if (stageRecord?.notes) {
-      try {
-        const parsed = JSON.parse(stageRecord.notes) as Record<string, unknown>;
-        const checklistState = (parsed.__checklist ?? {}) as Record<string, boolean>;
-        const unchecked = gate.blockingChecklistIds.filter(id => !checklistState[id]);
-        if (unchecked.length > 0) {
-          res.status(422).json({
-            error: `${unchecked.length} blocking checklist item(s) not yet completed. Check all mandatory items before advancing.`,
-            uncheckedItems: unchecked,
-          });
-          return;
-        }
-      } catch {
-        // Notes is not valid JSON — checklist not saved yet; block the advance
-        res.status(422).json({ error: "Checklist state not found. Please complete all blocking checklist items before advancing." });
-        return;
-      }
-    } else {
-      // No notes at all means checklist has never been touched; block if there are blocking items
-      res.status(422).json({ error: "Checklist not yet completed. Please check all mandatory items before advancing." });
-      return;
-    }
-  }
-
-  // 4a. URS-specific gate: both Business Owner and IT Team approvals must be recorded in stage notes
-  if (stage === "urs") {
-    const [ursRecord] = await db.select({ notes: projectStagesTable.notes })
-      .from(projectStagesTable)
-      .where(and(eq(projectStagesTable.projectId, projectId), eq(projectStagesTable.stage, "urs")));
-    let bizApproved = false;
-    let itApproved = false;
-    if (ursRecord?.notes) {
-      try {
-        const n = JSON.parse(ursRecord.notes) as Record<string, unknown>;
-        bizApproved = n.__urs_biz_approved === true;
-        itApproved = n.__urs_it_approved === true;
-      } catch { /* treat as not approved */ }
-    }
-    if (!bizApproved || !itApproved) {
-      const missing = [...(!bizApproved ? ["Business Owner"] : []), ...(!itApproved ? ["IT Team"] : [])];
-      res.status(422).json({ error: `URS dual-approval required before advancing. Missing approvals: ${missing.join(", ")}.` });
-      return;
-    }
-  }
-
-  // 4b. UAT-specific gate: all critical defects must be resolved before advancing from uat
-  if (stage === "uat") {
-    const openCriticalDefects = await db.select()
-      .from(issuesTable)
-      .where(and(
-        eq(issuesTable.projectId, projectId),
-        eq(issuesTable.dependencyType, "uat_defect"),
-        ne(issuesTable.status, "resolved"),
-      ));
-    if (openCriticalDefects.length > 0) {
+  // Sub-gated stages (initiation): name the specific blocking sub-gate.
+  if (ev.subGates) {
+    const blocking = ev.subGates.find((s) => !s.satisfied);
+    if (blocking) {
+      const bits: string[] = [];
+      if (blocking.uncheckedChecklist.length) bits.push(`${blocking.uncheckedChecklist.length} checklist item(s)`);
+      if (blocking.missingDocs.length) bits.push(`missing document(s): ${blocking.missingDocs.join(", ")}`);
+      if (blocking.approvalsMissing.length) bits.push(`approval pending (${blocking.approvalsMissing.join(", ")})`);
+      const seq = blocking.approvalBlockedBy.length ? ` Approve ${blocking.approvalBlockedBy.join(", ")} first.` : "";
       res.status(422).json({
-        error: `${openCriticalDefects.length} unresolved UAT defect(s) must be closed before advancing to Go Live.`,
-        openDefectCount: openCriticalDefects.length,
+        error: `${blocking.label} not yet complete — ${bits.join("; ") || "pending"}.${seq}`,
+        subGate: blocking.key,
+        subGateDetail: { uncheckedChecklist: blocking.uncheckedChecklist, missingDocs: blocking.missingDocs, approvalsMissing: blocking.approvalsMissing },
       });
       return;
     }
   }
-
-  // 5. Required documents must all be uploaded
-  if (gate.requiredDocNames.length > 0) {
-    const docs = await db.select()
-      .from(documentsTable)
-      .where(and(eq(documentsTable.projectId, projectId), eq(documentsTable.stage, stage)));
-    const uploadedNames = docs.map(d => d.name);
-    const missingDocs = gate.requiredDocNames.filter(n => !uploadedNames.includes(n));
-    if (missingDocs.length > 0) {
-      res.status(422).json({
-        error: `Required documents not yet uploaded: ${missingDocs.join(", ")}`,
-        missingDocs,
-      });
-      return;
-    }
+  if (ev.uncheckedChecklist.length > 0) {
+    res.status(422).json({
+      error: `${ev.uncheckedChecklist.length} blocking checklist item(s) not yet completed. Check all mandatory items before advancing.`,
+      uncheckedItems: ev.uncheckedChecklist,
+    });
+    return;
+  }
+  if (ev.ursDualApprovalMissing.length > 0) {
+    res.status(422).json({ error: `URS dual-approval required before advancing. Missing approvals: ${ev.ursDualApprovalMissing.join(", ")}.` });
+    return;
+  }
+  if (ev.openUatDefects > 0) {
+    res.status(422).json({
+      error: `${ev.openUatDefects} unresolved UAT defect(s) must be closed before advancing to Go Live.`,
+      openDefectCount: ev.openUatDefects,
+    });
+    return;
+  }
+  if (ev.missingDocs.length > 0) {
+    res.status(422).json({
+      error: `Required documents not yet uploaded: ${ev.missingDocs.join(", ")}`,
+      missingDocs: ev.missingDocs,
+    });
+    return;
   }
 
-  // All gates passed — complete the current stage and activate next
-  const stageIdx = ORDERED_STAGES.indexOf(stage);
+  // All gates passed — complete the current stage and activate the next stage on
+  // this project's path (vendor vs internal).
   await db.update(projectStagesTable)
     .set({ status: "complete", completedAt: new Date() })
     .where(and(eq(projectStagesTable.projectId, projectId), eq(projectStagesTable.stage, stage)));
 
-  const nextStage = ORDERED_STAGES[stageIdx + 1];
+  const nextStage = nextStageFor(stage, project.projectType);
   if (nextStage) {
     const existing = await db.select().from(projectStagesTable)
       .where(and(eq(projectStagesTable.projectId, projectId), eq(projectStagesTable.stage, nextStage)));
@@ -368,7 +204,8 @@ router.post("/projects/:id/stages/:stage/test-advance", async (req, res): Promis
   const gate = STAGE_GATES[stage];
   if (!gate) { res.status(400).json({ error: `Unknown stage: ${stage}` }); return; }
 
-  const [project] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, projectId));
+  const [project] = await db.select({ status: projectsTable.status, projectType: projectsTable.projectType })
+    .from(projectsTable).where(eq(projectsTable.id, projectId));
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
   if (project.status === "closed") {
     res.status(409).json({ error: "Project is closed and archived." });
@@ -377,10 +214,10 @@ router.post("/projects/:id/stages/:stage/test-advance", async (req, res): Promis
 
   const { simulatedApprover } = (req.body ?? {}) as { simulatedApprover?: string };
 
-  // For URS: also auto-fill the dual-approval flags so the audit story is consistent.
-  if (stage === "urs") {
+  // For the merged initiation stage: also auto-fill the URS dual-approval flags so the audit story is consistent.
+  if (stage === "initiation") {
     const [ursRecord] = await db.select().from(projectStagesTable)
-      .where(and(eq(projectStagesTable.projectId, projectId), eq(projectStagesTable.stage, "urs")));
+      .where(and(eq(projectStagesTable.projectId, projectId), eq(projectStagesTable.stage, "initiation")));
     if (ursRecord) {
       let notes: Record<string, unknown> = {};
       try { notes = JSON.parse(ursRecord.notes ?? "{}") as Record<string, unknown>; } catch { /* ignore */ }
@@ -396,13 +233,12 @@ router.post("/projects/:id/stages/:stage/test-advance", async (req, res): Promis
     }
   }
 
-  // Complete the current stage and activate the next
-  const stageIdx = ORDERED_STAGES.indexOf(stage);
+  // Complete the current stage and activate the next stage on this project's path.
   await db.update(projectStagesTable)
     .set({ status: "complete", completedAt: new Date() })
     .where(and(eq(projectStagesTable.projectId, projectId), eq(projectStagesTable.stage, stage)));
 
-  const nextStage = ORDERED_STAGES[stageIdx + 1];
+  const nextStage = nextStageFor(stage, project.projectType);
   if (nextStage) {
     const existing = await db.select().from(projectStagesTable)
       .where(and(eq(projectStagesTable.projectId, projectId), eq(projectStagesTable.stage, nextStage)));

@@ -100,7 +100,7 @@ async function seed() {
     description: "Cloud ERP rollout across Finance, HR and Operations",
     status: "active",
     priority: "P1",
-    stage: "technical_design",
+    stage: "design",
     strategicTheme: "digital_core",
     ragStatus: "amber",
     capexBudget: "9000000",
@@ -122,21 +122,19 @@ async function seed() {
   ]);
 
   // ─── 16 Project Stages (stages 1-9 complete, 10 in_progress, 11-16 pending)
-  console.log("  → 16 project stages");
+  console.log("  → 9 project stages");
   const STAGES = [
-    "project_case", "urs", "rfp", "vendor_evaluation",
-    "charter", "nfa", "legal", "pr_po", "kickoff",
-    "technical_design", "development", "implementation_plan",
-    "uat", "go_live", "closure_readiness", "project_closure",
+    "initiation", "vendor_selection", "investment_authorization", "contract_po",
+    "design", "build", "uat", "go_live", "closure",
   ];
   const stageRows: typeof schema.projectStagesTable.$inferInsert[] = [];
   const baseDate = new Date("2025-07-01");
   for (let i = 0; i < STAGES.length; i++) {
     const enteredAt = new Date(baseDate.getTime() + i * 14 * 86_400_000);
     const completedAt = new Date(enteredAt.getTime() + 12 * 86_400_000);
-    if (i < 9) {
+    if (i < 4) {
       stageRows.push({ projectId: project.id, stage: STAGES[i], status: "complete", enteredAt, completedAt, notes: `Completed by Henry D'Souza on ${completedAt.toISOString().slice(0,10)}.` });
-    } else if (i === 9) {
+    } else if (i === 4) {
       stageRows.push({ projectId: project.id, stage: STAGES[i], status: "in_progress", enteredAt, notes: "Technical design workshops underway with vendor architects." });
     } else {
       stageRows.push({ projectId: project.id, stage: STAGES[i], status: "not_started" });
@@ -206,13 +204,13 @@ async function seed() {
   // ─── Notifications ───────────────────────────────────────────────────────
   console.log("  → notifications");
   await db.insert(schema.notificationsTable).values([
-    { userId: henry.id, type: "stage_active",      title: "Stage 10 active: Technical Design",   body: "Technical Design workshops in progress with vendor architects.", link: `/projects/${project.id}?stage=technical_design`, isRead: false, relatedEntityType: "project", relatedEntityId: project.id },
+    { userId: henry.id, type: "stage_active",      title: "Stage 5 active: Design",   body: "Technical Design workshops in progress with vendor architects.", link: `/projects/${project.id}?stage=design`, isRead: false, relatedEntityType: "project", relatedEntityId: project.id },
     { userId: grace.id, type: "risk_alert",        title: "High Risk: Data Quality Issues",      body: "Risk RAG is red. Immediate mitigation required.",                link: `/projects/${project.id}`,                       isRead: false, relatedEntityType: "project", relatedEntityId: project.id },
     { userId: henry.id, type: "milestone_due",     title: "Milestone Due in 14 Days: Dry Run",   body: "Data Migration Dry Run due 2026-02-28. Status: In Progress.",    link: `/projects/${project.id}`,                       isRead: true,  relatedEntityType: "milestone", relatedEntityId: msDryRun.id },
   ]);
 
   await pool.end();
-  console.log("✅ Seed complete. 1 project at stage 10 of 16 (Technical Design).");
+  console.log("✅ Seed complete. 1 project at stage 5 of 9 (Design).");
 }
 
 seed().catch((err) => {

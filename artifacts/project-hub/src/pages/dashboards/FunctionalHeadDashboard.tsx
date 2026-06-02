@@ -174,11 +174,11 @@ export default function FunctionalHeadDashboard() {
                           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{t.label}</p>
                           <Icon size={14} className="text-muted-foreground" />
                         </div>
-                        <div className={`text-2xl font-bold font-mono num-tabular ${T.text}`}>{t.pct}%</div>
+                        <div className={`text-2xl font-bold num-tabular ${T.text}`}>{t.pct}%</div>
                         <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
                           <div className={`h-full rounded-full ${T.bar}`} style={{ width: `${t.pct}%` }} />
                         </div>
-                        <p className="text-[10px] text-muted-foreground font-mono mt-2">{t.sub}</p>
+                        <p className="text-[10px] text-muted-foreground mt-2">{t.sub}</p>
                       </div>
                     );
                   })}
@@ -187,12 +187,12 @@ export default function FunctionalHeadDashboard() {
                       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Open Risk Pressure</p>
                       <AlertTriangle size={14} className="text-muted-foreground" />
                     </div>
-                    <div className="text-2xl font-bold font-mono num-tabular text-foreground">{delivery.risks.totalOpen}</div>
-                    <div className="mt-2 flex items-center gap-3 text-[11px] font-mono">
+                    <div className="text-2xl font-bold num-tabular text-foreground">{delivery.risks.totalOpen}</div>
+                    <div className="mt-2 flex items-center gap-3 text-[11px]">
                       <span className="text-destructive">{delivery.risks.highSeverity} high</span>
                       <span className="text-warn">{delivery.risks.unowned} unowned</span>
                     </div>
-                    <p className="text-[10px] text-muted-foreground font-mono mt-2">Open + in-progress risks</p>
+                    <p className="text-[10px] text-muted-foreground mt-2">Open + in-progress risks</p>
                   </div>
                 </>
               );
@@ -225,7 +225,7 @@ export default function FunctionalHeadDashboard() {
                   <div key={d.name} className="flex items-center gap-1.5 text-xs">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ background: d.fill }} />
                     <span className="text-muted-foreground">{d.name}</span>
-                    <span className="font-bold text-foreground font-mono">({d.value})</span>
+                    <span className="font-bold text-foreground">({d.value})</span>
                   </div>
                 ))}
               </div>
@@ -272,10 +272,10 @@ export default function FunctionalHeadDashboard() {
                 <div key={fn} className="p-3 rounded-xl bg-destructive/10 border-l-2 border-destructive">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-semibold text-foreground">{fn}</span>
-                    <span className="text-xs font-bold text-destructive font-mono">{Math.round(data.demand / data.capacity * 100)}% utilized</span>
+                    <span className="text-xs font-bold text-destructive">{Math.round(data.demand / data.capacity * 100)}% utilized</span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">Months: {data.months.join(", ")}</p>
-                  <p className="text-xs text-destructive/80 mt-0.5 font-mono">
+                  <p className="text-xs text-destructive/80 mt-0.5">
                     Demand: {data.demand}% / Capacity: {data.capacity}%
                   </p>
                 </div>
@@ -302,7 +302,7 @@ export default function FunctionalHeadDashboard() {
                       <p className="text-xs font-semibold text-foreground truncate">{risk.title}</p>
                       <p className="text-xs text-muted-foreground capitalize">{risk.impact} · {risk.likelihood}</p>
                     </div>
-                    <span className="text-xs font-bold text-muted-foreground flex-shrink-0 font-mono">#{risk.riskScore}</span>
+                    <span className="text-xs font-bold text-muted-foreground flex-shrink-0">#{risk.riskScore}</span>
                   </div>
                 );
               })}
@@ -371,12 +371,12 @@ export default function FunctionalHeadDashboard() {
                         strokeDasharray={circumference} strokeDashoffset={offset} strokeLinecap="round" />
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <span className={`text-xs font-bold font-mono ${gaugeText}`}>{avgUtil}%</span>
+                      <span className={`text-xs font-bold ${gaugeText}`}>{avgUtil}%</span>
                     </div>
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-semibold text-foreground truncate">{fn}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">Peak: {peakUtil}%</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">Peak: {peakUtil}%</p>
                     {avgUtil > 90 && <p className="text-[10px] text-destructive font-semibold mt-0.5">⚠ Over-allocated</p>}
                   </div>
                 </div>
@@ -463,7 +463,7 @@ export default function FunctionalHeadDashboard() {
                       </Link>
                     </td>
                     <td className="py-3 pr-4">
-                      <span className={`text-xs px-2 py-0.5 rounded font-bold font-mono ${prCls}`}>
+                      <span className={`text-xs px-2 py-0.5 rounded font-bold ${prCls}`}>
                         {p.priority ?? "P3"}
                       </span>
                     </td>
@@ -473,11 +473,11 @@ export default function FunctionalHeadDashboard() {
                         <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden min-w-[50px]">
                           <div className="h-full rounded-full bg-primary" style={{ width: `${p.progress ?? 0}%` }} />
                         </div>
-                        <span className="text-xs font-bold text-muted-foreground w-8 font-mono">{p.progress ?? 0}%</span>
+                        <span className="text-xs font-bold text-muted-foreground w-8">{p.progress ?? 0}%</span>
                       </div>
                     </td>
                     <td className="py-3 hidden lg:table-cell">
-                      <span className="text-xs text-muted-foreground font-mono">
+                      <span className="text-xs text-muted-foreground">
                         {p.endDate ? format(new Date(p.endDate), "MMM d, yyyy") : "—"}
                       </span>
                     </td>

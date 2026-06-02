@@ -13,6 +13,7 @@ import {
   meetingsTable,
   meetingItemsTable,
   activityTable,
+  pifsTable,
 } from "@workspace/db";
 import { eq, desc, and, or, inArray } from "drizzle-orm";
 import { llm, isLLMConfigured } from "@workspace/llm";
@@ -494,7 +495,7 @@ router.post("/ai/urs/draft", async (req, res): Promise<void> => {
   const ctx = await loadProjectContext(projectId);
   if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
   const { project, charter, stageNotes } = ctx;
-  const demand = (stageNotes.project_case?.__demand_initiation ?? {}) as Record<string, unknown>;
+  const demand = (stageNotes.initiation?.__demand_initiation ?? {}) as Record<string, unknown>;
   const result = await llm({
     task: "urs_draft",
     system:
@@ -520,8 +521,8 @@ router.post("/ai/rfp/draft-sections", async (req, res): Promise<void> => {
   const ctx = await loadProjectContext(projectId);
   if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
   const { project, charter, stageNotes } = ctx;
-  const urs = stageNotes.urs ?? {};
-  const demand = (stageNotes.project_case?.__demand_initiation ?? {}) as Record<string, unknown>;
+  const urs = stageNotes.initiation ?? {};
+  const demand = (stageNotes.initiation?.__demand_initiation ?? {}) as Record<string, unknown>;
   const result = await llm({
     task: "rfp_draft_sections",
     system:
@@ -550,7 +551,7 @@ router.post("/ai/vendors/score", async (req, res): Promise<void> => {
   const ctx = await loadProjectContext(projectId);
   if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
   const { project, charter, stageNotes } = ctx;
-  const urs = stageNotes.urs ?? {};
+  const urs = stageNotes.initiation ?? {};
   const result = await llm({
     task: "vendor_score_suggest",
     system:
@@ -587,7 +588,7 @@ router.post("/ai/vendors/suggest-list", async (req, res): Promise<void> => {
   const ctx = await loadProjectContext(projectId);
   if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
   const { project, charter, stageNotes } = ctx;
-  const urs = stageNotes.urs ?? {};
+  const urs = stageNotes.initiation ?? {};
   const result = await llm({
     task: "vendor_suggest_list",
     system:
@@ -621,7 +622,7 @@ router.post("/ai/vendors/suggest-dimensions", async (req, res): Promise<void> =>
   const ctx = await loadProjectContext(projectId);
   if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
   const { project, charter, stageNotes } = ctx;
-  const urs = stageNotes.urs ?? {};
+  const urs = stageNotes.initiation ?? {};
   const result = await llm({
     task: "vendor_suggest_dimensions",
     system:
@@ -659,7 +660,7 @@ router.post("/ai/vendors/score-matrix", async (req, res): Promise<void> => {
   const ctx = await loadProjectContext(projectId);
   if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
   const { project, charter, stageNotes } = ctx;
-  const urs = stageNotes.urs ?? {};
+  const urs = stageNotes.initiation ?? {};
   const dimLines = dimensions.map((d, i) =>
     `${i + 1}. [${d.id}] ${d.label} (${d.kind}, weight ${d.weight}%) — ${d.description ?? "(no description)"}`,
   ).join("\n");
@@ -698,7 +699,7 @@ router.post("/ai/vendors/insights", async (req, res): Promise<void> => {
   const ctx = await loadProjectContext(projectId);
   if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
   const { project, charter, stageNotes } = ctx;
-  const urs = stageNotes.urs ?? {};
+  const urs = stageNotes.initiation ?? {};
 
   const vendorLines = vendors.map((v) => {
     const s = scores?.[v.id] ?? {};
@@ -738,7 +739,7 @@ router.post("/ai/nfa/draft", async (req, res): Promise<void> => {
   const ctx = await loadProjectContext(projectId);
   if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
   const { project, charter, stageNotes } = ctx;
-  const demand = (stageNotes.project_case?.__demand_initiation ?? {}) as Record<string, unknown>;
+  const demand = (stageNotes.initiation?.__demand_initiation ?? {}) as Record<string, unknown>;
   const vendor = (stageNotes.vendor_evaluation ?? {}) as Record<string, unknown>;
   const result = await llm({
     task: "nfa_draft",
@@ -779,6 +780,240 @@ router.post("/ai/kickoff/agenda", async (req, res): Promise<void> => {
     }),
     jsonSchemaHint: `{ "agendaItems":[{"minutes":5,"title":"Welcome & Objectives","owner":"Project Sponsor"}, ...], "suggestedAttendees":[{"name":"<role>","dept":"<Dept>","role":"Sponsor"}], "openingRemarks":"2-3 sentences" }`,
     maxTokens: 2500,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/pif/draft-from-idea
+// Mirror of /ai/demand/draft-idea but produces a full PIF (Project Initiation
+// Form) payload — title, problem, solution, outcomes, metrics, ballpark
+// cost/duration, top risks. Used by the "Draft with AI" CTA on /pifs/new
+// before a PIF row exists.
+// ---------------------------------------------------------------------------
+router.post("/ai/pif/draft-from-idea", async (req, res): Promise<void> => {
+  const { ideaText, hint } = (req.body || {}) as { ideaText?: string; hint?: string };
+  if (!ideaText || ideaText.trim().length < 10) {
+    res.status(400).json({ error: "ideaText is required (min 10 chars)" });
+    return;
+  }
+  const result = await llm({
+    task: "pif_draft_from_idea",
+    system:
+      "You are a senior PMO Business Analyst at Granules India (an Indian pharmaceuticals manufacturer). A colleague has typed a raw project idea and you must structure it into a full Project Initiation Form (PIF) draft. Be concrete and grounded in what was typed — never invent specific people, vendors, dates, or rupee amounts. Where numbers appear, mark them illustrative. Use Indian corporate context (HOD, GM, plant, function).",
+    prompt: `Raw idea:\n"""\n${ideaText}\n"""\n${hint ? `\nExtra hint: ${hint}\n` : ""}\nProduce a complete PIF with: a polished title (Title Case, max 10 words), a 60-120 word business problem statement, a 60-150 word proposed solution, 3-5 target outcomes (each one short sentence), 3-5 success metrics (each measurable, e.g. "Reduce changeover time by 30%"), 2-4 likely dependencies, 2-4 top risks, ballpark estimated CapEx and OpEx in INR (whole numbers), estimated duration in days, and a one-word urgency level (low/normal/high/critical).`,
+    jsonSchema: z.object({
+      title: z.string().min(5).max(120),
+      businessProblem: z.string().min(60),
+      proposedSolution: z.string().min(60),
+      targetOutcomes: z.array(z.string().min(5)).min(3).max(8),
+      successMetrics: z.array(z.string().min(5)).min(3).max(8),
+      dependencies: z.array(z.string().min(3)).max(8),
+      topRisks: z.array(z.string().min(5)).max(8),
+      estimatedCapex: z.number().nonnegative().optional(),
+      estimatedOpex: z.number().nonnegative().optional(),
+      estimatedDurationDays: z.number().int().positive().optional(),
+      urgency: z.enum(["low", "normal", "high", "critical"]).optional(),
+    }),
+    jsonSchemaHint: `{ "title":"ERP Upgrade for FD Plant", "businessProblem":"…60-120 words…", "proposedSolution":"…", "targetOutcomes":["Faster month-end close","..."], "successMetrics":["Close cycle <3 days","..."], "dependencies":["IT bandwidth","Vendor selection"], "topRisks":["Data migration quality","User adoption"], "estimatedCapex": 8000000, "estimatedOpex": 1500000, "estimatedDurationDays": 240, "urgency":"normal" }`,
+    maxTokens: 3500,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/pif/critique
+// Flags weak / missing fields in an existing PIF (vague business case, no
+// measurable metrics, no risks called out) so the initiator can tighten the
+// draft before HOD review.
+// ---------------------------------------------------------------------------
+router.post("/ai/pif/critique", async (req, res): Promise<void> => {
+  const { pifId } = (req.body || {}) as { pifId?: number };
+  if (!pifId) { res.status(400).json({ error: "pifId is required" }); return; }
+  const [pif] = await db.select().from(pifsTable).where(eq(pifsTable.id, pifId));
+  if (!pif) { res.status(404).json({ error: "PIF not found" }); return; }
+
+  const result = await llm({
+    task: "pif_critique",
+    system:
+      "You are a critical PMO reviewer. Read a Project Initiation Form and call out concrete gaps that would weaken HOD sign-off. Be direct and specific — point at the actual text. Score each section out of 5 (1=barely usable, 5=executive-ready). No filler praise.",
+    prompt: `PIF to critique:\n${JSON.stringify({
+      title: pif.title,
+      businessProblem: pif.businessProblem,
+      proposedSolution: pif.proposedSolution,
+      targetOutcomes: pif.targetOutcomes,
+      successMetrics: pif.successMetrics,
+      dependencies: pif.dependencies,
+      topRisks: pif.topRisks,
+      estimatedCapex: pif.estimatedCapex,
+      estimatedOpex: pif.estimatedOpex,
+      estimatedDurationDays: pif.estimatedDurationDays,
+      classification: pif.classification,
+      urgency: pif.urgency,
+    }, null, 2)}`,
+    jsonSchema: z.object({
+      overallScore: z.number().min(1).max(5),
+      readyForHod: z.boolean(),
+      sectionScores: z.object({
+        businessProblem: z.number().min(1).max(5),
+        proposedSolution: z.number().min(1).max(5),
+        targetOutcomes: z.number().min(1).max(5),
+        successMetrics: z.number().min(1).max(5),
+        risks: z.number().min(1).max(5),
+        estimates: z.number().min(1).max(5),
+      }),
+      gaps: z.array(z.string().min(5)).min(1),
+      suggestedEdits: z.array(z.string().min(5)).max(8),
+    }),
+    jsonSchemaHint: `{ "overallScore": 3, "readyForHod": false, "sectionScores": {...}, "gaps":["Success metrics are not measurable — quantify each.","Top risks omit regulatory exposure."], "suggestedEdits":["Replace 'improve efficiency' with '%-based KPI'..."] }`,
+    maxTokens: 2500,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/vendors/extract-document
+// Claude reads a vendor-uploaded registration / financial / KYC document and
+// pre-fills the master profile fields. The frontend sends the raw extracted
+// text (from a PDF-to-text pass it already does); we never send the binary.
+// ---------------------------------------------------------------------------
+router.post("/ai/vendors/extract-document", async (req, res): Promise<void> => {
+  const { documentText, hint } = (req.body || {}) as { documentText?: string; hint?: string };
+  if (!documentText || documentText.trim().length < 20) {
+    res.status(400).json({ error: "documentText is required" }); return;
+  }
+  const result = await llm({
+    task: "vendor_doc_extract",
+    system:
+      "You are a procurement KYC analyst. Read the supplied vendor document and extract structured profile fields. Never invent data — if a field isn't present, return null for it.",
+    prompt: `Hint: ${hint ?? "Generic"}\n\nDocument text (truncated to first 8000 chars):\n"""\n${documentText.slice(0, 8000)}\n"""`,
+    jsonSchema: z.object({
+      name: z.string().nullable(),
+      legalName: z.string().nullable(),
+      gst: z.string().nullable(),
+      pan: z.string().nullable(),
+      country: z.string().nullable(),
+      region: z.string().nullable(),
+      address: z.string().nullable(),
+      email: z.string().nullable(),
+      phone: z.string().nullable(),
+      website: z.string().nullable(),
+      category: z.string().nullable(),
+      notes: z.string().nullable(),
+    }),
+    jsonSchemaHint: `{ "name": "Acme Pvt Ltd", "legalName": "Acme Private Limited", "gst": "29ABCDE1234F1Z5", "pan": "ABCDE1234F", "country": "IN", "region": "Karnataka", "address": "...", "email": "info@acme.com", "phone": "+91...", "website": "acme.com", "category": "API supplier", "notes": null }`,
+    maxTokens: 1500,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/rfx/:id/draft-questions
+// Suggest a balanced tech + commercial question bank for an RFx given the
+// brief. Author can accept-all, merge, or edit. Output matches the shape
+// PUT /api/rfx/:id/questions accepts.
+// ---------------------------------------------------------------------------
+router.post("/ai/rfx/draft-questions", async (req, res): Promise<void> => {
+  const { brief, type = "rfp", focusAreas } = (req.body || {}) as {
+    brief?: string; type?: string; focusAreas?: string[];
+  };
+  if (!brief || brief.trim().length < 30) {
+    res.status(400).json({ error: "brief is required (min 30 chars)" }); return;
+  }
+  const result = await llm({
+    task: "rfx_draft_questions",
+    system:
+      "You are an enterprise SCM analyst. Draft a question bank that lets a vendor answer cleanly in two envelopes: a technical envelope (capability, approach, compliance) and a commercial envelope (price, payment terms, TCO). Qualification questions go outside both envelopes and are visible from invitation acceptance.",
+    prompt: `RFx type: ${type}\nFocus areas: ${(focusAreas ?? []).join(", ") || "general"}\n\nBrief:\n"""\n${brief}\n"""\n\nReturn 8-15 questions total. Avoid yes/no unless commercial-binary (eg. "Are you GST registered").`,
+    jsonSchema: z.object({
+      questions: z.array(z.object({
+        section: z.enum(["technical", "commercial", "qualification"]),
+        label: z.string().min(5),
+        description: z.string().optional(),
+        kind: z.enum(["text", "number", "select", "multi", "file", "bool", "currency"]),
+        options: z.array(z.string()).optional(),
+        weight: z.number().int().min(0).max(20).optional(),
+        required: z.boolean().optional(),
+      })).min(4).max(20),
+    }),
+    jsonSchemaHint: `{ "questions": [ { "section":"qualification","label":"Are you GST registered?","kind":"bool","required":true }, { "section":"technical","label":"Describe your manufacturing capacity","kind":"text","weight":10 }, { "section":"commercial","label":"Unit price (INR)","kind":"currency","weight":15 } ] }`,
+    maxTokens: 2500,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/vendors/:id/risk-summary
+// Roll up known risk events + KPI history into a 3-sentence summary + a
+// recommended risk_status (green/amber/red). Used in vendor 360 and the
+// admin segment-decision modal.
+// ---------------------------------------------------------------------------
+router.post("/ai/vendors/risk-summary", async (req, res): Promise<void> => {
+  const { vendorName, riskEvents, kpis, segment } = (req.body || {}) as {
+    vendorName?: string;
+    riskEvents?: Array<{ source: string; severity: string; summary: string; createdAt?: string }>;
+    kpis?: Array<{ period: string; compositeScore?: number | null }>;
+    segment?: string;
+  };
+  if (!vendorName) { res.status(400).json({ error: "vendorName is required" }); return; }
+  const result = await llm({
+    task: "vendor_risk_summary",
+    system:
+      "You are a procurement risk analyst. Given a vendor's known risk events and KPI history, write a 3-sentence summary and recommend a rolled-up risk status. Be specific; cite the strongest signal driving the recommendation.",
+    prompt: `Vendor: ${vendorName}\nCurrent segment: ${segment ?? "unknown"}\n\nRisk events:\n${JSON.stringify(riskEvents ?? [], null, 2)}\n\nKPI history:\n${JSON.stringify(kpis ?? [], null, 2)}`,
+    jsonSchema: z.object({
+      summary: z.string().min(20),
+      recommendedRiskStatus: z.enum(["green", "amber", "red"]),
+      drivers: z.array(z.string()).max(5),
+    }),
+    jsonSchemaHint: `{ "summary": "...", "recommendedRiskStatus":"amber", "drivers":["Two missed deliveries in last quarter","Recent ESG audit flagged a labor concern"] }`,
+    maxTokens: 1200,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/rfx/:id/award-scenarios
+// Model multiple award scenarios (single winner / split / phased) from the
+// supplied tech + commercial scores + TCO components. Output is consumed by
+// the Award Analysis tab so the user can pick a scenario, edit, and submit.
+// ---------------------------------------------------------------------------
+router.post("/ai/rfx/award-scenarios", async (req, res): Promise<void> => {
+  const { vendors, dimensions, scores, tcoModel, currency = "INR" } = (req.body || {}) as {
+    vendors?: Array<{ id: number; name: string; segment?: string }>;
+    dimensions?: Array<{ id: number; label: string; kind: string; weight: number }>;
+    scores?: Array<{ envelopeId: number; dimensionId: number; score: number; vendorId?: number }>;
+    tcoModel?: Record<string, unknown>;
+    currency?: string;
+  };
+  if (!vendors || vendors.length === 0) {
+    res.status(400).json({ error: "vendors are required" }); return;
+  }
+  const result = await llm({
+    task: "rfx_award_scenarios",
+    system:
+      "You are a senior SCM strategist. Given the tech + commercial scores and the TCO model, propose 2-3 distinct award scenarios. For each: name, brief rationale, per-vendor share_pct (must sum to 100), and an indicative total-cost figure if computable.",
+    prompt: `Currency: ${currency}\nVendors:\n${JSON.stringify(vendors, null, 2)}\n\nDimensions:\n${JSON.stringify(dimensions ?? [], null, 2)}\n\nScores:\n${JSON.stringify(scores ?? [], null, 2)}\n\nTCO model:\n${JSON.stringify(tcoModel ?? {}, null, 2)}`,
+    jsonSchema: z.object({
+      scenarios: z.array(z.object({
+        name: z.string().min(3),
+        rationale: z.string().min(10),
+        allocation: z.array(z.object({
+          vendorId: z.number().int(),
+          sharePct: z.number().int().min(1).max(100),
+          note: z.string().optional(),
+        })).min(1),
+        indicativeTotal: z.number().nullable(),
+      })).min(2).max(4),
+    }),
+    jsonSchemaHint: `{ "scenarios": [ { "name":"Single winner (lowest TCO)","rationale":"...","allocation":[{"vendorId":1,"sharePct":100}],"indicativeTotal":4500000 }, { "name":"Split 60/40 (risk diversification)","rationale":"...","allocation":[{"vendorId":1,"sharePct":60},{"vendorId":2,"sharePct":40}],"indicativeTotal":4700000 } ] }`,
+    maxTokens: 2200,
   });
   if (!result.ok) return aiError(result.reason, result.message, res);
   res.json(result.data);

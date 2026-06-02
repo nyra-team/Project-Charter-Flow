@@ -13,6 +13,7 @@ import {
 } from "../../components/dashboard/primitives";
 import { useUserStore } from "../../lib/store";
 import { useMemo, useEffect } from "react";
+import { useAuth } from "../../auth/context";
 
 function useMyTasks(userId: number, refetchInterval: number | false) {
   return useQuery({
@@ -79,7 +80,7 @@ function ProjectSnapshotCard({ project }: { project: SnapshotProject }) {
 
         {/* Dual-track progress */}
         <div className="space-y-1.5 mb-3">
-          <div className="flex items-baseline justify-between text-[10px] font-mono text-muted-foreground">
+          <div className="flex items-baseline justify-between text-[10px] text-muted-foreground">
             <span className="uppercase tracking-wider">Actual vs Baseline</span>
             <span className="num-tabular text-card-foreground font-semibold">{progress}% / {Math.round(baselinePct)}%</span>
           </div>
@@ -99,7 +100,7 @@ function ProjectSnapshotCard({ project }: { project: SnapshotProject }) {
         </div>
 
         {project.endDate && (
-          <div className="flex items-center gap-1.5 mt-3 text-[10px] text-muted-foreground font-mono">
+          <div className="flex items-center gap-1.5 mt-3 text-[10px] text-muted-foreground">
             <Clock size={10} />
             <span>Due {format(new Date(project.endDate), "MMM d, yyyy")}</span>
             {crCount > 0 && (
@@ -122,8 +123,8 @@ function Metric({ label, value, tone = "default" }: { label: string; value: stri
   }[tone];
   return (
     <div className="flex flex-col">
-      <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-mono">{label}</span>
-      <span className={`text-xs font-mono font-semibold num-tabular ${toneCls}`}>{value}</span>
+      <span className="text-[9px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className={`text-xs font-semibold num-tabular ${toneCls}`}>{value}</span>
     </div>
   );
 }
@@ -131,6 +132,8 @@ function Metric({ label, value, tone = "default" }: { label: string; value: stri
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PMDashboard() {
+  const { profile } = useAuth();
+  const firstName = profile?.full_name?.trim().split(/\s+/)[0] ?? profile?.email?.split("@")[0] ?? "";
   const { refetchInterval, markRefreshed, RefreshButton } = useAutoRefresh();
   const { userId } = useUserStore();
   const { data: summary } = useGetDashboardSummary({ query: { refetchInterval } as never });
@@ -190,16 +193,16 @@ export default function PMDashboard() {
         <div className="absolute inset-0 ambient-mesh opacity-70 pointer-events-none" />
         <div className="relative flex items-start justify-between flex-wrap gap-4 p-6 lg:p-8">
           <div className="min-w-0">
-            <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground mb-2">
+            <p className="text-[10px] tracking-[0.22em] uppercase text-muted-foreground mb-2">
               Project Manager · Command View
             </p>
             <h2 className="text-3xl lg:text-4xl font-bold tracking-tight text-card-foreground">
-              Good {greeting()}. Here's your portfolio.
+              Good {greeting()}{firstName ? `, ${firstName}` : ""}. Here's your portfolio.
             </h2>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
-              <span className="font-mono num-tabular text-card-foreground font-semibold">{activeProjects.length}</span> active project{activeProjects.length === 1 ? "" : "s"} under your management ·
-              {" "}<span className="font-mono num-tabular text-card-foreground font-semibold">{tasksDueThisWeek.length}</span> due this week ·
-              {" "}<span className="font-mono num-tabular text-destructive font-semibold">{overdueTasks.length}</span> overdue
+              <span className="num-tabular text-card-foreground font-semibold">{activeProjects.length}</span> active project{activeProjects.length === 1 ? "" : "s"} under your management ·
+              {" "}<span className="num-tabular text-card-foreground font-semibold">{tasksDueThisWeek.length}</span> due this week ·
+              {" "}<span className="num-tabular text-destructive font-semibold">{overdueTasks.length}</span> overdue
             </p>
           </div>
           <RefreshButton />
@@ -221,7 +224,7 @@ export default function PMDashboard() {
           subtitle="Aggregated progress vs baseline · last 6 weeks"
           className="xl:col-span-2"
           actions={
-            <span className="hidden md:inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-success px-2 py-0.5 rounded border border-success/20 bg-success/10">
+            <span className="hidden md:inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-success px-2 py-0.5 rounded border border-success/20 bg-success/10">
               <Activity size={10} /> Trending up
             </span>
           }
@@ -247,7 +250,7 @@ export default function PMDashboard() {
                     color: "hsl(var(--popover-foreground))",
                   }}
                   itemStyle={{ color: "hsl(var(--popover-foreground))" }}
-                  labelStyle={{ color: "hsl(var(--muted-foreground))", fontFamily: "var(--app-font-mono)" }}
+                  labelStyle={{ color: "hsl(var(--muted-foreground))", fontFamily: "var(--app-font-sans)" }}
                 />
                 <Area type="monotone" dataKey="progress" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#phProgress)" />
                 <Area type="monotone" dataKey="baseline" stroke="hsl(var(--muted-foreground))" strokeWidth={1.2} strokeDasharray="4 4" fill="none" />
@@ -279,7 +282,7 @@ export default function PMDashboard() {
             <div className="hairline" />
             <div className="flex items-center justify-between">
               <span className="text-[13px] text-muted-foreground">Total</span>
-              <span className="text-base font-mono font-semibold num-tabular text-card-foreground">{taskTotal}</span>
+              <span className="text-base font-semibold num-tabular text-card-foreground">{taskTotal}</span>
             </div>
           </div>
         </DashboardCard>
@@ -307,12 +310,12 @@ export default function PMDashboard() {
                         <p className="text-sm font-medium text-card-foreground truncate group-hover:text-primary transition-colors">{t.name}</p>
                         <p className="text-[11px] text-muted-foreground truncate">{t.projectName}</p>
                       </div>
-                      <div className="text-[11px] flex items-center gap-1 text-muted-foreground font-mono flex-shrink-0">
+                      <div className="text-[11px] flex items-center gap-1 text-muted-foreground flex-shrink-0">
                         <Clock size={10} />
                         {t.endDate ? format(new Date(t.endDate), "MMM d") : "—"}
                       </div>
                       {t.priority && (
-                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border flex-shrink-0 ${
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border flex-shrink-0 ${
                           t.priority === "P1"
                             ? "bg-destructive/10 text-destructive border-destructive/30"
                             : t.priority === "P2"
@@ -346,7 +349,7 @@ export default function PMDashboard() {
                         <p className="text-[11px] text-muted-foreground truncate">{t.projectName}</p>
                       </div>
                       {t.endDate && (
-                        <span className="text-[11px] font-mono font-bold text-destructive flex-shrink-0">
+                        <span className="text-[11px] font-bold text-destructive flex-shrink-0">
                           {Math.ceil((now.getTime() - new Date(t.endDate).getTime()) / 86400000)}d overdue
                         </span>
                       )}
@@ -385,8 +388,8 @@ export default function PMDashboard() {
                   <FileText size={18} />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-mono uppercase tracking-wider text-primary/80 mb-1">Awaiting Action</p>
-                  <p className="text-2xl font-mono font-semibold num-tabular text-card-foreground leading-none">
+                  <p className="text-[10px] uppercase tracking-wider text-primary/80 mb-1">Awaiting Action</p>
+                  <p className="text-2xl font-semibold num-tabular text-card-foreground leading-none">
                     {summary?.pendingApprovals ?? 0}
                   </p>
                   <p className="text-[11px] text-muted-foreground mt-2">Click to review the queue</p>
@@ -399,7 +402,7 @@ export default function PMDashboard() {
           <div className="hairline my-4" />
 
           <div className="space-y-3">
-            <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground font-mono">Quick stats</p>
+            <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground">Quick stats</p>
             <div className="grid grid-cols-2 gap-3">
               <QuickStat label="My Total Tasks" value={myTasks?.length ?? 0} icon={TrendingUp} />
               <QuickStat label="Completed"     value={myTasks?.filter(t => t.status === "completed").length ?? 0} icon={CheckSquare} tone="success" />
@@ -439,10 +442,10 @@ function QuickStat({ label, value, icon: Icon, tone = "default" }: { label: stri
   return (
     <div className="rounded-lg p-3 bg-muted/40 border border-border">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">{label}</span>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</span>
         <Icon size={11} className="text-muted-foreground/60" />
       </div>
-      <p className={`text-xl font-mono font-semibold num-tabular mt-1 ${cls}`}>{value}</p>
+      <p className={`text-xl font-semibold num-tabular mt-1 ${cls}`}>{value}</p>
     </div>
   );
 }

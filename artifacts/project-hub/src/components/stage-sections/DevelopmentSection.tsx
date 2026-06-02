@@ -18,7 +18,7 @@ export function DevelopmentSection({ projectId }: { projectId: number }) {
  const { toast } = useToast();
 
  const stageRecord = (stages as Array<{ id: number; stage: string; notes?: string | null }>)
- .find((s) => s.stage === "development");
+ .find((s) => s.stage === "build");
  const parsed: Record<string, unknown> = (() => {
  try { return JSON.parse(stageRecord?.notes ?? "{}"); } catch { return {}; }
  })();

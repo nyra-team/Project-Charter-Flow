@@ -7,7 +7,7 @@ import { z } from "zod/v4";
  * impact assessment, approval workflow and baseline-lock awareness.
  * A CR is REQUIRED to alter any baselined value (locked at Charter / NFA stage).
  */
-export const changeRequestsTable = pgTable("change_requests", {
+export const changeRequestsTable = pgTable("pmo_change_requests", {
   id: serial("id").primaryKey(),
   projectId: integer("project_id").notNull(),
   crNumber: text("cr_number").notNull(), // CR-PRJ123-001 etc, generated on create
