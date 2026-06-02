@@ -260,7 +260,7 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
  {alreadyGenerated || generated ? (
  <div className="space-y-2">
  <div className="rounded-xl p-3 text-center space-y-0.5">
- <p className="text-sm font-bold text-success">✓ RFP Document generated from URS</p>
+ <p className="text-sm font-bold text-success">✓ RFP Document generated from Requirements</p>
  <p className="text-[11px] text-muted-foreground">
  {latestRfpDoc
    ? "On file in the Documents tab."
@@ -314,9 +314,9 @@ export function RFPTemplateSection({ projectId }: { projectId: number }) {
 
  {(ursScope || ursRequirements) && (
  <div className="rounded-lg p-2.5 text-xs text-primary bg-card border border-border">
- <p className="font-semibold mb-1">URS data detected — template will include:</p>
+ <p className="font-semibold mb-1">Requirements data detected — template will include:</p>
  {ursScope && <p>• Scope: {ursScope.slice(0, 80)}{ursScope.length > 80 ? "…" : ""}</p>}
- {ursRequirements && <p>• Requirements section from URS notes</p>}
+ {ursRequirements && <p>• Requirements section from the Requirements form</p>}
  {(ursBizApprover || ursItApprover) && <p>• Approvers: {ursApprovalLine}</p>}
  </div>
  )}

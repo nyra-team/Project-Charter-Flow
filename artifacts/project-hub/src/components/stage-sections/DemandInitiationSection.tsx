@@ -334,7 +334,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
           (2026-06-02) — URS "Functional Requirements" is the canonical
           source. The legacy businessRequirements value still flows through
           the saved payload for back-compat. */}
-      <p className="text-xs font-bold text-foreground pt-3 border-t border-border">BRD — Business Process Detail</p>
+      <p className="text-xs font-bold text-foreground pt-3 border-t border-border">Business Process Detail</p>
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="As-Is Process" hint="How the business operates today">
@@ -455,12 +455,12 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
         {bcApproved ? (
           <>
             <p className="text-xs text-success">✓ Approved by <strong>{bcApprover}</strong>{bcApprovedAt ? ` · ${formatDate(bcApprovedAt)}` : ""}</p>
-            <p className="text-[11px] text-muted-foreground mt-1">URS sign-off and stage advance are now unlocked.</p>
+            <p className="text-[11px] text-muted-foreground mt-1">Requirements sign-off and stage advance are now unlocked.</p>
             {canApproveBC && <button onClick={revokeBC} className="mt-2 text-xs text-destructive underline">Revoke</button>}
           </>
         ) : (
           <>
-            <p className="text-xs text-warn mb-2">Pending approval — this is the go/no-go before requirements (URS) are signed off.</p>
+            <p className="text-xs text-warn mb-2">Pending approval — this is the go/no-go before Requirements are signed off.</p>
             {!bcChecklistOk ? (
               <p className="text-xs text-muted-foreground italic">Complete the Business Case (justification, outcomes, budget) before it can be approved.</p>
             ) : canApproveBC ? (

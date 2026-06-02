@@ -38,7 +38,7 @@ type AiInsights = {
 };
 
 const DEFAULT_DIMENSIONS: Dimension[] = [
- { id: "d_functional", label: "Functional Fit to URS", kind: "technical", weight: 40, description: "How well the proposal covers required URS features." },
+ { id: "d_functional", label: "Functional Fit to Requirements", kind: "technical", weight: 40, description: "How well the proposal covers the required functional capabilities." },
  { id: "d_technical", label: "Technical Architecture", kind: "technical", weight: 20, description: "Robustness, scalability, integration approach." },
  { id: "d_commercial", label: "Commercial Competitiveness", kind: "commercial", weight: 25, description: "CapEx, OpEx, payment terms, total cost of ownership." },
  { id: "d_track_record", label: "Vendor Track Record", kind: "commercial", weight: 15, description: "Past projects, references, financial stability." },
@@ -812,7 +812,7 @@ export function VendorEvalScorecard({ projectId }: { projectId: number }) {
  </p>
  {insights.gaps?.length > 0 && (
  <div>
- <p className="font-semibold text-foreground mb-1">Gaps vs URS:</p>
+ <p className="font-semibold text-foreground mb-1">Gaps vs Requirements:</p>
  <ul className="space-y-0.5">
  {insights.gaps.map((g, i) => (
  <li key={i} className="text-muted-foreground">• {g}</li>

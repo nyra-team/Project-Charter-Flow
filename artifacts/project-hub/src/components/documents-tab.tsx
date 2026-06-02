@@ -294,7 +294,7 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
           <div className="space-y-3">
             <div>
               <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Name</label>
-              <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. URS v1" className="mt-1" />
+              <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Requirements v1" className="mt-1" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

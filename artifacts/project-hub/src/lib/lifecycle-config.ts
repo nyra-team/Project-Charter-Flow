@@ -24,15 +24,16 @@ export const LIFECYCLE_STAGES = [
     key: "initiation",
     label: "Initiation",
     shortLabel: "INIT",
-    description: "Business Case / BRD plus User Requirements Specification — dual-approval by Business Owner and IT Team",
+    description: "Business Case and Requirements — dual-approval by Business Owner and IT Team",
     color: "#6366F1",
     requiredDocs: [
-      // Business Case docs remain optional uploads — the Business Case / BRD
-      // form is the source of truth; the URS docs below are the gated artifacts.
+      // Business Case documents are optional uploads — the in-app Business
+      // Case form is the source of truth. The Requirements documents below
+      // are the gated artifacts that drive sign-off.
       { id: "pc_form", name: "Business Case Form", description: "Completed business case form with business justification", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25, optional: true },
       { id: "business_case", name: "Business Case Document", description: "Detailed business case with ROI analysis", acceptedTypes: ["PDF", "DOCX", "XLSX"], maxSizeMB: 25, optional: true },
-      { id: "urs_doc", name: "URS Document", description: "Full user requirements specification", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
-      { id: "urs_review", name: "URS Review Sign-off", description: "Signed review sheet from Business & IT", acceptedTypes: ["PDF"], maxSizeMB: 10 },
+      { id: "urs_doc", name: "Requirements Document", description: "Full requirements specification", acceptedTypes: ["PDF", "DOCX"], maxSizeMB: 25 },
+      { id: "urs_review", name: "Requirements Review Sign-off", description: "Signed review sheet from Business & IT", acceptedTypes: ["PDF"], maxSizeMB: 10 },
     ],
     checklistItems: [
       // — Business Case —
@@ -41,12 +42,12 @@ export const LIFECYCLE_STAGES = [
       { id: "outcomes", label: "Expected outcomes defined", blocking: true },
       { id: "sponsor", label: "Project sponsor assigned", blocking: false },
       { id: "budget_est", label: "Preliminary budget estimated (CapEx/OpEx split)", blocking: true },
-      // — URS (dual-approval gate) —
+      // — Requirements (dual-approval gate) —
       { id: "biz_req", label: "Business requirements fully documented", blocking: true },
       { id: "it_review", label: "IT Team review completed", blocking: true },
       { id: "biz_owner_approved", label: "Business Owner approval received", blocking: true },
       { id: "it_approved", label: "IT Team approval received", blocking: true },
-      { id: "version_ctrl", label: "URS version control applied", blocking: false },
+      { id: "version_ctrl", label: "Requirements version control applied", blocking: false },
     ],
     prerequisites: [] as string[],
     advanceRoles: ["initiator", "pmo", "hod"],
@@ -74,7 +75,7 @@ export const LIFECYCLE_STAGES = [
       // — RFP — (RFP issued + responses evaluated kept as distinct attributable steps for tender-fairness audit)
       { id: "urs_approved_gate", label: "Initiation stage approved ✓", blocking: true },
       { id: "rfp_created", label: "RFP document created or uploaded", blocking: true },
-      { id: "urs_populated", label: "RFP header auto-populated from URS", blocking: false },
+      { id: "urs_populated", label: "RFP header auto-populated from Requirements", blocking: false },
       { id: "vendor_invited", label: "Vendor list defined and notified", blocking: true },
       { id: "deadline_set", label: "Proposal submission deadline set", blocking: true },
       // — Vendor Evaluation —

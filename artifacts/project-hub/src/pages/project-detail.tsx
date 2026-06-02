@@ -1591,7 +1591,7 @@ export default function ProjectDetail() {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <h3 className="text-[15px] font-semibold text-foreground tracking-tight">Milestones</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">Gate milestones map to lifecycle stages (BC Approved, URS Approved, …)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">Gate milestones map to lifecycle stages (Business Case Approved, Requirements Approved, …)</p>
             </div>
             <button
               onClick={handleGenerateGates}

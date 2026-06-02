@@ -182,12 +182,12 @@ export function URSDualApprovalSection({ projectId }: { projectId: number }) {
     <div className="rounded-2xl p-4 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-bold text-foreground">User Requirements Specification (URS)</p>
+          <p className="text-sm font-bold text-foreground">Requirements</p>
           <p className="text-[11px] text-primary">GAMP-5 style template — scope, functional, non-functional, data, integration, compliance, acceptance</p>
         </div>
         <div className="flex items-center gap-2">
           <AiButton
-            label="AI Draft URS"
+            label="AI Draft Requirements"
             endpoint="/api/ai/urs/draft"
             payload={{ projectId, hint: inScope || funcReqs || background || undefined }}
             size="sm"
@@ -208,11 +208,11 @@ export function URSDualApprovalSection({ projectId }: { projectId: number }) {
             onClick={saveContent}
             disabled={updateStage.isPending}
             className="bg-primary hover:bg-primary/90 text-xs font-semibold text-primary-foreground px-3 py-1.5 rounded-lg disabled:opacity-40"
-          >{updateStage.isPending ? "Saving…" : "Save URS"}</button>
+          >{updateStage.isPending ? "Saving…" : "Save Requirements"}</button>
         </div>
       </div>
 
-      <Field label="Background & Context" hint="Why this URS exists, current system, user community">
+      <Field label="Background & Context" hint="Why these requirements exist, current system, user community">
         <AutoTextarea value={background} onChange={(e) => setBackground(e.target.value)} minRows={3}
           placeholder="Brief background, business context, user community, current pain points" className={ta} />
       </Field>
@@ -282,7 +282,7 @@ export function URSDualApprovalSection({ projectId }: { projectId: number }) {
           placeholder="e.g. 21 CFR Part 11 e-signatures, audit trail (ALCOA+), data integrity, GxP validation" className={ta} />
       </Field>
 
-      <Field label="Acceptance Criteria" required hint="How will URS be deemed satisfied?">
+      <Field label="Acceptance Criteria" required hint="How will the requirements be deemed satisfied?">
         <AutoTextarea value={acceptance} onChange={(e) => setAcceptance(e.target.value)} minRows={3}
           placeholder="Each FR-xx must be demonstrated during UAT with traceable test scripts" className={ta} />
       </Field>
@@ -304,11 +304,11 @@ export function URSDualApprovalSection({ projectId }: { projectId: number }) {
       </div>
 
       {/* Dual approval */}
-      <p className="text-sm font-bold text-foreground pt-3 border-t border-border">URS Dual-Approval</p>
+      <p className="text-sm font-bold text-foreground pt-3 border-t border-border">Requirements Approval</p>
       <p className="text-xs text-primary">Both Business Owner and IT Team must approve before advancing.</p>
       {!bcApproved && (
         <div className="rounded-lg p-2.5 bg-warn/10 border border-warn/30">
-          <p className="text-xs text-warn font-medium">URS sign-off is locked until the Business Case is approved. You can keep drafting the URS in the meantime — approve the Business Case (in its tab) to unlock these buttons.</p>
+          <p className="text-xs text-warn font-medium">Requirements sign-off is locked until the Business Case is approved. You can keep drafting the requirements in the meantime — approve the Business Case above to unlock these buttons.</p>
         </div>
       )}
       <div className="grid grid-cols-2 gap-3">

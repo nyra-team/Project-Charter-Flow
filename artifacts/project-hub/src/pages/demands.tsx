@@ -35,7 +35,7 @@ export default function DemandsList() {
             </h2>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
               All initiatives in <span className="font-mono text-card-foreground font-semibold">Business Case</span>,{" "}
-              <span className="font-mono text-card-foreground font-semibold">URS</span>,{" "}
+              <span className="font-mono text-card-foreground font-semibold">Requirements</span>,{" "}
               <span className="font-mono text-card-foreground font-semibold">RFP</span>, or{" "}
               <span className="font-mono text-card-foreground font-semibold">Vendor Evaluation</span> —
               before a Charter is approved.
