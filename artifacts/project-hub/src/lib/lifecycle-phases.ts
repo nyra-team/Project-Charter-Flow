@@ -6,7 +6,7 @@ import { LIFECYCLE_STAGES, type LifecycleStageKey } from "./lifecycle-config";
 // dashboard funnel, and the pipeline kanban filter chips.
 // ---------------------------------------------------------------------------
 
-export type PhaseKey = "plan" | "execute" | "release_close";
+export type PhaseKey = "plan" | "execute" | "close";
 
 export interface LifecyclePhase {
   key: PhaseKey;
@@ -17,35 +17,45 @@ export interface LifecyclePhase {
   stageKeys: LifecycleStageKey[];
 }
 
-// 'Plan' merges the former 'Initiate' and 'Procure' phases (per 2026-06-02
-// product call). One umbrella card spans initiation → sourcing → investment
-// authorization → contract, which is how the business actually scopes the
-// 'planning' part of a project before execution begins. Three phases total now
-// (Plan → Execute → Release & Close).
+// 2026-06-02 canonical project life cycle. Three phases, 13 stages:
+//
+//   Plan      → Business Requirements · RFP · Vendor Evaluation and
+//               Finalization · Solution Design · Project Plan
+//   Execute   → Development & Configuration · System Testing & Validation
+//               · Deployment Readiness · Production Deployment & Go-Live
+//   Close     → Business closure · Operational handover · Financial
+//               closure · PMO Closure
+//
+// Stage keys preserved from the older lifecycle (initiation, vendor_selection,
+// uat, go_live, closure) keep their internal identifiers — only their labels
+// changed. The four deprecated keys (design, build, investment_authorization,
+// contract_po) still exist in LIFECYCLE_STAGES for back-compat with old
+// project data but are intentionally NOT listed here, so the new lifecycle
+// bar / pipeline / phase cards never render them.
 export const LIFECYCLE_PHASES: LifecyclePhase[] = [
   {
     key: "plan",
     label: "Plan",
     shortLabel: "PLAN",
-    description: "BRD, sourcing, authorization & contract",
+    description: "Requirements, sourcing, vendor finalization, design & schedule",
     color: "#6366F1",
-    stageKeys: ["initiation", "vendor_selection", "investment_authorization", "contract_po"],
+    stageKeys: ["initiation", "rfp", "vendor_selection", "solution_design", "project_plan"],
   },
   {
     key: "execute",
     label: "Execute",
     shortLabel: "EXEC",
-    description: "Design & build",
+    description: "Build, test, prepare and go-live",
     color: "#0EA5E9",
-    stageKeys: ["design", "build"],
+    stageKeys: ["dev_config", "uat", "deployment_readiness", "go_live"],
   },
   {
-    key: "release_close",
-    label: "Release & Close",
-    shortLabel: "REL",
-    description: "Test, launch & wrap up",
+    key: "close",
+    label: "Close",
+    shortLabel: "CLS",
+    description: "Business sign-off, operational handover, financials, PMO closure",
     color: "#F59E0B",
-    stageKeys: ["uat", "go_live", "closure"],
+    stageKeys: ["business_closure", "operational_handover", "financial_closure", "closure"],
   },
 ];
 

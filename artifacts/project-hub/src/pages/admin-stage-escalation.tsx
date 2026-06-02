@@ -10,17 +10,29 @@ type PolicyRow = {
   tier: number; afterDays: number; action: "remind" | "escalate"; targetRole: string; isActive: boolean;
 };
 
-// 9-stage Option-B lifecycle (mirrors STAGE_META on the server).
+// 13-stage canonical lifecycle (2026-06-02 redesign). The four legacy
+// keys (investment_authorization, contract_po, design, build) are kept
+// at the end so admins can still tweak escalation rules for any
+// historical project sitting on those stages.
 const STAGES: Array<{ key: string; label: string }> = [
-  { key: "initiation", label: "Initiation" },
-  { key: "vendor_selection", label: "Vendor Selection" },
-  { key: "investment_authorization", label: "Investment Authorization" },
-  { key: "contract_po", label: "Contract & PO" },
-  { key: "design", label: "Design" },
-  { key: "build", label: "Build & Implementation" },
-  { key: "uat", label: "UAT Sign-off" },
-  { key: "go_live", label: "Go Live" },
-  { key: "closure", label: "Closure" },
+  { key: "initiation", label: "Business Requirements" },
+  { key: "rfp", label: "Request for Proposal" },
+  { key: "vendor_selection", label: "Vendor Evaluation and Finalization" },
+  { key: "solution_design", label: "Solution Design" },
+  { key: "project_plan", label: "Project Plan" },
+  { key: "dev_config", label: "Development & Configuration (DEV)" },
+  { key: "uat", label: "System Testing & Validation (UAT / Qualification)" },
+  { key: "deployment_readiness", label: "Deployment Readiness" },
+  { key: "go_live", label: "Production Deployment & Go-Live" },
+  { key: "business_closure", label: "Business closure" },
+  { key: "operational_handover", label: "Operational handover" },
+  { key: "financial_closure", label: "Financial closure" },
+  { key: "closure", label: "PMO Closure" },
+  // Legacy keys — kept so historical projects on these stages can still be configured.
+  { key: "investment_authorization", label: "Investment Authorization (legacy)" },
+  { key: "contract_po", label: "Contract & PO (legacy)" },
+  { key: "design", label: "Design (legacy)" },
+  { key: "build", label: "Build & Implementation (legacy)" },
 ];
 
 // Roles available as escalation targets (match the role directory + charter keys).
