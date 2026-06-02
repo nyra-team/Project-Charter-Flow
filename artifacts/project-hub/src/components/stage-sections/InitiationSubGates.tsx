@@ -25,17 +25,18 @@ export function InitiationSubGates({ projectId }: { projectId: number }) {
 
   return (
     <div className="rounded-2xl border border-card-border bg-card glass-surface">
-      {/* Sub-gate progress header — kept in place; lists both gates as
-          chips so the user always sees whether each half is signed off. */}
+      {/* Sub-gate progress header — collapses the previous two-chip layout
+          (BC + URS) into one chip per the user-facing rename. The combined
+          chip is green only when BOTH halves are signed off, so the user
+          still sees overall progress at a glance. Internal sequencing (BC
+          must approve before URS sign-off) is unchanged and is surfaced via
+          the side warning. */}
       <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b border-border/60">
-        <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mr-1">Initiation gates:</span>
-        <span className={`inline-flex items-center gap-1 text-[11px] font-medium ${bcApproved ? "text-success" : "text-muted-foreground"}`}>
-          {bcApproved ? <CheckCircle2 size={13} /> : <Circle size={13} />} Business Case + BRD
+        <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mr-1">Stage:</span>
+        <span className={`inline-flex items-center gap-1 text-[11px] font-medium ${bcApproved && ursApproved ? "text-success" : "text-muted-foreground"}`}>
+          {bcApproved && ursApproved ? <CheckCircle2 size={13} /> : <Circle size={13} />} Business Case &amp; Requirements
         </span>
-        <span className={`inline-flex items-center gap-1 text-[11px] font-medium ${ursApproved ? "text-success" : "text-muted-foreground"}`}>
-          {ursApproved ? <CheckCircle2 size={13} /> : <Circle size={13} />} URS
-        </span>
-        {!bcApproved && <span className="ml-auto text-[10px] text-warn font-mono">URS sign-off locked until BC approved</span>}
+        {!bcApproved && <span className="ml-auto text-[10px] text-warn font-mono">Requirements sign-off locked until Business Case approved</span>}
       </div>
 
       {/* Combined page — Business Case + BRD section, then URS section.

@@ -282,7 +282,7 @@ export function ProjectLifecycleCard({
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
               {visiblePhase.label} ·{" "}
               {visiblePhase.key === "initiate"
-                ? "Business Case + URS gates"
+                ? "Business Case & Requirements"
                 : `${visiblePhase.stageKeys.length} stage${visiblePhase.stageKeys.length === 1 ? "" : "s"}`}
             </p>
             <p className="text-[10px] text-muted-foreground/80 italic truncate ml-3">

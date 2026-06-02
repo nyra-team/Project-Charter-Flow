@@ -242,8 +242,8 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
     <div className="rounded-2xl p-4 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-bold text-foreground">Business Case / BRD</p>
-          <p className="text-[11px] text-primary">Combined Business Case + BRD — justification, business requirements, As-Is / To-Be, impact, recommendation</p>
+          <p className="text-sm font-bold text-foreground">Business Case</p>
+          <p className="text-[11px] text-primary">Justification, outcomes, sponsor, budget &amp; recommendation — plus business process detail (As-Is / To-Be, rules, impact)</p>
         </div>
         <div className="flex items-center gap-2">
           <AiButton
