@@ -53,7 +53,7 @@ export const LIFECYCLE_STAGES = [
   {
     key: "initiation",
     label: "Business Requirements",
-    shortLabel: "BR",
+    shortLabel: "Business Requirements",
     description: "URS / BRD — Business Owner + IT Team dual-approval. Captures the WHY (business case) and the WHAT (requirements) together.",
     color: "#6366F1",
     requiredDocs: [
@@ -88,7 +88,7 @@ export const LIFECYCLE_STAGES = [
     // ─── Plan / 2. Request for Proposal ────────────────────────────────
     key: "rfp",
     label: "Request for Proposal",
-    shortLabel: "RFP",
+    shortLabel: "Request for Proposal",
     description: "Author the RFP, define vendor shortlist, publish to invitees, set proposal deadline",
     color: "#8B5CF6",
     requiredDocs: [
@@ -111,7 +111,7 @@ export const LIFECYCLE_STAGES = [
     // ─── Plan / 3. Vendor Evaluation and Finalization ──────────────────
     key: "vendor_selection",
     label: "Vendor Evaluation and Finalization",
-    shortLabel: "VEF",
+    shortLabel: "Vendor Evaluation and Finalization",
     description: "Functional & technical evaluation, commercial negotiation, Project Charter / NFA, and PR/PO/Contract",
     color: "#10B981",
     requiredDocs: [
@@ -148,7 +148,7 @@ export const LIFECYCLE_STAGES = [
     // ─── Plan / 4. Solution Design ─────────────────────────────────────
     key: "solution_design",
     label: "Solution Design",
-    shortLabel: "SD",
+    shortLabel: "Solution Design",
     description: "Architecture, integration design, and security review for the selected vendor's solution",
     color: "#06B6D4",
     requiredDocs: [],
@@ -167,7 +167,7 @@ export const LIFECYCLE_STAGES = [
     // ─── Plan / 5. Project Plan ────────────────────────────────────────
     key: "project_plan",
     label: "Project Plan",
-    shortLabel: "PP",
+    shortLabel: "Project Plan",
     description: "Detailed schedule, milestones, dependencies, and stakeholder sign-off on the plan",
     color: "#0EA5E9",
     requiredDocs: [],
@@ -184,8 +184,8 @@ export const LIFECYCLE_STAGES = [
   {
     // ─── Execute / 6. Development & Configuration (DEV) ────────────────
     key: "dev_config",
-    label: "Development & Configuration (DEV)",
-    shortLabel: "DEV",
+    label: "Development & Configuration",
+    shortLabel: "Development & Configuration",
     description: "Active build, configuration, and developer-side validation of the solution",
     color: "#6366F1",
     requiredDocs: [],
@@ -207,7 +207,7 @@ export const LIFECYCLE_STAGES = [
     // UI doesn't crash. Excluded from LIFECYCLE_PHASES so it doesn't render.
     key: "investment_authorization",
     label: "Investment Authorization",
-    shortLabel: "IA",
+    shortLabel: "Investment Authorization",
     description: "Combined Project Charter and NFA financial authorization — PMO + Dept Head charter sign-off and Finance → PMO → Dept Head → Management NFA chain",
     color: "#EF4444",
     requiredDocs: [
@@ -240,7 +240,7 @@ export const LIFECYCLE_STAGES = [
   {
     key: "contract_po",
     label: "Contract & PO",
-    shortLabel: "CPO",
+    shortLabel: "Contract & PO",
     description: "Vendor contract review, NDA, statutory compliance and Legal sign-off, then Purchase Requisition and Purchase Order release",
     color: "#7C3AED",
     requiredDocs: [
@@ -274,7 +274,7 @@ export const LIFECYCLE_STAGES = [
     // LIFECYCLE_PHASES so it doesn't render on new projects.
     key: "design",
     label: "Design (legacy)",
-    shortLabel: "DSN",
+    shortLabel: "Design",
     description: "Project kickoff and activation, then Technical Design sign-off — solution architecture, integration design and security review",
     color: "#0EA5E9",
     requiredDocs: [
@@ -312,7 +312,7 @@ export const LIFECYCLE_STAGES = [
     // LIFECYCLE_PHASES so it doesn't render on new projects.
     key: "build",
     label: "Build & Implementation (legacy)",
-    shortLabel: "BLD",
+    shortLabel: "Build & Implementation",
     description: "Active development and configuration, with implementation planning — milestones, dependencies, cutover and stakeholder sign-off",
     color: "#6366F1",
     requiredDocs: [
@@ -345,8 +345,8 @@ export const LIFECYCLE_STAGES = [
   {
     // ─── Execute / 7. System Testing & Validation (UAT / Qualification) ─
     key: "uat",
-    label: "System Testing & Validation (UAT / Qualification)",
-    shortLabel: "UAT",
+    label: "System Testing & Validation",
+    shortLabel: "System Testing & Validation",
     description: "User Acceptance Testing and qualification — 100% critical defect closure required before deployment",
     color: "#F59E0B",
     requiredDocs: [
@@ -370,7 +370,7 @@ export const LIFECYCLE_STAGES = [
     // ─── Execute / 8. Deployment Readiness ─────────────────────────────
     key: "deployment_readiness",
     label: "Deployment Readiness",
-    shortLabel: "DR",
+    shortLabel: "Deployment Readiness",
     description: "Cutover plan, rollback plan, hypercare staffing, and final go/no-go review before production deployment",
     color: "#EAB308",
     requiredDocs: [],
@@ -389,7 +389,7 @@ export const LIFECYCLE_STAGES = [
     // ─── Execute / 9. Production Deployment & Go-Live ──────────────────
     key: "go_live",
     label: "Production Deployment & Go-Live",
-    shortLabel: "GO",
+    shortLabel: "Production Deployment & Go-Live",
     description: "Production cutover, stakeholder notification, and post-launch monitoring window",
     color: "#10B981",
     requiredDocs: [
@@ -413,7 +413,7 @@ export const LIFECYCLE_STAGES = [
     // ─── Close / 10. Business closure ──────────────────────────────────
     key: "business_closure",
     label: "Business closure",
-    shortLabel: "BC",
+    shortLabel: "Business closure",
     description: "CSAT survey, business sign-off on deliverables, formal acceptance from the sponsor",
     color: "#94A3B8",
     requiredDocs: [],
@@ -431,7 +431,7 @@ export const LIFECYCLE_STAGES = [
     // ─── Close / 11. Operational handover ──────────────────────────────
     key: "operational_handover",
     label: "Operational handover",
-    shortLabel: "OH",
+    shortLabel: "Operational handover",
     description: "Documentation transfer, support team training, transition to operations / BAU",
     color: "#64748B",
     requiredDocs: [],
@@ -449,7 +449,7 @@ export const LIFECYCLE_STAGES = [
     // ─── Close / 12. Financial closure ─────────────────────────────────
     key: "financial_closure",
     label: "Financial closure",
-    shortLabel: "FC",
+    shortLabel: "Financial closure",
     description: "Final budget reconciliation, vendor invoice settlement, CapEx/OpEx actuals vs plan",
     color: "#475569",
     requiredDocs: [],
@@ -467,7 +467,7 @@ export const LIFECYCLE_STAGES = [
     // ─── Close / 13. PMO Closure ───────────────────────────────────────
     key: "closure",
     label: "PMO Closure",
-    shortLabel: "CLS",
+    shortLabel: "PMO Closure",
     description: "Closure readiness — CSAT, documentation handover, support transition — and final closure with Lessons Learned, Closure Report and archival",
     color: "#1E293B",
     requiredDocs: [

@@ -36,7 +36,7 @@ export const LIFECYCLE_PHASES: LifecyclePhase[] = [
   {
     key: "plan",
     label: "Plan",
-    shortLabel: "PLAN",
+    shortLabel: "Plan",
     description: "Requirements, sourcing, vendor finalization, design & schedule",
     color: "#6366F1",
     stageKeys: ["initiation", "rfp", "vendor_selection", "solution_design", "project_plan"],
@@ -44,7 +44,7 @@ export const LIFECYCLE_PHASES: LifecyclePhase[] = [
   {
     key: "execute",
     label: "Execute",
-    shortLabel: "EXEC",
+    shortLabel: "Execute",
     description: "Build, test, prepare and go-live",
     color: "#0EA5E9",
     stageKeys: ["dev_config", "uat", "deployment_readiness", "go_live"],
@@ -52,7 +52,7 @@ export const LIFECYCLE_PHASES: LifecyclePhase[] = [
   {
     key: "close",
     label: "Close",
-    shortLabel: "CLS",
+    shortLabel: "Close",
     description: "Business sign-off, operational handover, financials, PMO closure",
     color: "#F59E0B",
     stageKeys: ["business_closure", "operational_handover", "financial_closure", "closure"],

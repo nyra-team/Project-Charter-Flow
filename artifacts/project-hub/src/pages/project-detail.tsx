@@ -54,7 +54,7 @@ import { IssuesTab } from "../components/issues-tab";
 import { RaciTab } from "../components/raci-tab";
 import { EscalationRulesTab } from "../components/escalation-rules-tab";
 import { StageProgressBar } from "../components/stage-progress-bar";
-import { CriticalPathLane } from "../components/critical-path-lane";
+import { ProjectLifecycle } from "../components/project-lifecycle";
 import { StagePanel } from "../components/stage-panel";
 import { getCurrentStageKey, LIFECYCLE_STAGES } from "../lib/lifecycle-config";
 import { useUserStore } from "../lib/store";
@@ -1383,7 +1383,7 @@ export default function ProjectDetail() {
           </div>
 
           {/* The single most important governance view */}
-          <CriticalPathLane projectId={projectId} />
+          <ProjectLifecycle projectId={projectId} />
 
           {/* Lifecycle snapshot — click a stage to jump to the Lifecycle tab */}
           <StageProgressBar
@@ -1466,7 +1466,7 @@ export default function ProjectDetail() {
       {/* ── Lifecycle Tab ────────────────────────────────────────────── */}
       {activeTab === "lifecycle" && (
         <div className="space-y-5">
-          <CriticalPathLane projectId={projectId} />
+          <ProjectLifecycle projectId={projectId} />
 
           <StageProgressBar
             currentStageKey={currentStageKey}

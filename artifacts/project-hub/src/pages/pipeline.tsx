@@ -27,25 +27,15 @@ type PhaseRollup = { phaseKey: string; projects: number; blocked: number; overdu
 type PortfolioCP = { byPhase?: PhaseRollup[] };
 type SubgateAgg = { inInitiation: number; bcDone: number; ursDone: number };
 
-// A "gate" inside a phase — the user-facing decision points. The 'initiation'
-// stage (now part of the merged 'plan' phase) collapses to ONE BRD card per
-// the 2026-06-02 product call; every other stage in every phase exposes
-// itself as a single gate.
+// A "gate" inside a phase — the user-facing decision points. Every stage
+// in every phase exposes itself as a single gate; labels are the full
+// stage names (no abbreviations) per the 2026-06-02 naming pass.
 type Gate = { id: string; label: string; shortLabel: string; stageKey: string; color: string };
 
 function gatesForPhase(phaseKey: PhaseKey): Gate[] {
   const phase = LIFECYCLE_PHASES.find((p) => p.key === phaseKey)!;
   return phase.stageKeys.map((k) => {
     const s = getStageConfig(k)!;
-    if (k === "initiation") {
-      return {
-        id: "brd",
-        label: "BRD - Business Requirement Document",
-        shortLabel: "BRD",
-        stageKey: "initiation",
-        color: s.color,
-      };
-    }
     return { id: k, label: s.label, shortLabel: s.shortLabel, stageKey: k, color: s.color };
   });
 }

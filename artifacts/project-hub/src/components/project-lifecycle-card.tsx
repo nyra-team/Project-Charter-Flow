@@ -98,7 +98,7 @@ export function ProjectLifecycleCard({
     return "upcoming";
   }
 
-  // Initiation = single combined node "BRD - Business Requirement Document". Previously
+  // Initiation = single combined node "Business Requirements". Previously
   // rendered as TWO sub-gate dots (BC + URS) which contradicted the new unified
   // label and confused users. Now: one StageStatus computed from BOTH halves
   // being approved (BC + both URS approvals).
@@ -241,21 +241,22 @@ export function ProjectLifecycleCard({
                   </p>
                   {phase.key === "plan" && showInitSub && currentStageKey === "initiation" ? (
                     /* Single project sitting in the Plan phase's initiation stage:
-                       show the combined BRD status. Projects further along inside
-                       Plan (Vendor Selection / IA / Contract & PO) fall through to
-                       the default 'done/total' counter below. */
+                       show the combined Business Requirements status. Projects further
+                       along inside Plan (Vendor Selection / IA / Contract & PO) fall
+                       through to the default 'done/total' counter below. */
                     <p className="text-[9px] leading-none mt-0.5 font-semibold">
                       <span className={initCombinedStatus === "complete" ? "text-success" : "text-warn"}>
-                        BRD - Business Requirement Document {initCombinedStatus === "complete" ? "✓" : "⏳"}
+                        Business Requirements {initCombinedStatus === "complete" ? "✓" : "⏳"}
                       </span>
                     </p>
                   ) : phase.key === "plan" && counts && initiationAggregate && initiationAggregate.inInitiation > 0 ? (
-                    /* Org-wide aggregate: BRD approved-count among projects in
-                       initiation. URS approval requires BC first (server-enforced),
-                       so ursDone counts projects that completed both halves. */
+                    /* Org-wide aggregate: Business Requirements approved-count among
+                       projects in initiation. URS approval requires BC first
+                       (server-enforced), so ursDone counts projects that completed
+                       both halves. */
                     <p className="text-[9px] leading-none mt-0.5 font-semibold">
                       <span className="text-muted-foreground">
-                        BRD {initiationAggregate.ursDone}/{initiationAggregate.inInitiation} approved
+                        Business Requirements {initiationAggregate.ursDone}/{initiationAggregate.inInitiation} approved
                       </span>
                     </p>
                   ) : (
@@ -296,7 +297,7 @@ export function ProjectLifecycleCard({
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
               {visiblePhase.label} ·{" "}
               {visiblePhase.key === "plan" && currentStageKey === "initiation"
-                ? "BRD - Business Requirement Document"
+                ? "Business Requirements"
                 : `${visiblePhase.stageKeys.length} stage${visiblePhase.stageKeys.length === 1 ? "" : "s"}`}
             </p>
             <p className="text-[10px] text-muted-foreground/80 italic truncate ml-3">
@@ -389,12 +390,11 @@ export function ProjectLifecycleCard({
     </div>
   );
 
-  // Initiation = ONE combined gate ("BRD - Business Requirement Document"). Renders
-  // with the SAME circle-dot + label + count-badge styling as every other
-  // phase's single-stage dot, so Initiate reads identically to Procure /
-  // Execute / Release. Two internal halves (BC, URS) still gate independently
-  // server-side; the dot just collapses them visually to match the unified
-  // user-facing label.
+  // Initiation = ONE combined gate ("Business Requirements"). Renders with the
+  // SAME circle-dot + label + count-badge styling as every other phase's
+  // single-stage dot, so it reads identically to the other stages. Two internal
+  // halves (BC, URS) still gate independently server-side; the dot just
+  // collapses them visually to match the unified user-facing label.
   function renderInitiationCombined() {
     const total = initTotal;
     const done = initAggDone;
@@ -412,7 +412,7 @@ export function ProjectLifecycleCard({
         key="initiation"
         type="button"
         onClick={() => onStageClick?.("initiation")}
-        title={`Initiation · BRD - Business Requirement Document${counts ? ` — ${done}/${total} approved` : ` — ${initCombinedStatus}`}`}
+        title={`Business Requirements${counts ? ` — ${done}/${total} approved` : ` — ${initCombinedStatus}`}`}
         className="group flex flex-col items-center gap-1 min-w-0 cursor-pointer focus:outline-none flex-1"
       >
         <div className="relative">

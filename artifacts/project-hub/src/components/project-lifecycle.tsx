@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { CheckCircle2, Circle, AlertOctagon, Clock, Bell, FileWarning, ListChecks, ShieldAlert, ArrowUpRight } from "lucide-react";
+import { CheckCircle2, Circle, AlertOctagon, Clock, Bell, FileWarning, ListChecks, ShieldAlert, ArrowUpRight, Route } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getChecklistLabel } from "@/lib/lifecycle-config";
+import { LIFECYCLE_PHASES, getPhaseForStage } from "@/lib/lifecycle-phases";
 import { HealthChip, OwnerStrip } from "@/components/ui-kit";
 
 // Matches GET /api/projects/:id/critical-path-stages
@@ -38,12 +39,12 @@ function roleLabel(role: string): string {
   return role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function useCriticalPath(projectId: number) {
+function useLifecycle(projectId: number) {
   return useQuery({
     queryKey: [`/api/projects/${projectId}/critical-path-stages`],
     queryFn: async () => {
       const r = await fetch(`/api/projects/${projectId}/critical-path-stages`);
-      if (!r.ok) throw new Error("Failed to load critical path");
+      if (!r.ok) throw new Error("Failed to load lifecycle");
       return r.json() as Promise<CriticalPath>;
     },
   });
@@ -65,14 +66,13 @@ function ReasonIcon({ type, size = 12 }: { type: BlockingReason["type"]; size?: 
   return <AlertOctagon size={size} />;
 }
 
-const SUBGATE_SHORT: Record<string, string> = { brd: "BRD" };
+const SUBGATE_SHORT: Record<string, string> = { brd: "Business Requirements" };
 
 // Collapse the two internal Initiation sub-gates (Business Case + Requirements
-// — formerly URS) into ONE umbrella sub-gate labelled "BRD - Business
-// Requirement Document". The user-facing critical-path queue shows the
-// initiative as a single line item; the underlying server endpoints + DB
-// keys (business_case / urs) stay split and continue to drive the dual
-// approval workflow internally.
+// — formerly URS) into ONE umbrella sub-gate labelled "Business Requirements".
+// The user-facing lifecycle queue shows the initiative as a single line item;
+// the underlying server endpoints + DB keys (business_case / urs) stay split
+// and continue to drive the dual approval workflow internally.
 //
 // Status math:
 //   complete   — both halves satisfied
@@ -94,7 +94,7 @@ function mergeInitiationSubGates(stage: CPStage | undefined): CPSubGate[] | unde
   const approvedDates = all.map((g) => g.approvedAt).filter((x): x is string => !!x).sort();
   const merged: CPSubGate = {
     key: "brd",
-    label: "BRD - Business Requirement Document",
+    label: "Business Requirements",
     status: allSatisfied ? "complete" : anyBlocked ? "blocked" : "active",
     satisfied: allSatisfied,
     slaDays: all.reduce<number | null>((acc, g) => (g.slaDays != null ? Math.max(acc ?? 0, g.slaDays) : acc), null),
@@ -113,34 +113,36 @@ function subTone(status: CPSubGate["status"]) {
     : "bg-muted text-muted-foreground border-border";
 }
 
-// ─── A single stop on the horizontal journey rail ────────────────────────────
+// ─── A single stop on the lifecycle journey rail ─────────────────────────────
 
 function JourneyStop({
-  stage, isFirst, isLast, selected, onSelect,
+  stage, isFirst, isLast, selected, onSelect, phaseColor,
 }: {
   stage: CPStage;
   isFirst: boolean;
   isLast: boolean;
   selected: boolean;
   onSelect: () => void;
+  phaseColor: string;
 }) {
   const { status } = stage;
   const node =
     status === "complete" ? { ring: "border-success bg-success text-success-foreground", icon: <CheckCircle2 size={16} /> }
     : status === "blocked" ? { ring: "border-destructive bg-destructive text-destructive-foreground pulse-ring", icon: <AlertOctagon size={16} /> }
-    : status === "active" ? { ring: "border-primary bg-primary text-primary-foreground", icon: <Circle size={15} className="fill-current/30" /> }
+    : status === "active" ? { ring: "border-primary bg-primary text-primary-foreground lifecycle-pulse", icon: <Circle size={15} className="fill-current/30" /> }
     : { ring: "border-border bg-card text-muted-foreground", icon: <Circle size={14} className="opacity-50" /> };
   // Connector color reflects whether the prior leg is done.
   const lineDone = status === "complete";
   return (
-    <div className="flex flex-col items-center flex-shrink-0 w-[112px]">
+    <div className="flex flex-col items-center flex-shrink-0 w-[108px]">
       {/* Node + connecting lines */}
       <div className="relative flex items-center justify-center w-full h-10">
         {!isFirst && <span className={`absolute left-0 right-1/2 top-1/2 h-0.5 -translate-y-1/2 ${lineDone ? "bg-success" : "bg-border"}`} />}
         {!isLast && <span className={`absolute left-1/2 right-0 top-1/2 h-0.5 -translate-y-1/2 ${status === "complete" ? "bg-success" : "bg-border"}`} />}
         <button
           onClick={onSelect}
-          className={`relative z-10 w-9 h-9 rounded-full border-2 flex items-center justify-center transition-transform duration-200 hover:scale-110 ${node.ring} ${selected ? "ring-2 ring-offset-2 ring-offset-card ring-foreground/30" : ""}`}
+          className={`relative z-10 w-9 h-9 rounded-full border-2 flex items-center justify-center transition-transform duration-200 hover:scale-110 ${node.ring} ${selected ? "ring-2 ring-offset-2 ring-offset-card" : ""}`}
+          style={selected ? { boxShadow: `0 0 0 2px ${phaseColor}` } : undefined}
           title={stage.label}
         >
           {node.icon}
@@ -148,7 +150,7 @@ function JourneyStop({
       </div>
       {/* Label */}
       <button onClick={onSelect} className="mt-1.5 text-center w-full px-1">
-        <p className={`text-[11px] font-semibold leading-tight truncate ${selected ? "text-foreground" : "text-muted-foreground"}`}>{stage.label}</p>
+        <p className={`text-[11px] font-semibold leading-tight line-clamp-2 ${selected ? "text-foreground" : "text-muted-foreground"}`}>{stage.label}</p>
         {stage.daysOverdue > 0 && (status === "blocked" || status === "active") && (
           <p className="text-[10px] font-bold text-destructive mt-0.5">{stage.daysOverdue}d overdue</p>
         )}
@@ -177,8 +179,68 @@ function JourneyStop({
   );
 }
 
-export function CriticalPathLane({ projectId }: { projectId: number }) {
-  const { data, isLoading, isError } = useCriticalPath(projectId);
+// ─── One phase band (Plan / Execute / Close) holding its stage stops ─────────
+
+function PhaseBand({
+  phaseKey, label, color, stages, selectedKey, onSelect,
+}: {
+  phaseKey: string;
+  label: string;
+  color: string;
+  stages: CPStage[];
+  selectedKey: string | null;
+  onSelect: (key: string) => void;
+}) {
+  if (stages.length === 0) return null;
+  const done = stages.filter((s) => s.status === "complete").length;
+  const blocked = stages.some((s) => s.status === "blocked");
+  const active = stages.some((s) => s.status === "active");
+  // Phase state: complete > blocked > active > upcoming
+  const phaseState = done === stages.length ? "complete" : blocked ? "blocked" : active ? "active" : "upcoming";
+  return (
+    <div className="flex-shrink-0">
+      {/* Phase header — colored band w/ count + state tint */}
+      <div
+        className="flex items-center justify-between gap-2 rounded-md px-2.5 py-1 mb-2 mx-1"
+        style={{ background: `${color}14`, borderLeft: `3px solid ${color}` }}
+      >
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: color }} />
+          <span className="text-[11px] font-bold uppercase tracking-[0.1em] truncate" style={{ color }}>{label}</span>
+        </div>
+        <span
+          className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded flex-shrink-0"
+          style={
+            phaseState === "blocked"
+              ? { background: "hsl(var(--destructive) / 0.15)", color: "hsl(var(--destructive))" }
+              : phaseState === "complete"
+              ? { background: "hsl(var(--success) / 0.15)", color: "hsl(var(--success))" }
+              : { background: `${color}1A`, color }
+          }
+        >
+          {done}/{stages.length}
+        </span>
+      </div>
+      {/* Stops */}
+      <div className="flex items-start">
+        {stages.map((s, i) => (
+          <JourneyStop
+            key={s.key}
+            stage={s}
+            phaseColor={color}
+            isFirst={i === 0}
+            isLast={i === stages.length - 1}
+            selected={selectedKey === s.key}
+            onSelect={() => onSelect(s.key)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function ProjectLifecycle({ projectId }: { projectId: number }) {
+  const { data, isLoading, isError } = useLifecycle(projectId);
   const { toast } = useToast();
   const qc = useQueryClient();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -214,50 +276,115 @@ export function CriticalPathLane({ projectId }: { projectId: number }) {
       <div className="rounded-2xl bg-card text-card-foreground border border-card-border glass-surface p-5">
         <div className="flex items-center gap-2 mb-1">
           <Clock size={15} className="text-muted-foreground" />
-          <h3 className="text-[14px] font-semibold tracking-tight">Critical Path</h3>
+          <h3 className="text-[14px] font-semibold tracking-tight">Lifecycle</h3>
         </div>
         <p className="text-xs text-muted-foreground">
-          This project's stage (<span className="font-mono text-foreground">{data.currentStageKey}</span>) predates the current 9-stage lifecycle model,
-          so the stage-by-stage critical path can't be shown yet.
+          This project's stage (<span className="font-mono text-foreground">{data.currentStageKey}</span>) predates the current lifecycle model,
+          so the stage-by-stage journey can't be shown yet.
         </p>
       </div>
     );
   }
 
   const lane = data.stages.filter((s) => s.status !== "skipped");
+  // The "pinch" is the stage everyone should look at first — the bottleneck.
   const pinch = lane.find((s) => s.status === "blocked")
     ?? lane.find((s) => s.status === "active" && (s.daysOverdue > 0 || s.blockingReasons.length > 0))
     ?? lane.find((s) => s.status === "active");
   const selected = lane.find((s) => s.key === selectedKey) ?? pinch ?? null;
   const blockingSub = selected?.subGates?.find((g) => !g.satisfied) ?? null;
 
+  // ── Lifecycle progress maths ──────────────────────────────────────────────
+  const completed = lane.filter((s) => s.status === "complete").length;
+  const total = lane.length;
+  const pct = total ? Math.round((completed / total) * 100) : 0;
+  const currentPhase = getPhaseForStage(data.currentStageKey);
+  // Stretch the 3-colour gradient so the visible fill maps to absolute phase
+  // colours rather than re-compressing into the filled width.
+  const fillBgSize = pct > 0 ? `${(100 / pct) * 100}% 100%` : "100% 100%";
+
+  // Group the visible stages under their phase, preserving lifecycle order.
+  const grouped = LIFECYCLE_PHASES.map((p) => ({
+    phase: p,
+    stages: lane.filter((s) => s.phaseKey === p.key),
+  })).filter((g) => g.stages.length > 0);
+  // Any stage whose phaseKey isn't one of the canonical 3 (legacy data) goes last.
+  const orphanStages = lane.filter((s) => !LIFECYCLE_PHASES.some((p) => p.key === s.phaseKey));
+
   return (
     <div className="rounded-2xl bg-card text-card-foreground border border-card-border glass-surface lift-card p-5 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h3 className="text-[15px] font-semibold text-card-foreground tracking-tight">Critical Path</h3>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            The blocking stage, who owns it, and what happens next
-            {data.projectType === "internal" && <span className="ml-1.5 px-1.5 py-0.5 rounded-sm bg-secondary text-secondary-foreground text-[10px] font-mono uppercase">Internal path</span>}
-          </p>
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="grid place-items-center w-8 h-8 rounded-lg bg-primary/10 text-primary flex-shrink-0">
+            <Route size={16} />
+          </span>
+          <div className="min-w-0">
+            <h3 className="text-[15px] font-semibold text-card-foreground tracking-tight">Lifecycle</h3>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              Every stage from Plan to Close — where it stands, who owns it, and what's next
+              {data.projectType === "internal" && <span className="ml-1.5 px-1.5 py-0.5 rounded-sm bg-secondary text-secondary-foreground text-[10px] font-mono uppercase">Internal path</span>}
+            </p>
+          </div>
         </div>
         <HealthChip health={data.health} size="md" />
       </div>
 
-      {/* Horizontal journey rail */}
+      {/* Progress summary — completion bar + current phase */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3 text-[11px] flex-wrap">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <span className="font-semibold text-foreground">{completed}</span> of <span className="font-semibold text-foreground">{total}</span> stages complete
+            {currentPhase && (
+              <>
+                <span className="text-border">·</span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: currentPhase.color }} />
+                  Currently in <span className="font-semibold" style={{ color: currentPhase.color }}>{currentPhase.label}</span>
+                </span>
+              </>
+            )}
+          </div>
+          <span className="font-bold font-mono text-foreground">{pct}%</span>
+        </div>
+        <div className="relative h-2 rounded-full bg-muted overflow-hidden">
+          <div
+            className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-500"
+            style={{
+              width: `${pct}%`,
+              background: "linear-gradient(90deg, #6366F1 0%, #0EA5E9 55%, #F59E0B 100%)",
+              backgroundSize: fillBgSize,
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Phase-banded lifecycle rail */}
       <div className="overflow-x-auto pb-2 scrollbar-thin">
-        <div className="flex items-start min-w-max px-1">
-          {lane.map((s, i) => (
-            <JourneyStop
-              key={s.key}
-              stage={s}
-              isFirst={i === 0}
-              isLast={i === lane.length - 1}
-              selected={selected?.key === s.key}
-              onSelect={() => setSelectedKey(s.key)}
-            />
+        <div className="flex items-start gap-4 min-w-max px-1">
+          {grouped.map((g, gi) => (
+            <div key={g.phase.key} className="flex items-stretch gap-4">
+              <PhaseBand
+                phaseKey={g.phase.key}
+                label={g.phase.label}
+                color={g.phase.color}
+                stages={g.stages}
+                selectedKey={selected?.key ?? null}
+                onSelect={setSelectedKey}
+              />
+              {gi < grouped.length - 1 && <div className="w-px self-stretch bg-border/70 mt-9" />}
+            </div>
           ))}
+          {orphanStages.length > 0 && (
+            <PhaseBand
+              phaseKey="other"
+              label="Other"
+              color="#64748B"
+              stages={orphanStages}
+              selectedKey={selected?.key ?? null}
+              onSelect={setSelectedKey}
+            />
+          )}
         </div>
       </div>
 
