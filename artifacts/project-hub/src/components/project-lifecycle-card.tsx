@@ -18,7 +18,6 @@ import {
   Rocket,
   Flag,
   FileText,
-  ClipboardCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -99,29 +98,38 @@ export function ProjectLifecycleCard({
     return "upcoming";
   }
 
-  // Initiation sub-gate status. BC + URS are two checkpoints inside the single
-  // Initiation stage; we compute each one's StageStatus so they render with the
-  // SAME dot + connector visual language as every other stage (just two nodes).
+  // Initiation = single combined node "Business Case & Requirements". Previously
+  // rendered as TWO sub-gate dots (BC + URS) which contradicted the new unified
+  // label and confused users. Now: one StageStatus computed from BOTH halves
+  // being approved (BC + both URS approvals).
+  //
+  // In org-wide counts mode, the aggregate completion count is `ursDone` — the
+  // server enforces BC → URS sequencing (URS approval requires BC approved first),
+  // so any project counted in `ursDone` necessarily completed both gates.
   const showInitSub = !counts;
   const initNotes: Record<string, unknown> = (() => {
     try { return JSON.parse(stageRecords.find((r) => r.stage === "initiation")?.notes ?? "{}"); } catch { return {}; }
   })();
   const initStageSt = stageStatus("initiation");
   const initTotal = initiationAggregate?.inInitiation ?? 0;
-  const subGateStatus = (singleDone: boolean, aggDone: number): StageStatus => {
-    const done = counts ? initStageSt === "complete" || (initTotal > 0 && aggDone >= initTotal) : initStageSt === "complete" || singleDone;
+  const initBothApproved =
+    initNotes.__bc_approved === true &&
+    initNotes.__urs_biz_approved === true &&
+    initNotes.__urs_it_approved === true;
+  const initAggDone = initiationAggregate?.ursDone ?? 0;
+  const initCombinedStatus: StageStatus = (() => {
+    const done = counts
+      ? initStageSt === "complete" || (initTotal > 0 && initAggDone >= initTotal)
+      : initStageSt === "complete" || initBothApproved;
     return done ? "complete" : initStageSt === "upcoming" ? "upcoming" : "active";
-  };
-  const bcStatus = subGateStatus(initNotes.__bc_approved === true, initiationAggregate?.bcDone ?? 0);
-  const ursStatus = subGateStatus(initNotes.__urs_biz_approved === true && initNotes.__urs_it_approved === true, initiationAggregate?.ursDone ?? 0);
-  const bcDone = bcStatus === "complete";
-  const ursDone = ursStatus === "complete";
+  })();
 
-  // Sub-stage nodes for the currently-visible phase. For Initiate this is the two
-  // sub-gates (BC, URS); for every other phase it's the phase's real stages. Drives
-  // BOTH the connector line and the dot row, so all phases render identically.
+  // Sub-stage nodes for the currently-visible phase. Initiate now contributes
+  // ONE node (the combined Business Case & Requirements gate); every other
+  // phase contributes its real stages. Drives BOTH the connector line and the
+  // dot row so all phases render identically.
   const visibleNodeStatuses: StageStatus[] = visiblePhase.key === "initiate"
-    ? [bcStatus, ursStatus]
+    ? [initCombinedStatus]
     : visiblePhase.stageKeys.map((k) => stageStatus(k));
 
   function phaseStats(phaseIdx: number) {
@@ -231,18 +239,22 @@ export function ProjectLifecycleCard({
                     {phase.label}
                   </p>
                   {phase.key === "initiate" && showInitSub ? (
-                    /* Single project: live BC/URS status */
-                    <p className="text-[9px] leading-none mt-0.5 flex items-center gap-1 font-semibold">
-                      <span className={bcDone ? "text-success" : "text-warn"}>BC {bcDone ? "✓" : "⏳"}</span>
-                      <span className="opacity-40">·</span>
-                      <span className={ursDone ? "text-success" : "text-warn"}>URS {ursDone ? "✓" : "⏳"}</span>
+                    /* Single project: combined Business Case & Requirements status.
+                       Was previously a 'BC ✓ · URS ⏳' pair; collapsed to one line
+                       to match the unified label. */
+                    <p className="text-[9px] leading-none mt-0.5 font-semibold">
+                      <span className={initCombinedStatus === "complete" ? "text-success" : "text-warn"}>
+                        Business Case &amp; Requirements {initCombinedStatus === "complete" ? "✓" : "⏳"}
+                      </span>
                     </p>
                   ) : phase.key === "initiate" && counts && initiationAggregate && initiationAggregate.inInitiation > 0 ? (
-                    /* Org-wide: BC/URS approved-count among projects in Initiation */
-                    <p className="text-[9px] leading-none mt-0.5 flex items-center gap-1 font-semibold">
-                      <span className="text-muted-foreground">BC {initiationAggregate.bcDone}/{initiationAggregate.inInitiation}</span>
-                      <span className="opacity-40">·</span>
-                      <span className="text-muted-foreground">URS {initiationAggregate.ursDone}/{initiationAggregate.inInitiation}</span>
+                    /* Org-wide: combined approved-count among projects in Initiation.
+                       URS approval requires BC first (server-enforced), so ursDone
+                       counts projects that completed both halves. */
+                    <p className="text-[9px] leading-none mt-0.5 font-semibold">
+                      <span className="text-muted-foreground">
+                        {initiationAggregate.ursDone}/{initiationAggregate.inInitiation} approved
+                      </span>
                     </p>
                   ) : (
                     <p className="text-[9px] leading-none mt-0.5 opacity-80">
@@ -330,11 +342,12 @@ export function ProjectLifecycleCard({
             })()}
             <div className="relative flex items-start justify-around gap-2">
               {visiblePhase.stageKeys.map((stageKey) =>
-                // Initiation always expands into its two sub-gates (BC + URS) — both
-                // single-project (live status) and org-wide (per-gate approved counts) —
-                // so every surface shows the internal structure, never a bare INIT dot.
+                // Initiation renders as ONE combined "Business Case &
+                // Requirements" dot (collapsed from the previous BC + URS
+                // pair) to match the unified user-facing label. Internal
+                // dual-gating still runs server-side.
                 stageKey === "initiation"
-                  ? renderInitiationSubGates()
+                  ? renderInitiationCombined()
                   : renderStageDot(stageKey),
               )}
             </div>
@@ -374,62 +387,59 @@ export function ProjectLifecycleCard({
     </div>
   );
 
-  // Initiation = one stage, two governed sub-gates (Business Case → URS). Rendered
-  // with the SAME circle-dot + label + count-badge styling as every other stage
-  // (renderStageDot), placed in the same justify-around row with the shared
-  // connector line behind them — so Initiate reads identically to Procure/Execute/
-  // Release, just with two nodes (BC, URS) that are checkpoints inside one stage.
-  function renderInitiationSubGates() {
-    const agg = initiationAggregate;
-    const total = agg?.inInitiation ?? 0;
-    const subs: Array<{ short: string; label: string; Icon: LucideIcon; status: StageStatus; aggDone: number }> = [
-      { short: "BC", label: "Business Case", Icon: FileText, status: bcStatus, aggDone: agg?.bcDone ?? 0 },
-      { short: "URS", label: "URS", Icon: ClipboardCheck, status: ursStatus, aggDone: agg?.ursDone ?? 0 },
-    ];
+  // Initiation = ONE combined gate ("Business Case & Requirements"). Renders
+  // with the SAME circle-dot + label + count-badge styling as every other
+  // phase's single-stage dot, so Initiate reads identically to Procure /
+  // Execute / Release. Two internal halves (BC, URS) still gate independently
+  // server-side; the dot just collapses them visually to match the unified
+  // user-facing label.
+  function renderInitiationCombined() {
+    const total = initTotal;
+    const done = initAggDone;
     const isSelected = selectedStageKey === "initiation";
+    const badge = counts && total > 0 ? done : undefined;
+    const dotClass =
+      initCombinedStatus === "complete"
+        ? "bg-success text-primary-foreground border-success"
+        : initCombinedStatus === "active"
+          ? "bg-primary text-primary-foreground border-primary lifecycle-pulse"
+          : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-primary";
 
-    return subs.map((sub) => {
-      const badge = counts && total > 0 ? sub.aggDone : undefined;
-      const dotClass =
-        sub.status === "complete"
-          ? "bg-success text-primary-foreground border-success"
-          : sub.status === "active"
-            ? "bg-primary text-primary-foreground border-primary lifecycle-pulse"
-            : "bg-card text-muted-foreground border-border hover:border-primary/50 hover:text-primary";
-      return (
-        <button
-          key={sub.short}
-          type="button"
-          onClick={() => onStageClick?.("initiation")}
-          title={`Initiation · ${sub.label}${counts ? ` — ${sub.aggDone}/${total} approved` : ` — ${sub.status}`}`}
-          className="group flex flex-col items-center gap-1 min-w-0 cursor-pointer focus:outline-none flex-1"
-        >
-          <div className="relative">
-            <span
-              className={`flex items-center justify-center rounded-full border-2 transition-all duration-200 ${dotClass} ${
-                isSelected ? "ring-2 ring-primary/40 ring-offset-2 ring-offset-card" : ""
-              }`}
-              style={{ width: dotSize, height: dotSize }}
-            >
-              {sub.status === "complete" ? <Check size={dotIcon} strokeWidth={3} /> : <sub.Icon size={dotIcon} strokeWidth={2.2} />}
-            </span>
-            {badge != null && badge > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-amber-accent text-[9px] font-bold text-background flex items-center justify-center border-2 border-card">
-                {badge}
-              </span>
-            )}
-          </div>
+    return (
+      <button
+        key="initiation"
+        type="button"
+        onClick={() => onStageClick?.("initiation")}
+        title={`Initiation · Business Case & Requirements${counts ? ` — ${done}/${total} approved` : ` — ${initCombinedStatus}`}`}
+        className="group flex flex-col items-center gap-1 min-w-0 cursor-pointer focus:outline-none flex-1"
+      >
+        <div className="relative">
           <span
-            className={`text-[9px] text-center leading-tight font-medium tracking-tight truncate w-full ${
-              sub.status === "complete" ? "text-success" : sub.status === "active" ? "text-primary font-semibold" : "text-muted-foreground/80 group-hover:text-primary"
+            className={`flex items-center justify-center rounded-full border-2 transition-all duration-200 ${dotClass} ${
+              isSelected ? "ring-2 ring-primary/40 ring-offset-2 ring-offset-card scale-110" : ""
             }`}
+            style={{ width: dotSize, height: dotSize }}
           >
-            {sub.short}
+            {initCombinedStatus === "complete" ? <Check size={dotIcon} strokeWidth={3} /> : <FileText size={dotIcon} strokeWidth={2.2} />}
           </span>
-          <span className="text-[8px] text-muted-foreground/60 leading-none">{counts && total > 0 ? `${sub.aggDone}/${total}` : "gate"}</span>
-        </button>
-      );
-    });
+          {badge != null && badge > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-amber-accent text-[9px] font-bold text-background flex items-center justify-center border-2 border-card">
+              {badge}
+            </span>
+          )}
+        </div>
+        <span
+          className={`text-[9px] text-center leading-tight font-medium tracking-tight truncate w-full ${
+            initCombinedStatus === "complete" ? "text-success" : initCombinedStatus === "active" ? "text-primary font-semibold" : "text-muted-foreground/80 group-hover:text-primary"
+          }`}
+        >
+          Initiation
+        </span>
+        {counts && total > 0 && (
+          <span className="text-[8px] text-muted-foreground/60 leading-none">{done}/{total}</span>
+        )}
+      </button>
+    );
   }
 
   function renderStageDot(stageKey: string) {
