@@ -65,7 +65,46 @@ function ReasonIcon({ type, size = 12 }: { type: BlockingReason["type"]; size?: 
   return <AlertOctagon size={size} />;
 }
 
-const SUBGATE_SHORT: Record<string, string> = { business_case: "BC", urs: "URS" };
+const SUBGATE_SHORT: Record<string, string> = { brd: "BRD" };
+
+// Collapse the two internal Initiation sub-gates (Business Case + Requirements
+// — formerly URS) into ONE umbrella sub-gate labelled "BRD - Business
+// Requirement Document". The user-facing critical-path queue shows the
+// initiative as a single line item; the underlying server endpoints + DB
+// keys (business_case / urs) stay split and continue to drive the dual
+// approval workflow internally.
+//
+// Status math:
+//   complete   — both halves satisfied
+//   blocked    — either half blocked
+//   active     — otherwise (in-progress)
+//   approvedAt — most recent of the two if both satisfied
+//   daysOverdue — worst of the two
+//   blockingReasons — concatenated
+//   approverLabel — the first unsatisfied half's approver (so Remind /
+//                   Escalate copy stays accurate to whoever's actually holding
+//                   things up)
+function mergeInitiationSubGates(stage: CPStage | undefined): CPSubGate[] | undefined {
+  if (!stage?.subGates || stage.subGates.length === 0) return stage?.subGates;
+  if (stage.key !== "initiation") return stage.subGates;
+  const all = stage.subGates;
+  const allSatisfied = all.every((g) => g.satisfied);
+  const anyBlocked = all.some((g) => g.status === "blocked");
+  const firstUnsatisfied = all.find((g) => !g.satisfied);
+  const approvedDates = all.map((g) => g.approvedAt).filter((x): x is string => !!x).sort();
+  const merged: CPSubGate = {
+    key: "brd",
+    label: "BRD - Business Requirement Document",
+    status: allSatisfied ? "complete" : anyBlocked ? "blocked" : "active",
+    satisfied: allSatisfied,
+    slaDays: all.reduce<number | null>((acc, g) => (g.slaDays != null ? Math.max(acc ?? 0, g.slaDays) : acc), null),
+    daysOverdue: Math.max(...all.map((g) => g.daysOverdue)),
+    approvedAt: allSatisfied && approvedDates.length ? approvedDates[approvedDates.length - 1] : null,
+    approverLabel: firstUnsatisfied?.approverLabel ?? all[0].approverLabel,
+    blockingReasons: all.flatMap((g) => g.blockingReasons),
+  };
+  return [merged];
+}
 
 function subTone(status: CPSubGate["status"]) {
   return status === "blocked" ? "bg-destructive/15 text-destructive border-destructive/40"
@@ -114,21 +153,26 @@ function JourneyStop({
           <p className="text-[10px] font-bold text-destructive mt-0.5">{stage.daysOverdue}d overdue</p>
         )}
       </button>
-      {/* Sub-gate pills (Initiation → BC, URS) */}
-      {stage.subGates && (
-        <div className="flex gap-1 mt-1 flex-wrap justify-center">
-          {stage.subGates.map((sg) => (
-            <span
-              key={sg.key}
-              className={`inline-flex items-center gap-0.5 text-[9px] font-bold font-mono uppercase rounded px-1 py-0.5 border ${subTone(sg.status)}`}
-              title={`${sg.label}: ${sg.status}${sg.daysOverdue > 0 ? ` · ${sg.daysOverdue}d overdue` : ""}`}
-            >
-              {sg.status === "complete" ? <CheckCircle2 size={8} /> : sg.status === "blocked" ? <AlertOctagon size={8} /> : <Circle size={8} className={sg.status === "upcoming" ? "opacity-50" : ""} />}
-              {SUBGATE_SHORT[sg.key] ?? sg.label.slice(0, 3).toUpperCase()}
-            </span>
-          ))}
-        </div>
-      )}
+      {/* Sub-gate pill (Initiation → single BRD pill, internally backed by
+          two server-side sub-gates that still drive dual approval). */}
+      {(() => {
+        const displayed = mergeInitiationSubGates(stage);
+        if (!displayed) return null;
+        return (
+          <div className="flex gap-1 mt-1 flex-wrap justify-center">
+            {displayed.map((sg) => (
+              <span
+                key={sg.key}
+                className={`inline-flex items-center gap-0.5 text-[9px] font-bold font-mono uppercase rounded px-1 py-0.5 border ${subTone(sg.status)}`}
+                title={`${sg.label}: ${sg.status}${sg.daysOverdue > 0 ? ` · ${sg.daysOverdue}d overdue` : ""}`}
+              >
+                {sg.status === "complete" ? <CheckCircle2 size={8} /> : sg.status === "blocked" ? <AlertOctagon size={8} /> : <Circle size={8} className={sg.status === "upcoming" ? "opacity-50" : ""} />}
+                {SUBGATE_SHORT[sg.key] ?? sg.label.slice(0, 3).toUpperCase()}
+              </span>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -258,10 +302,16 @@ export function CriticalPathLane({ projectId }: { projectId: number }) {
             />
           </div>
 
-          {/* Sub-gate breakdown (Initiation) */}
-          {selected.subGates ? (
+          {/* Sub-gate breakdown — Initiation collapses BC + URS into a single
+              BRD card. The underlying server-side sub-gates still drive dual
+              approval; the blocking-reasons list is merged so the user sees
+              everything pending in one place. */}
+          {(() => {
+            const displayedSubGates = mergeInitiationSubGates(selected);
+            if (!displayedSubGates) return null;
+            return (
             <div className="space-y-2 mb-1">
-              {selected.subGates.map((sg) => (
+              {displayedSubGates.map((sg) => (
                 <div key={sg.key} className={`rounded-lg border p-2.5 ${sg.status === "blocked" ? "border-destructive/30 bg-destructive/5" : sg.satisfied ? "border-success/30 bg-success/5" : "border-border bg-muted/30"}`}>
                   <div className="flex items-center gap-2 text-xs flex-wrap">
                     {sg.satisfied ? <CheckCircle2 size={13} className="text-success" /> : sg.status === "blocked" ? <AlertOctagon size={13} className="text-destructive" /> : <Circle size={13} className="text-muted-foreground" />}
@@ -284,16 +334,20 @@ export function CriticalPathLane({ projectId }: { projectId: number }) {
                 </div>
               ))}
             </div>
-          ) : selected.blockingReasons.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
-              {selected.blockingReasons.map((r, idx) => (
-                <span key={idx} className="inline-flex items-center gap-1 text-[11px] rounded-full border border-destructive/30 bg-destructive/10 text-destructive px-2 py-1">
-                  <ReasonIcon type={r.type} size={11} /> {reasonText(r)}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-success flex items-center gap-1.5"><CheckCircle2 size={13} /> Within SLA — no open gate items.</p>
+            );
+          })()}
+          {!mergeInitiationSubGates(selected) && (
+            selected.blockingReasons.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {selected.blockingReasons.map((r, idx) => (
+                  <span key={idx} className="inline-flex items-center gap-1 text-[11px] rounded-full border border-destructive/30 bg-destructive/10 text-destructive px-2 py-1">
+                    <ReasonIcon type={r.type} size={11} /> {reasonText(r)}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-success flex items-center gap-1.5"><CheckCircle2 size={13} /> Within SLA — no open gate items.</p>
+            )
           )}
 
           {/* Next escalation rung */}

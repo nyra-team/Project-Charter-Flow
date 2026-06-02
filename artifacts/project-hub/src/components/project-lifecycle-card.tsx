@@ -98,7 +98,7 @@ export function ProjectLifecycleCard({
     return "upcoming";
   }
 
-  // Initiation = single combined node "Business Case & Requirements". Previously
+  // Initiation = single combined node "BRD - Business Requirement Document". Previously
   // rendered as TWO sub-gate dots (BC + URS) which contradicted the new unified
   // label and confused users. Now: one StageStatus computed from BOTH halves
   // being approved (BC + both URS approvals).
@@ -125,7 +125,7 @@ export function ProjectLifecycleCard({
   })();
 
   // Sub-stage nodes for the currently-visible phase. Initiate now contributes
-  // ONE node (the combined Business Case & Requirements gate); every other
+  // ONE node (the combined BRD - Business Requirement Document gate); every other
   // phase contributes its real stages. Drives BOTH the connector line and the
   // dot row so all phases render identically.
   const visibleNodeStatuses: StageStatus[] = visiblePhase.key === "initiate"
@@ -239,7 +239,7 @@ export function ProjectLifecycleCard({
                     {phase.label}
                   </p>
                   {phase.key === "initiate" && showInitSub ? (
-                    /* Single project: combined Business Case & Requirements status.
+                    /* Single project: combined BRD - Business Requirement Document status.
                        Was previously a 'BC ✓ · URS ⏳' pair; collapsed to one line
                        to match the unified label. */
                     <p className="text-[9px] leading-none mt-0.5 font-semibold">
@@ -294,7 +294,7 @@ export function ProjectLifecycleCard({
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
               {visiblePhase.label} ·{" "}
               {visiblePhase.key === "initiate"
-                ? "Business Case & Requirements"
+                ? "BRD - Business Requirement Document"
                 : `${visiblePhase.stageKeys.length} stage${visiblePhase.stageKeys.length === 1 ? "" : "s"}`}
             </p>
             <p className="text-[10px] text-muted-foreground/80 italic truncate ml-3">
@@ -387,7 +387,7 @@ export function ProjectLifecycleCard({
     </div>
   );
 
-  // Initiation = ONE combined gate ("Business Case & Requirements"). Renders
+  // Initiation = ONE combined gate ("BRD - Business Requirement Document"). Renders
   // with the SAME circle-dot + label + count-badge styling as every other
   // phase's single-stage dot, so Initiate reads identically to Procure /
   // Execute / Release. Two internal halves (BC, URS) still gate independently
@@ -410,7 +410,7 @@ export function ProjectLifecycleCard({
         key="initiation"
         type="button"
         onClick={() => onStageClick?.("initiation")}
-        title={`Initiation · Business Case & Requirements${counts ? ` — ${done}/${total} approved` : ` — ${initCombinedStatus}`}`}
+        title={`Initiation · BRD - Business Requirement Document${counts ? ` — ${done}/${total} approved` : ` — ${initCombinedStatus}`}`}
         className="group flex flex-col items-center gap-1 min-w-0 cursor-pointer focus:outline-none flex-1"
       >
         <div className="relative">

@@ -34,7 +34,7 @@ export function InitiationSubGates({ projectId }: { projectId: number }) {
       <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b border-border/60">
         <span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground mr-1">Stage:</span>
         <span className={`inline-flex items-center gap-1 text-[11px] font-medium ${bcApproved && ursApproved ? "text-success" : "text-muted-foreground"}`}>
-          {bcApproved && ursApproved ? <CheckCircle2 size={13} /> : <Circle size={13} />} Business Case &amp; Requirements
+          {bcApproved && ursApproved ? <CheckCircle2 size={13} /> : <Circle size={13} />} BRD - Business Requirement Document
         </span>
         {!bcApproved && <span className="ml-auto text-[10px] text-warn font-mono">Requirements sign-off locked until Business Case approved</span>}
       </div>
