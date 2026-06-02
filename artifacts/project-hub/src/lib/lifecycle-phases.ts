@@ -6,7 +6,7 @@ import { LIFECYCLE_STAGES, type LifecycleStageKey } from "./lifecycle-config";
 // dashboard funnel, and the pipeline kanban filter chips.
 // ---------------------------------------------------------------------------
 
-export type PhaseKey = "initiate" | "procure" | "execute" | "release_close";
+export type PhaseKey = "plan" | "execute" | "release_close";
 
 export interface LifecyclePhase {
   key: PhaseKey;
@@ -17,22 +17,19 @@ export interface LifecyclePhase {
   stageKeys: LifecycleStageKey[];
 }
 
+// 'Plan' merges the former 'Initiate' and 'Procure' phases (per 2026-06-02
+// product call). One umbrella card spans initiation → sourcing → investment
+// authorization → contract, which is how the business actually scopes the
+// 'planning' part of a project before execution begins. Three phases total now
+// (Plan → Execute → Release & Close).
 export const LIFECYCLE_PHASES: LifecyclePhase[] = [
   {
-    key: "initiate",
-    label: "Initiate",
-    shortLabel: "INIT",
-    description: "Business case & requirements",
+    key: "plan",
+    label: "Plan",
+    shortLabel: "PLAN",
+    description: "BRD, sourcing, authorization & contract",
     color: "#6366F1",
-    stageKeys: ["initiation"],
-  },
-  {
-    key: "procure",
-    label: "Procure",
-    shortLabel: "PROC",
-    description: "Sourcing, authorization & contract",
-    color: "#EC4899",
-    stageKeys: ["vendor_selection", "investment_authorization", "contract_po"],
+    stageKeys: ["initiation", "vendor_selection", "investment_authorization", "contract_po"],
   },
   {
     key: "execute",

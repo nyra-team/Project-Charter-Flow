@@ -124,13 +124,14 @@ export function ProjectLifecycleCard({
     return done ? "complete" : initStageSt === "upcoming" ? "upcoming" : "active";
   })();
 
-  // Sub-stage nodes for the currently-visible phase. Initiate now contributes
-  // ONE node (the combined BRD - Business Requirement Document gate); every other
-  // phase contributes its real stages. Drives BOTH the connector line and the
-  // dot row so all phases render identically.
-  const visibleNodeStatuses: StageStatus[] = visiblePhase.key === "initiate"
-    ? [initCombinedStatus]
-    : visiblePhase.stageKeys.map((k) => stageStatus(k));
+  // Sub-stage nodes for the currently-visible phase. The 'initiation' stage
+  // (now living inside the merged 'plan' phase alongside the three procure
+  // stages) contributes ONE combined node — the BRD gate — wherever it
+  // appears. Every other stage contributes a normal stageStatus() dot.
+  // Drives BOTH the connector line and the dot row.
+  const visibleNodeStatuses: StageStatus[] = visiblePhase.stageKeys.map((k) =>
+    k === "initiation" ? initCombinedStatus : stageStatus(k),
+  );
 
   function phaseStats(phaseIdx: number) {
     const phase = LIFECYCLE_PHASES[phaseIdx];
@@ -238,22 +239,23 @@ export function ProjectLifecycleCard({
                   >
                     {phase.label}
                   </p>
-                  {phase.key === "initiate" && showInitSub ? (
-                    /* Single project: combined BRD - Business Requirement Document status.
-                       Was previously a 'BC ✓ · URS ⏳' pair; collapsed to one line
-                       to match the unified label. */
+                  {phase.key === "plan" && showInitSub && currentStageKey === "initiation" ? (
+                    /* Single project sitting in the Plan phase's initiation stage:
+                       show the combined BRD status. Projects further along inside
+                       Plan (Vendor Selection / IA / Contract & PO) fall through to
+                       the default 'done/total' counter below. */
                     <p className="text-[9px] leading-none mt-0.5 font-semibold">
                       <span className={initCombinedStatus === "complete" ? "text-success" : "text-warn"}>
-                        Business Case &amp; Requirements {initCombinedStatus === "complete" ? "✓" : "⏳"}
+                        BRD - Business Requirement Document {initCombinedStatus === "complete" ? "✓" : "⏳"}
                       </span>
                     </p>
-                  ) : phase.key === "initiate" && counts && initiationAggregate && initiationAggregate.inInitiation > 0 ? (
-                    /* Org-wide: combined approved-count among projects in Initiation.
-                       URS approval requires BC first (server-enforced), so ursDone
-                       counts projects that completed both halves. */
+                  ) : phase.key === "plan" && counts && initiationAggregate && initiationAggregate.inInitiation > 0 ? (
+                    /* Org-wide aggregate: BRD approved-count among projects in
+                       initiation. URS approval requires BC first (server-enforced),
+                       so ursDone counts projects that completed both halves. */
                     <p className="text-[9px] leading-none mt-0.5 font-semibold">
                       <span className="text-muted-foreground">
-                        {initiationAggregate.ursDone}/{initiationAggregate.inInitiation} approved
+                        BRD {initiationAggregate.ursDone}/{initiationAggregate.inInitiation} approved
                       </span>
                     </p>
                   ) : (
@@ -293,7 +295,7 @@ export function ProjectLifecycleCard({
           <div className="flex items-center justify-between mb-3">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
               {visiblePhase.label} ·{" "}
-              {visiblePhase.key === "initiate"
+              {visiblePhase.key === "plan" && currentStageKey === "initiation"
                 ? "BRD - Business Requirement Document"
                 : `${visiblePhase.stageKeys.length} stage${visiblePhase.stageKeys.length === 1 ? "" : "s"}`}
             </p>
