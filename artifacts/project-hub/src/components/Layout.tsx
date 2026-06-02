@@ -45,6 +45,8 @@ import {
   BellRing,
   ListChecks,
   UserCheck,
+  Activity,
+  Zap,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { NotificationBell } from "./notification-bell";
@@ -66,7 +68,7 @@ const ROLES = [
 ];
 
 type NavLeaf = { href: string; label: string; icon: React.ComponentType<{ size?: number; className?: string }> };
-type NavGroup = { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; children: NavLeaf[] };
+type NavGroup = { label: string; icon: React.ComponentType<{ size?: number; className?: string }>; children: NavLeaf[]; color?: string };
 type NavNode = NavLeaf | NavGroup;
 
 function isGroup(n: NavNode): n is NavGroup {
@@ -85,6 +87,7 @@ const PRIMARY_NAV: NavNode[] = [
   {
     label: "Pipeline",
     icon: Workflow,
+    color: "#6366F1",
     children: [
       { href: "/pifs", label: "Requests", icon: ClipboardList },
       { href: "/demands", label: "Demands", icon: Inbox },
@@ -95,6 +98,7 @@ const PRIMARY_NAV: NavNode[] = [
   {
     label: "Projects",
     icon: BarChart3,
+    color: "#0EA5E9",
     children: [
       { href: "/projects", label: "Active", icon: BarChart3 },
       { href: "/portfolio", label: "Portfolio", icon: FolderOpen },
@@ -104,6 +108,7 @@ const PRIMARY_NAV: NavNode[] = [
   {
     label: "Work",
     icon: Briefcase,
+    color: "#10B981",
     children: [
       { href: "/my-tasks", label: "My Tasks", icon: UserCheck },
       { href: "/tasks", label: "Work Breakdown", icon: ListChecks },
@@ -112,6 +117,7 @@ const PRIMARY_NAV: NavNode[] = [
   {
     label: "Procurement",
     icon: ShoppingCart,
+    color: "#F59E0B",
     children: [
       { href: "/vendors", label: "Vendors", icon: Building2 },
       { href: "/rfx", label: "Sourcing", icon: ScrollText },
@@ -121,6 +127,8 @@ const PRIMARY_NAV: NavNode[] = [
 ];
 
 const WORKSPACE_NAV: NavLeaf[] = [
+  { href: "/activity", label: "Activity", icon: Activity },
+  { href: "/automations", label: "Automations", icon: Zap },
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/templates", label: "Templates", icon: Library },
   { href: "/lessons-learned", label: "Lessons Learned", icon: BookOpen },
@@ -153,6 +161,8 @@ const PAGE_TITLES: Record<string, string> = {
   "/approvals": "Approvals",
   "/my-tasks": "My Tasks",
   "/tasks": "Work Breakdown",
+  "/activity": "Activity",
+  "/automations": "Automations",
   "/documents": "Documents",
   "/lessons-learned": "Lessons Learned",
   "/templates": "Templates",
@@ -345,6 +355,9 @@ function NavGroupItem({ group, location, collapsed, open, onToggle }: {
             : "text-sidebar-foreground/60 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
         }`}
       >
+        {group.color && (
+          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: group.color, boxShadow: groupActive ? `0 0 6px ${group.color}` : "none" }} />
+        )}
         <Icon size={16} className={`transition-all duration-300 ${groupActive ? "text-sidebar-primary" : "group-hover:text-sidebar-foreground group-hover:translate-x-0.5"}`} />
         <span className="truncate transition-transform duration-300 group-hover:translate-x-0.5">{group.label}</span>
         <ChevronDown size={13} className={`ml-auto transition-transform duration-200 ${open ? "" : "-rotate-90"} ${groupActive ? "text-sidebar-primary/70" : "text-sidebar-foreground/40"}`} />

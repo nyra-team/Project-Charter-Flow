@@ -29,6 +29,8 @@ import { PhaseChip } from "@/components/ui-kit";
 import { api } from "@/lib/extra-api";
 import { useToast } from "@/hooks/use-toast";
 import { WbsTree, type WbsTask, type WbsMilestone } from "../components/wbs-tree";
+import { CalendarView } from "@/components/monday/CalendarView";
+import { ProgressCell } from "@/components/monday/cells";
 import { TaskDetailModal } from "../components/task-detail-modal";
 import type { AggTask } from "@/lib/work-types";
 import { ProjectApprovalsTab } from "../components/project-approvals-tab";
@@ -945,7 +947,7 @@ export default function ProjectDetail() {
   const { role } = useUserStore();
   const projectId = parseInt(params?.id || "0");
 
-  const [activeTab, setActiveTab] = useState<"overview" | "lifecycle" | "work" | "grid" | "gantt" | "milestones" | "board" | "resources" | "budget" | "procurement" | "documents" | "risks" | "issues" | "raci" | "escalation" | "messages" | "audit" | "analytics" | "scoring" | "meetings" | "changes" | "benefits" | "approvals" | "lessons">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "lifecycle" | "work" | "grid" | "gantt" | "calendar" | "milestones" | "board" | "resources" | "budget" | "procurement" | "documents" | "risks" | "issues" | "raci" | "escalation" | "messages" | "audit" | "analytics" | "scoring" | "meetings" | "changes" | "benefits" | "approvals" | "lessons">("overview");
   const [aiSummary, setAiSummary] = useState<{ summary?: string; highlights?: string[]; concerns?: string[] } | null>(null);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
@@ -1106,6 +1108,7 @@ export default function ProjectDetail() {
     { id: "lifecycle" as const, label: "Lifecycle", icon: Layers },
     { id: "work" as const, label: "Work", icon: ListTree },
     { id: "gantt" as const, label: "Timeline", icon: BarChart2 },
+    { id: "calendar" as const, label: "Calendar", icon: CalendarIcon },
     { id: "documents" as const, label: "Documents", icon: FileText },
     { id: "approvals" as const, label: "Approvals", icon: Stamp },
     { id: "audit" as const, label: "Activity", icon: History },
@@ -1171,6 +1174,12 @@ export default function ProjectDetail() {
               <span className="inline-flex items-center gap-1.5">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Health</span>
                 <RAGBadge status={(project as { ragStatus?: string }).ragStatus ?? "green"} size="sm" />
+              </span>
+              <span className="w-px h-4 bg-border" />
+              {/* Rolled-up progress (Subtask→Task→Milestone→Project) */}
+              <span className="inline-flex items-center gap-1.5">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Progress</span>
+                <div className="w-28"><ProgressCell pct={project.progress ?? 0} /></div>
               </span>
               <span className="w-px h-4 bg-border" />
               {/* Phase */}
@@ -1421,6 +1430,34 @@ export default function ProjectDetail() {
             />
             {wbsTask && (
               <TaskDetailModal task={toAgg(wbsTask)} allTasks={wbsTasks.map(toAgg)} onClose={() => setWbsTask(null)} onRefresh={handleRefresh} />
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ── Calendar Tab — tasks (by due/end date) + milestones (by due date) ── */}
+      {activeTab === "calendar" && (() => {
+        const calItems = [
+          ...tasks.filter((t) => t.endDate).map((t) => ({ id: `t-${t.id}`, date: t.endDate ?? null, title: t.name, status: t.status })),
+          ...milestones.filter((m) => m.dueDate).map((m) => ({ id: `m-${m.id}`, date: m.dueDate ?? null, title: `◆ ${m.name}`, status: m.status })),
+        ];
+        return (
+          <div className="space-y-3">
+            <div>
+              <h3 className="text-[15px] font-semibold text-foreground tracking-tight">Calendar</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Tasks by due date · ◆ = milestone · click a task to open it</p>
+            </div>
+            <CalendarView
+              items={calItems}
+              onOpenItem={(it) => {
+                if (!String(it.id).startsWith("t-")) return;
+                const id = Number(String(it.id).slice(2));
+                const t = (tasks as unknown as WbsTask[]).find((x) => x.id === id);
+                if (t) setWbsTask(t);
+              }}
+            />
+            {wbsTask && (
+              <TaskDetailModal task={wbsTask as unknown as AggTask} allTasks={tasks as unknown as AggTask[]} onClose={() => setWbsTask(null)} onRefresh={handleRefresh} />
             )}
           </div>
         );

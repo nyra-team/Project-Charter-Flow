@@ -39,6 +39,8 @@ import VendorScorecardsPage from "./pages/vendor-scorecards";
 import RfxListPage from "./pages/rfx-list";
 import RfxNewPage from "./pages/rfx-new";
 import RfxDetailPage from "./pages/rfx-detail";
+import AutomationsPage from "./pages/automations";
+import ActivityPage from "./pages/activity";
 import NotFound from "@/pages/not-found";
 
 // React Query defaults tuned for Project Hub:
@@ -91,6 +93,8 @@ function Router() {
         <Route path="/pifs/:id" component={PifDetail} />
         <Route path="/pifs" component={PifsList} />
         <Route path="/nudges" component={NudgesPage} />
+        <Route path="/automations" component={AutomationsPage} />
+        <Route path="/activity" component={ActivityPage} />
         <Route path="/vendors/new" component={VendorNewPage} />
         <Route path="/vendors/scorecards" component={VendorScorecardsPage} />
         <Route path="/vendors/:id" component={VendorDetailPage} />

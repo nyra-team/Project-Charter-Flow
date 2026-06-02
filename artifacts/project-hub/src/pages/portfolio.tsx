@@ -1,14 +1,34 @@
 import { useListProjects, useListPortfolios } from "@workspace/api-client-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
-import { BarChart2, ArrowUpRight, DollarSign, Calendar } from "lucide-react";
-import { Link } from "wouter";
+import { BarChart2, DollarSign } from "lucide-react";
+import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
-import { format } from "date-fns";
 import { useState, useMemo } from "react";
-import { RAGBadge, DashboardCard, KPITile, FilterBar, exportCSV } from "../components/dashboard/primitives";
+import { DashboardCard, KPITile, FilterBar, exportCSV } from "../components/dashboard/primitives";
 import { formatCurrency } from "../lib/format";
+import { MondayBoard, ProgressCell, DateCell, TextCell, type BoardColumn, type BoardGroup } from "@/components/monday";
+import { ViewSwitcher, type BoardView } from "@/components/monday/ViewSwitcher";
+import { CalendarView } from "@/components/monday/CalendarView";
+import { StatusChip } from "@/components/ui-kit";
+import { PriorityChip, RagDot } from "@/components/task-status-chip";
 
 const RAG_COLORS = { green: "#22C55E", amber: "#EAB308", red: "#EF4444", grey: "#94A3B8" };
+
+// Structural subset of a project row used by the Monday board on this page.
+interface PortfolioRow {
+  id: number; name: string; status: string; priority: string;
+  ragStatus?: string | null; progress?: number | null; endDate?: string | null;
+  capexBudget?: number | null; opexBudget?: number | null;
+  function?: string | null;
+}
+
+const STATUS_GROUP_META: { key: string; label: string; color: string }[] = [
+  { key: "active", label: "Active", color: "#F59E0B" },
+  { key: "planning", label: "Planning", color: "#6366F1" },
+  { key: "on_hold", label: "On Hold", color: "#94A3B8" },
+  { key: "completed", label: "Completed", color: "#10B981" },
+  { key: "closed", label: "Closed", color: "#64748B" },
+];
 
 const STATUS_OPTS = ["active", "planning", "completed", "on_hold", "closed"].map(v => ({ value: v, label: v.replace(/_/g, " ").replace(/^\w/, c => c.toUpperCase()) }));
 const PRIORITY_OPTS = ["P1", "P2", "P3"].map(v => ({ value: v, label: v }));
@@ -16,6 +36,8 @@ const PRIORITY_OPTS = ["P1", "P2", "P3"].map(v => ({ value: v, label: v }));
 export default function PortfolioView() {
   const { data: projects, isLoading: loadingProjects } = useListProjects();
   const { data: portfolios, isLoading: loadingPortfolios } = useListPortfolios();
+  const [, setLocation] = useLocation();
+  const [view, setView] = useState<BoardView>("table");
 
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [dateFrom, setDateFrom] = useState("");
@@ -64,6 +86,34 @@ export default function PortfolioView() {
   }));
 
   const isLoading = loadingProjects || loadingPortfolios;
+
+  // ── Monday board over the filtered projects, grouped by status ─────────────
+  const boardGroups = useMemo<BoardGroup<PortfolioRow>[]>(() => {
+    const rows = filteredProjects as unknown as PortfolioRow[];
+    const byStatus = new Map<string, PortfolioRow[]>();
+    for (const p of rows) { const a = byStatus.get(p.status) ?? []; a.push(p); byStatus.set(p.status, a); }
+    const groups: BoardGroup<PortfolioRow>[] = [];
+    for (const g of STATUS_GROUP_META) {
+      const r = byStatus.get(g.key);
+      if (r?.length) { groups.push({ key: g.key, label: g.label, color: g.color, rows: r }); byStatus.delete(g.key); }
+    }
+    for (const [key, r] of byStatus) groups.push({ key, label: key.replace(/_/g, " "), color: "#94A3B8", rows: r });
+    return groups;
+  }, [filteredProjects]);
+
+  const boardColumns = useMemo<BoardColumn<PortfolioRow>[]>(() => [
+    { key: "status", header: "Status", width: 120, align: "center", render: (p) => <StatusChip status={p.status} size="sm" /> },
+    { key: "rag", header: "Health", width: 56, align: "center", render: (p) => <RagDot rag={p.ragStatus ?? "green"} /> },
+    { key: "priority", header: "Priority", width: 92, align: "center", render: (p) => <PriorityChip priority={p.priority} /> },
+    { key: "budget", header: "Budget", width: 110, align: "right", render: (p) => <TextCell value={<span className="tabular-nums">{formatCurrency((p.capexBudget ?? 0) + (p.opexBudget ?? 0))}</span>} /> },
+    { key: "progress", header: "Progress", width: 120, render: (p) => <ProgressCell pct={p.progress ?? 0} /> },
+    { key: "due", header: "Due", width: 84, align: "center", render: (p) => <DateCell value={p.endDate} /> },
+  ], []);
+
+  const calendarItems = useMemo(
+    () => (filteredProjects as unknown as PortfolioRow[]).filter((p) => p.endDate).map((p) => ({ id: p.id, date: p.endDate ?? null, title: p.name, status: p.status })),
+    [filteredProjects],
+  );
 
   return (
     <div className="space-y-5">
@@ -195,90 +245,42 @@ export default function PortfolioView() {
         </div>
       </div>
 
-      {/* Project Table */}
-      <DashboardCard title="Projects" subtitle={`${filteredProjects.length} projects matching current filters`}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-muted-foreground/80 uppercase tracking-wider border-b border-border/60">
-                <th className="pb-3 text-left font-semibold">Project</th>
-                <th className="pb-3 text-left font-semibold hidden sm:table-cell">Status</th>
-                <th className="pb-3 text-left font-semibold">RAG</th>
-                <th className="pb-3 text-left font-semibold hidden md:table-cell">Priority</th>
-                <th className="pb-3 text-left font-semibold hidden lg:table-cell">Budget</th>
-                <th className="pb-3 text-left font-semibold hidden xl:table-cell">Progress</th>
-                <th className="pb-3 text-left font-semibold hidden lg:table-cell">End Date</th>
-                <th className="pb-3 text-right font-semibold">View</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/40">
-              {isLoading ? (
-                [1,2,3,4,5].map(i => (
-                  <tr key={i}><td colSpan={8} className="py-3"><Skeleton className="h-6 w-full" /></td></tr>
-                ))
-              ) : filteredProjects.length > 0 ? filteredProjects.map(p => (
-                <tr key={p.id} className="hover:bg-muted/40 transition-colors">
-                  <td className="py-3 pr-4">
-                    <div className="font-medium text-foreground">{p.name}</div>
-                    {!!(p as unknown as Record<string, unknown>).function && (
-                      <div className="text-xs text-muted-foreground/80">{String((p as unknown as Record<string, unknown>).function)}</div>
-                    )}
-                  </td>
-                  <td className="py-3 pr-4 hidden sm:table-cell">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${
-                      p.status === "active"
-                        ? "bg-success/10 text-success border border-success/20"
-                        : "bg-muted text-muted-foreground border border-border"
-                    }`}>
-                      {p.status.replace(/_/g, " ")}
-                    </span>
-                  </td>
-                  <td className="py-3 pr-4"><RAGBadge status={p.ragStatus} size="xs" /></td>
-                  <td className="py-3 pr-4 hidden md:table-cell">
-                    <span className={`text-xs px-2 py-0.5 rounded font-bold border ${
-                      p.priority === "P1" ? "bg-destructive/10 text-destructive border-destructive/20" :
-                      p.priority === "P2" ? "bg-warn/10 text-warn border-warn/20" :
-                      "bg-muted text-muted-foreground border-border"
-                    }`}>
-                      {p.priority ?? "P3"}
-                    </span>
-                  </td>
-                  <td className="py-3 pr-4 hidden lg:table-cell">
-                    <span className="text-xs text-muted-foreground tabular-nums">{formatCurrency((p.capexBudget ?? 0) + (p.opexBudget ?? 0))}</span>
-                  </td>
-                  <td className="py-3 pr-4 hidden xl:table-cell">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 h-1.5 bg-muted/60 rounded-full overflow-hidden min-w-[50px]">
-                        <div className="h-full rounded-full bg-primary" style={{ width: `${p.progress ?? 0}%` }} />
-                      </div>
-                      <span className="text-xs font-bold text-foreground w-8 tabular-nums">{p.progress ?? 0}%</span>
-                    </div>
-                  </td>
-                  <td className="py-3 pr-4 hidden lg:table-cell">
-                    <span className="text-xs text-muted-foreground/80 flex items-center gap-1">
-                      {p.endDate ? <><Calendar size={10} />{format(new Date(p.endDate), "MMM d, yyyy")}</> : "—"}
-                    </span>
-                  </td>
-                  <td className="py-3 text-right">
-                    <Link href={`/projects/${p.id}`}>
-                      <button className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors">
-                        <ArrowUpRight size={14} className="text-primary" />
-                      </button>
-                    </Link>
-                  </td>
-                </tr>
-              )) : (
-                <tr>
-                  <td colSpan={8} className="py-12 text-center">
-                    <BarChart2 size={28} className="text-muted-foreground/40 mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground/80">No projects match the current filters</p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {/* Projects — Monday board (grouped by status) with Table / Calendar views */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Projects</h3>
+            <p className="text-xs text-muted-foreground">{filteredProjects.length} matching current filters</p>
+          </div>
+          <ViewSwitcher views={["table", "calendar"]} value={view} onChange={setView} />
         </div>
-      </DashboardCard>
+        {isLoading ? (
+          <Skeleton className="h-72 w-full rounded-xl" />
+        ) : view === "calendar" ? (
+          <CalendarView items={calendarItems} onOpenItem={(it) => setLocation(`/projects/${it.id}`)} />
+        ) : filteredProjects.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border bg-card/50 p-12 text-center">
+            <BarChart2 size={28} className="text-muted-foreground/40 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground/80">No projects match the current filters</p>
+          </div>
+        ) : (
+          <MondayBoard<PortfolioRow>
+            groups={boardGroups}
+            columns={boardColumns}
+            getRowId={(p) => `project:${p.id}`}
+            getName={(p) => (
+              <span className="flex flex-col min-w-0">
+                <span className="font-medium truncate">{p.name}</span>
+                {p.function && <span className="text-[10px] text-muted-foreground truncate">{p.function}</span>}
+              </span>
+            )}
+            getProgress={(p) => p.progress ?? 0}
+            storageKey="portfolio-projects"
+            onOpenRow={(p) => setLocation(`/projects/${p.id}`)}
+          />
+        )}
+      </div>
+
     </div>
   );
 }

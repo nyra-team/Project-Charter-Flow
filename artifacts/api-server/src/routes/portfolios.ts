@@ -1,12 +1,39 @@
 import { Router, type IRouter } from "express";
-import { db, portfoliosTable, programsTable } from "@workspace/db";
+import { db, portfoliosTable, programsTable, projectsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 
 const router: IRouter = Router();
 
+// Portfolio-level progress rollup, computed on read (top of the chain:
+// subtask -> task -> milestone -> project -> PORTFOLIO). progress = average of
+// the portfolio's member projects' (already-rolled-up) progress. Returned as
+// additive fields so existing consumers are unaffected.
+async function withPortfolioRollup<T extends { id: number }>(rows: T[]): Promise<Array<T & { progress: number; projectCount: number }>> {
+  if (rows.length === 0) return [];
+  const projects = await db
+    .select({ portfolioId: projectsTable.portfolioId, progress: projectsTable.progress, status: projectsTable.status })
+    .from(projectsTable);
+  const byPortfolio = new Map<number, number[]>();
+  for (const p of projects) {
+    if (p.portfolioId == null) continue;
+    if (p.status === "closed") continue; // active portfolio health excludes closed work
+    const arr = byPortfolio.get(p.portfolioId) ?? [];
+    arr.push(p.progress ?? 0);
+    byPortfolio.set(p.portfolioId, arr);
+  }
+  return rows.map((r) => {
+    const ps = byPortfolio.get(r.id) ?? [];
+    return {
+      ...r,
+      projectCount: ps.length,
+      progress: ps.length ? Math.round(ps.reduce((s, v) => s + v, 0) / ps.length) : 0,
+    };
+  });
+}
+
 router.get("/portfolios", async (_req, res): Promise<void> => {
   const portfolios = await db.select().from(portfoliosTable).orderBy(desc(portfoliosTable.createdAt));
-  res.json(portfolios);
+  res.json(await withPortfolioRollup(portfolios));
 });
 
 router.post("/portfolios", async (req, res): Promise<void> => {
@@ -21,7 +48,8 @@ router.get("/portfolios/:id", async (req, res): Promise<void> => {
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [portfolio] = await db.select().from(portfoliosTable).where(eq(portfoliosTable.id, id));
   if (!portfolio) { res.status(404).json({ error: "Portfolio not found" }); return; }
-  res.json(portfolio);
+  const [enriched] = await withPortfolioRollup([portfolio]);
+  res.json(enriched);
 });
 
 router.patch("/portfolios/:id", async (req, res): Promise<void> => {

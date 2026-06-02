@@ -2,13 +2,49 @@ import { useMemo, useState, useEffect } from "react";
 import { useListProjects } from "@workspace/api-client-react";
 import { formatDate } from "../lib/format";
 import { StatusBadge } from "../components/status-badge";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { BarChart2, Calendar, CheckCircle2, Clock, ArrowUpRight, Search } from "lucide-react";
 import { ViewsMenu } from "../components/views-menu";
 import { JiraImportButton } from "../components/jira-sync";
 import { useUserView } from "../hooks/use-user-view";
+import { MondayBoard, ProgressCell, DateCell, type BoardColumn, type BoardGroup } from "@/components/monday";
+import { ViewSwitcher, type BoardView } from "@/components/monday/ViewSwitcher";
+import { CalendarView } from "@/components/monday/CalendarView";
+import { StatusChip } from "@/components/ui-kit";
+import { PriorityChip, RagDot } from "@/components/task-status-chip";
+
+// Structural subset of a project row — the fields the board reads. Real
+// useListProjects rows are a superset, so they assign cleanly.
+interface ProjectRow {
+  id: number;
+  name: string;
+  description?: string | null;
+  status: string;
+  priority: string;
+  ragStatus?: string | null;
+  progress?: number | null;
+  startDate?: string | null;
+  endDate?: string | null;
+}
+
+// Monday-style status groups for the board, in lifecycle order.
+const STATUS_GROUPS: { key: string; label: string; color: string }[] = [
+  { key: "active", label: "Active", color: "#F59E0B" },
+  { key: "planning", label: "Planning", color: "#6366F1" },
+  { key: "on_hold", label: "On Hold", color: "#94A3B8" },
+  { key: "completed", label: "Completed", color: "#10B981" },
+  { key: "closed", label: "Closed", color: "#64748B" },
+];
+
+const PROJECT_COLUMNS: BoardColumn<ProjectRow>[] = [
+  { key: "status", header: "Status", width: 130, align: "center", render: (p) => <StatusChip status={p.status} size="sm" /> },
+  { key: "priority", header: "Priority", width: 96, align: "center", render: (p) => <PriorityChip priority={p.priority} /> },
+  { key: "rag", header: "Health", width: 60, align: "center", render: (p) => <RagDot rag={p.ragStatus ?? "green"} /> },
+  { key: "progress", header: "Progress", width: 130, render: (p) => <ProgressCell pct={p.progress ?? 0} /> },
+  { key: "due", header: "Due", width: 84, align: "center", render: (p) => <DateCell value={p.endDate} /> },
+];
 
 // Project List filter shape — stored per saved view.
 type ProjectsViewConfig = {
@@ -35,6 +71,8 @@ const SORT_OPTIONS: { value: ProjectsViewConfig["sort"]; label: string }[] = [
 
 export default function ProjectsList() {
   const { data: projects, isLoading, refetch } = useListProjects();
+  const [, setLocation] = useLocation();
+  const [view, setView] = useState<BoardView>("table");
 
   // ── Saved views (Stage 3 — Customization)
   const views = useUserView<ProjectsViewConfig>({ scope: "project_list", fallback: FALLBACK });
@@ -72,6 +110,31 @@ export default function ProjectsList() {
   const active = (projects ?? []).filter((p) => p.status === "active");
   const completed = (projects ?? []).filter((p) => p.status === "completed");
 
+  // ── Monday board: group the filtered projects by status (lifecycle order),
+  //    with any unrecognised status falling into its own trailing group.
+  const boardGroups = useMemo<BoardGroup<ProjectRow>[]>(() => {
+    const byStatus = new Map<string, ProjectRow[]>();
+    for (const p of filtered) {
+      const arr = byStatus.get(p.status) ?? [];
+      arr.push(p);
+      byStatus.set(p.status, arr);
+    }
+    const groups: BoardGroup<ProjectRow>[] = [];
+    for (const g of STATUS_GROUPS) {
+      const rows = byStatus.get(g.key);
+      if (rows && rows.length) { groups.push({ key: g.key, label: g.label, color: g.color, rows }); byStatus.delete(g.key); }
+    }
+    for (const [key, rows] of byStatus) {
+      groups.push({ key, label: key.replace(/_/g, " "), color: "#94A3B8", rows });
+    }
+    return groups;
+  }, [filtered]);
+
+  const calendarItems = useMemo(
+    () => filtered.filter((p) => p.endDate).map((p) => ({ id: p.id, date: p.endDate ?? null, title: p.name, status: p.status })),
+    [filtered],
+  );
+
   return (
     <div className="space-y-5">
       {/* Header */}
@@ -87,6 +150,7 @@ export default function ProjectsList() {
               <span className="flex items-center gap-1"><CheckCircle2 size={11} className="text-success" />{completed.length} completed</span>
             </div>
           )}
+          <ViewSwitcher views={["table", "cards", "calendar"]} value={view} onChange={setView} />
           <JiraImportButton onDone={() => { void refetch(); }} />
         </div>
       </div>
@@ -145,6 +209,19 @@ export default function ProjectsList() {
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-52 rounded-2xl" />)}
         </div>
       ) : filtered.length > 0 ? (
+        view === "table" ? (
+          <MondayBoard<ProjectRow>
+            groups={boardGroups}
+            columns={PROJECT_COLUMNS}
+            getRowId={(p) => `project:${p.id}`}
+            getName={(p) => <span className="font-medium">{p.name}</span>}
+            getProgress={(p) => p.progress ?? 0}
+            storageKey="projects-list"
+            onOpenRow={(p) => setLocation(`/projects/${p.id}`)}
+          />
+        ) : view === "calendar" ? (
+          <CalendarView items={calendarItems} onOpenItem={(it) => setLocation(`/projects/${it.id}`)} />
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 stagger-children">
           {filtered.map(project => {
             const progress = project.progress ?? 0;
@@ -203,6 +280,7 @@ export default function ProjectsList() {
             );
           })}
         </div>
+        )
       ) : (
         // ── Glassmorphic empty-state surface — frosted panel + ambient mesh
         //    + ghost project-card silhouettes so the white space reads as

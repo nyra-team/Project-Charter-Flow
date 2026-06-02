@@ -26,6 +26,18 @@ import { logActivity } from "./activity";
 import { computeStageCriticalPath } from "../lib/critical-path";
 import { runCriticalPathAction } from "../lib/critical-path-actions";
 import { generateGateMilestones, ensureUnscheduledMilestone } from "../lib/gate-milestones";
+import { recomputeRollups } from "../lib/rollup";
+
+// Recompute the project's progress rollup (subtask -> task -> milestone ->
+// project) after a work-item mutation. Best-effort: a rollup failure must never
+// fail the user's write, which has already committed by the time we get here.
+async function rollup(projectId: number): Promise<void> {
+  try {
+    await recomputeRollups(projectId);
+  } catch (err) {
+    console.error(`[rollup] recompute failed for project ${projectId}:`, err);
+  }
+}
 
 const router: IRouter = Router();
 
@@ -159,6 +171,8 @@ router.post("/projects/:id/milestones", async (req, res): Promise<void> => {
     order: parsed.data.order ?? 0,
     scheduleVarianceDays: computeScheduleVarianceDays(parsed.data.dueDate, md.actualEnd as string | undefined),
   }).returning();
+  // New (empty) milestone changes the project's milestone denominator.
+  await rollup(params.data.id);
   res.status(201).json(milestone);
 });
 
@@ -202,7 +216,9 @@ router.patch("/milestones/:id", async (req, res): Promise<void> => {
 router.delete("/milestones/:id", async (req, res): Promise<void> => {
   const params = DeleteMilestoneParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [doomed] = await db.select({ projectId: milestonesTable.projectId }).from(milestonesTable).where(eq(milestonesTable.id, params.data.id));
   await db.delete(milestonesTable).where(eq(milestonesTable.id, params.data.id));
+  if (doomed) await rollup(doomed.projectId);
   res.sendStatus(204);
 });
 
@@ -268,6 +284,7 @@ router.post("/projects/:id/tasks", async (req, res): Promise<void> => {
     order: parsed.data.order ?? 0,
   }).returning();
   const [enriched] = await enrichTasks([task as unknown as Record<string, unknown>]);
+  await rollup(params.data.id);
   res.status(201).json(enriched);
 });
 
@@ -368,16 +385,17 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
     }
   }
 
-  // Parent progress roll-up: a parent task's progress % = average of its
-  // children's progress. Triggered whenever a child's status or progress changes.
-  if ((parsed.data.status !== undefined || (parsed.data as Record<string, unknown>).progressPct !== undefined) && existing.parentTaskId != null) {
-    const kids = await db.select({ progressPct: tasksTable.progressPct }).from(tasksTable)
-      .where(eq(tasksTable.parentTaskId, existing.parentTaskId));
-    if (kids.length > 0) {
-      const avg = Math.round(kids.reduce((s, k) => s + (k.progressPct ?? 0), 0) / kids.length);
-      await db.update(tasksTable).set({ progressPct: avg }).where(eq(tasksTable.id, existing.parentTaskId));
-    }
-  }
+  // Progress roll-up across the whole hierarchy (subtask -> task -> milestone ->
+  // project). Runs on any change that can move completion: progress, status,
+  // or a reparent (milestoneId / parentTaskId move via drag-and-drop). Replaces
+  // the previous single-level parent-task averaging with the shared engine so
+  // milestone and project progress stay correct too.
+  const moved =
+    parsed.data.status !== undefined ||
+    (parsed.data as Record<string, unknown>).progressPct !== undefined ||
+    (parsed.data as Record<string, unknown>).milestoneId !== undefined ||
+    (parsed.data as Record<string, unknown>).parentTaskId !== undefined;
+  if (moved) await rollup(existing.projectId);
 
   res.json(enriched);
 });
@@ -385,7 +403,9 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
 router.delete("/tasks/:id", async (req, res): Promise<void> => {
   const params = DeleteTaskParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [doomed] = await db.select({ projectId: tasksTable.projectId }).from(tasksTable).where(eq(tasksTable.id, params.data.id));
   await db.delete(tasksTable).where(eq(tasksTable.id, params.data.id));
+  if (doomed) await rollup(doomed.projectId);
   res.sendStatus(204);
 });
 

@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { useUserStore } from "../lib/store";
+import { MyWorkBoard } from "../components/monday/MyWorkBoard";
 
 // Lazy-load every role dashboard so only the one the user actually needs
 // hits the network. Previously all 5 ended up in the initial bundle even
@@ -35,8 +36,14 @@ export default function Dashboard() {
   }
 
   return (
-    <Suspense fallback={<DashboardFallback />}>
-      <Body />
-    </Suspense>
+    <div className="space-y-6">
+      {/* Monday-style personal work board — sits above the role dashboard,
+          which is kept intact as the analytics layer. Renders nothing when
+          the user has no assigned work. */}
+      <MyWorkBoard />
+      <Suspense fallback={<DashboardFallback />}>
+        <Body />
+      </Suspense>
+    </div>
   );
 }
