@@ -19,6 +19,12 @@ export const milestonesTable = pgTable("pmo_milestones", {
   status: text("status").notNull().default("not_started"),
   priority: text("priority").notNull().default("P2"),
   rag: text("rag").notNull().default("green"),
+  // Derived progress % (0-100). NOT user-set: recomputeRollups() (api-server
+  // lib/rollup.ts) writes this as the average of the milestone's top-level
+  // tasks' effective progress, which itself rolls up from subtasks. Source of
+  // truth for milestone completion; `rag` above stays a separate,
+  // PM-controlled governance signal that the rollup never overwrites.
+  progressPct: integer("progress_pct").notNull().default(0),
   // Lifecycle stage this milestone gates (one of the 9 LIFECYCLE_STAGES keys).
   // Standard gate milestones (BC Approved, URS Approved, …) carry their stage;
   // ad-hoc milestones may leave it null. Drives group-by-stage / phase.
