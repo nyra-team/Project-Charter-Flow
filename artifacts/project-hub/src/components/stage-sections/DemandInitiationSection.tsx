@@ -136,7 +136,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
 
   const bjOk = bj.length >= 100;
   const problemOk = problem.length >= 50;
-  const scopeOk = scope.length >= 50;
+  // scopeOk dropped (2026-06-02) — URS owns scope, BC no longer gates on it.
   const outcomesOk = outcomes.length > 0;
   const budgetOk = (Number(capex) || 0) + (Number(opex) || 0) > 0;
 
@@ -208,7 +208,10 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
   const bcApproved = parsed.__bc_approved === true;
   const bcApprovedAt = parsed.__bc_approved_at as string | undefined;
   const bcApprover = parsed.__bc_approver as string | undefined;
-  const bcChecklistOk = bjOk && scopeOk && outcomesOk && budgetOk;
+  // BC checklist used to require scopeOk too — dropped (2026-06-02) when
+  // the duplicate scope input moved to URS only. BC now gates on the
+  // business-side artifacts; URS gates on its own dual-approval.
+  const bcChecklistOk = bjOk && outcomesOk && budgetOk;
   const canApproveBC = role === "hod" || role === "executive_director" || role === "pmo";
 
   function approveBC() {
@@ -304,20 +307,10 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
         </Field>
       </div>
 
-      {/* Scope */}
-      <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border">
-        <Field label="In Scope" required>
-          <div className="flex items-center justify-end mb-1">
-            <Counter ok={scopeOk} count={scope.length} min={50} />
-          </div>
-          <AutoTextarea value={scope} onChange={(e) => setScope(e.target.value)} minRows={3}
-            placeholder="What this project will deliver" className={ta} />
-        </Field>
-        <Field label="Out of Scope" hint="Be explicit to prevent scope creep">
-          <AutoTextarea value={outScope} onChange={(e) => setOutScope(e.target.value)} minRows={3}
-            placeholder="What this project will NOT cover" className={ta} />
-        </Field>
-      </div>
+      {/* Scope / Out-of-Scope removed (2026-06-02) — duplicated the URS
+          "In Scope" + "Out of Scope" fields below. URS is the canonical
+          source for scope boundaries. The legacy scopeSummary / outOfScope
+          values still flow through the saved payload for back-compat. */}
 
       {/* Outcomes / Success / Stakeholders */}
       <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border">
@@ -336,13 +329,12 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
           placeholder="e.g. Mr. Sharma · Plant Head · Approves CapEx&#10;Ms. Iyer · QA Lead · Defines acceptance" className={ta} />
       </Field>
 
-      {/* BRD Block — business requirements detail */}
-      <p className="text-xs font-bold text-foreground pt-3 border-t border-border">BRD — Business Requirements Detail</p>
-
-      <Field label="Business Requirements" hint="Numbered list — one per line (BR-01, BR-02 …)">
-        <AutoTextarea value={bizReqs} onChange={(e) => setBizReqs(e.target.value)} minRows={6}
-          placeholder="BR-01 The business needs …&#10;BR-02 The business needs …&#10;BR-03 The business needs …" className={`${ta} font-mono`} />
-      </Field>
+      {/* BRD Block — business process detail (the "what we do today vs
+          tomorrow" half). Business Requirements list itself moved out
+          (2026-06-02) — URS "Functional Requirements" is the canonical
+          source. The legacy businessRequirements value still flows through
+          the saved payload for back-compat. */}
+      <p className="text-xs font-bold text-foreground pt-3 border-t border-border">BRD — Business Process Detail</p>
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="As-Is Process" hint="How the business operates today">
@@ -371,16 +363,10 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
         </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Data Needs (Business View)" hint="What data the business needs to capture / see">
-          <AutoTextarea value={dataNeeds} onChange={(e) => setDataNeeds(e.target.value)} minRows={3}
-            placeholder="Inputs the business will provide, outputs the business needs back" className={ta} />
-        </Field>
-        <Field label="Reporting Needs (Business View)" hint="Reports / dashboards business users need">
-          <AutoTextarea value={reportNeeds} onChange={(e) => setReportNeeds(e.target.value)} minRows={3}
-            placeholder="Daily / weekly / monthly reports, KPI dashboards, ad-hoc analytics" className={ta} />
-        </Field>
-      </div>
+      {/* Data Needs / Reporting Needs removed (2026-06-02) — duplicated
+          the URS "Data Requirements" + "Reporting Requirements" fields.
+          URS is the canonical source. Legacy dataNeeds / reportingNeeds
+          values still flow through the saved payload for back-compat. */}
 
       <Field label="Compliance Needs (Business View)" hint="Regulatory or policy obligations the business must meet">
         <AutoTextarea value={complNeeds} onChange={(e) => setComplNeeds(e.target.value)} minRows={2}
@@ -442,8 +428,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
           <span className="opacity-30">·</span>
           <Counter ok={bjOk} count={bj.length} min={100} /> <span className="opacity-50">Justification</span>
           <span className="opacity-30">·</span>
-          <Counter ok={scopeOk} count={scope.length} min={50} /> <span className="opacity-50">Scope</span>
-          <span className="opacity-30">·</span>
+          {/* Scope chip removed (2026-06-02) — URS owns scope now. */}
           <span className={`text-[10px] font-mono inline-flex items-center gap-1 ${outcomesOk ? "text-success" : "text-warn"}`}>
             {outcomesOk ? <CheckCircle2 size={10} /> : <AlertCircle size={10} />} Outcomes
           </span>
@@ -477,7 +462,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
           <>
             <p className="text-xs text-warn mb-2">Pending approval — this is the go/no-go before requirements (URS) are signed off.</p>
             {!bcChecklistOk ? (
-              <p className="text-xs text-muted-foreground italic">Complete the Business Case (justification, scope, outcomes, budget) before it can be approved.</p>
+              <p className="text-xs text-muted-foreground italic">Complete the Business Case (justification, outcomes, budget) before it can be approved.</p>
             ) : canApproveBC ? (
               <button onClick={approveBC} disabled={updateStage.isPending}
                 className="bg-primary hover:bg-primary/90 text-xs font-semibold text-primary-foreground px-3 py-1.5 rounded-lg disabled:opacity-50">
