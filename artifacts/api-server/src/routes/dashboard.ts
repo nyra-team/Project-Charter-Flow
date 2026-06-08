@@ -97,8 +97,9 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     }
   }
 
-  // Role-scoped pending count: each role only sees stages relevant to them
-  const sessionRole = req.session?.simulatedRole ?? "initiator";
+  // Role-scoped pending count: each role only sees stages relevant to them.
+  // Real role from the master employee DB (requireAuth → derivePmoRole).
+  const sessionRole = req.user?.pmoRole ?? "initiator";
   const relevantStages = ROLE_STAGE_MAP[sessionRole];
   const rolePendingCount = relevantStages
     ? charters.filter(c => relevantStages.includes(c.status)).length

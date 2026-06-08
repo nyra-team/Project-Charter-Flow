@@ -15,7 +15,7 @@ type PolicyRow = {
 // at the end so admins can still tweak escalation rules for any
 // historical project sitting on those stages.
 const STAGES: Array<{ key: string; label: string }> = [
-  { key: "initiation", label: "Business Requirements" },
+  { key: "initiation", label: "Business Case" },
   { key: "rfp", label: "Request for Proposal" },
   { key: "vendor_selection", label: "Vendor Evaluation and Finalization" },
   { key: "solution_design", label: "Solution Design" },

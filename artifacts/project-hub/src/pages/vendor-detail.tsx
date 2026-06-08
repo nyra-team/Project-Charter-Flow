@@ -165,8 +165,8 @@ function DocumentsPanel({ vendorId, documents }: { vendorId: number; documents: 
   });
   if (documents.length === 0) return <Empty icon={FileText} title="No documents uploaded" />;
   return (
-    <div className="rounded-2xl border border-border overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="rounded-2xl border border-border overflow-x-auto">
+      <table className="w-full min-w-[480px] text-sm">
         <thead className="bg-card/60 text-[11px] uppercase tracking-wider text-muted-foreground">
           <tr>
             <th className="text-left p-3">Kind</th>
@@ -240,8 +240,8 @@ function QualificationsPanel({ vendorId, qualifications }: { vendorId: number; q
         </div>
       )}
       {qualifications.length === 0 ? <Empty icon={Award} title="No qualifications recorded" /> : (
-        <div className="rounded-2xl border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-2xl border border-border overflow-x-auto">
+          <table className="w-full min-w-[480px] text-sm">
             <thead className="bg-card/60 text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr><th className="text-left p-3">Category</th><th className="text-left p-3">Region</th><th className="text-left p-3">Status</th><th className="text-left p-3">Decided</th></tr>
             </thead>
@@ -281,20 +281,20 @@ function KpisPanel({ vendorId, kpis }: { vendorId: number; kpis: VendorBundle["k
         <Button size="sm" onClick={() => setOpen(o => !o)}>{open ? "Cancel" : "+ Record KPI"}</Button>
       </div>
       {open && (
-        <div className="rounded-2xl border border-primary/40 bg-primary/5 p-4 grid grid-cols-5 gap-3">
+        <div className="rounded-2xl border border-primary/40 bg-primary/5 p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <Field2 label="Period (YYYY-MM)" v={draft.period} onChange={v => setDraft({ ...draft, period: v })} />
           <NumField label="On-time %" v={draft.onTimeDeliveryPct} onChange={v => setDraft({ ...draft, onTimeDeliveryPct: v })} />
           <NumField label="Invoice acc %" v={draft.invoiceAccuracyPct} onChange={v => setDraft({ ...draft, invoiceAccuracyPct: v })} />
           <NumField label="Quality %" v={draft.qualityPct} onChange={v => setDraft({ ...draft, qualityPct: v })} />
           <NumField label="Responsiveness %" v={draft.responsivenessPct} onChange={v => setDraft({ ...draft, responsivenessPct: v })} />
-          <div className="col-span-5 flex justify-end">
+          <div className="col-span-2 sm:col-span-3 lg:col-span-5 flex justify-end">
             <Button disabled={!draft.period || ingest.isPending} onClick={() => ingest.mutate()}>Save</Button>
           </div>
         </div>
       )}
       {kpis.length === 0 ? <Empty icon={TrendingUp} title="No KPI history" /> : (
-        <div className="rounded-2xl border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-2xl border border-border overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-card/60 text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="text-left p-3">Period</th>

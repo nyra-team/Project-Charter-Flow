@@ -730,6 +730,39 @@ router.post("/rfx/:id/surrogate-bid", async (req, res) => {
   res.status(201).json({ id: envelope.id, status: envelope.status });
 });
 
+// Delete a sourcing event + all its child rows. AWARDED events are protected
+// (the award + audit trail must survive) — cancel them instead.
+router.delete("/rfx/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [evt] = await db.select().from(rfxEventsTable).where(eq(rfxEventsTable.id, id));
+  if (!evt) { res.status(404).json({ error: "Sourcing event not found" }); return; }
+  if (evt.status === "awarded") {
+    res.status(409).json({ error: "Awarded sourcing events can't be deleted (award & audit trail). Cancel it instead." });
+    return;
+  }
+  // Cascade owned children (no DB FK cascade on this schema). rfx_scores and
+  // rfx_envelope_files key on envelope_id, so resolve this event's envelope
+  // ids first and delete those by envelope.
+  const envs = await db.select({ id: rfxEnvelopesTable.id }).from(rfxEnvelopesTable).where(eq(rfxEnvelopesTable.rfxId, id));
+  const envIds = envs.map((e) => e.id);
+  if (envIds.length) {
+    await db.delete(rfxScoresTable).where(inArray(rfxScoresTable.envelopeId, envIds));
+    await db.delete(rfxEnvelopeFilesTable).where(inArray(rfxEnvelopeFilesTable.envelopeId, envIds));
+  }
+  await db.delete(rfxScoringDimensionsTable).where(eq(rfxScoringDimensionsTable.rfxId, id));
+  await db.delete(rfxAwardsTable).where(eq(rfxAwardsTable.rfxId, id));
+  await db.delete(rfxClarificationsTable).where(eq(rfxClarificationsTable.rfxId, id));
+  await db.delete(rfxQuestionsTable).where(eq(rfxQuestionsTable.rfxId, id));
+  await db.delete(rfxEnvelopesTable).where(eq(rfxEnvelopesTable.rfxId, id));
+  await db.delete(rfxEnvelopeKeysTable).where(eq(rfxEnvelopeKeysTable.rfxId, id));
+  await db.delete(rfxInvitationsTable).where(eq(rfxInvitationsTable.rfxId, id));
+  await db.delete(rfxAuditTable).where(eq(rfxAuditTable.rfxId, id));
+  await db.delete(rfxEventsTable).where(eq(rfxEventsTable.id, id));
+  await logActivity("rfx_deleted", `Sourcing event "${evt.title}" deleted`, id, "rfx");
+  res.sendStatus(204);
+});
+
 // Used by vendor_portal.ts and elsewhere to seal a fresh envelope with the
 // per-kind shared key. Kept here so the encryption logic lives next to the
 // rest of the RFx lifecycle.

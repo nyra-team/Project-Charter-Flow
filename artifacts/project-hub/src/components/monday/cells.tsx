@@ -76,7 +76,7 @@ export function ProgressCell({ pct }: { pct: number }) {
       <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
         <div
           className="h-full rounded-full transition-all"
-          style={{ width: `${v}%`, background: v >= 100 ? "#10B981" : "var(--primary, #6366F1)" }}
+          style={{ width: `${v}%`, background: v >= 100 ? "#10B981" : "hsl(var(--primary))" }}
         />
       </div>
       <span className="text-[10px] font-mono text-muted-foreground w-7 text-right">{v}%</span>

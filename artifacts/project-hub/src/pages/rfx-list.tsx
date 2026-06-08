@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/extra-api";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, ScrollText, Search } from "lucide-react";
+import { Plus, ScrollText, Search, Trash2 } from "lucide-react";
 
 type RfxEvent = {
   id: number; type: string; title: string; summary: string | null;
@@ -23,6 +24,8 @@ const STATUS_TONE: Record<string, string> = {
 };
 
 export default function RfxListPage() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const { data: rfx = [], isLoading } = useQuery({
@@ -30,6 +33,17 @@ export default function RfxListPage() {
     queryFn: () => api.get<RfxEvent[]>(`/api/rfx${status ? `?status=${status}` : ""}`),
   });
   const filtered = rfx.filter(r => !q || r.title.toLowerCase().includes(q.toLowerCase()));
+
+  const del = useMutation({
+    mutationFn: (id: number) => api.del(`/api/rfx/${id}`),
+    onSuccess: () => { toast({ title: "Sourcing event deleted" }); qc.invalidateQueries({ queryKey: ["rfx"] }); },
+    onError: (e) => toast({ variant: "destructive", title: "Couldn't delete", description: (e as Error).message }),
+  });
+  function onDelete(r: RfxEvent) {
+    if (window.confirm(`Delete sourcing event “${r.title}”? This removes its invitations, envelopes, questions and scores. Awarded events can't be deleted.`)) {
+      del.mutate(r.id);
+    }
+  }
   return (
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -61,10 +75,10 @@ export default function RfxListPage() {
           <p className="text-sm text-muted-foreground mt-1">Start a sourcing event to invite vendors.</p>
         </div>
       ) : (
-        <div className="rounded-2xl border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-2xl border border-border overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-card/60 text-[11px] uppercase tracking-wider text-muted-foreground">
-              <tr><th className="text-left p-3">Title</th><th className="text-left p-3">Type</th><th className="text-left p-3">Status</th><th className="text-left p-3">Closes</th><th className="text-left p-3">Blind</th></tr>
+              <tr><th className="text-left p-3">Title</th><th className="text-left p-3">Type</th><th className="text-left p-3">Status</th><th className="text-left p-3">Closes</th><th className="text-left p-3">Blind</th><th className="text-right p-3 w-12"></th></tr>
             </thead>
             <tbody>
               {filtered.map(r => (
@@ -74,6 +88,17 @@ export default function RfxListPage() {
                   <td className="p-3"><Badge className={STATUS_TONE[r.status] ?? ""}>{r.status}</Badge></td>
                   <td className="p-3 text-xs text-muted-foreground">{r.closesAt ? new Date(r.closesAt).toLocaleString() : "—"}</td>
                   <td className="p-3">{r.blindGrading ? <Badge variant="outline">blind</Badge> : <span className="text-muted-foreground text-xs">named</span>}</td>
+                  <td className="p-3 text-right">
+                    <button
+                      onClick={() => onDelete(r)}
+                      disabled={del.isPending}
+                      className="p-1.5 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40"
+                      title="Delete sourcing event"
+                      aria-label={`Delete ${r.title}`}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>

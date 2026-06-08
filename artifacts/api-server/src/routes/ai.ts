@@ -14,9 +14,14 @@ import {
   meetingItemsTable,
   activityTable,
   pifsTable,
+  documentsTable,
+  liveChartersTable,
 } from "@workspace/db";
 import { eq, desc, and, or, inArray } from "drizzle-orm";
-import { llm, isLLMConfigured } from "@workspace/llm";
+import { llm, isLLMConfigured, llmWithTools, type AnthropicTool } from "@workspace/llm";
+import { runNyraSql, getNyraSchemaDocs } from "../lib/nyraSql";
+import { extractDocText, buildStageMatrix, MAX_DOC_TEXT_CHARS } from "../lib/liveCharter";
+import { backfillFromDocs } from "../lib/docBackfill";
 
 const router: IRouter = Router();
 
@@ -387,6 +392,109 @@ router.post("/ai/charters/draft-fields", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/ai/charters/draft-narrative
+//
+// Stateless. Takes the in-flight wizard form values and returns AI-drafted
+// prose for the 8 narrative sections of the merged Charter+NFA. Charter row
+// does not need to exist yet — this is called from the final wizard step
+// before submit, as part of the "Generate & Review" HITL flow.
+//
+// Supports a `regenerateOnly` array so the user can re-roll individual
+// sections without re-drafting the whole document.
+// ---------------------------------------------------------------------------
+router.post("/ai/charters/draft-narrative", async (req, res): Promise<void> => {
+  const body = (req.body || {}) as {
+    title?: string;
+    function?: string;
+    strategicThemes?: string[];
+    businessJustification?: string;
+    scopeSummary?: string;
+    expectedOutcomes?: string;
+    scope?: string;
+    outOfScope?: string;
+    deliverables?: string;
+    category?: string;
+    entity?: string;
+    department?: string;
+    kind?: string;
+    tentativeBudget?: number;
+    capexAmount?: number;
+    opexAmount?: number;
+    fyRecurring?: Array<{ fyLabel?: string; amountInr?: number }>;
+    roiPerAnnum?: number;
+    paybackMonths?: number;
+    milestones?: Array<{ milestone?: string; responsible?: string; targetDate?: string }>;
+    kpis?: Array<{ kpi?: string; baseline?: string; goal?: string }>;
+    regenerateOnly?: string[];
+  };
+
+  if (!body.title || body.title.trim().length < 3) {
+    res.status(400).json({ error: "title is required (>= 3 chars)" });
+    return;
+  }
+
+  const themesStr = (body.strategicThemes ?? []).filter(Boolean).join(", ") || "(none specified)";
+  const fyStr = (body.fyRecurring ?? [])
+    .filter(r => r.fyLabel)
+    .map(r => `${r.fyLabel}: ₹${r.amountInr ?? 0}`)
+    .join(" | ") || "(none)";
+  const milestonesStr = (body.milestones ?? [])
+    .filter(m => m.milestone)
+    .map(m => `• ${m.milestone}${m.targetDate ? ` (${m.targetDate})` : ""}`)
+    .join("\n") || "(none yet)";
+  const kpisStr = (body.kpis ?? [])
+    .filter(k => k.kpi)
+    .map(k => `• ${k.kpi}: ${k.baseline ?? ""} → ${k.goal ?? ""}`)
+    .join("\n") || "(none yet)";
+
+  const onlyClause = (body.regenerateOnly && body.regenerateOnly.length > 0)
+    ? `\nOnly regenerate these sections (return empty strings for the rest): ${body.regenerateOnly.join(", ")}`
+    : "";
+
+  const result = await llm({
+    task: "charter_nfa_draft_narrative",
+    system:
+      "You are an experienced PMO Business Analyst drafting the narrative sections of a consolidated Project Charter and Note for Approval (Charter+NFA) for a regulated pharmaceutical manufacturer (Granules India). Audience: CMD, ED, CFO, and the Steering Committee. Write in confident, decision-grade English. Be specific to the project as described — never write generic placeholder text. Where you state numbers, label them as illustrative (e.g., 'approx.'). Never invent stakeholders, vendors, or hard dates. Use clear paragraphs; no markdown headings (the document template adds those).",
+    prompt:
+      `Project: ${body.title}\n` +
+      `Function / Department: ${body.function || body.department || "(unspecified)"}\n` +
+      `Entity: ${body.entity || "(unspecified)"}\n` +
+      `Category: ${body.category || "(unspecified)"}\n` +
+      `Strategic themes: ${themesStr}\n` +
+      `Kind: ${body.kind || "capex"}\n` +
+      `Tentative budget (INR): ${body.tentativeBudget ?? "(unspecified)"}\n` +
+      `CAPEX: ₹${body.capexAmount ?? 0}  |  OPEX: ₹${body.opexAmount ?? 0}\n` +
+      `FY-wise recurring: ${fyStr}\n` +
+      `ROI/Annum: ${body.roiPerAnnum ?? "(unspecified)"}  |  Payback (months): ${body.paybackMonths ?? "(unspecified)"}\n` +
+      `\nUser-provided sketches (use these as ground truth — expand, don't invent contradictions):\n` +
+      `Business justification: ${body.businessJustification || "(empty)"}\n` +
+      `Scope summary: ${body.scopeSummary || "(empty)"}\n` +
+      `Expected outcomes: ${body.expectedOutcomes || "(empty)"}\n` +
+      `In-scope detail: ${body.scope || "(empty)"}\n` +
+      `Out-of-scope detail: ${body.outOfScope || "(empty)"}\n` +
+      `Deliverables: ${body.deliverables || "(empty)"}\n` +
+      `Milestones:\n${milestonesStr}\n` +
+      `KPIs:\n${kpisStr}\n` +
+      onlyClause +
+      `\n\nDraft each section in 80-180 words (shorter for constraints/assumptions).`,
+    jsonSchema: z.object({
+      executiveSummary: z.string(),
+      background: z.string(),
+      currentState: z.string(),
+      businessDrivers: z.string(),
+      outOfScope: z.string(),
+      constraints: z.string(),
+      assumptions: z.string(),
+      recommendation: z.string(),
+    }),
+    jsonSchemaHint: `{ "executiveSummary":"...", "background":"...", "currentState":"...", "businessDrivers":"...", "outOfScope":"...", "constraints":"...", "assumptions":"...", "recommendation":"..." }`,
+    maxTokens: 4000,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/ai/scope-improvement
 // ---------------------------------------------------------------------------
 router.post("/ai/scope-improvement", async (req, res): Promise<void> => {
@@ -537,6 +645,47 @@ router.post("/ai/rfp/draft-sections", async (req, res): Promise<void> => {
     }),
     jsonSchemaHint: `{ "introduction":"...", "scopeOfWork":"...", "proposalRequirements":"(a) ... (b) ... (c) ...", "evaluationCriteria":"Functional fit (40%) ...", "termsAndConditions":"..." }`,
     maxTokens: 3500,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/rfp/draft-annexure
+// Drafts the *variable* content for the Granules "Annexure — Request for
+// Proposal" template (Background, Objective, Scope-of-work rows, Deliverables,
+// Success Criteria, Expected Timelines). The boilerplate sections of the
+// Annexure (confidentiality preamble, Specific Terms, Instructions for
+// Proposal Document, commercial cost template) are fixed and assembled
+// client-side in the .docx builder — they are NOT AI-generated.
+// ---------------------------------------------------------------------------
+router.post("/ai/rfp/draft-annexure", async (req, res): Promise<void> => {
+  const { projectId } = (req.body || {}) as { projectId?: number };
+  if (!projectId) { res.status(400).json({ error: "projectId is required" }); return; }
+  const ctx = await loadProjectContext(projectId);
+  if (!ctx) { res.status(404).json({ error: "Project not found" }); return; }
+  const { project, charter, stageNotes } = ctx;
+  const urs = stageNotes.initiation ?? {};
+  const demand = (stageNotes.initiation?.__demand_initiation ?? {}) as Record<string, unknown>;
+  const result = await llm({
+    task: "rfp_draft_annexure",
+    system:
+      "You are a senior procurement specialist at Granules India Limited (an Indian pharmaceuticals manufacturer) authoring the variable content of a formal Request for Proposal (RFP) issued to prospective vendors. Write in a precise, professional procurement register. Tie every line to the specific project context supplied — never emit generic boilerplate. Do not invent specific vendor names, individuals, rupee amounts, or calendar dates. The issuing organisation is always Granules India Limited.",
+    prompt: `Project: ${project.name}\nFunction: ${(project as { function?: string }).function ?? ""}\nProject description: ${project.description ?? ""}\nCharter scope: ${charter?.scope ?? ""}\nCharter deliverables: ${charter?.deliverables ?? ""}\nURS scope: ${(urs as { __urs_scope?: string }).__urs_scope ?? ""}\nURS requirements: ${(urs as { __urs_requirements?: string }).__urs_requirements ?? ""}\nDemand business justification: ${demand.businessJustification ?? ""}\nDemand expected outcomes: ${demand.expectedOutcomes ?? ""}\n\nDraft the variable sections of the Granules RFP Annexure for this project.`,
+    jsonSchema: z.object({
+      title: z.string().min(3).max(160),
+      background: z.string().min(80),
+      objective: z.string().min(60),
+      scopeOfWork: z.array(z.object({
+        requirement: z.string().min(3),
+        description: z.string().min(10),
+      })).min(3).max(12),
+      deliverables: z.string().min(60),
+      successCriteria: z.string().min(60),
+      expectedTimelines: z.string().min(40),
+    }),
+    jsonSchemaHint: `{ "title":"<short project title for the RFP cover>", "background":"2-4 sentence project context", "objective":"what this engagement must achieve", "scopeOfWork":[{"requirement":"<short label>","description":"<what the vendor must do>"}], "deliverables":"newline-separated list of concrete deliverables", "successCriteria":"how success will be measured", "expectedTimelines":"narrative + key milestones; mention indicative durations, never fixed calendar dates" }`,
+    maxTokens: 4000,
   });
   if (!result.ok) return aiError(result.reason, result.message, res);
   res.json(result.data);
@@ -753,6 +902,40 @@ router.post("/ai/nfa/draft", async (req, res): Promise<void> => {
       riskAndMitigation: z.string().min(80),
     }),
     jsonSchemaHint: `{ "executiveSummary":"2-3 lines", "businessJustification":"why this spend", "financialImpact":"CapEx/OpEx/payback", "riskAndMitigation":"top risks + controls" }`,
+    maxTokens: 3000,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/nfa/draft-from-brief
+// Standalone NFA initiator helper — turns a free-text brief (and optional
+// linked project) into the structured note fields the /nfas form binds to.
+// ---------------------------------------------------------------------------
+router.post("/ai/nfa/draft-from-brief", async (req, res): Promise<void> => {
+  const { brief, projectId } = (req.body || {}) as { brief?: string; projectId?: number };
+  if (!brief || brief.trim().length < 10) { res.status(400).json({ error: "brief is required (min 10 chars)" }); return; }
+
+  let projectLine = "";
+  if (projectId) {
+    const ctx = await loadProjectContext(projectId);
+    if (ctx) projectLine = `Linked project: ${ctx.project.name}\nCharter description: ${ctx.charter?.description ?? ""}\n`;
+  }
+
+  const result = await llm({
+    task: "nfa_draft_from_brief",
+    system:
+      "You are a Finance Business Partner at Granules India drafting an Internal Approval Note (NFA). Convert the requester's brief into a structured, executive note. Tone: factual, financially literate, concise. Never invent specific amounts the brief doesn't support — leave costing blank if unknown. Tie spend to a business outcome.",
+    prompt: `${projectLine}Requester brief:\n"""\n${brief.trim()}\n"""\n\nProduce the structured NFA fields.`,
+    jsonSchema: z.object({
+      subject: z.string().min(5),
+      background: z.string().min(40),
+      requirementItems: z.array(z.object({ item: z.string(), details: z.string() })).min(1),
+      orderFormNote: z.string(),
+      recommendation: z.string().min(30),
+    }),
+    jsonSchemaHint: `{ "subject":"one-line subject", "background":"why this is needed", "requirementItems":[{"item":"Platform Fee","details":"..."}], "orderFormNote":"attachment/order-form context or ''", "recommendation":"recommended action" }`,
     maxTokens: 3000,
   });
   if (!result.ok) return aiError(result.reason, result.message, res);
@@ -1017,6 +1200,236 @@ router.post("/ai/rfx/award-scenarios", async (req, res): Promise<void> => {
   });
   if (!result.ok) return aiError(result.reason, result.message, res);
   res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/ask  — "Ask NYRA" conversational analyst (text-to-SQL)
+// ---------------------------------------------------------------------------
+// The agentic counterpart to the CXO dashboard's NYRA: the model writes
+// read-only SELECTs (via the query_database tool) over the PMO portfolio and
+// answers from live results. Returns { reply, queries } so the UI can show a
+// collapsible "view query & data" trace.
+router.post("/ai/ask", async (req, res): Promise<void> => {
+  if (!isLLMConfigured()) {
+    aiError(
+      "no_api_key",
+      "NYRA needs Anthropic credentials. Add ANTHROPIC_API_KEY to the api-server environment and restart.",
+      res,
+    );
+    return;
+  }
+
+  const { messages, context } = (req.body || {}) as {
+    messages?: Array<{ role: "user" | "assistant"; content: string }>;
+    context?: unknown;
+  };
+  if (!Array.isArray(messages) || messages.length === 0) {
+    res.status(400).json({ error: "messages required" });
+    return;
+  }
+  const turns: Array<{ role: "user" | "assistant"; content: unknown }> = messages
+    .filter((m) => m && (m.role === "user" || m.role === "assistant") && m.content)
+    .slice(-12)
+    .map((m) => ({ role: m.role, content: String(m.content).slice(0, 4000) }));
+  if (turns.length === 0 || turns[turns.length - 1].role !== "user") {
+    res.status(400).json({ error: "last message must be from user" });
+    return;
+  }
+
+  // Captured for the frontend's collapsible "view query & data" panel.
+  const ranQueries: Array<{
+    sql: string;
+    columns: string[];
+    rows: Record<string, unknown>[];
+    rowCount: number;
+    error?: string;
+  }> = [];
+
+  const tool: AnthropicTool = {
+    name: "query_database",
+    description:
+      "Run a single read-only SQL SELECT against the live Project Hub (PMO) portfolio and get the rows back. " +
+      "Use this for any question about projects, stages, milestones, tasks, risks, issues, charters, owners/PMs, budgets, status, RAG, progress, dates or counts. " +
+      "Prefer aggregates (COUNT/SUM/GROUP BY) over raw rows. Always answer from the returned data.",
+    input_schema: {
+      type: "object",
+      properties: {
+        sql: { type: "string", description: "A single read-only SELECT (or WITH ... SELECT) over pmo_* tables." },
+        purpose: { type: "string", description: "One short line: what this query is for." },
+      },
+      required: ["sql"],
+    },
+  };
+
+  try {
+    const schema = await getNyraSchemaDocs();
+    const system = [
+      "You are NYRA, the AI analyst inside the Granules Project Hub (PMO). If asked who you are, you are NYRA.",
+      "Answer the user's question about the project portfolio by querying the live database with the query_database tool, then summarising the real results.",
+      "Rules:",
+      "- GROUNDING (most important): every number, name, date, status or fact in your answer MUST come from a query_database result in THIS conversation. NEVER invent, estimate, guess or extrapolate. If the data isn't there, say so plainly (e.g. 'I couldn't find that in the portfolio data') rather than fabricating.",
+      "- ALWAYS get figures from query_database. Write valid PostgreSQL. Use aggregates + GROUP BY; add ORDER BY + LIMIT for 'top N' questions.",
+      "- You may ONLY query pmo_* tables. If a query errors, read the error and try a corrected query. You may call the tool more than once to drill down.",
+      "- Use the exact enum spellings from the schema (e.g. pmo_tasks 'in_progress', pmo_projects rag_status 'amber'/'red') — a wrong value silently returns 0 rows.",
+      "- Final answer: executive-concise. Lead with the answer + key numbers (bold the key figures), then 1-3 bullets of insight/risk. The UI renders GitHub-flavoured markdown in a narrow side panel — when listing multiple records (projects, tasks, people) use a compact markdown table with only the 3-4 columns that matter. Don't over-format short answers.",
+      "",
+      "The user is currently viewing this app state (context only — still query for figures):",
+      JSON.stringify(context ?? {}).slice(0, 2000),
+      "",
+      "DATABASE SCHEMA:",
+      schema,
+    ].join("\n");
+
+    const runTool = async (name: string, input: any) => {
+      if (name !== "query_database") return { error: `unknown tool ${name}` };
+      const sql = String(input?.sql ?? "");
+      try {
+        const { columns, rows, effectiveSql } = await runNyraSql(sql);
+        ranQueries.push({ sql: effectiveSql, columns, rows, rowCount: rows.length });
+        return { columns, rowCount: rows.length, rows: rows.slice(0, 200) };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        ranQueries.push({ sql, columns: [], rows: [], rowCount: 0, error: message });
+        return { error: message };
+      }
+    };
+
+    const reply = await llmWithTools(turns, system, [tool], runTool, { maxTokens: 2000, maxTurns: 5 });
+    res.json({ reply, queries: ranQueries });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    aiError("llm_error", "NYRA is temporarily unavailable. Please try again.", res);
+    req.log?.error?.({ err: message }, "ai/ask failed");
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Live Project Charter
+// ---------------------------------------------------------------------------
+// A read-only, regenerable executive view of a single project: the consolidated
+// AI summary of every document in the project's space plus a stage governance
+// roll-up. Cached per project (one pmo_live_charters row) with a Refresh button.
+//
+// GET  /api/ai/projects/:id/live-charter          → cached snapshot or {exists:false}
+// POST /api/ai/projects/:id/live-charter/refresh  → recompute + regenerate + upsert
+// ---------------------------------------------------------------------------
+
+router.get("/ai/projects/:id/live-charter", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [row] = await db.select().from(liveChartersTable).where(eq(liveChartersTable.projectId, id));
+  if (!row) { res.json({ exists: false }); return; }
+  res.json({ exists: true, ...row });
+});
+
+router.post("/ai/projects/:id/live-charter/refresh", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
+  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+  const generatedBy = typeof req.body?.generatedBy === "number" ? req.body.generatedBy : null;
+
+  // 1. Per-document summaries (cached by version — only re-summarize changed files).
+  const docs = await db.select().from(documentsTable).where(eq(documentsTable.projectId, id));
+  const digest: Array<{
+    docId: number; name: string; stage: string | null; tags: unknown;
+    approvalStatus: string; summary: string | null;
+  }> = [];
+
+  for (const doc of docs) {
+    let summary = doc.summary ?? null;
+    const cached = summary && doc.summaryVersion === doc.version;
+    if (!cached) {
+      const text = await extractDocText(doc);
+      if (text) {
+        const r = await llm({
+          task: "live_charter_doc_summary",
+          system:
+            "You are a PMO analyst. Summarize the supplied project document in 2-4 sentences (max ~150 words) for an executive charter. Capture purpose, key decisions/figures/dates, and status. State facts only — never invent anything not in the text.",
+          prompt: `Document: ${doc.name}\nLifecycle stage: ${doc.stage ?? "(unassigned)"}\n\nContent:\n"""\n${text.slice(0, MAX_DOC_TEXT_CHARS)}\n"""\n\nReturn ONLY the summary prose.`,
+          maxTokens: 400,
+        });
+        if (r.ok) {
+          summary = r.data.trim();
+          await db.update(documentsTable)
+            .set({ summary, summaryVersion: doc.version, summaryGeneratedAt: new Date() })
+            .where(eq(documentsTable.id, doc.id));
+        }
+      }
+    }
+    digest.push({
+      docId: doc.id, name: doc.name, stage: doc.stage ?? null, tags: doc.tags,
+      approvalStatus: doc.approvalStatus, summary: summary ?? null,
+    });
+  }
+
+  // 2. Stage governance roll-up (reuses the existing gate evaluator).
+  const matrix = await buildStageMatrix(id, project.projectType);
+
+  // 3. Consolidated executive narrative (graceful when AI is unavailable).
+  let narrative: string | null = null;
+  if (isLLMConfigured()) {
+    const summarized = digest.filter((d) => d.summary);
+    const byStage = summarized.reduce((acc: Record<string, string[]>, d) => {
+      const key = d.stage || "Unassigned";
+      (acc[key] ??= []).push(`- ${d.name} [${d.approvalStatus}]: ${d.summary}`);
+      return acc;
+    }, {});
+    const docsBlock = Object.entries(byStage)
+      .map(([stage, lines]) => `### ${stage}\n${lines.join("\n")}`)
+      .join("\n\n") || "(no readable documents uploaded yet)";
+    const gapsBlock = matrix
+      .map((m) => {
+        const gaps: string[] = [];
+        if (m.prerequisitesMissing.length) gaps.push(`prereq incomplete: ${m.prerequisitesMissing.join(", ")}`);
+        if (m.missingDocs.length) gaps.push(`missing docs: ${m.missingDocs.join(", ")}`);
+        if (m.uncheckedChecklist.length) gaps.push(`${m.uncheckedChecklist.length} blocking checklist item(s) open`);
+        return `- ${m.stage} (${m.status})${gaps.length ? ` — ${gaps.join("; ")}` : " — clear"}`;
+      })
+      .join("\n");
+
+    const r = await llm({
+      task: "live_charter_narrative",
+      system:
+        "You are an executive PMO chief of staff writing a one-page Live Project Charter for senior leadership. Consolidate the document summaries and governance status into a tight, decision-grade brief. Use markdown with these sections: ## Overview, ## Scope & Objectives, ## Key Documents by Stage, ## Governance & Gaps, ## Risks & Next Steps. State facts grounded in the inputs only — never invent figures, dates, or documents.",
+      prompt: `Project: ${project.name}\nStatus: ${project.status} | RAG: ${project.ragStatus} | Progress: ${project.progress}%\nLifecycle path: ${project.projectType}\nDescription: ${project.description || "(none)"}\n\nDocument summaries by stage:\n${docsBlock}\n\nStage governance roll-up:\n${gapsBlock}\n\nWrite the Live Project Charter now.`,
+      maxTokens: 3000,
+    });
+    if (r.ok) narrative = r.data.trim();
+  }
+
+  // 4. Upsert the snapshot (one row per project).
+  const now = new Date();
+  const [row] = await db
+    .insert(liveChartersTable)
+    .values({ projectId: id, narrative, matrix, docDigest: digest, stale: false, generatedBy, generatedAt: now })
+    .onConflictDoUpdate({
+      target: liveChartersTable.projectId,
+      set: { narrative, matrix, docDigest: digest, stale: false, generatedBy, generatedAt: now },
+    })
+    .returning();
+
+  res.json({ exists: true, ...row });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/projects/:id/backfill-from-docs
+// Run the document-driven stage backfill. Reads every project document,
+// classifies it against the lifecycle, ticks satisfied checklist items, fills
+// the charter where empty, and auto-advances stages whose gates clear. Also
+// invoked automatically (fire-and-forget) after each document upload.
+// ---------------------------------------------------------------------------
+router.post("/ai/projects/:id/backfill-from-docs", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const force = req.body?.force === true;
+  const result = await backfillFromDocs(id, { force });
+  if (!result.ok) {
+    const status = result.reason === "no_api_key" ? 503 : result.reason === "project_not_found" ? 404 : 409;
+    res.status(status).json({ error: result.reason ?? "backfill_failed", ...result });
+    return;
+  }
+  res.json(result);
 });
 
 export default router;

@@ -44,7 +44,7 @@ export default function DemandsList() {
           <Link href="/demands/new">
             <button className="btn-glossy-cta flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold">
               <Sparkles size={14} />
-              <span>New Demand</span>
+              <span>Business Case</span>
             </button>
           </Link>
         </div>

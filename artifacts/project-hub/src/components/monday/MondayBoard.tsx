@@ -87,7 +87,7 @@ const NAME_COL_PX = 320;
 
 export function MondayBoard<R>(props: MondayBoardProps<R>) {
   const {
-    groups, columns, getRowId, getName, getChildren, getProgress,
+    groups, columns, getRowId, getName, getChildren, getProgress, nameHeader = "Item",
     storageKey, defaultGroupsExpanded = true,
     onOpenRow, onReparent, rowIsDropTarget, draggable = false,
     onAddRow, addPlaceholder, allowAddInGroup = false, allowAddInRow,
@@ -199,7 +199,7 @@ export function MondayBoard<R>(props: MondayBoardProps<R>) {
     <div className={`rounded-xl border border-card-border bg-card glass-surface overflow-hidden ${className ?? ""}`}>
       {/* Column header strip */}
       <div className="flex items-center border-b border-border bg-muted/40 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        <div className="py-2 pr-2" style={{ width: NAME_COL_PX, paddingLeft: 8 }}>Item</div>
+        <div className="py-2 pr-2" style={{ width: NAME_COL_PX, paddingLeft: 8 }}>{nameHeader}</div>
         {visibleCols.map((col) => (
           <div key={col.key} className={`px-2 py-2 flex-shrink-0 ${alignClass(col.align)}`} style={{ width: col.width ?? 120 }}>{col.header}</div>
         ))}

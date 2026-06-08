@@ -258,7 +258,7 @@ export function ChangeRequestsTab({ projectId, currentStage }: { projectId: numb
           <Field label="Rationale" hint="Business justification — shown to approvers.">
             <textarea value={form.rationale} onChange={e => setForm({ ...form, rationale: e.target.value })} placeholder="Why this change is necessary" rows={2} className={INPUT} />
           </Field>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Field label="Type">
               <select value={form.changeType} onChange={e => setForm({ ...form, changeType: e.target.value as typeof form.changeType })} className={INPUT}>
                 <option value="scope">Scope</option><option value="schedule">Schedule</option><option value="budget">Budget</option>

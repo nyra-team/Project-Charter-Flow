@@ -81,7 +81,7 @@ export default function RfxNewPage() {
             <Input type="number" min={0} max={100} value={form.evaluationThresholdPct ?? 60} onChange={e => set("evaluationThresholdPct", Number(e.target.value))} />
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-3 pt-2 border-t border-border">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-border">
           <ToggleRow label="Blind grading" v={!!form.blindGrading} onChange={v => set("blindGrading", v)} />
           <ToggleRow label="Surrogate bidding" v={!!form.surrogateBiddingAllowed} onChange={v => set("surrogateBiddingAllowed", v)} />
           <ToggleRow label="Alternative bids" v={!!form.alternativeBidsAllowed} onChange={v => set("alternativeBidsAllowed", v)} />

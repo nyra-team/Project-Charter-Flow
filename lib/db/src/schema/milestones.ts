@@ -34,6 +34,12 @@ export const milestonesTable = pgTable("pmo_milestones", {
   readinessChecklist: jsonb("readiness_checklist").notNull().default([]),
   gateDecision: text("gate_decision"),
   order: integer("order").notNull().default(0),
+  // Jira sync mapping (nullable). A Jira *Epic* imports into a milestone:
+  // jiraKey = linked Epic issue key (e.g. "MYG-42"); jiraSyncedAt = last
+  // import/sync time. Mirrors the same columns on pmo_tasks / pmo_projects
+  // so re-imports are idempotent (upsert by jiraKey).
+  jiraKey: text("jira_key"),
+  jiraSyncedAt: timestamp("jira_synced_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

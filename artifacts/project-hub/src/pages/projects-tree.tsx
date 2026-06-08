@@ -7,7 +7,7 @@ import {
   useListProjects, useListPortfolios, useListPrograms, useListUsers,
 } from "@workspace/api-client-react";
 import { Search, Users, ChevronRight, ChevronDown, FolderTree, Layers, Briefcase, ArrowUpRight } from "lucide-react";
-import { aggregateRag, getRagColor } from "../lib/task-constants";
+import { aggregateRag, getRagColor, getPriorityMeta } from "../lib/task-constants";
 import { PersonAvatar } from "../components/person-avatar";
 import { formatCurrency } from "../lib/format";
 
@@ -244,7 +244,7 @@ export default function ProjectsTreeView() {
                                         proj.priority === "P1" ? "bg-destructive/10 text-destructive border border-destructive/20"
                                         : proj.priority === "P2" ? "bg-warn/10 text-warn border border-warn/20"
                                         : "bg-muted text-muted-foreground border border-border"
-                                      }`}>{proj.priority}</span>
+                                      }`}>{getPriorityMeta(proj.priority).label}</span>
                                     )}
                                     {owner && <PersonAvatar id={owner.id} name={owner.name} size={22} />}
                                     <div className="flex items-center gap-1.5 min-w-[110px]">

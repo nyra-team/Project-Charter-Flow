@@ -261,7 +261,7 @@ export default function PifDetail() {
       </div>
 
       {/* Cost & timeline strip */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <Stat label="CapEx (₹)" value={pif.estimatedCapex ? Math.round(Number(pif.estimatedCapex)).toLocaleString("en-IN") : "—"} />
         <Stat label="OpEx (₹)" value={pif.estimatedOpex ? Math.round(Number(pif.estimatedOpex)).toLocaleString("en-IN") : "—"} />
         <Stat label="Duration" value={pif.estimatedDurationDays ? `${pif.estimatedDurationDays} days` : "—"} />

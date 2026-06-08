@@ -13,6 +13,7 @@ import {
   milestonesTable,
 } from "@workspace/db";
 import { eq, desc, asc, and, isNotNull } from "drizzle-orm";
+import { seedProjectTemplateDocuments } from "../lib/templateDocuments";
 import { logActivity } from "./activity";
 
 const router: IRouter = Router();
@@ -282,6 +283,9 @@ router.post("/pifs/:id/convert-to-project", async (req, res): Promise<void> => {
       startDate,
     } as never)
     .returning();
+
+  // Attach the universal deliverable templates (idempotent, non-fatal).
+  try { await seedProjectTemplateDocuments(project.id, null); } catch { /* non-fatal */ }
 
   // 2. Charter shell — pre-fills the BRD with the PIF's narrative so the
   //    initiator doesn't have to retype.

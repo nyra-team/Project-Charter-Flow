@@ -1,8 +1,19 @@
 import { Router, type IRouter } from "express";
 import { db, documentsTable, documentVersionsTable, projectsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
+import { backfillFromDocs } from "../lib/docBackfill";
 
 const router: IRouter = Router();
+
+// Fire-and-forget AI backfill — must never block the upload response. Errors
+// are swallowed (logged) since the upload itself already succeeded.
+function triggerBackfill(projectId: number) {
+  setImmediate(() => {
+    backfillFromDocs(projectId).catch((err) => {
+      console.error(`[doc-backfill] project=${projectId} failed:`, err);
+    });
+  });
+}
 
 router.get("/projects/:id/documents", async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
@@ -40,13 +51,11 @@ router.post("/projects/:id/documents", async (req, res): Promise<void> => {
     return;
   }
 
-  // Per-document size policy: only Go Live "Training Materials" may be up to 500MB.
-  // All other documents are capped at 25MB.
-  const isTrainingVideo = stage === "go_live" && name === "Training Materials";
-  const maxBytes = isTrainingVideo ? 500 * 1024 * 1024 : 25 * 1024 * 1024;
+  // Per-document size policy: documents are capped at 500MB across the board
+  // (matches the Training Materials cap so every slot accepts the same ceiling).
+  const maxBytes = 500 * 1024 * 1024;
   if (fileSize != null && fileSize > maxBytes) {
-    const limitMB = isTrainingVideo ? 500 : 25;
-    res.status(422).json({ error: `File size ${(fileSize / 1024 / 1024).toFixed(1)}MB exceeds the ${limitMB}MB limit for '${name}'.` });
+    res.status(422).json({ error: `File size ${(fileSize / 1024 / 1024).toFixed(1)}MB exceeds the 500MB limit for '${name}'.` });
     return;
   }
 
@@ -80,6 +89,7 @@ router.post("/projects/:id/documents", async (req, res): Promise<void> => {
     tags: tags ?? [],
     description,
   }).returning();
+  triggerBackfill(projectId);
   res.status(201).json(doc);
 });
 
@@ -151,6 +161,7 @@ router.post("/documents/:id/versions", async (req, res): Promise<void> => {
   const nextVersion = existing.length > 0 ? existing[0].version + 1 : 1;
   const [version] = await db.insert(documentVersionsTable).values({ documentId, version: nextVersion, fileUrl, uploadedBy, notes }).returning();
   await db.update(documentsTable).set({ version: nextVersion, fileUrl }).where(eq(documentsTable.id, documentId));
+  if (existingDocV) triggerBackfill(existingDocV.projectId);
   res.status(201).json(version);
 });
 

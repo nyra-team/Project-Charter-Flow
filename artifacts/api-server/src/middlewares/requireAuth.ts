@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { getMasterDb } from "../lib/masterDb";
+import { derivePmoRole, type PmoRole } from "../lib/derivePmoRole";
 
 export interface PmoUser {
   authUserId: string;
@@ -10,9 +11,17 @@ export interface PmoUser {
   isAdmin: boolean;
   isSuperAdmin: boolean;
   accessPmo: boolean;
-  /** Per-app role from employee_auth.pmo_role. NULL = regular Project Hub
-   *  user; 'admin' = PMO admin (grants access to /api/admin/* routes). */
-  pmoRole: "admin" | null;
+  /** Functional Project Hub role, resolved in requireAuth via
+   *  derivePmoRole(): an explicit employee_auth.pmo_role override wins,
+   *  else it's derived from the master directory (designation / function /
+   *  grade). 'admin' still gates /api/admin/* via requireAdmin; the other
+   *  values (chairman, executive_director, cfo, pmo, pm, hod, scm, finance,
+   *  team_member) drive requireRole() on functional routes. */
+  pmoRole: PmoRole;
+  /** True ⇒ this user sees EVERY project (Chairman / Executive Director /
+   *  Transformation team / platform admin). False ⇒ scoped to own projects.
+   *  Resolved from the master employee DB (designation + function). */
+  seeAllProjects: boolean;
 }
 
 declare global {
@@ -95,9 +104,14 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   // middle_name / last_name), not a single full_name. Pull all three and
   // compose at use-time. The previous "full_name" select threw 42703 and
   // 500'd every auth-gated request.
+  //
+  // The directory columns (designation_text / business_designation /
+  // function / sub_function / grade_code) feed derivePmoRole() below — they
+  // are how a user's functional Project Hub role is resolved when there's no
+  // explicit employee_auth.pmo_role override.
   const { data: employee, error: empError } = await masterDb
     .from("employees")
-    .select("id, employee_code, first_name, middle_name, last_name, office_email, employee_auth!inner(access_pmo, pmo_role, is_admin, is_super_admin)")
+    .select("id, employee_code, first_name, middle_name, last_name, office_email, designation_text, business_designation, function, sub_function, grade_code, employee_auth!inner(access_pmo, pmo_role, is_admin, is_super_admin)")
     .ilike("office_email", emailLower)
     .maybeSingle();
 
@@ -117,12 +131,42 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const accessPmo: boolean = !!authRow?.access_pmo;
   const isSuperAdmin: boolean = !!authRow?.is_super_admin;
   const isAdmin: boolean = !!authRow?.is_admin;
-  const pmoRole: "admin" | null = authRow?.pmo_role === "admin" ? "admin" : null;
+
+  // Resolve the functional Project Hub role: explicit pmo_role override wins,
+  // otherwise derive from the master directory. Replaces the old collapse to
+  // ('admin' | null) — every downstream requireRole() now sees a real role.
+  const pmoRole: PmoRole = derivePmoRole(
+    {
+      designation_text: employee.designation_text ?? null,
+      business_designation: employee.business_designation ?? null,
+      function: employee.function ?? null,
+      sub_function: employee.sub_function ?? null,
+      grade_code: employee.grade_code ?? null,
+    },
+    {
+      access_pmo: accessPmo,
+      pmo_role: authRow?.pmo_role ?? null,
+    },
+  );
 
   if (!accessPmo && !isSuperAdmin) {
     res.status(403).json({ error: "Project Hub access not granted" });
     return;
   }
+
+  // Portfolio-wide visibility. Driven entirely from the master employee DB:
+  // the oversight roles (Chairman, Executive Director — derived from
+  // designation) and the Transformation team (employees.function ===
+  // 'Transformation' — the PMO/Transformation Division) see EVERY project.
+  // Platform super/admins also see all. Everyone else is scoped to their own
+  // projects (enforced in GET /projects). See SEE_ALL_FUNCTIONS to extend.
+  const fn = (employee.function ?? "").trim().toLowerCase();
+  const seeAllProjects =
+    isSuperAdmin ||
+    pmoRole === "admin" ||
+    pmoRole === "chairman" ||
+    pmoRole === "executive_director" ||
+    SEE_ALL_FUNCTIONS.has(fn);
 
   // Compose fullName from the split columns. Empty middle drops cleanly.
   const composedFullName = [employee.first_name, employee.middle_name, employee.last_name]
@@ -140,9 +184,17 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     isSuperAdmin,
     accessPmo,
     pmoRole,
+    seeAllProjects,
   };
   next();
 }
+
+/**
+ * Master-DB `employees.function` values whose holders see EVERY project (the
+ * Transformation Division / PMO team). Lowercased. Extend here if HR adds
+ * sibling function labels (e.g. a "Transformation Office").
+ */
+const SEE_ALL_FUNCTIONS = new Set<string>(["transformation"]);
 
 /**
  * Companion middleware for admin-only routes. Mirrors the ADMIN_ROUTES

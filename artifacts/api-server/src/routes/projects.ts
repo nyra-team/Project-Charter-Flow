@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable, approvalsTable, timelogsTable, scoringCriteriaTable, projectScoresTable, notificationsTable, activityTable } from "@workspace/db";
-import { eq, desc, inArray, and, sql } from "drizzle-orm";
+import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable, squadMembersTable, budgetLinesTable, approvalsTable, timelogsTable, scoringCriteriaTable, projectScoresTable, notificationsTable, activityTable } from "@workspace/db";
+import { eq, desc, inArray, and, or, sql } from "drizzle-orm";
 import {
   CreateProjectBody,
   GetProjectParams,
@@ -24,9 +24,12 @@ import {
 } from "@workspace/api-zod";
 import { logActivity } from "./activity";
 import { computeStageCriticalPath } from "../lib/critical-path";
+import { computeTaskCpm, wouldCreateDependencyCycle } from "../lib/critical-path-cpm";
 import { runCriticalPathAction } from "../lib/critical-path-actions";
 import { generateGateMilestones, ensureUnscheduledMilestone } from "../lib/gate-milestones";
+import { seedProjectTemplateDocuments } from "../lib/templateDocuments";
 import { recomputeRollups } from "../lib/rollup";
+import { mergeTaskWorkbook } from "../lib/import-tasks";
 
 // Recompute the project's progress rollup (subtask -> task -> milestone ->
 // project) after a work-item mutation. Best-effort: a rollup failure must never
@@ -39,6 +42,15 @@ async function rollup(projectId: number): Promise<void> {
   }
 }
 
+// Fetch + enrich a single task (same shape as the enrichTasks list items).
+// Used by the dependency add/remove endpoints to return the updated task.
+async function enrichOne(taskId: number) {
+  const [row] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId));
+  if (!row) return null;
+  const [enriched] = await enrichTasks([row as unknown as Record<string, unknown>]);
+  return enriched;
+}
+
 const router: IRouter = Router();
 
 // Projects
@@ -48,10 +60,73 @@ router.get("/projects", async (req, res): Promise<void> => {
   const conditions = [];
   if (programId != null && !isNaN(programId)) conditions.push(eq(projectsTable.programId, programId));
   if (portfolioId != null && !isNaN(portfolioId)) conditions.push(eq(projectsTable.portfolioId, portfolioId));
+
+  // Row-level visibility (server-enforced). Chairman / Executive Director /
+  // Transformation team / platform admin (req.user.seeAllProjects, resolved in
+  // requireAuth from the master employee DB) see EVERY project. Everyone else
+  // is scoped to projects they own: they are the PM, or the charter
+  // owner/sponsor/manager, or a squad member.
+  if (req.user && !req.user.seeAllProjects) {
+    const [me] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(eq(usersTable.email, req.user.email.toLowerCase()));
+    if (!me) { res.json([]); return; } // no local user row yet ⇒ owns nothing
+
+    const ledCharters = await db.select({ id: chartersTable.id }).from(chartersTable)
+      .where(or(
+        eq(chartersTable.projectOwnerId, me.id),
+        eq(chartersTable.projectSponsorId, me.id),
+        eq(chartersTable.projectManagerId, me.id),
+      ));
+    const squadCharters = await db.select({ charterId: squadMembersTable.charterId }).from(squadMembersTable)
+      .where(eq(squadMembersTable.userId, me.id));
+    const charterIds = [...new Set(
+      [...ledCharters.map((c) => c.id), ...squadCharters.map((s) => s.charterId)]
+        .filter((x): x is number => x != null),
+    )];
+
+    const mine = [eq(projectsTable.projectManagerId, me.id)];
+    if (charterIds.length) mine.push(inArray(projectsTable.charterId, charterIds));
+    conditions.push(or(...mine)!);
+  }
+
   const projects = conditions.length
     ? await db.select().from(projectsTable).where(and(...conditions)).orderBy(desc(projectsTable.createdAt))
     : await db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt));
-  res.json(projects.map(p => formatProject(p as unknown as Record<string, unknown>)));
+
+  // Enrich with per-project variance aggregates (additive fields):
+  //  - scheduleVarianceDays: avg of the project's milestones' schedule_variance_days
+  //    (negative = behind, positive = ahead — mirrors milestone semantics)
+  //  - budgetVarianceAmount / Pct: from budget_lines (actual − baseline)
+  const ids = projects.map((p) => p.id);
+  const sched = new Map<number, { sum: number; n: number }>();
+  const budg = new Map<number, { baseline: number; actual: number }>();
+  if (ids.length) {
+    const ms = await db.select({ projectId: milestonesTable.projectId, v: milestonesTable.scheduleVarianceDays })
+      .from(milestonesTable).where(inArray(milestonesTable.projectId, ids));
+    for (const m of ms) {
+      if (m.projectId == null) continue;
+      const e = sched.get(m.projectId) ?? { sum: 0, n: 0 };
+      e.sum += m.v ?? 0; e.n += 1; sched.set(m.projectId, e);
+    }
+    const bl = await db.select({ projectId: budgetLinesTable.projectId, baseline: budgetLinesTable.baselineAmount, actual: budgetLinesTable.actualAmount })
+      .from(budgetLinesTable).where(inArray(budgetLinesTable.projectId, ids));
+    for (const b of bl) {
+      if (b.projectId == null) continue;
+      const e = budg.get(b.projectId) ?? { baseline: 0, actual: 0 };
+      e.baseline += Number(b.baseline ?? 0); e.actual += Number(b.actual ?? 0); budg.set(b.projectId, e);
+    }
+  }
+
+  res.json(projects.map((p) => {
+    const s = sched.get(p.id);
+    const b = budg.get(p.id);
+    return {
+      ...formatProject(p as unknown as Record<string, unknown>),
+      scheduleVarianceDays: s && s.n ? Math.round(s.sum / s.n) : null,
+      budgetVarianceAmount: b ? b.actual - b.baseline : null,
+      budgetVariancePct: b && b.baseline > 0 ? Math.round(((b.actual - b.baseline) / b.baseline) * 1000) / 10 : null,
+    };
+  }));
 });
 
 router.post("/projects", async (req, res): Promise<void> => {
@@ -83,6 +158,14 @@ router.post("/projects", async (req, res): Promise<void> => {
   // Seed the standard gate milestones (BC Approved, URS Approved, …) for new
   // projects so the lifecycle gates exist as milestones from day one.
   try { await generateGateMilestones(project.id); } catch { /* non-fatal */ }
+  // Attach the universal deliverable templates so business users edit-in-place
+  // instead of hunting for them. Idempotent + non-fatal.
+  try {
+    const [me] = req.user
+      ? await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, req.user.email.toLowerCase()))
+      : [];
+    await seedProjectTemplateDocuments(project.id, me?.id ?? null);
+  } catch { /* non-fatal */ }
   res.status(201).json(formatProject(project as unknown as Record<string, unknown>));
 });
 
@@ -286,6 +369,32 @@ router.post("/projects/:id/tasks", async (req, res): Promise<void> => {
   const [enriched] = await enrichTasks([task as unknown as Record<string, unknown>]);
   await rollup(params.data.id);
   res.status(201).json(enriched);
+});
+
+// Merge/upsert tasks for a project from an uploaded .xlsx (base64 in JSON).
+// Matched by ID column then case-insensitive name — matches are updated (blank
+// cells keep current values), new rows are inserted, others left untouched.
+router.post("/projects/:id/tasks/import", async (req, res): Promise<void> => {
+  const params = CreateTaskParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const [projT] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, params.data.id));
+  if (!projT) { res.status(404).json({ error: "Project not found" }); return; }
+  if (projT.status === "closed") { res.status(409).json({ error: "Project is closed. Tasks cannot be imported." }); return; }
+  try {
+    const b64 = String((req.body as Record<string, unknown>)?.fileBase64 || "");
+    if (!b64) { res.status(400).json({ error: "No file provided." }); return; }
+    const buffer = Buffer.from(b64, "base64");
+    if (!buffer.length) { res.status(400).json({ error: "Empty file." }); return; }
+    const result = await mergeTaskWorkbook(params.data.id, buffer);
+    await rollup(params.data.id);
+    await logActivity("tasks_imported", `Imported ${result.rowsRead} rows — ${result.inserted} added, ${result.updated} updated`, params.data.id, "project");
+    res.json(result);
+  } catch (e) {
+    const status = (e as { status?: number })?.status;
+    const code = status && [400, 403, 404, 409, 422, 502].includes(status) ? status : 500;
+    if (code === 500) console.error("[tasks import] failed:", (e as Error)?.message);
+    res.status(code).json({ error: (e as Error)?.message || "Import failed." });
+  }
 });
 
 router.get("/tasks/:id", async (req, res): Promise<void> => {
@@ -566,52 +675,120 @@ router.get("/projects/:id/effort-burn", async (req, res): Promise<void> => {
   res.json({ weeks, totalPlanned, totalActual });
 });
 
-// Critical path
+// Task-schedule critical path (CPM): forward + backward pass over task
+// predecessors → early/late start/finish, slack/float, isCritical. Cycle-safe.
+// Distinct from /critical-path-stages (lifecycle-stage governance) below.
 router.get("/projects/:id/critical-path", async (req, res): Promise<void> => {
   const params = GetCriticalPathParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const tasks = await db.select().from(tasksTable).where(eq(tasksTable.projectId, params.data.id)).orderBy(tasksTable.order);
 
-  const taskMap = new Map(tasks.map(t => [t.id, t]));
-  const predecessorMap = new Map<number, number[]>();
-  for (const t of tasks) {
-    let preds: number[] = [];
-    try { preds = JSON.parse(t.predecessorIds || "[]"); } catch {}
-    predecessorMap.set(t.id, preds);
+  const cpm = await computeTaskCpm(params.data.id);
+
+  // Cyclic dependency graph: don't fabricate a schedule or touch isCritical —
+  // surface the cycle so the UI can flag it for the user to fix.
+  if (cpm.hasCycle) {
+    res.json({
+      projectId: params.data.id,
+      hasCycle: true,
+      cycle: cpm.cycle,
+      criticalTasks: [],
+      tasks: [],
+      totalDurationDays: 0,
+      criticalPathLength: 0,
+      warning: "Dependency cycle detected — critical path cannot be computed until it is resolved.",
+    });
+    return;
   }
 
-  const earliestFinish = new Map<number, number>();
-  function getEarliestFinish(taskId: number): number {
-    if (earliestFinish.has(taskId)) return earliestFinish.get(taskId)!;
-    const task = taskMap.get(taskId);
-    if (!task) return 0;
-    const duration = task.estimatedHours ? Number(task.estimatedHours) / 8 : 1;
-    const preds = predecessorMap.get(taskId) ?? [];
-    const maxPredFinish = preds.length ? Math.max(...preds.map(p => getEarliestFinish(p))) : 0;
-    const ef = maxPredFinish + duration;
-    earliestFinish.set(taskId, ef);
-    return ef;
+  // Persist isCritical for ALL tasks (true for critical, false otherwise) so a
+  // task that drops off the critical path doesn't keep a stale flag. Only write
+  // the rows whose flag actually changes.
+  const existing = await db
+    .select({ id: tasksTable.id, isCritical: tasksTable.isCritical })
+    .from(tasksTable)
+    .where(eq(tasksTable.projectId, params.data.id));
+  const criticalSet = new Set(cpm.criticalTaskIds);
+  for (const row of existing) {
+    const shouldBe = criticalSet.has(row.id);
+    if (!!row.isCritical !== shouldBe) {
+      await db.update(tasksTable).set({ isCritical: shouldBe }).where(eq(tasksTable.id, row.id));
+    }
   }
 
-  tasks.forEach(t => getEarliestFinish(t.id));
-  const maxFinish = Math.max(...[...earliestFinish.values()], 0);
+  const criticalRows = await db
+    .select()
+    .from(tasksTable)
+    .where(and(eq(tasksTable.projectId, params.data.id), eq(tasksTable.isCritical, true)))
+    .orderBy(tasksTable.order);
+  const enriched = await enrichTasks(criticalRows as unknown as Array<Record<string, unknown>>);
 
-  const criticalTasks = tasks.filter(t => {
-    const ef = earliestFinish.get(t.id) ?? 0;
-    return Math.abs(ef - maxFinish) < 0.001;
-  });
-
-  for (const ct of criticalTasks) {
-    await db.update(tasksTable).set({ isCritical: true }).where(eq(tasksTable.id, ct.id));
-  }
-
-  const enriched = await enrichTasks(criticalTasks as unknown as Array<Record<string, unknown>>);
   res.json({
     projectId: params.data.id,
+    hasCycle: false,
     criticalTasks: enriched,
-    totalDurationDays: maxFinish,
-    criticalPathLength: criticalTasks.length,
+    // Full CPM schedule (every task with slack) for Gantt / slack display.
+    tasks: cpm.tasks,
+    totalDurationDays: cpm.projectDurationDays,
+    criticalPathLength: cpm.criticalTaskIds.length,
   });
+});
+
+// Gantt-friendly schedule: the full CPM result for every task (start/finish,
+// slack, isCritical, duration) without mutating isCritical. Read-only.
+router.get("/projects/:id/schedule", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const cpm = await computeTaskCpm(id);
+  res.json({ projectId: id, ...cpm });
+});
+
+// Add a single task dependency (predecessor). Validates existence, same-project
+// scope, and rejects edges that would create a cycle (which would otherwise
+// break the CPM recursion). Dependencies don't affect progress, so no rollup.
+router.post("/tasks/:id/dependencies", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const predecessorId = Number((req.body ?? {}).predecessorId);
+  if (!Number.isInteger(predecessorId)) { res.status(400).json({ error: "predecessorId (integer) required" }); return; }
+  if (predecessorId === id) { res.status(400).json({ error: "A task cannot depend on itself." }); return; }
+
+  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  if (!task) { res.status(404).json({ error: "Task not found" }); return; }
+  const [pred] = await db.select().from(tasksTable).where(eq(tasksTable.id, predecessorId));
+  if (!pred) { res.status(404).json({ error: "Predecessor task not found" }); return; }
+  if (pred.projectId !== task.projectId) {
+    res.status(400).json({ error: "Predecessor must be in the same project (use cross-project predecessors otherwise)." });
+    return;
+  }
+
+  let preds: number[] = [];
+  try { preds = JSON.parse(task.predecessorIds || "[]"); } catch {}
+  if (preds.includes(predecessorId)) { res.json(await enrichOne(task.id)); return; }
+
+  if (await wouldCreateDependencyCycle(task.projectId, id, predecessorId)) {
+    res.status(409).json({ error: "That dependency would create a cycle." });
+    return;
+  }
+
+  preds.push(predecessorId);
+  await db.update(tasksTable).set({ predecessorIds: JSON.stringify(preds) }).where(eq(tasksTable.id, id));
+  res.json(await enrichOne(id));
+});
+
+// Remove a single task dependency (predecessor).
+router.delete("/tasks/:id/dependencies/:predId", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  const predId = parseInt(req.params.predId);
+  if (isNaN(id) || isNaN(predId)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  if (!task) { res.status(404).json({ error: "Task not found" }); return; }
+  let preds: number[] = [];
+  try { preds = JSON.parse(task.predecessorIds || "[]"); } catch {}
+  const next = preds.filter((p) => p !== predId);
+  if (next.length !== preds.length) {
+    await db.update(tasksTable).set({ predecessorIds: JSON.stringify(next) }).where(eq(tasksTable.id, id));
+  }
+  res.json(await enrichOne(id));
 });
 
 // Stage-governance critical path — which lifecycle stage is blocking, who owns it,

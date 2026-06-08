@@ -54,7 +54,6 @@ import { IssuesTab } from "../components/issues-tab";
 import { RaciTab } from "../components/raci-tab";
 import { EscalationRulesTab } from "../components/escalation-rules-tab";
 import { StageProgressBar } from "../components/stage-progress-bar";
-import { ProjectLifecycle } from "../components/project-lifecycle";
 import { StagePanel } from "../components/stage-panel";
 import { getCurrentStageKey, LIFECYCLE_STAGES } from "../lib/lifecycle-config";
 import { useUserStore } from "../lib/store";
@@ -947,7 +946,7 @@ export default function ProjectDetail() {
   const { role } = useUserStore();
   const projectId = parseInt(params?.id || "0");
 
-  const [activeTab, setActiveTab] = useState<"overview" | "lifecycle" | "work" | "grid" | "gantt" | "calendar" | "milestones" | "board" | "resources" | "budget" | "procurement" | "documents" | "risks" | "issues" | "raci" | "escalation" | "messages" | "audit" | "analytics" | "scoring" | "meetings" | "changes" | "benefits" | "approvals" | "lessons">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "lifecycle" | "work" | "grid" | "gantt" | "calendar" | "milestones" | "board" | "resources" | "budget" | "procurement" | "documents" | "risks" | "issues" | "raci" | "escalation" | "messages" | "audit" | "analytics" | "scoring" | "meetings" | "changes" | "benefits" | "approvals" | "lessons">("lifecycle");
   const [aiSummary, setAiSummary] = useState<{ summary?: string; highlights?: string[]; concerns?: string[] } | null>(null);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
   const [aiSummaryError, setAiSummaryError] = useState<string | null>(null);
@@ -1282,7 +1281,7 @@ export default function ProjectDetail() {
         // Day-to-day PM workflow priorities. Change this array to re-rank.
         // Keeping it as a tuple of literal IDs keeps TypeScript narrowing
         // honest and lets the filter find them by identity.
-        const PRIMARY_TAB_IDS = ["overview", "lifecycle", "work", "gantt", "documents", "approvals", "audit"] as const;
+        const PRIMARY_TAB_IDS = ["lifecycle", "work", "gantt", "documents", "approvals", "audit"] as const;
         const primaryTabs = TABS.filter(t => (PRIMARY_TAB_IDS as readonly string[]).includes(t.id));
         const overflowTabs = TABS.filter(t => !(PRIMARY_TAB_IDS as readonly string[]).includes(t.id));
         const activeOverflow = overflowTabs.find(t => t.id === activeTab);
@@ -1382,9 +1381,6 @@ export default function ProjectDetail() {
             })}
           </div>
 
-          {/* The single most important governance view */}
-          <ProjectLifecycle projectId={projectId} />
-
           {/* Lifecycle snapshot — click a stage to jump to the Lifecycle tab */}
           <StageProgressBar
             currentStageKey={currentStageKey}
@@ -1466,8 +1462,6 @@ export default function ProjectDetail() {
       {/* ── Lifecycle Tab ────────────────────────────────────────────── */}
       {activeTab === "lifecycle" && (
         <div className="space-y-5">
-          <ProjectLifecycle projectId={projectId} />
-
           <StageProgressBar
             currentStageKey={currentStageKey}
             stageRecords={stageRecords as Array<{ stage: string; status: string }>}

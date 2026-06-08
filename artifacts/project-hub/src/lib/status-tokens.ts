@@ -180,3 +180,18 @@ export function prettify(s: string): string {
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+// PROJECT-status labels in lifecycle vocabulary (Plan → Execute → Close).
+// Scoped to project surfaces only — do NOT apply to task / charter / PIF
+// statuses, which legitimately use "Active" / "Completed".
+const PROJECT_STATUS_LABEL: Record<string, string> = {
+  planning: "Plan",
+  active: "Execute",
+  on_hold: "On Hold",
+  completed: "Closed",
+  closed: "Closed",
+};
+export function projectStatusLabel(status?: string | null): string {
+  const k = (status ?? "").toLowerCase();
+  return PROJECT_STATUS_LABEL[k] ?? prettify(status ?? "");
+}

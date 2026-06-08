@@ -1,6 +1,21 @@
 import { Router, type IRouter } from "express";
+import { z } from "zod/v4";
+import { spawn } from "node:child_process";
+import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { db, chartersTable, vendorsTable, risksTable, squadMembersTable, approvalsTable, usersTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
+import { matchBand } from "../lib/doa-resolver";
+
+// generate_charter_nfa.py lives at apps/pmo/scripts/. This bundle runs from
+// apps/pmo/artifacts/api-server/dist/index.mjs, so walk three dirs up.
+const CHARTER_NFA_GENERATOR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../scripts/generate_charter_nfa.py",
+);
+const PYTHON_BIN = process.env.PYTHON_BIN || "python3";
 import {
   CreateCharterBody,
   UpdateCharterBody,
@@ -25,6 +40,57 @@ import {
 import { logActivity } from "./activity";
 
 const router: IRouter = Router();
+
+// Extended PATCH body — accepts all Charter+NFA merged columns.
+// Lives inline until lib/api-zod is regenerated from the updated OpenAPI spec.
+const ExtendedCharterPatch = z.object({
+  // Narrative
+  executiveSummary: z.string().optional(),
+  currentState: z.string().optional(),
+  businessDrivers: z.string().optional(),
+  outOfScope: z.string().optional(),
+  constraints: z.string().optional(),
+  assumptions: z.string().optional(),
+  potentialAdditionalBudget: z.string().optional(),
+  // Metadata
+  category: z.string().optional(),
+  entity: z.string().optional(),
+  revision: z.number().int().optional(),
+  // Investment summary
+  kind: z.enum(["capex", "opex", "mixed"]).optional(),
+  capexAmount: z.coerce.number().optional(),
+  opexAmount: z.coerce.number().optional(),
+  fyRecurring: z.array(z.object({ fyLabel: z.string(), amountInr: z.coerce.number() })).optional(),
+  roiPerAnnum: z.coerce.number().optional(),
+  paybackMonths: z.number().int().optional(),
+  previousNfaAmount: z.coerce.number().optional(),
+  leAmount: z.coerce.number().optional(),
+  // Absorbed NFA fields
+  noteNo: z.string().optional(),
+  department: z.string().optional(),
+  location: z.string().optional(),
+  locationRequired: z.string().optional(),
+  noteDate: z.string().optional(),
+  subject: z.string().optional(),
+  background: z.string().optional(),
+  requirementItems: z.array(z.object({ item: z.string(), details: z.string() })).optional(),
+  orderFormNote: z.string().optional(),
+  totalUsd: z.string().optional(),
+  totalInr: z.string().optional(),
+  recommendation: z.string().optional(),
+  // Roadmap / governance / attachments
+  milestones: z.array(z.object({ milestone: z.string(), responsible: z.string().optional(), targetDate: z.string().optional(), status: z.string().optional() })).optional(),
+  kpis: z.array(z.object({ kpi: z.string(), baseline: z.string().optional(), goal: z.string().optional() })).optional(),
+  steeringCommittee: z.array(z.object({ role: z.string(), name: z.string(), empCode: z.string().optional() })).optional(),
+  keyProjectMembers: z.array(z.object({ role: z.string(), name: z.string(), empCode: z.string().optional() })).optional(),
+  attachments: z.array(z.object({ name: z.string(), url: z.string(), size: z.number().optional(), mimeType: z.string().optional() })).optional(),
+});
+
+// Columns that hold numerics in Postgres but arrive as numbers from the client.
+// We stringify before insert/update because drizzle's pg numeric column type expects strings.
+const NUMERIC_FIELDS = new Set([
+  "capexAmount", "opexAmount", "roiPerAnnum", "previousNfaAmount", "leAmount",
+]);
 
 async function getCharterWithRelations(id: number) {
   const [charter] = await db.select().from(chartersTable).where(eq(chartersTable.id, id));
@@ -124,17 +190,28 @@ router.patch("/charters/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
-  const parsed = UpdateCharterBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+  // First pass: validate against the legacy orval schema (silently drops unknown keys).
+  const legacy = UpdateCharterBody.safeParse(req.body);
+  if (!legacy.success) {
+    res.status(400).json({ error: legacy.error.message });
     return;
   }
-  const updateData: Record<string, unknown> = { ...parsed.data };
-  if (parsed.data.tentativeBudget !== undefined) {
-    updateData.tentativeBudget = String(parsed.data.tentativeBudget);
+  // Second pass: catch the Charter+NFA merged columns the legacy schema doesn't know about.
+  const extended = ExtendedCharterPatch.safeParse(req.body);
+  if (!extended.success) {
+    res.status(400).json({ error: extended.error.message });
+    return;
   }
-  if ((parsed.data as Record<string, unknown>).nfaThreshold != null) {
-    updateData.nfaThreshold = String((parsed.data as Record<string, unknown>).nfaThreshold);
+  const updateData: Record<string, unknown> = { ...legacy.data, ...extended.data };
+  if (legacy.data.tentativeBudget !== undefined) {
+    updateData.tentativeBudget = String(legacy.data.tentativeBudget);
+  }
+  if ((legacy.data as Record<string, unknown>).nfaThreshold != null) {
+    updateData.nfaThreshold = String((legacy.data as Record<string, unknown>).nfaThreshold);
+  }
+  // numeric columns must arrive as strings for drizzle's pg numeric type
+  for (const k of NUMERIC_FIELDS) {
+    if (updateData[k] != null) updateData[k] = String(updateData[k]);
   }
   const [charter] = await db.update(chartersTable).set(updateData).where(eq(chartersTable.id, params.data.id)).returning();
   if (!charter) {
@@ -161,37 +238,54 @@ router.post("/charters/:id/submit", async (req, res): Promise<void> => {
     return;
   }
 
-  // Find HOD, Executive Director, CFO users
-  const approverRoles = ["hod", "executive_director", "cfo"];
-  const approvers = await db.select().from(usersTable)
-    .where(eq(usersTable.role, "hod"))
-    .limit(1);
-  const edUsers = await db.select().from(usersTable).where(eq(usersTable.role, "executive_director")).limit(1);
-  const cfoUsers = await db.select().from(usersTable).where(eq(usersTable.role, "cfo")).limit(1);
+  // Resolve approver chain via the DOA matrix.
+  // amountInr = finalNegotiatedBudget if available, else tentativeBudget.
+  const amountInr = Number(charter.finalNegotiatedBudget ?? charter.tentativeBudget ?? 0);
+  const match = await matchBand({
+    entity: charter.entity ?? "",
+    category: charter.category ?? "",
+    kind: charter.kind ?? "capex",
+    amountInr,
+  });
+  if (!match) {
+    res.status(422).json({
+      error: "No active DOA band covers this charter — configure one at /admin/doa-matrix and retry.",
+      context: { entity: charter.entity, category: charter.category, kind: charter.kind, amountInr },
+    });
+    return;
+  }
 
-  const allApprovers = [
-    ...(approvers.length ? [{ user: approvers[0], role: "hod" }] : []),
-    ...(edUsers.length ? [{ user: edUsers[0], role: "executive_director" }] : []),
-    ...(cfoUsers.length ? [{ user: cfoUsers[0], role: "cfo" }] : []),
-  ];
-
-  // Create parallel approvals
-  for (const { user, role } of allApprovers) {
+  // Insert one parallel approval per resolved role; mirror into charter.signatories
+  // jsonb so the DOCX renderer / detail UI can show the full sign-off block.
+  const signatories: Array<{ role: string; name: string; status: string }> = [];
+  for (const role of match.approverRoles) {
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.role, role)).limit(1);
     await db.insert(approvalsTable).values({
       charterId: charter.id,
-      approverId: user.id,
+      approverId: user?.id ?? null,
       approverRole: role,
       stage: "parallel_review",
+      status: "pending",
+    });
+    signatories.push({
+      role,
+      name: user?.name ?? "",
       status: "pending",
     });
   }
 
   const [updated] = await db.update(chartersTable)
-    .set({ status: "parallel_review" })
+    .set({ status: "parallel_review", signatories })
     .where(eq(chartersTable.id, params.data.id))
     .returning();
-  await logActivity("charter_submitted", `Charter "${charter.title}" submitted for approval`, charter.id, "charter", charter.submittedById);
-  res.json(formatCharter(updated));
+  await logActivity(
+    "charter_submitted",
+    `Charter "${charter.title}" submitted — DOA band "${match.label}" → ${match.approverRoles.join(", ") || "(empty)"}`,
+    charter.id,
+    "charter",
+    charter.submittedById,
+  );
+  res.json({ ...formatCharter(updated), doaBand: { id: match.bandId, label: match.label, approverRoles: match.approverRoles } });
 });
 
 // SCM negotiate
@@ -386,12 +480,65 @@ router.post("/charters/:id/squad", async (req, res): Promise<void> => {
 });
 
 function formatCharter(c: Record<string, unknown>) {
+  const num = (v: unknown) => (v != null ? Number(v) : null);
   return {
     ...c,
     tentativeBudget: c.tentativeBudget != null ? Number(c.tentativeBudget) : 0,
-    finalNegotiatedBudget: c.finalNegotiatedBudget != null ? Number(c.finalNegotiatedBudget) : null,
-    nfaThreshold: c.nfaThreshold != null ? Number(c.nfaThreshold) : null,
+    finalNegotiatedBudget: num(c.finalNegotiatedBudget),
+    nfaThreshold: num(c.nfaThreshold),
+    capexAmount: c.capexAmount != null ? Number(c.capexAmount) : 0,
+    opexAmount: c.opexAmount != null ? Number(c.opexAmount) : 0,
+    roiPerAnnum: num(c.roiPerAnnum),
+    previousNfaAmount: num(c.previousNfaAmount),
+    leAmount: num(c.leAmount),
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DOCX — render the consolidated Charter+NFA on demand
+// ═══════════════════════════════════════════════════════════════════════════
+router.get("/charters/:id/docx", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+  const [charter] = await db.select().from(chartersTable).where(eq(chartersTable.id, id));
+  if (!charter) {
+    res.status(404).json({ error: "Charter not found" });
+    return;
+  }
+  const risks = await db.select().from(risksTable).where(eq(risksTable.charterId, id));
+
+  let dir: string | undefined;
+  try {
+    dir = await mkdtemp(path.join(tmpdir(), "charter-nfa-"));
+    const inPath = path.join(dir, "in.json");
+    const outPath = path.join(dir, "out.docx");
+    const payload = { ...formatCharter(charter as Record<string, unknown>), risks };
+    await writeFile(inPath, JSON.stringify(payload), "utf-8");
+
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn(PYTHON_BIN, [CHARTER_NFA_GENERATOR, "--in", inPath, "--out", outPath], { stdio: ["ignore", "pipe", "pipe"] });
+      let stderr = "";
+      proc.stderr.on("data", (d) => { stderr += d.toString(); });
+      proc.on("error", reject);
+      proc.on("close", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`generate_charter_nfa.py exited ${code}: ${stderr.trim()}`));
+      });
+    });
+
+    const buf = await readFile(outPath);
+    const safeTitle = (charter.title || `Charter-${id}`).replace(/[^a-z0-9\-_ ]/gi, "").trim().slice(0, 60) || `Charter-${id}`;
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.docx"`);
+    res.send(buf);
+  } catch (e) {
+    res.status(500).json({ error: `Failed to generate Charter+NFA document: ${(e as Error).message}` });
+  } finally {
+    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+});
 
 export default router;

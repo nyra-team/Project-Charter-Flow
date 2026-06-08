@@ -5,6 +5,8 @@ import session from "express-session";
 import router from "./routes";
 import vendorAuthRouter from "./routes/vendor_auth";
 import vendorPortalRouter from "./routes/vendor_portal";
+import templateFilesRouter from "./routes/template-files";
+import localUploadsRouter from "./routes/local-uploads";
 import { logger } from "./lib/logger";
 import { requireAuth } from "./middlewares/requireAuth";
 
@@ -36,7 +38,9 @@ app.use(
   }),
 );
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json());
+// Limit bumped from the 100kb default to accommodate base64-encoded .xlsx
+// uploads (task import) that arrive inside the JSON body.
+app.use(express.json({ limit: "25mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 // Server-side session for simulated role. The role is set via POST /api/session/role
@@ -70,6 +74,17 @@ app.use(
 // before it.
 app.use("/api", vendorAuthRouter);
 app.use("/api", vendorPortalRouter);
+
+// Public blank-template downloads — mounted BEFORE requireAuth so a plain
+// <a href download> works (anchors can't carry the Bearer token). Non-sensitive.
+app.use("/api", templateFilesRouter);
+
+// Local-FS upload PUT — mounted BEFORE requireAuth because the browser XHR
+// PUT to the presigned URL can't attach the Bearer token. Auth is implicit:
+// the random objectId is generated server-side inside the authed
+// /storage/uploads/request-url handler and only flows back to the browser
+// over that authed channel. Dev/non-Replit deploys only.
+app.use("/api", localUploadsRouter);
 
 app.use("/api", requireAuth, router);
 

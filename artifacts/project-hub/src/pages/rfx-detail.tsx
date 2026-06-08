@@ -170,16 +170,16 @@ function QuestionsPanel({ rfxId, questions, editable }: { rfxId: number; questio
       </div>
       <div className="space-y-2">
         {list.map((q, i) => (
-          <div key={q.id} className="rounded-xl border border-border bg-card/40 p-3 grid grid-cols-12 gap-2 items-center">
-            <select disabled={!editable} value={q.section} onChange={e => updateAt(setList, list, i, { section: e.target.value })} className="col-span-2 h-9 rounded-md border border-input bg-background px-2 text-xs">
+          <div key={q.id} className="rounded-xl border border-border bg-card/40 p-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+            <select disabled={!editable} value={q.section} onChange={e => updateAt(setList, list, i, { section: e.target.value })} className="md:col-span-2 h-9 rounded-md border border-input bg-background px-2 text-xs">
               <option value="technical">Technical</option><option value="commercial">Commercial</option><option value="qualification">Qualification</option>
             </select>
-            <Input disabled={!editable} className="col-span-5" value={q.label} onChange={e => updateAt(setList, list, i, { label: e.target.value })} placeholder="Question label" />
-            <select disabled={!editable} value={q.kind} onChange={e => updateAt(setList, list, i, { kind: e.target.value })} className="col-span-2 h-9 rounded-md border border-input bg-background px-2 text-xs">
+            <Input disabled={!editable} className="md:col-span-5" value={q.label} onChange={e => updateAt(setList, list, i, { label: e.target.value })} placeholder="Question label" />
+            <select disabled={!editable} value={q.kind} onChange={e => updateAt(setList, list, i, { kind: e.target.value })} className="md:col-span-2 h-9 rounded-md border border-input bg-background px-2 text-xs">
               {["text", "number", "select", "multi", "file", "bool", "currency"].map(k => <option key={k} value={k}>{k}</option>)}
             </select>
-            <Input disabled={!editable} type="number" className="col-span-2" value={q.weight} onChange={e => updateAt(setList, list, i, { weight: Number(e.target.value) })} />
-            {editable && <button onClick={() => setList(list.filter((_, j) => j !== i))} className="col-span-1 text-muted-foreground hover:text-destructive text-xs">×</button>}
+            <Input disabled={!editable} type="number" className="md:col-span-2" value={q.weight} onChange={e => updateAt(setList, list, i, { weight: Number(e.target.value) })} />
+            {editable && <button onClick={() => setList(list.filter((_, j) => j !== i))} className="md:col-span-1 text-muted-foreground hover:text-destructive text-xs">×</button>}
           </div>
         ))}
         {list.length === 0 && <p className="text-sm text-muted-foreground text-center p-6">No questions yet.</p>}
@@ -206,13 +206,13 @@ function DimensionsPanel({ rfxId, dimensions, editable }: { rfxId: number; dimen
       </div>
       <div className="space-y-2">
         {list.map((d, i) => (
-          <div key={d.id} className="rounded-xl border border-border bg-card/40 p-3 grid grid-cols-12 gap-2 items-center">
-            <Input disabled={!editable} className="col-span-7" value={d.label} onChange={e => updateAt(setList, list, i, { label: e.target.value })} />
-            <select disabled={!editable} value={d.kind} onChange={e => updateAt(setList, list, i, { kind: e.target.value })} className="col-span-2 h-9 rounded-md border border-input bg-background px-2 text-xs">
+          <div key={d.id} className="rounded-xl border border-border bg-card/40 p-3 grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+            <Input disabled={!editable} className="md:col-span-7" value={d.label} onChange={e => updateAt(setList, list, i, { label: e.target.value })} />
+            <select disabled={!editable} value={d.kind} onChange={e => updateAt(setList, list, i, { kind: e.target.value })} className="md:col-span-2 h-9 rounded-md border border-input bg-background px-2 text-xs">
               <option value="technical">Technical</option><option value="commercial">Commercial</option>
             </select>
-            <Input disabled={!editable} type="number" min={0} max={100} className="col-span-2" value={d.weight} onChange={e => updateAt(setList, list, i, { weight: Number(e.target.value) })} />
-            {editable && <button onClick={() => setList(list.filter((_, j) => j !== i))} className="col-span-1 text-muted-foreground hover:text-destructive text-xs">×</button>}
+            <Input disabled={!editable} type="number" min={0} max={100} className="md:col-span-2" value={d.weight} onChange={e => updateAt(setList, list, i, { weight: Number(e.target.value) })} />
+            {editable && <button onClick={() => setList(list.filter((_, j) => j !== i))} className="md:col-span-1 text-muted-foreground hover:text-destructive text-xs">×</button>}
           </div>
         ))}
         {list.length === 0 && <p className="text-sm text-muted-foreground text-center p-6">No dimensions yet.</p>}
@@ -305,9 +305,9 @@ function BidsPanel({ rfxId, envelopes, invitations, vendorById, past }: {
       )}
       {(["technical", "commercial", "alternative"] as const).map(kind => (
         <div key={kind} className="rounded-2xl border border-border bg-card/40 p-4 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-start justify-between flex-wrap gap-2">
             <h3 className="text-sm font-semibold uppercase">{kind} envelopes ({groups[kind].length})</h3>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Button size="sm" variant="outline" disabled={!past || release.isPending} onClick={() => release.mutate({ kind, side: "a" })}>
                 <KeyRound size={12} className="mr-1.5" /> Release share A (SCM)
               </Button>
@@ -365,15 +365,15 @@ function ScoringPanel({ rfxId, envelopes, dimensions, blind }: { rfxId: number; 
             {dimensions.filter(d => d.kind === env.kind || env.kind === "alternative").map(d => {
               const existing = scores.find(s => s.envelopeId === env.id && s.dimensionId === d.id);
               return (
-                <div key={d.id} className="grid grid-cols-12 gap-2 items-center">
-                  <span className="col-span-6 text-sm">{d.label} <span className="text-xs text-muted-foreground">({d.weight}%)</span></span>
-                  <Input type="number" min={0} max={100} defaultValue={existing?.score ?? ""} className="col-span-2"
+                <div key={d.id} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                  <span className="md:col-span-6 text-sm">{d.label} <span className="text-xs text-muted-foreground">({d.weight}%)</span></span>
+                  <Input type="number" min={0} max={100} defaultValue={existing?.score ?? ""} className="md:col-span-2"
                     onBlur={e => {
                       const v = Number(e.target.value);
                       if (!Number.isFinite(v)) return;
                       submit.mutate({ envelopeId: env.id, dimensionId: d.id, score: v });
                     }} />
-                  <span className="col-span-4 text-xs text-muted-foreground truncate">{existing?.graderAlias ?? ""}</span>
+                  <span className="md:col-span-4 text-xs text-muted-foreground truncate">{existing?.graderAlias ?? ""}</span>
                 </div>
               );
             })}
@@ -426,11 +426,11 @@ function AwardPanel({ rfxId, bundle, vendorById }: { rfxId: number; bundle: RfxB
         {allocations.length === 0 ? <p className="text-xs text-muted-foreground">No allocations. Pick an AI scenario or add manually.</p> : (
           <div className="space-y-1">
             {allocations.map((a, i) => (
-              <div key={i} className="grid grid-cols-12 gap-2 items-center">
-                <span className="col-span-5 text-sm">{vendorById.get(a.vendorId)?.name ?? `V${a.vendorId}`}</span>
-                <Input type="number" min={0} max={100} value={a.sharePct} className="col-span-2" onChange={e => updateAt(setAllocations, allocations, i, { sharePct: Number(e.target.value) })} />
-                <Input type="number" min={0} value={a.value} className="col-span-3" onChange={e => updateAt(setAllocations, allocations, i, { value: Number(e.target.value) })} placeholder="Value" />
-                <button className="col-span-2 text-xs text-muted-foreground" onClick={() => setAllocations(allocations.filter((_, j) => j !== i))}>Remove</button>
+              <div key={i} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                <span className="md:col-span-5 text-sm">{vendorById.get(a.vendorId)?.name ?? `V${a.vendorId}`}</span>
+                <Input type="number" min={0} max={100} value={a.sharePct} className="md:col-span-2" onChange={e => updateAt(setAllocations, allocations, i, { sharePct: Number(e.target.value) })} />
+                <Input type="number" min={0} value={a.value} className="md:col-span-3" onChange={e => updateAt(setAllocations, allocations, i, { value: Number(e.target.value) })} placeholder="Value" />
+                <button className="md:col-span-2 text-xs text-muted-foreground" onClick={() => setAllocations(allocations.filter((_, j) => j !== i))}>Remove</button>
               </div>
             ))}
           </div>
@@ -452,8 +452,8 @@ function AuditPanel({ rfxId }: { rfxId: number }) {
   });
   if (rows.length === 0) return <p className="p-6 text-sm text-muted-foreground text-center">No audit events yet.</p>;
   return (
-    <div className="rounded-2xl border border-border overflow-hidden">
-      <table className="w-full text-sm">
+    <div className="rounded-2xl border border-border overflow-x-auto">
+      <table className="w-full min-w-[560px] text-sm">
         <thead className="bg-card/60 text-[11px] uppercase tracking-wider text-muted-foreground">
           <tr><th className="text-left p-3">Event</th><th className="text-left p-3">Actor</th><th className="text-left p-3">Payload</th><th className="text-left p-3">When</th></tr>
         </thead>

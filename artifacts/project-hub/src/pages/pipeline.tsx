@@ -83,7 +83,7 @@ export default function PipelinePage() {
         actions={
           <Link href="/demands/new">
             <button className="btn-glossy-cta flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold">
-              <Sparkles size={14} /><span>New Demand</span>
+              <Sparkles size={14} /><span>Business Case</span>
             </button>
           </Link>
         }

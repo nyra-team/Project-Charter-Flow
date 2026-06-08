@@ -1,6 +1,60 @@
 import { Router, type IRouter } from "express";
-import { db, approvalsTable, chartersTable, usersTable } from "@workspace/db";
+import { db, approvalsTable, chartersTable, usersTable, projectStagesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+
+// Checklist items in pmo_project_stages.notes.__checklist that auto-tick
+// when the Charter+NFA chain reaches "approved". Mapped to both the legacy
+// `investment_authorization` stage and its successor `vendor_selection`
+// (DEPRECATED_STAGE_KEYS in lifecycle-config maps them 1:1, but project rows
+// from before the rename can still hold the legacy stage key).
+const INVESTMENT_GATE_CHECKLIST_KEYS = [
+  "charter_drafted",
+  "dept_head_approved",
+  "pmo_nfa_approved",
+  "mgmt_approved",
+];
+const INVESTMENT_GATE_STAGES = ["investment_authorization", "vendor_selection"];
+
+async function tickInvestmentGate(charterId: number): Promise<void> {
+  const [charter] = await db.select().from(chartersTable).where(eq(chartersTable.id, charterId));
+  if (!charter?.projectId) return; // no project to gate on
+  for (const stage of INVESTMENT_GATE_STAGES) {
+    const [row] = await db.select().from(projectStagesTable)
+      .where(and(eq(projectStagesTable.projectId, charter.projectId), eq(projectStagesTable.stage, stage)));
+    if (!row) continue;
+    let notes: Record<string, unknown> = {};
+    try { notes = JSON.parse(row.notes ?? "{}") as Record<string, unknown>; } catch { notes = {}; }
+    const checklist = (notes.__checklist as Record<string, boolean> | undefined) ?? {};
+    for (const key of INVESTMENT_GATE_CHECKLIST_KEYS) {
+      checklist[key] = true;
+    }
+    notes.__checklist = checklist;
+    notes.__charter_approved_at = new Date().toISOString();
+    await db.update(projectStagesTable)
+      .set({ notes: JSON.stringify(notes) })
+      .where(eq(projectStagesTable.id, row.id));
+  }
+}
+
+type Signatory = { role: string; name?: string; status?: string; decidedAt?: string; comment?: string };
+
+async function mirrorSignatoryDecision(
+  charterId: number,
+  approverRole: string,
+  decision: "approved" | "rejected",
+  comments: string | null | undefined,
+  decidedAt: Date,
+): Promise<void> {
+  const [charter] = await db.select().from(chartersTable).where(eq(chartersTable.id, charterId));
+  if (!charter) return;
+  const sigs = (charter.signatories as Signatory[] | null) ?? [];
+  const next = sigs.map(s =>
+    s.role === approverRole
+      ? { ...s, status: decision, decidedAt: decidedAt.toISOString(), comment: comments ?? s.comment ?? "" }
+      : s,
+  );
+  await db.update(chartersTable).set({ signatories: next }).where(eq(chartersTable.id, charterId));
+}
 import {
   GetApprovalParams,
   DecideApprovalParams,
@@ -71,11 +125,16 @@ router.post("/approvals/:id/decide", async (req, res): Promise<void> => {
   if (!approval) { res.status(404).json({ error: "Approval not found" }); return; }
 
   const decision = parsed.data.decision;
+  const decidedAt = new Date();
   const [updated] = await db.update(approvalsTable).set({
     status: decision,
     comments: parsed.data.comments ?? null,
-    decidedAt: new Date(),
+    decidedAt,
   }).where(eq(approvalsTable.id, params.data.id)).returning();
+
+  // Mirror the per-row decision into charter.signatories jsonb so the DOCX
+  // renderer + charter-detail UI see live status without joining pmo_approvals.
+  await mirrorSignatoryDecision(approval.charterId, approval.approverRole, decision, parsed.data.comments ?? null, decidedAt);
 
   const [charter] = await db.select().from(chartersTable).where(eq(chartersTable.id, approval.charterId));
   const [approver] = approval.approverId != null
@@ -131,6 +190,9 @@ router.post("/approvals/:id/decide", async (req, res): Promise<void> => {
     } else if (approval.stage === "pmo_review") {
       await db.update(chartersTable).set({ status: "approved" }).where(eq(chartersTable.id, approval.charterId));
       await logActivity("charter_approved", `Charter "${charter?.title}" fully approved by PMO!`, approval.charterId, "charter");
+      // Auto-tick the investment-authorization stage-gate checklist. Closes
+      // the loop: UI → DOA → PR/PO without manual checklist toggling.
+      await tickInvestmentGate(approval.charterId);
     }
   }
 

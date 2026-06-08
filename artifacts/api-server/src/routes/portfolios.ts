@@ -4,29 +4,60 @@ import { eq, desc } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-// Portfolio-level progress rollup, computed on read (top of the chain:
-// subtask -> task -> milestone -> project -> PORTFOLIO). progress = average of
-// the portfolio's member projects' (already-rolled-up) progress. Returned as
-// additive fields so existing consumers are unaffected.
-async function withPortfolioRollup<T extends { id: number }>(rows: T[]): Promise<Array<T & { progress: number; projectCount: number }>> {
+interface PortfolioRollup {
+  progress: number;
+  projectCount: number;
+  /** Member-project RAG counts (human-set per project; NEVER auto-derived). */
+  ragDistribution: { red: number; amber: number; green: number };
+  /** red + amber — quick "needs attention" count for exec rollup. */
+  atRiskCount: number;
+  /** Non-closed member projects whose end_date is in the past. */
+  delayedCount: number;
+}
+
+// Portfolio-level rollup, computed on read (top of the chain: subtask -> task
+// -> milestone -> project -> PORTFOLIO). `progress` = average of the member
+// projects' (already-rolled-up) progress. RAG is aggregated by DISTRIBUTION
+// only — portfolio RAG is never computed/overwritten; each project's RAG stays
+// a human governance judgment. All fields are additive so existing consumers
+// are unaffected.
+async function withPortfolioRollup<T extends { id: number }>(rows: T[]): Promise<Array<T & PortfolioRollup>> {
   if (rows.length === 0) return [];
   const projects = await db
-    .select({ portfolioId: projectsTable.portfolioId, progress: projectsTable.progress, status: projectsTable.status })
+    .select({
+      portfolioId: projectsTable.portfolioId,
+      progress: projectsTable.progress,
+      status: projectsTable.status,
+      ragStatus: projectsTable.ragStatus,
+      endDate: projectsTable.endDate,
+    })
     .from(projectsTable);
-  const byPortfolio = new Map<number, number[]>();
+
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD, lexical compare ok
+  const agg = new Map<number, { progress: number[]; red: number; amber: number; green: number; delayed: number }>();
   for (const p of projects) {
     if (p.portfolioId == null) continue;
     if (p.status === "closed") continue; // active portfolio health excludes closed work
-    const arr = byPortfolio.get(p.portfolioId) ?? [];
-    arr.push(p.progress ?? 0);
-    byPortfolio.set(p.portfolioId, arr);
+    const a = agg.get(p.portfolioId) ?? { progress: [], red: 0, amber: 0, green: 0, delayed: 0 };
+    a.progress.push(p.progress ?? 0);
+    const rag = (p.ragStatus ?? "green").toLowerCase();
+    if (rag === "red") a.red++;
+    else if (rag === "amber" || rag === "yellow") a.amber++;
+    else a.green++;
+    if (p.endDate && p.endDate < today) a.delayed++;
+    agg.set(p.portfolioId, a);
   }
+
   return rows.map((r) => {
-    const ps = byPortfolio.get(r.id) ?? [];
+    const a = agg.get(r.id) ?? { progress: [], red: 0, amber: 0, green: 0, delayed: 0 };
+    const n = a.progress.length;
     return {
       ...r,
-      projectCount: ps.length,
-      progress: ps.length ? Math.round(ps.reduce((s, v) => s + v, 0) / ps.length) : 0,
+      projectCount: n,
+      progress: n ? Math.round(a.progress.reduce((s, v) => s + v, 0) / n) : 0,
+      ragDistribution: { red: a.red, amber: a.amber, green: a.green },
+      atRiskCount: a.red + a.amber,
+      delayedCount: a.delayed,
     };
   });
 }

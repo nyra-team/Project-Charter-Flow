@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Link } from "wouter";
-import { ExternalLink, MessageSquare, Send, Paperclip, GitBranch } from "lucide-react";
+import { ExternalLink, MessageSquare, Send, Paperclip, GitBranch, X } from "lucide-react";
 import { api } from "@/lib/extra-api";
 import { useToast } from "@/hooks/use-toast";
 import { PersonAvatar } from "./person-avatar";
@@ -58,9 +58,24 @@ export function TaskDetailModal({
     onError: () => toast({ title: "Couldn't post comment", variant: "destructive" }),
   });
 
+  // Dependency editing — POST/DELETE /api/tasks/:id/dependencies. The backend
+  // validates same-project scope and rejects edges that would create a cycle
+  // (surfaced here via the thrown error message).
+  const [depPick, setDepPick] = useState("");
+  const addDep = useMutation({
+    mutationFn: (predecessorId: number) => api.post(`/api/tasks/${task.id}/dependencies`, { predecessorId }),
+    onSuccess: () => { setDepPick(""); onRefresh(); toast({ title: "Dependency added" }); },
+    onError: (e) => toast({ title: (e as Error)?.message || "Couldn't add dependency", variant: "destructive" }),
+  });
+  const removeDep = useMutation({
+    mutationFn: (predId: number) => api.del(`/api/tasks/${task.id}/dependencies/${predId}`),
+    onSuccess: () => onRefresh(),
+    onError: (e) => toast({ title: (e as Error)?.message || "Couldn't remove dependency", variant: "destructive" }),
+  });
+
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-3xl max-h-[88vh] overflow-y-auto scrollbar-thin">
+      <DialogContent className="w-[95vw] max-w-3xl max-h-[90vh] overflow-y-auto scrollbar-thin">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 pr-6">
             <span className="truncate">{task.name}</span>
@@ -120,17 +135,42 @@ export function TaskDetailModal({
           />
         </div>
 
-        {/* Dependencies */}
-        {depTasks.length > 0 && (
-          <div className="mt-1">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-1"><GitBranch size={11} /> Depends on</p>
-            <div className="flex flex-wrap gap-1.5">
-              {depTasks.map((d) => (
-                <span key={d.id} className="text-[11px] px-2 py-0.5 rounded-full bg-muted border border-border">{d.name}</span>
-              ))}
-            </div>
+        {/* Dependencies — predecessors this task is blocked by (editable). */}
+        <div className="mt-1">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1 flex items-center gap-1">
+            <GitBranch size={11} /> Depends on
+            {task.isCritical && (
+              <span className="ml-1 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full text-destructive bg-destructive/10 border border-destructive/30" title="On the project critical path (zero slack)">
+                Critical path
+              </span>
+            )}
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {depTasks.map((d) => (
+              <span key={d.id} className="inline-flex items-center gap-1 text-[11px] pl-2 pr-1 py-0.5 rounded-full bg-muted border border-border">
+                {d.name}
+                <button
+                  onClick={() => removeDep.mutate(d.id)}
+                  disabled={removeDep.isPending}
+                  className="text-muted-foreground/60 hover:text-destructive rounded-full disabled:opacity-40"
+                  title="Remove dependency"
+                ><X size={11} /></button>
+              </span>
+            ))}
+            {depTasks.length === 0 && <span className="text-[11px] text-muted-foreground/60 italic">No predecessors</span>}
+            <select
+              value={depPick}
+              onChange={(e) => { const id = Number(e.target.value); if (id) addDep.mutate(id); }}
+              disabled={addDep.isPending}
+              className="text-[11px] border border-dashed border-border rounded-full px-2 py-0.5 bg-background text-muted-foreground hover:border-primary outline-none"
+            >
+              <option value="">+ Add dependency…</option>
+              {allTasks
+                .filter((t) => t.projectId === task.projectId && t.id !== task.id && t.parentTaskId !== task.id && !deps.includes(t.id))
+                .map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
           </div>
-        )}
+        </div>
 
         {/* Subtasks */}
         {subtasks.length > 0 && (

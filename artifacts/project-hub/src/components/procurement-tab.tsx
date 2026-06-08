@@ -115,6 +115,21 @@ export function ProcurementTab({ projectId }: { projectId: number }) {
     onError: (e: Error) => toast({ variant: "destructive", title: "Cancel failed", description: e.message }),
   });
 
+  const del = useMutation({
+    mutationFn: (id: number) => fetchJson<void>(`/api/prs/${id}`, { method: "DELETE" }),
+    onSuccess: (_void, id) => {
+      qc.invalidateQueries({ queryKey: listKey });
+      if (selectedId === id) setSelectedId(null);
+      toast({ title: "PR deleted" });
+    },
+    onError: (e: Error) => toast({ variant: "destructive", title: "Couldn't delete PR", description: e.message }),
+  });
+  function onDeletePr(pr: PurchaseRequisition) {
+    if (window.confirm(`Delete purchase requisition #${pr.id}? Blocked if it has been converted to a PO.`)) {
+      del.mutate(pr.id);
+    }
+  }
+
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => fetchJson<PurchaseRequisition>("/api/prs", {
       method: "POST",
@@ -172,7 +187,8 @@ export function ProcurementTab({ projectId }: { projectId: number }) {
               onRefresh={() => refresh.mutate(pr.id)}
               onConvert={() => convert.mutate(pr.id)}
               onCancel={() => cancel.mutate(pr.id)}
-              busy={refresh.isPending || convert.isPending || cancel.isPending}
+              onDelete={() => onDeletePr(pr)}
+              busy={refresh.isPending || convert.isPending || cancel.isPending || del.isPending}
             />
           ))}
         </div>
@@ -192,7 +208,7 @@ export function ProcurementTab({ projectId }: { projectId: number }) {
           {detail ? (
             <div className="space-y-4">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full min-w-[560px] text-sm">
                   <thead className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground border-b border-border">
                     <tr>
                       <th className="pb-2 text-left">Material</th>
@@ -262,12 +278,13 @@ export function ProcurementTab({ projectId }: { projectId: number }) {
 
 // ─── PR row card ────────────────────────────────────────────────────────────
 
-function PrRow({ pr, onOpen, onRefresh, onConvert, onCancel, busy }: {
+function PrRow({ pr, onOpen, onRefresh, onConvert, onCancel, onDelete, busy }: {
   pr: PurchaseRequisition;
   onOpen: () => void;
   onRefresh: () => void;
   onConvert: () => void;
   onCancel: () => void;
+  onDelete: () => void;
   busy: boolean;
 }) {
   const isApproved = pr.sapStatus === "approved";
@@ -317,6 +334,15 @@ function PrRow({ pr, onOpen, onRefresh, onConvert, onCancel, busy }: {
             <Ban size={14} />
           </button>
         )}
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={busy}
+          title="Delete PR"
+          className="inline-flex items-center justify-center w-8 h-8 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-50"
+        >
+          <Trash2 size={14} />
+        </button>
         <button
           type="button"
           onClick={onOpen}
@@ -407,20 +433,20 @@ function NewPrDialog({
             </div>
             <div className="space-y-2">
               {lines.map((l, i) => (
-                <div key={i} className="grid grid-cols-12 gap-2">
-                  <Input className="col-span-5" placeholder="Description" value={l.description}
+                <div key={i} className="grid grid-cols-1 md:grid-cols-12 gap-2">
+                  <Input className="md:col-span-5" placeholder="Description" value={l.description}
                     onChange={e => setLines(ls => ls.map((x, idx) => idx === i ? { ...x, description: e.target.value } : x))} />
-                  <Input className="col-span-2" type="number" min={0} step="0.01" placeholder="Qty" value={l.qty}
+                  <Input className="md:col-span-2" type="number" min={0} step="0.01" placeholder="Qty" value={l.qty}
                     onChange={e => setLines(ls => ls.map((x, idx) => idx === i ? { ...x, qty: Number(e.target.value) } : x))} />
-                  <Input className="col-span-1" placeholder="UoM" value={l.uom}
+                  <Input className="md:col-span-1" placeholder="UoM" value={l.uom}
                     onChange={e => setLines(ls => ls.map((x, idx) => idx === i ? { ...x, uom: e.target.value } : x))} />
-                  <Input className="col-span-3" type="number" min={0} step="0.01" placeholder="Unit ₹" value={l.unitPrice}
+                  <Input className="md:col-span-3" type="number" min={0} step="0.01" placeholder="Unit ₹" value={l.unitPrice}
                     onChange={e => setLines(ls => ls.map((x, idx) => idx === i ? { ...x, unitPrice: Number(e.target.value) } : x))} />
                   <button
                     type="button"
                     onClick={() => setLines(ls => ls.filter((_, idx) => idx !== i))}
                     disabled={lines.length === 1}
-                    className="col-span-1 inline-flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-30"
+                    className="md:col-span-1 inline-flex items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-30"
                     aria-label="Remove line"
                   >
                     <Trash2 size={14} />

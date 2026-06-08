@@ -96,7 +96,7 @@ export function AuditTab({ projectId }: { projectId: number }) {
 
   return (
     <div className="space-y-4">
-      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 flex items-center justify-between">
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="font-semibold text-foreground flex items-center gap-2">
             <History size={16} className="text-primary" /> Audit Trail
@@ -197,8 +197,8 @@ export function AuditTab({ projectId }: { projectId: number }) {
         </div>
       ) : (
         <div className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
-          <div className="max-h-[600px] overflow-y-auto">
-            <table className="w-full text-sm">
+          <div className="max-h-[600px] overflow-y-auto overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
               <thead style={{ background: "hsl(var(--muted) / 0.40)", position: "sticky", top: 0 }}>
                 <tr>
                   <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase">When</th>

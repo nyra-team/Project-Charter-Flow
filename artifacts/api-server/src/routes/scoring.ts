@@ -7,7 +7,9 @@ const router: IRouter = Router();
 const PMO_ROLES = new Set(["pmo", "executive_director", "chairman"]);
 
 function requirePMORole(req: Request, res: Response, next: NextFunction): void {
-  const role = req.session?.simulatedRole;
+  // Real role from the master employee DB (requireAuth → derivePmoRole).
+  const role = req.user?.pmoRole;
+  if (req.user?.isSuperAdmin || role === "admin") { next(); return; }
   if (!role || !PMO_ROLES.has(role)) {
     res.status(403).json({ error: "Forbidden: PMO, Executive Director, or Chairman role required" });
     return;

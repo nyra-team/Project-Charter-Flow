@@ -150,7 +150,7 @@ export function ResourceTab({
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 flex items-center justify-between">
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="font-semibold text-foreground flex items-center gap-2">
             <Users size={16} className="text-primary" /> Resource Allocation
@@ -177,7 +177,7 @@ export function ResourceTab({
           <div className="p-10 text-center text-sm text-muted-foreground">No resources allocated yet. Click "Add Resource" to start.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[640px] text-sm">
               <thead style={{ background: "hsl(var(--muted) / 0.40)" }}>
                 <tr>
                   <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Member</th>

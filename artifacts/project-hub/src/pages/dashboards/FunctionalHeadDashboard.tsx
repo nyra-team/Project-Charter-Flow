@@ -10,6 +10,7 @@ import {
   KPITile, RAGBadge, DashboardCard, SLACountdown, useAutoRefresh, exportCSV, exportXLSX,
 } from "../../components/dashboard/primitives";
 import { formatCurrency } from "../../lib/format";
+import { getPriorityMeta } from "../../lib/task-constants";
 
 type DeliveryStats = {
   window: string;
@@ -464,7 +465,7 @@ export default function FunctionalHeadDashboard() {
                     </td>
                     <td className="py-3 pr-4">
                       <span className={`text-xs px-2 py-0.5 rounded font-bold ${prCls}`}>
-                        {p.priority ?? "P3"}
+                        {getPriorityMeta(p.priority ?? "P3").label}
                       </span>
                     </td>
                     <td className="py-3 pr-4 hidden sm:table-cell"><RAGBadge status={p.ragStatus} size="xs" /></td>

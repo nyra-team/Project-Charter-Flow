@@ -15,6 +15,10 @@ export const meetingsTable = pgTable("pmo_meetings", {
   notes: text("notes").default(""), // general meeting notes / minutes
   createdById: integer("created_by_id"),
   isFlashMode: boolean("is_flash_mode").notNull().default(false),
+  // Marks the synthetic per-project "CXO Action Center" meeting that holds
+  // action items mirrored in from the CXO dashboard (two-way sync). One per
+  // project, enforced by a partial unique index; never user-created/deleted.
+  isCxoContainer: boolean("is_cxo_container").notNull().default(false),
   // ── Microsoft Teams integration (Stage 6 — Teams MoM, mock-first) ──────
   // Populated by routes/integrations/teams.ts and jobs/teams-sync.ts. All
   // additive — meetings without a Teams origin leave these null and behave
@@ -56,6 +60,10 @@ export const meetingItemsTable = pgTable("pmo_meeting_items", {
   status: text("status").notNull().default("open"), // open | in_progress | completed | deferred
   notes: text("notes").default(""),
   category: text("category").default("action_item"), // action_item | decision | information
+  // Cross-link to the CXO Action Center mirror (exec_action_items.id). Set when
+  // this MOM item is synced to/from the CXO dashboard. Nullable, no hard FK —
+  // the two rows must be independently deletable.
+  execActionItemId: integer("exec_action_item_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

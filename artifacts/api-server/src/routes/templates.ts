@@ -11,6 +11,7 @@ import {
 } from "@workspace/db";
 import { eq, desc, asc } from "drizzle-orm";
 import { logActivity } from "./activity";
+import { seedProjectTemplateDocuments } from "../lib/templateDocuments";
 
 const router: IRouter = Router();
 
@@ -25,6 +26,34 @@ const CreateTemplateBody = z.object({
   category: z.string().optional(),
   sourceProjectId: z.number().int().optional(),
   createdById: z.number().int().optional(),
+});
+
+// Upload/import a populated template from a JSON file. Tasks reference their
+// parent + predecessors BY NAME (not DB id) so the file is hand-authorable;
+// the importer resolves names within the upload in a second pass.
+const ImportTemplateBody = z.object({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  category: z.string().optional(),
+  createdById: z.number().int().optional(),
+  milestones: z.array(z.object({
+    name: z.string().min(1),
+    description: z.string().optional(),
+    defaultDayOffset: z.number().int().optional(),
+    gateDecision: z.string().optional(),
+    readinessChecklist: z.array(z.unknown()).optional(),
+  })).optional(),
+  tasks: z.array(z.object({
+    name: z.string().min(1),
+    description: z.string().optional(),
+    defaultDurationDays: z.number().int().positive().optional(),
+    defaultDayOffset: z.number().int().optional(),
+    defaultPriority: z.string().optional(),
+    defaultOwnerRole: z.string().optional(),
+    defaultEffortHours: z.number().optional(),
+    parent: z.string().optional(),                  // parent task NAME (subtasks)
+    predecessors: z.array(z.string()).optional(),   // predecessor task NAMES
+  })).optional(),
 });
 
 const UpdateTemplateBody = z.object({
@@ -425,6 +454,93 @@ router.post("/templates/from-project/:projectId", async (req, res): Promise<void
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// IMPORT (UPLOAD) A POPULATED TEMPLATE FROM JSON
+//
+// Creates the template shell + its milestones + tasks in one call. Tasks
+// reference parent/predecessors by NAME; resolved in a second pass (same
+// shape the /from-project clone produces, so export→edit→import round-trips).
+router.post("/templates/import", async (req, res): Promise<void> => {
+  const parsed = ImportTemplateBody.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const { name, description, category, createdById, milestones = [], tasks = [] } = parsed.data;
+
+  // 1. Template shell.
+  const [tpl] = await db
+    .insert(projectTemplatesTable)
+    .values({
+      name,
+      description: description ?? "",
+      category: category ?? "general",
+      createdById,
+    } as never)
+    .returning();
+
+  // 2. Milestones (no inter-milestone graph → single pass).
+  for (let i = 0; i < milestones.length; i++) {
+    const m = milestones[i]!;
+    await db.insert(templateMilestonesTable).values({
+      templateId: tpl.id,
+      name: m.name,
+      description: m.description ?? "",
+      defaultDayOffset: m.defaultDayOffset ?? 0,
+      gateDecision: m.gateDecision,
+      readinessChecklist: m.readinessChecklist ?? [],
+      sortOrder: i,
+    } as never);
+  }
+
+  // 3. Tasks — pass 1 inserts every task and records name→id; pass 2 resolves
+  //    parent + predecessor names into ids. Duplicate names: last write wins.
+  const byName = new Map<string, number>();
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i]!;
+    const [row] = await db
+      .insert(templateTasksTable)
+      .values({
+        templateId: tpl.id,
+        parentTaskId: null,
+        name: t.name,
+        description: t.description ?? "",
+        defaultDurationDays: t.defaultDurationDays ?? 1,
+        defaultDayOffset: t.defaultDayOffset ?? 0,
+        defaultPriority: t.defaultPriority ?? "P2",
+        defaultOwnerRole: t.defaultOwnerRole ?? null,
+        defaultEffortHours: t.defaultEffortHours ?? undefined,
+        predecessorOffsets: [],
+        sortOrder: i,
+      } as never)
+      .returning();
+    byName.set(t.name, row.id);
+  }
+  for (const t of tasks) {
+    const id = byName.get(t.name);
+    if (!id) continue;
+    const updates: Record<string, unknown> = {};
+    if (t.parent && byName.has(t.parent) && byName.get(t.parent) !== id) {
+      updates.parentTaskId = byName.get(t.parent);
+    }
+    if (t.predecessors?.length) {
+      const offs = t.predecessors
+        .map((n) => byName.get(n))
+        .filter((x): x is number => x != null && x !== id)
+        .map((templateTaskId) => ({ templateTaskId, lagDays: 0 }));
+      if (offs.length) updates.predecessorOffsets = offs;
+    }
+    if (Object.keys(updates).length) {
+      await db.update(templateTasksTable).set(updates).where(eq(templateTasksTable.id, id));
+    }
+  }
+
+  await logActivity(
+    "template_imported",
+    `Template "${tpl.name}" imported (${milestones.length} milestone(s), ${tasks.length} task(s))`,
+    tpl.id,
+    "template",
+  );
+  res.status(201).json({ ...tpl, milestoneCount: milestones.length, taskCount: tasks.length });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // CREATE PROJECT FROM TEMPLATE
 //
 // Spawns a real pmo_projects row + clones the template's tasks/milestones,
@@ -472,6 +588,9 @@ router.post("/projects/from-template", async (req, res): Promise<void> => {
       startDate: parsed.data.startDate,
     } as never)
     .returning();
+
+  // Attach the universal deliverable templates (idempotent, non-fatal).
+  try { await seedProjectTemplateDocuments(project.id, null); } catch { /* non-fatal */ }
 
   // 2. Clone milestones.
   for (const m of milestonesRows) {

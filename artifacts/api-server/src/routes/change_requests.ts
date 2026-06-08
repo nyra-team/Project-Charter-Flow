@@ -79,8 +79,11 @@ router.post("/projects/:id/change-requests", requireRole(...RAISE_ROLES), async 
 router.patch("/change-requests/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const role = req.session?.simulatedRole;
-  if (!role) { res.status(403).json({ error: "No role set in session." }); return; }
+  // Real functional role (resolved by requireAuth via derivePmoRole), not the
+  // old self-selected session role.
+  if (!req.user) { res.status(401).json({ error: "Not authenticated." }); return; }
+  const role = req.user.pmoRole;
+  const isPlatformAdmin = req.user.isSuperAdmin || role === "admin";
 
   const wantsDecision = typeof req.body?.status === "string"
     && ["approved", "rejected"].includes(req.body.status);
@@ -96,20 +99,23 @@ router.patch("/change-requests/:id", async (req, res): Promise<void> => {
       res.status(409).json({ error: `Cannot change status of a CR that is already '${current.status}'.` });
       return;
     }
-    if (!DECIDE_ROLES.includes(role)) {
+    if (!isPlatformAdmin && !DECIDE_ROLES.includes(role)) {
       res.status(403).json({ error: `Role '${role}' is not authorized to decide CRs. Allowed: ${DECIDE_ROLES.join(", ")}.` });
       return;
     }
     updates = pick<Record<string, unknown>>(req.body, CR_DECISION_FIELDS) as Record<string, unknown>;
     updates.decidedAt = new Date();
   } else {
-    if (!RAISE_ROLES.includes(role)) {
+    // RAISE_ROLES includes "initiator" (any authenticated user may attempt an
+    // edit); the ownership check below is what actually restricts it.
+    const canRaise = isPlatformAdmin || RAISE_ROLES.includes("initiator") || RAISE_ROLES.includes(role);
+    if (!canRaise) {
       res.status(403).json({ error: `Role '${role}' is not authorized to edit CRs.` });
       return;
     }
     // Only the original raiser, a PM, or PMO may edit the CR body.
     const editorId = (req.body?.editorId as number | undefined) ?? null;
-    const isPrivileged = role === "pm" || role === "pmo";
+    const isPrivileged = isPlatformAdmin || role === "pm" || role === "pmo";
     if (!isPrivileged && (editorId == null || editorId !== current.raisedById)) {
       res.status(403).json({ error: "Only the raiser (or PM/PMO) may edit this CR." });
       return;

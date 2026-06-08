@@ -262,7 +262,8 @@ function AdminScoringInner() {
             {[1,2,3,4].map(i => <Skeleton key={i} className="h-14 rounded-xl" />)}
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[560px]">
             <thead>
               <tr className="text-xs text-gray-400 uppercase tracking-wider" style={{ background: "#F8FAFC" }}>
                 <th className="px-5 py-3 text-left font-semibold">Criterion</th>
@@ -401,6 +402,7 @@ function AdminScoringInner() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -415,7 +417,7 @@ function AdminScoringInner() {
         ) : (
           <div className="divide-y" style={{ borderColor: "#F8FAFC" }}>
             {activeProjects.map(p => (
-              <div key={p.id} className="px-5 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+              <div key={p.id} className="px-5 py-4 flex items-center justify-between flex-wrap gap-2 hover:bg-gray-50 transition-colors">
                 <div>
                   <p className="font-medium text-gray-900">{p.name}</p>
                   <div className="flex items-center gap-2 mt-0.5">

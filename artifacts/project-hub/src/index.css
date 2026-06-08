@@ -145,15 +145,15 @@
   --chart-4: 0 75% 56%;
   --chart-5: 262 65% 58%;
 
-  /* Sidebar = Atelier-dark in BOTH modes for editorial contrast */
-  --sidebar: 230 18% 6%;
-  --sidebar-foreground: 220 14% 88%;
-  --sidebar-border: 230 14% 14%;
-  --sidebar-primary: 190 95% 55%;
-  --sidebar-primary-foreground: 230 30% 8%;
-  --sidebar-accent: 230 16% 12%;
-  --sidebar-accent-foreground: 220 14% 92%;
-  --sidebar-ring: 190 95% 55%;
+  /* Sidebar — LIGHT theme: pure white (dark theme stays navy, .dark below) */
+  --sidebar: 0 0% 100%;
+  --sidebar-foreground: 222 26% 27%;
+  --sidebar-border: 214 22% 91%;
+  --sidebar-primary: 190 90% 38%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 192 60% 94%;
+  --sidebar-accent-foreground: 195 82% 24%;
+  --sidebar-ring: 190 88% 42%;
 
   /* Match Portal / Recruit / PMS / OHC: Inter for body, Plus Jakarta Sans
      for headings/display. Both are loaded via the @import at the top of
@@ -185,7 +185,9 @@
   --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
 
   /* Mesh / ambient — saturated washes that are actually visible on near-white */
-  --mesh-amber: 35 96% 70%;
+  /* Top-left page wash: soft periwinkle (was light-yellow amber) — cool, calm,
+     harmonizes with the cyan primary. Token name kept for the dark-mode pairing. */
+  --mesh-amber: 222 60% 80%;
   --mesh-purple: 262 80% 72%;
   --mesh-teal: 188 88% 62%;
   --mesh-pink: 155 60% 78%;
@@ -256,13 +258,14 @@
   --chart-4: 0 78% 62%;
   --chart-5: 262 75% 70%;
 
-  --sidebar: 230 18% 4%;
-  --sidebar-foreground: 220 12% 88%;
-  --sidebar-border: 230 14% 12%;
+  /* Sidebar — identical to the light-theme side header (synced per request) */
+  --sidebar: 230 18% 6%;
+  --sidebar-foreground: 220 14% 88%;
+  --sidebar-border: 230 14% 14%;
   --sidebar-primary: 190 95% 55%;
   --sidebar-primary-foreground: 230 30% 8%;
-  --sidebar-accent: 230 14% 10%;
-  --sidebar-accent-foreground: 220 12% 92%;
+  --sidebar-accent: 230 16% 12%;
+  --sidebar-accent-foreground: 220 14% 92%;
   --sidebar-ring: 190 95% 55%;
 
   --shadow-2xs: 0px 1px 2px rgba(0, 0, 0, 0.40);
@@ -413,7 +416,16 @@
   /* ── Glossy sidebar — keeps the Atelier navy/near-black but adds a subtle
         top-to-bottom sheen, a soft inner top highlight, and a faint specular
         line down the right edge for a lacquered, premium feel. ── */
+  /* LIGHT theme: pure white sidebar. */
   .sidebar-glossy {
+    background-image: none;
+    background-color: #ffffff;
+    box-shadow:
+      inset -1px 0 0 hsl(214 22% 91%),
+      8px 0 28px -20px hsl(214 30% 28% / 0.16);
+  }
+  /* DARK theme: keep the original Atelier navy/near-black gradient. */
+  .dark .sidebar-glossy {
     background-image:
       linear-gradient(180deg,
         hsl(230 22% 11%) 0%,
@@ -454,11 +466,16 @@
       radial-gradient(circle at 50% 100%, hsl(var(--mesh-teal) / 0.65) 0px, transparent 45%);
     filter: blur(40px);
   }
+  /* LIGHT: no wash so the white sidebar stays pure (sidebar-only class). */
   .ambient-mesh-soft {
+    background-image: none;
+    filter: blur(60px);
+  }
+  /* DARK: original amber/purple Atelier wash. */
+  .dark .ambient-mesh-soft {
     background-image:
       radial-gradient(circle at 80% 0%, hsl(var(--mesh-amber) / 0.5) 0px, transparent 50%),
       radial-gradient(circle at 0% 100%, hsl(var(--mesh-purple) / 0.45) 0px, transparent 55%);
-    filter: blur(60px);
   }
 
   /* ── Page background ambient mesh (Atelier signature) ── */
@@ -493,16 +510,19 @@
     border-style: dashed;
   }
 
-  /* ── Scrollbar (subtle, themed) ── */
-  .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
-  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
-  .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
-    border-radius: 3px;
+  /* ── Scrollbars hidden app-wide (scrolling still works) ── */
+  /* Global: hide native scrollbars on every scrollable element. */
+  * {
+    scrollbar-width: none;          /* Firefox */
+    -ms-overflow-style: none;       /* IE / old Edge */
   }
-  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground) / 0.5);
+  *::-webkit-scrollbar {            /* Chrome / Safari / Edge */
+    width: 0 !important;
+    height: 0 !important;
+    display: none !important;
   }
+  /* .scrollbar-thin kept as a no-op alias so existing usages stay valid. */
+  .scrollbar-thin::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
   /* ── Entrance animations — staggered fade-rise for grids ── */
   @keyframes ph-rise {
@@ -571,6 +591,29 @@
   .shimmer-on-hover:hover::after {
     opacity: 1;
     animation: ph-shimmer 1.1s cubic-bezier(.4,0,.2,1);
+  }
+
+  /* ── Hero shine — one-shot celebratory gleam swept across a "cleared"
+        lifecycle phase pill when it first renders complete. ── */
+  @keyframes hero-shine {
+    0%   { transform: translateX(-130%) skewX(-14deg); opacity: 0; }
+    18%  { opacity: 1; }
+    100% { transform: translateX(240%) skewX(-14deg); opacity: 0; }
+  }
+  .hero-shine { position: relative; overflow: hidden; isolation: isolate; }
+  .hero-shine::after {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0; left: 0;
+    width: 45%;
+    background: linear-gradient(90deg,
+      transparent 0%,
+      hsl(var(--success) / 0.35) 50%,
+      transparent 100%);
+    transform: translateX(-130%) skewX(-14deg);
+    pointer-events: none;
+    z-index: 1;
+    animation: hero-shine 1.2s cubic-bezier(.4,0,.2,1) .15s both;
   }
 
   /* ── Lift card — hover raises with shadow, snappy spring ── */
@@ -650,6 +693,8 @@
     }
     .lift-card:hover { transform: none !important; }
     .shimmer-on-hover::after { display: none !important; }
+    .hero-shine::after { display: none !important; }
+    .lifecycle-pulse { animation: none !important; }
   }
 
   /* ── Nav item indicator that slides instead of pops ── */

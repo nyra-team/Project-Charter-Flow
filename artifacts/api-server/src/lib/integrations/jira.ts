@@ -151,8 +151,16 @@ export interface JiraIssue {
   statusName: string;
   issueType: string;
   priority: string | null;
+  startDate: string | null;
   dueDate: string | null;
   component: string | null; // first Jira component name (module)
+  // Parent issue key, if any. For a Story/Task this is its Epic (team-managed
+  // projects expose this via `parent`; older company-managed projects use the
+  // "Epic Link" custom field customfield_10014). For a Sub-task it's the
+  // parent Story/Task. Null for top-level Epics. Used to nest the import:
+  // Epic → milestone, child story → task under that milestone, sub-task →
+  // child task under its parent story.
+  parentKey: string | null;
 }
 
 /** List a Jira project's components (modules), by name. */
@@ -167,7 +175,10 @@ export async function jiraListComponents(cfg: JiraConfig, projectKey: string): P
  * `max` issues across pages.
  */
 export async function jiraSearchIssues(cfg: JiraConfig, jql: string, max = 500): Promise<JiraIssue[]> {
-  const fields = "summary,description,status,issuetype,priority,duedate,components";
+  // customfield_10014 = "Epic Link" (company-managed legacy epic link),
+  // customfield_10015 = "Start date" (Jira Cloud default). Both are best-effort:
+  // absent fields just come back undefined and map to null.
+  const fields = "summary,description,status,issuetype,priority,duedate,components,parent,customfield_10014,customfield_10015";
   const out: JiraIssue[] = [];
   let nextPageToken: string | undefined;
   for (;;) {
@@ -184,8 +195,12 @@ export async function jiraSearchIssues(cfg: JiraConfig, jql: string, max = 500):
         statusName: f.status?.name ?? "",
         issueType: f.issuetype?.name ?? "Task",
         priority: f.priority?.name ?? null,
+        startDate: f.customfield_10015 ?? null,
         dueDate: f.duedate ?? null,
         component: Array.isArray(f.components) && f.components[0]?.name ? f.components[0].name : null,
+        // Prefer the structured `parent` link; fall back to the legacy Epic Link
+        // custom field, which on company-managed projects holds the epic *key*.
+        parentKey: f.parent?.key ?? (typeof f.customfield_10014 === "string" ? f.customfield_10014 : null),
       });
     }
     if (data?.isLast || !data?.nextPageToken || out.length >= max) break;

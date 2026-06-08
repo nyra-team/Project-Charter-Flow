@@ -2,7 +2,8 @@ import { Link } from "wouter";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { STAGE_ICONS } from "./lifecycle-stepper";
-import { getStageConfig, LIFECYCLE_STAGES, getStageIndex } from "../lib/lifecycle-config";
+import { getStageConfig } from "../lib/lifecycle-config";
+import { CANONICAL_STAGE_KEYS, getCanonicalStageNumber } from "../lib/lifecycle-phases";
 import { ArrowUpRight, CheckSquare, FileText, Users, AlertCircle } from "lucide-react";
 
 interface ProjectAtStage {
@@ -21,7 +22,7 @@ interface StageDetailDialogProps {
 export function StageDetailDialog({ stageKey, onClose, projects = [] }: StageDetailDialogProps) {
   const open = !!stageKey;
   const cfg = stageKey ? getStageConfig(stageKey) : null;
-  const idx = stageKey ? getStageIndex(stageKey) : -1;
+  const stageNum = stageKey ? getCanonicalStageNumber(stageKey) : null;
   const Icon = stageKey ? STAGE_ICONS[stageKey] ?? FileText : FileText;
 
   return (
@@ -40,7 +41,9 @@ export function StageDetailDialog({ stageKey, onClose, projects = [] }: StageDet
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-                      Stage {idx + 1} of {LIFECYCLE_STAGES.length}
+                      {stageNum != null
+                        ? `Stage ${stageNum} of ${CANONICAL_STAGE_KEYS.length}`
+                        : "Legacy stage"}
                     </span>
                     {cfg.advanceRoles && (
                       <Badge variant="outline" className="text-[10px] font-mono uppercase">

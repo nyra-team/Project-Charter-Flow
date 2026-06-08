@@ -53,6 +53,8 @@ export interface MondayBoardProps<R> {
   getRowId: (row: R) => string;
   /** Primary label cell content (text or rich node). */
   getName: (row: R) => ReactNode;
+  /** Header text for the always-present name column (default "Item"). */
+  nameHeader?: string;
   /** Children of a row, for the hierarchy. Omit for flat boards. */
   getChildren?: (row: R) => R[];
   /** Per-row progress % (leaf value or precomputed rollup). */

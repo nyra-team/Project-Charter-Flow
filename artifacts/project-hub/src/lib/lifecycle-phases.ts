@@ -19,7 +19,7 @@ export interface LifecyclePhase {
 
 // 2026-06-02 canonical project life cycle. Three phases, 13 stages:
 //
-//   Plan      → Business Requirements · RFP · Vendor Evaluation and
+//   Plan      → Business Case · RFP · Vendor Evaluation and
 //               Finalization · Solution Design · Project Plan
 //   Execute   → Development & Configuration · System Testing & Validation
 //               · Deployment Readiness · Production Deployment & Go-Live
@@ -58,6 +58,19 @@ export const LIFECYCLE_PHASES: LifecyclePhase[] = [
     stageKeys: ["business_closure", "operational_handover", "financial_closure", "closure"],
   },
 ];
+
+// Canonical 13-stage flow, in order, EXCLUDING the deprecated keys that still
+// live in LIFECYCLE_STAGES for old-project back-compat. This — not the raw
+// LIFECYCLE_STAGES array index — is the source of truth for the stage NUMBER
+// shown to users. (The deprecated keys are interspersed mid-array, so
+// getStageIndex() over LIFECYCLE_STAGES mis-numbers Close as 14–17.)
+export const CANONICAL_STAGE_KEYS: string[] = LIFECYCLE_PHASES.flatMap((p) => p.stageKeys as string[]);
+
+/** 1-based position in the canonical 13-stage flow, or null for deprecated/unknown keys. */
+export function getCanonicalStageNumber(stageKey: string): number | null {
+  const i = CANONICAL_STAGE_KEYS.indexOf(stageKey);
+  return i < 0 ? null : i + 1;
+}
 
 export function getPhaseForStage(stageKey: string): LifecyclePhase | null {
   return LIFECYCLE_PHASES.find((p) => (p.stageKeys as readonly string[]).includes(stageKey)) ?? null;

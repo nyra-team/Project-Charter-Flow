@@ -2,18 +2,21 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   DndContext,
+  DragOverlay,
   DragEndEvent,
   DragStartEvent,
   PointerSensor,
+  closestCorners,
   useSensor,
   useSensors,
   useDroppable,
   useDraggable,
 } from "@dnd-kit/core";
+import { motion, AnimatePresence } from "framer-motion";
 import { useUpdateTask, useUpdateMilestone } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { TASK_STATUSES, getStatusMeta, getPriorityMeta, getRagColor } from "../lib/task-constants";
-import { Calendar, Clock, Layers } from "lucide-react";
+import { Calendar, Clock, Layers, GripVertical, Flag } from "lucide-react";
 import { LogTimeModal } from "./log-time-modal";
 
 export interface BoardTask {
@@ -41,10 +44,13 @@ interface ConnectBoardProps {
 }
 
 type DragKind = "task" | "milestone";
+type CardData = Parameters<typeof TaskCard>[0]["task"];
 interface DragData {
   kind: DragKind;
   id: number;
   status: string;
+  card: CardData;
+  isMilestone: boolean;
 }
 
 function encodeId(kind: DragKind, id: number) {
@@ -74,99 +80,93 @@ function TaskCard({
   const priMeta = getPriorityMeta(task.priority);
   const ragColor = getRagColor(task.rag ?? "green");
   const dueDate = task.endDate ?? task.dueDate;
+  const done = task.status === "completed";
+  const overdue = !!dueDate && !done && new Date(dueDate) < new Date(new Date().toDateString());
+  const initials = (task.assigneeName ?? "")
+    .split(" ").map(s => s[0]).filter(Boolean).slice(0, 2).join("").toUpperCase();
 
   return (
     <div
-      className={`p-3 space-y-2 select-none border transition-all ${
-        isDragging
-          ? "border-primary shadow-[0_8px_25px_hsl(var(--primary)/0.25)] opacity-90 cursor-grabbing"
-          : task.isSubtask
-          ? "bg-primary/5 border-primary/20 cursor-grab"
-          : isMilestone
-          ? "bg-card border-primary/20 cursor-grab"
-          : "bg-card border-border cursor-grab shadow-sm hover:border-primary/30"
-      }`}
-      style={{ marginLeft: task.isSubtask ? 8 : 0 }}
       onClick={!isDragging ? onClick : undefined}
+      style={{ marginLeft: task.isSubtask ? 10 : 0 }}
+      className={`group bg-card rounded-xl overflow-hidden border transition-[box-shadow,border-color] duration-150 select-none ${
+        isDragging
+          ? "ring-2 ring-primary/40 shadow-lg border-primary/30 cursor-grabbing"
+          : "border-border shadow-sm hover:shadow-md hover:border-primary/30 cursor-grab"
+      }`}
     >
-      <div className="flex items-start gap-2">
-        <span
-          className="rounded-full flex-shrink-0 self-stretch"
-          style={{ background: ragColor, minHeight: 14, minWidth: 3, width: 3 }}
-        />
-        {isMilestone && (
-          <span className="text-[9px] font-mono uppercase tracking-wider px-1 py-0 rounded-sm border bg-primary/10 text-primary border-primary/20 font-semibold flex-shrink-0">
-            M
-          </span>
-        )}
-        {task.isSubtask && (
-          <span className="text-[9px] font-mono uppercase tracking-wider px-1 py-0 rounded-sm border bg-primary/10 text-primary border-primary/20 font-semibold flex-shrink-0">
-            Sub
-          </span>
-        )}
-        <p className="text-xs font-semibold text-foreground flex-1 leading-4" style={{ wordBreak: "break-word" }}>
-          {task.name}
-        </p>
-        {task.isCritical && !isMilestone && (
-          <span className="text-[9px] font-mono uppercase tracking-wider px-1 rounded-sm border bg-destructive/10 text-destructive border-destructive/20 font-semibold flex-shrink-0">
-            CP
-          </span>
-        )}
-      </div>
-      {task.projectName && (
-        <p className="text-[10px] text-muted-foreground/80 truncate -mt-1">{task.projectName}</p>
-      )}
+      {/* RAG health accent bar (Planner-style) */}
+      <div className="h-1 w-full" style={{ background: ragColor }} />
 
-      <div className="flex items-center justify-between gap-2">
-        <span
-          className="inline-flex items-center px-1.5 py-0.5 rounded-sm text-[9px] font-mono uppercase tracking-wider font-semibold border"
-          style={{ background: priMeta.bg, color: priMeta.color, borderColor: priMeta.color }}
-        >
-          {priMeta.value}
-        </span>
-        <div className="flex items-center gap-1.5">
-          {(task.subtaskCount ?? 0) > 0 && (
-            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[9px] font-mono border bg-primary/10 text-primary border-primary/20">
-              <Layers size={8} />
-              {task.subtaskCount}
-            </span>
-          )}
+      <div className="p-3">
+        {/* Top row — grip + priority + type badges */}
+        <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
+          <GripVertical className="w-3.5 h-3.5 -ml-1 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors flex-shrink-0" />
           <span
-            className="w-2 h-2 rounded-full flex-shrink-0"
-            style={{ background: ragColor }}
-            title={task.rag ?? "green"}
-          />
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-        {task.assigneeName ? (
-          <span className="flex items-center gap-1 truncate">
-            <div className="w-4 h-4 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold font-mono flex-shrink-0 text-[8px]">
-              {task.assigneeName.charAt(0).toUpperCase()}
-            </div>
-            <span className="truncate max-w-[70px]">{task.assigneeName}</span>
+            className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider border px-1.5 py-0.5 rounded"
+            style={{ background: priMeta.bg, color: priMeta.color, borderColor: `${priMeta.color}55` }}
+          >
+            <Flag className="w-2.5 h-2.5" /> {priMeta.value}
           </span>
-        ) : (
-          <span className="text-muted-foreground/50">—</span>
+          {isMilestone && (
+            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border bg-primary/10 text-primary border-primary/20">Milestone</span>
+          )}
+          {task.isSubtask && (
+            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border bg-muted text-muted-foreground border-border">Subtask</span>
+          )}
+          {task.isCritical && !isMilestone && (
+            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border bg-destructive/10 text-destructive border-destructive/20">Critical Path</span>
+          )}
+        </div>
+
+        {/* Title */}
+        <h4
+          className={`text-[13px] leading-snug font-semibold ${done ? "line-through text-muted-foreground" : "text-foreground"}`}
+          style={{ wordBreak: "break-word" }}
+        >
+          {task.name}
+        </h4>
+        {task.projectName && (
+          <p className="text-[11px] text-muted-foreground mt-1 truncate">{task.projectName}</p>
         )}
-        <div className="flex items-center gap-1.5">
+
+        {/* Meta row — due date + subtask count */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2.5 text-[11px] font-medium">
           {dueDate && (
-            <span className="flex items-center gap-0.5 flex-shrink-0 font-mono">
-              <Calendar size={9} />
-              {new Date(dueDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}
+            <span className={`inline-flex items-center gap-1 ${overdue ? "text-destructive" : "text-muted-foreground"}`}>
+              <Calendar className="w-3 h-3" />
+              {new Date(dueDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}{overdue ? " · overdue" : ""}
             </span>
           )}
-          {!isMilestone && onLogTime && (
-            <button
-              onClick={e => { e.stopPropagation(); onLogTime(task.id, task.name); }}
-              className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-sm text-[9px] font-mono uppercase tracking-wider text-primary hover:bg-primary/10 transition-colors"
-              title="Log time"
-            >
-              <Clock size={9} /> Log
-            </button>
+          {(task.subtaskCount ?? 0) > 0 && (
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <Layers className="w-3 h-3" /> {task.subtaskCount}
+            </span>
           )}
         </div>
+
+        {/* Footer — assignee + log time */}
+        {(task.assigneeName || (!isMilestone && onLogTime)) && (
+          <div className="mt-2.5 pt-2 border-t border-border/60 flex items-center justify-between">
+            {task.assigneeName ? (
+              <span className="flex items-center gap-1.5 min-w-0">
+                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[9px] font-bold flex items-center justify-center flex-shrink-0">{initials}</span>
+                <span className="text-[11px] font-medium text-muted-foreground truncate max-w-[100px]">{task.assigneeName}</span>
+              </span>
+            ) : (
+              <span className="text-[11px] text-muted-foreground/40">Unassigned</span>
+            )}
+            {!isMilestone && onLogTime && (
+              <button
+                onClick={e => { e.stopPropagation(); onLogTime(task.id, task.name); }}
+                title="Log time"
+                className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-primary hover:bg-primary/10 rounded px-1.5 py-0.5 transition-colors opacity-0 group-hover:opacity-100"
+              >
+                <Clock className="w-3 h-3" /> Log
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -190,28 +190,35 @@ function DroppableColumn({
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
-    <div className="flex flex-col flex-shrink-0 glass-surface rounded-xl" style={{ minWidth: 220, width: 220 }}>
-      <div
-        className="px-3 py-2.5 flex items-center gap-2 border-b-2"
-        style={{ background: bg, borderBottomColor: color }}
-      >
-        <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
-        <span className="text-[11px] font-mono uppercase tracking-wider font-semibold flex-1" style={{ color }}>
+    <div
+      ref={setNodeRef}
+      className={`flex flex-col flex-shrink-0 rounded-2xl border transition-colors ${
+        isOver ? "border-primary/50 bg-primary/5 ring-2 ring-primary/15" : "border-border/70 bg-muted/30"
+      }`}
+      style={{ minWidth: 268, width: 268 }}
+    >
+      {/* Bucket header — use the semantic status color (`bg`) for the dot + label.
+          `color` is the white pill-foreground and would render invisible here. */}
+      <div className="flex items-center gap-2 px-3.5 pt-3.5 pb-2.5">
+        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: bg }} />
+        <h3 className="text-[12px] font-bold uppercase tracking-wider flex-1 truncate" style={{ color: bg }}>
           {label}
-        </span>
-        <span
-          className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded-sm border"
-          style={{ background: bg, color, borderColor: color }}
-        >
+        </h3>
+        <span className="text-[11px] font-bold text-muted-foreground bg-card border border-border rounded-full min-w-[20px] text-center px-1.5">
           {count}
         </span>
       </div>
-      <div
-        ref={setNodeRef}
-        className={`flex-1 p-2 space-y-2 transition-colors border-t-0 border ${isOver ? "border-primary" : "border-border"}`}
-        style={{ minHeight: 120 }}
-      >
+
+      {/* Card list (whole column is the drop target) */}
+      <div className="px-2.5 pb-2.5 space-y-2.5 flex-1" style={{ minHeight: 140 }}>
         {children}
+        {count === 0 && (
+          <div className={`text-[12px] rounded-xl py-9 text-center border border-dashed transition-colors ${
+            isOver ? "border-primary/40 text-primary bg-card/60" : "border-border text-muted-foreground/50"
+          }`}>
+            {isOver ? "Drop here" : "No tasks"}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -230,25 +237,21 @@ function DraggableCard({
   onTaskClick?: (id: number) => void;
   onLogTime?: (taskId: number, taskName: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: dragId });
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: dragId });
 
-  // Move the card itself with the cursor (no DragOverlay — the canvas iframe
-  // wraps this in a scaled transform, which offsets DragOverlay's portal
-  // coordinates and makes the preview drift away from the cursor).
-  const style: React.CSSProperties = {
-    touchAction: "none",
-    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
-    zIndex: isDragging ? 9999 : undefined,
-    position: isDragging ? "relative" : undefined,
-    pointerEvents: isDragging ? "none" : undefined,
-  };
-
+  // The moving preview is rendered by <DragOverlay>; the original card simply
+  // dims (and ignores pointer events) while it's being dragged.
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} style={style}>
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      style={{ touchAction: "none" }}
+      className={isDragging ? "opacity-40 pointer-events-none" : ""}
+    >
       <TaskCard
         task={task}
         isMilestone={isMilestone}
-        isDragging={isDragging}
         onClick={!isMilestone ? () => onTaskClick?.(task.id) : undefined}
         onLogTime={onLogTime}
       />
@@ -262,6 +265,23 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
   const updateMilestone = useUpdateMilestone();
   const [activeDrag, setActiveDrag] = useState<DragData | null>(null);
   const [timelogModal, setTimelogModal] = useState<{ taskId: number; taskName: string } | null>(null);
+
+  // Optimistic status overrides so a dropped card jumps to its new column
+  // INSTANTLY, instead of waiting for the server round-trip + refetch.
+  // Keyed "t-<id>" / "m-<id>". Pruned once the refreshed props catch up.
+  const [optimistic, setOptimistic] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setOptimistic(prev => {
+      if (!Object.keys(prev).length) return prev;
+      let changed = false;
+      const next = { ...prev };
+      for (const t of tasks) { const k = `t-${t.id}`; if (next[k] !== undefined && next[k] === t.status) { delete next[k]; changed = true; } }
+      for (const m of milestones) { const k = `m-${m.id}`; if (next[k] !== undefined && next[k] === m.status) { delete next[k]; changed = true; } }
+      return changed ? next : prev;
+    });
+  }, [tasks, milestones]);
+  const taskStatus = (t: { id: number; status: string }) => optimistic[`t-${t.id}`] ?? t.status;
+  const msStatus = (m: { id: number; status: string }) => optimistic[`m-${m.id}`] ?? m.status;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -283,10 +303,10 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
     const { kind, id } = decoded;
     if (kind === "task") {
       const t = allBoardTasks.find(x => x.id === id);
-      if (t) setActiveDrag({ kind, id, status: t.status });
+      if (t) setActiveDrag({ kind, id, status: t.status, isMilestone: false, card: { ...t, isSubtask: !!t.parentTaskId } });
     } else {
       const m = milestones.find(x => x.id === id);
-      if (m) setActiveDrag({ kind, id, status: m.status });
+      if (m) setActiveDrag({ kind, id, status: m.status, isMilestone: true, card: { ...m, endDate: m.dueDate } });
     }
   }
 
@@ -304,33 +324,45 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
       // Lookup from allBoardTasks so subtask drags are handled correctly
       const current = allBoardTasks.find(t => t.id === id);
       if (!current || current.status === newStatus) return;
+      const key = `t-${id}`;
+      setOptimistic(prev => ({ ...prev, [key]: newStatus })); // move instantly
       updateTask.mutate(
         { id, data: { status: newStatus } },
         {
           onSuccess: () => onRefresh(),
-          onError: () => { toast({ title: "Failed to update status", variant: "destructive" }); onRefresh(); },
+          onError: () => {
+            setOptimistic(prev => { const n = { ...prev }; delete n[key]; return n; }); // snap back
+            toast({ title: "Failed to update status", variant: "destructive" });
+            onRefresh();
+          },
         }
       );
     } else {
       const current = milestones.find(m => m.id === id);
       if (!current || current.status === newStatus) return;
+      const key = `m-${id}`;
+      setOptimistic(prev => ({ ...prev, [key]: newStatus })); // move instantly
       updateMilestone.mutate(
         { id, data: { status: newStatus } },
         {
           onSuccess: () => onRefresh(),
-          onError: () => { toast({ title: "Failed to update milestone status", variant: "destructive" }); onRefresh(); },
+          onError: () => {
+            setOptimistic(prev => { const n = { ...prev }; delete n[key]; return n; }); // snap back
+            toast({ title: "Failed to update milestone status", variant: "destructive" });
+            onRefresh();
+          },
         }
       );
     }
   }
 
   return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragCancel={() => setActiveDrag(null)} onDragEnd={handleDragEnd}>
       <div className="flex gap-4 overflow-x-auto pb-4" style={{ minHeight: 400 }}>
         {TASK_STATUSES.map(s => {
-          const msItems = milestones.filter(m => m.status === s.value);
-          const colTaskCount = allBoardTasks.filter(t => t.status === s.value).length;
-          const totalCount = colTaskCount + msItems.length;
+          const msItems = milestones.filter(m => msStatus(m) === s.value);
+          const colTasks = allBoardTasks.filter(t => taskStatus(t) === s.value);
+          const totalCount = colTasks.length + msItems.length;
 
           return (
             <DroppableColumn
@@ -341,27 +373,55 @@ export function ConnectBoard({ tasks, milestones, projectId: _projectId, onRefre
               bg={s.bg}
               count={totalCount}
             >
-              {allBoardTasks.filter(t => t.status === s.value).map(task => (
-                <DraggableCard
-                  key={`t-${task.id}`}
-                  dragId={encodeId("task", task.id)}
-                  task={{ ...task, isSubtask: !!task.parentTaskId }}
-                  onTaskClick={onTaskClick}
-                  onLogTime={(id, name) => setTimelogModal({ taskId: id, taskName: name })}
-                />
-              ))}
-              {msItems.map(ms => (
-                <DraggableCard
-                  key={`m-${ms.id}`}
-                  dragId={encodeId("milestone", ms.id)}
-                  task={{ ...ms, endDate: ms.dueDate, subtaskCount: tasks.filter(t => (t as { milestoneId?: number | null }).milestoneId === ms.id && !t.parentTaskId).length }}
-                  isMilestone
-                />
-              ))}
+              <AnimatePresence initial={false}>
+                {colTasks.map(task => (
+                  <motion.div
+                    key={`t-${task.id}`}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.13 }}
+                  >
+                    <DraggableCard
+                      dragId={encodeId("task", task.id)}
+                      task={{ ...task, isSubtask: !!task.parentTaskId }}
+                      onTaskClick={onTaskClick}
+                      onLogTime={(id, name) => setTimelogModal({ taskId: id, taskName: name })}
+                    />
+                  </motion.div>
+                ))}
+                {msItems.map(ms => (
+                  <motion.div
+                    key={`m-${ms.id}`}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.13 }}
+                  >
+                    <DraggableCard
+                      dragId={encodeId("milestone", ms.id)}
+                      task={{ ...ms, endDate: ms.dueDate, subtaskCount: tasks.filter(t => (t as { milestoneId?: number | null }).milestoneId === ms.id && !t.parentTaskId).length }}
+                      isMilestone
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </DroppableColumn>
           );
         })}
       </div>
+
+      {/* Drag preview — a Planner-style lifted card that follows the cursor.
+          dropAnimation=null: the optimistic move already placed the real card,
+          so the overlay vanishes instantly instead of flying in behind it. */}
+      <DragOverlay dropAnimation={null}>
+        {activeDrag ? (
+          <div
+            style={{ width: 248, transform: "rotate(3deg) scale(1.03)" }}
+            className="cursor-grabbing rounded-xl shadow-[0_18px_40px_-12px_rgba(15,23,42,0.45)]"
+          >
+            <TaskCard task={activeDrag.card} isMilestone={activeDrag.isMilestone} isDragging />
+          </div>
+        ) : null}
+      </DragOverlay>
 
       {timelogModal && (
         <LogTimeModal

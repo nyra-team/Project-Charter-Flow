@@ -250,7 +250,7 @@ export function CharterSection({ projectId }: { projectId: number }) {
           placeholder="Obj 1: …&#10;Obj 2: …&#10;Obj 3: …" className={ta} />
       </Field>
 
-      <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-border">
         <Field label="Scope — In" required>
           <div className="flex items-center justify-end mb-1"><Counter ok={scopeOk} count={scopeIn.length} min={50} /></div>
           <AutoTextarea value={scopeIn} onChange={(e) => setScopeIn(e.target.value)} minRows={3}
@@ -273,7 +273,7 @@ export function CharterSection({ projectId }: { projectId: number }) {
           placeholder="Kickoff · 15 Jun 2026 · PM&#10;Design freeze · 30 Jul 2026 · Lead Architect&#10;UAT complete · 30 Sep 2026 · QA" className={ta} />
       </Field>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         <Field label="Start Date">
           <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={ta} />
         </Field>
@@ -287,7 +287,7 @@ export function CharterSection({ projectId }: { projectId: number }) {
       </div>
 
       <p className="text-xs font-bold text-foreground pt-3 border-t border-border">Budget</p>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <Field label="CapEx (₹)">
           <input type="number" value={capex} onChange={(e) => setCapex(e.target.value)} placeholder="0"
             className={`${ta} font-mono`} />
@@ -303,7 +303,7 @@ export function CharterSection({ projectId }: { projectId: number }) {
       </Field>
 
       <p className="text-xs font-bold text-foreground pt-3 border-t border-border">Team & Stakeholders</p>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         <Field label="Sponsor"><input value={sponsor} onChange={(e) => setSponsor(e.target.value)} placeholder="Name / role" className={ta} /></Field>
         <Field label="Project Owner"><input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="Name / role" className={ta} /></Field>
         <Field label="Project Manager"><input value={manager} onChange={(e) => setManager(e.target.value)} placeholder="Name / role" className={ta} /></Field>
@@ -318,7 +318,7 @@ export function CharterSection({ projectId }: { projectId: number }) {
       </Field>
 
       <p className="text-xs font-bold text-foreground pt-3 border-t border-border">Risk & Governance</p>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Assumptions">
           <AutoTextarea value={assumptions} onChange={(e) => setAssumptions(e.target.value)} minRows={3}
             placeholder="What must be true for the plan to hold" className={ta} />
@@ -343,7 +343,7 @@ export function CharterSection({ projectId }: { projectId: number }) {
       </Field>
 
       <p className="text-xs font-bold text-foreground pt-3 border-t border-border">Business Benefits</p>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Top-line Improvement" hint="Revenue / market / capacity">
           <AutoTextarea value={topline} onChange={(e) => setTopline(e.target.value)} minRows={2} className={ta}
             placeholder="Revenue uplift, new capability, market access" />

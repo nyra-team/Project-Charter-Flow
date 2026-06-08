@@ -16,7 +16,7 @@ export function PriorityChip({ priority }: { priority: string }) {
   const meta = getPriorityMeta(priority);
   return (
     <span
-      className="inline-flex items-center px-2 py-0.5 rounded-none text-xs font-bold whitespace-nowrap"
+      className="inline-flex items-center justify-center min-w-[84px] px-2 py-0.5 rounded-none text-xs font-bold whitespace-nowrap"
       style={{ background: meta.bg, color: meta.color, border: `1px solid ${meta.color}40` }}
     >
       {meta.label}

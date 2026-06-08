@@ -79,7 +79,7 @@ function ProjectHealthSection({ health }: { health: DashboardSummary["projectHea
         </Link>
       }
     >
-      <div className="grid grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         {tiles.map(t => {
           const Icon = t.icon;
           return (
@@ -275,7 +275,7 @@ export default function GeneralDashboard() {
             <Link href="/demands/new">
               <button className="btn-glossy-cta flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold" data-testid="button-new-demand">
                 <Sparkles size={14} />
-                <span>New Demand</span>
+                <span>Business Case</span>
               </button>
             </Link>
           </div>

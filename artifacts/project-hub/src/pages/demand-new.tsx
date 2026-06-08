@@ -67,7 +67,7 @@ export default function NewDemand() {
         <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground">
           Stage 1 of 9 · Initiation
         </p>
-        <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-card-foreground mt-1">New Demand</h1>
+        <h1 className="text-3xl lg:text-4xl font-bold tracking-tight text-card-foreground mt-1">Business Case</h1>
         <p className="text-sm text-muted-foreground mt-2 max-w-2xl">
           Start a new project at the very beginning of the governance lifecycle. You'll capture
           the full business justification, scope, outcomes and CapEx/OpEx split on the next screen.

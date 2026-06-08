@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "./components/Layout";
 import { AuthConsumer } from "./auth/AuthConsumer";
 import { SessionExpiredModal } from "./components/SessionExpiredModal";
+import { AskNyra } from "./components/AskNyra";
 import Dashboard from "./pages/dashboard";
 import ChartersList from "./pages/charters";
 import NewCharter from "./pages/charter-new";
@@ -17,6 +18,7 @@ import ProjectsList from "./pages/projects";
 import ProjectDetail from "./pages/project-detail";
 import NewTask from "./pages/task-new";
 import PortfolioView from "./pages/portfolio";
+import PortfolioOverview from "./pages/portfolio-overview";
 import ProjectsTreeView from "./pages/projects-tree";
 import MyTasksPage from "./pages/my-tasks";
 import TasksPage from "./pages/tasks";
@@ -24,12 +26,16 @@ import AdminScoring from "./pages/admin-scoring";
 import AdminStageSlas from "./pages/admin-stage-slas";
 import AdminRoleDirectory from "./pages/admin-role-directory";
 import AdminStageEscalation from "./pages/admin-stage-escalation";
+import AdminDoaMatrix from "./pages/admin-doa-matrix";
 import DocumentsPage from "./pages/documents";
 import LessonsLearnedPage from "./pages/lessons-learned";
 import TemplatesPage from "./pages/templates";
 import PifsList from "./pages/pifs";
 import PifNew from "./pages/pif-new";
 import PifDetail from "./pages/pif-detail";
+import NfasList from "./pages/nfas";
+import NfaNew from "./pages/nfa-new";
+import NfaDetail from "./pages/nfa-detail";
 import NudgesPage from "./pages/nudges";
 import AdminIntegrationsPage from "./pages/admin-integrations";
 import VendorsPage from "./pages/vendors";
@@ -78,13 +84,15 @@ function Router() {
         <Route path="/projects/tree" component={ProjectsTreeView} />
         <Route path="/projects/:id/tasks/new" component={NewTask} />
         <Route path="/projects/:id" component={ProjectDetail} />
-        <Route path="/portfolio" component={PortfolioView} />
+        <Route path="/portfolio" component={PortfolioOverview} />
+        <Route path="/portfolio-legacy" component={PortfolioView} />
         <Route path="/my-tasks" component={MyTasksPage} />
         <Route path="/tasks" component={TasksPage} />
         <Route path="/admin/scoring" component={AdminScoring} />
         <Route path="/admin/stage-slas" component={AdminStageSlas} />
         <Route path="/admin/role-directory" component={AdminRoleDirectory} />
         <Route path="/admin/stage-escalation" component={AdminStageEscalation} />
+        <Route path="/admin/doa-matrix" component={AdminDoaMatrix} />
         <Route path="/admin/integrations" component={AdminIntegrationsPage} />
         <Route path="/documents" component={DocumentsPage} />
         <Route path="/lessons-learned" component={LessonsLearnedPage} />
@@ -92,6 +100,9 @@ function Router() {
         <Route path="/pifs/new" component={PifNew} />
         <Route path="/pifs/:id" component={PifDetail} />
         <Route path="/pifs" component={PifsList} />
+        <Route path="/nfas/new" component={NfaNew} />
+        <Route path="/nfas/:id" component={NfaDetail} />
+        <Route path="/nfas" component={NfasList} />
         <Route path="/nudges" component={NudgesPage} />
         <Route path="/automations" component={AutomationsPage} />
         <Route path="/activity" component={ActivityPage} />
@@ -118,6 +129,7 @@ function App() {
           </WouterRouter>
           <Toaster />
           <SessionExpiredModal />
+          <AskNyra />
         </TooltipProvider>
       </AuthConsumer>
     </QueryClientProvider>

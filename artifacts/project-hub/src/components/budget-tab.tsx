@@ -122,7 +122,7 @@ export function BudgetTab({
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">CapEx & OpEx baseline vs forecast vs actual.</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <AiButton
               endpoint={`/api/ai/projects/${projectId}/budget-insights`}
               label="Budget Insights"
@@ -135,7 +135,7 @@ export function BudgetTab({
                     ✨ Budget Insights (AI)
                   </button>
                   {(loading || error || result != null) && (
-                    <div className="w-[420px]"><AiResultPanel loading={loading} error={error} result={result} render={(r) => {
+                    <div className="w-full max-w-[420px]"><AiResultPanel loading={loading} error={error} result={result} render={(r) => {
                       const raw = r as {
                         headline?: string; overall_health?: string;
                         over_utilized_categories?: Array<{ category: string; variancePct?: number; note?: string }>;
@@ -209,7 +209,7 @@ export function BudgetTab({
           <div className="p-10 text-center text-sm text-muted-foreground">No budget lines yet. Click "Add Budget Line" to start.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[800px] text-sm">
               <thead style={{ background: "hsl(var(--muted) / 0.40)" }}>
                 <tr>
                   <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Category</th>
@@ -348,7 +348,7 @@ export function BudgetTab({
               <label className="text-xs font-semibold text-muted-foreground">Description</label>
               <Input value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Line item description" />
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="text-xs font-semibold text-muted-foreground">Baseline</label>
                 <Input type="number" value={form.baselineAmount} onChange={e => setForm({ ...form, baselineAmount: e.target.value })} />

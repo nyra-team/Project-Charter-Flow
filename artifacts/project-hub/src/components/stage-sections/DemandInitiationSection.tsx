@@ -313,7 +313,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
           values still flow through the saved payload for back-compat. */}
 
       {/* Outcomes / Success / Stakeholders */}
-      <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-border">
         <Field label="Expected Outcomes" required>
           <AutoTextarea value={outcomes} onChange={(e) => setOutcomes(e.target.value)} minRows={3}
             placeholder="Measurable business benefits — savings, capability, KPIs" className={ta} />
@@ -336,7 +336,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
           the saved payload for back-compat. */}
       <p className="text-xs font-bold text-foreground pt-3 border-t border-border">Business Process Detail</p>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="As-Is Process" hint="How the business operates today">
           <AutoTextarea value={asIs} onChange={(e) => setAsIs(e.target.value)} minRows={4}
             placeholder="Step 1 → Step 2 → Step 3 — current pain points highlighted" className={ta} />
@@ -352,7 +352,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
           placeholder="• Batch can only be released after QA sign-off&#10;• Material code must follow X format&#10;• Discount cannot exceed Y% without HOD approval" className={ta} />
       </Field>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Process Owners" hint="Department · Owner · Function">
           <AutoTextarea value={procOwners} onChange={(e) => setProcOwners(e.target.value)} minRows={3}
             placeholder="QA · Ms. Iyer · Owns batch release process&#10;Production · Mr. Rao · Owns batch execution" className={ta} />
@@ -379,7 +379,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
       </Field>
 
       {/* Alternatives & Risks */}
-      <div className="grid grid-cols-2 gap-3 pt-3 border-t border-border">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-border">
         <Field label="Alternatives Considered" hint="Other options & why rejected">
           <AutoTextarea value={alternatives} onChange={(e) => setAlternatives(e.target.value)} minRows={3}
             placeholder="Option A: …, rejected because …&#10;Option B: …, rejected because …" className={ta} />
@@ -390,7 +390,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
         </Field>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <Field label="Assumptions">
           <AutoTextarea value={assumptions} onChange={(e) => setAssumptions(e.target.value)} minRows={2}
             placeholder="What must be true for this to work" className={ta} />
@@ -402,7 +402,7 @@ export function DemandInitiationSection({ projectId }: { projectId: number }) {
       </div>
 
       {/* Sponsor & Budget */}
-      <div className="grid grid-cols-3 gap-2 pt-3 border-t border-border">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-3 border-t border-border">
         <Field label="Sponsor">
           <input value={sponsor} onChange={(e) => setSponsor(e.target.value)} placeholder="Name / role"
             className={ta} />

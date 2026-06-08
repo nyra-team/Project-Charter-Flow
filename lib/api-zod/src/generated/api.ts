@@ -712,6 +712,7 @@ export const UpdateProjectBody = zod.object({
   status: zod.string().optional(),
   priority: zod.string().optional(),
   stage: zod.string().optional(),
+  category: zod.string().optional(),
   strategicTheme: zod.string().optional(),
   ragStatus: zod.string().optional(),
   ragOverrideJustification: zod.string().optional(),

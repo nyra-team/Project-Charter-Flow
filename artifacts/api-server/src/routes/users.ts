@@ -29,10 +29,22 @@ router.get("/users/me", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Not authenticated" });
     return;
   }
+  // Overlay the master-DB-derived identity onto the local row so the
+  // frontend has a single authoritative source for the user's real
+  // functional role (resolved by requireAuth via derivePmoRole) plus the
+  // app-access flags — distinct from the local pmo_users.role column, which
+  // is just a default ("initiator") for "created by" attribution.
+  const identity = {
+    pmoRole: me.pmoRole,
+    isAdmin: me.isAdmin,
+    isSuperAdmin: me.isSuperAdmin,
+    accessPmo: me.accessPmo,
+  };
+
   const email = me.email.toLowerCase();
   const existing = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
   if (existing[0]) {
-    res.json(serializeUser(existing[0]));
+    res.json({ ...serializeUser(existing[0]), ...identity });
     return;
   }
   // Auto-provision. onConflictDoNothing handles the race where two parallel
@@ -51,7 +63,7 @@ router.get("/users/me", async (req, res): Promise<void> => {
     res.status(500).json({ error: "Failed to provision local user" });
     return;
   }
-  res.json(serializeUser(row));
+  res.json({ ...serializeUser(row), ...identity });
 });
 
 router.get("/users", async (_req, res): Promise<void> => {

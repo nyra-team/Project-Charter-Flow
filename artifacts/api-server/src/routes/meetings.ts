@@ -2,10 +2,22 @@ import { Router, type IRouter } from "express";
 import { db, meetingsTable, meetingItemsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireRole, pick } from "../lib/guard";
+import { syncMomItemToCxo, deleteCxoMirror, shouldMirror } from "../lib/cxoActionSync";
 
 const router: IRouter = Router();
 
 const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
+
+// Mirror a MOM item row into the CXO Action Center (best-effort, fire-and-forget).
+// Loads the item's parent meeting for project_id + title, which the item lacks.
+function mirrorMomItem(item: typeof meetingItemsTable.$inferSelect): void {
+  void (async () => {
+    const [meeting] = await db.select().from(meetingsTable).where(eq(meetingsTable.id, item.meetingId));
+    if (!meeting) return;
+    if (shouldMirror(meeting)) await syncMomItemToCxo(item, meeting);
+    else if (item.execActionItemId != null) await deleteCxoMirror(item.execActionItemId); // meeting lost its project
+  })().catch(() => {});
+}
 
 const MEETING_FIELDS = [
   "title", "type", "projectId", "scheduledDate", "scheduledTime",
@@ -66,12 +78,33 @@ router.patch("/meetings/:id", requireRole(...WRITE_ROLES), async (req, res): Pro
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No editable fields provided" }); return; }
   const [row] = await db.update(meetingsTable).set(updates).where(eq(meetingsTable.id, id)).returning();
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  // A meeting's project drives whether its items mirror to CXO. If projectId
+  // was touched, reconcile every item's mirror (create when a project is added,
+  // delete when removed). Re-mirroring is idempotent.
+  if ("projectId" in updates) {
+    void (async () => {
+      const items = await db.select().from(meetingItemsTable).where(eq(meetingItemsTable.meetingId, id));
+      for (const it of items) {
+        if (shouldMirror(row)) await syncMomItemToCxo(it, row);
+        else await deleteCxoMirror(it.execActionItemId);
+      }
+    })().catch(() => {});
+  }
   res.json(row);
 });
 
 router.delete("/meetings/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [meeting] = await db.select().from(meetingsTable).where(eq(meetingsTable.id, id));
+  if (!meeting) { res.status(404).json({ error: "Not found" }); return; }
+  // The synthetic "CXO Action Center" container is managed by the sync, not by
+  // hand — deleting it from PMO would orphan a project's mirrored items.
+  if (meeting.isCxoContainer) { res.status(409).json({ error: "This is an auto-managed CXO Action Center meeting and cannot be deleted here." }); return; }
+  // Bulk-deleting items bypasses the per-item delete hook, so tear down their
+  // CXO mirrors first.
+  const items = await db.select().from(meetingItemsTable).where(eq(meetingItemsTable.meetingId, id));
+  for (const it of items) await deleteCxoMirror(it.execActionItemId);
   await db.delete(meetingItemsTable).where(eq(meetingItemsTable.meetingId, id));
   await db.delete(meetingsTable).where(eq(meetingsTable.id, id));
   res.status(204).send();
@@ -99,6 +132,7 @@ router.post("/meetings/:id/items", requireRole(...WRITE_ROLES), async (req, res)
     notes: (data.notes as string) ?? "",
     category: (data.category as string) ?? "action_item",
   }).returning();
+  mirrorMomItem(row); // mirror into CXO Action Center if the meeting has a project
   res.status(201).json(row);
 });
 
@@ -109,13 +143,16 @@ router.patch("/meeting-items/:id", requireRole(...WRITE_ROLES), async (req, res)
   if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No editable fields provided" }); return; }
   const [row] = await db.update(meetingItemsTable).set(updates).where(eq(meetingItemsTable.id, id)).returning();
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  mirrorMomItem(row); // propagate the edit to the CXO mirror (or create it lazily)
   res.json(row);
 });
 
 router.delete("/meeting-items/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [existing] = await db.select().from(meetingItemsTable).where(eq(meetingItemsTable.id, id));
   await db.delete(meetingItemsTable).where(eq(meetingItemsTable.id, id));
+  if (existing?.execActionItemId != null) void deleteCxoMirror(existing.execActionItemId).catch(() => {});
   res.status(204).send();
 });
 

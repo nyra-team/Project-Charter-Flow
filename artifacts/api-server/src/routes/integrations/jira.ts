@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
-import { db, projectsTable, tasksTable, mcpIntegrationsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, projectsTable, tasksTable, milestonesTable, mcpIntegrationsTable } from "@workspace/db";
+import { eq, and, inArray } from "drizzle-orm";
+import { recomputeRollups } from "../../lib/rollup";
 import {
   type JiraConfig,
   jiraListProjects,
@@ -18,10 +19,12 @@ import {
 // Jira ⇄ PMO two-way sync. Mounted at /api/integrations/jira behind the
 // standard requireAuth chain (app-level), so any access_pmo user can run it.
 //
-//   import  : Jira project's issues  → pmo_projects (1) + pmo_tasks (n)
+//   import  : Jira project's issues  → pmo_projects (1) + pmo_milestones (epics)
+//             + pmo_tasks (stories/sub-tasks, nested under their epic-milestone
+//             and parent story). Epics render as milestone bars on the timeline.
 //   export  : pmo_project + its tasks → Jira issues
 //
-// Idempotent via the jira_key columns on pmo_projects / pmo_tasks.
+// Idempotent via the jira_key columns on pmo_projects / pmo_milestones / pmo_tasks.
 
 const router: IRouter = Router();
 
@@ -35,6 +38,46 @@ async function loadJiraConfig(): Promise<JiraConfig> {
     throw new Error("Jira connector is missing baseUrl/email/apiToken.");
   }
   return cfg as JiraConfig;
+}
+
+/**
+ * Upsert one Jira issue as a pmo_task (idempotent by jira_key). `rels` carries
+ * the resolved hierarchy links (milestone from the issue's epic, parentTaskId
+ * from its parent story) so the import can nest issues. Returns the task id and
+ * whether it was newly created. The clean Jira description is stored as-is —
+ * the issue key/type live in jira_key — so a later export doesn't write a
+ * "[KEY] type" prefix back into Jira.
+ */
+async function upsertTask(
+  it: { key: string; summary: string; description: string; statusCategory: string; priority: string | null; dueDate: string | null; component: string | null },
+  projectId: number,
+  rels: { milestoneId?: number | null; parentTaskId?: number | null },
+): Promise<{ id: number; created: boolean }> {
+  const status = jiraStatusToPmo(it.statusCategory);
+  const priority = jiraPriorityToPmo(it.priority);
+  const name = it.summary || it.key;
+  const description = it.description ?? "";
+  const [existing] = await db.select({ id: tasksTable.id }).from(tasksTable).where(eq(tasksTable.jiraKey, it.key));
+  if (existing) {
+    await db.update(tasksTable)
+      .set({
+        name, description, status, priority,
+        endDate: it.dueDate ?? undefined,
+        milestoneId: rels.milestoneId ?? null,
+        parentTaskId: rels.parentTaskId ?? null,
+        jiraComponent: it.component ?? null, jiraSyncedAt: new Date(),
+      })
+      .where(eq(tasksTable.id, existing.id));
+    return { id: existing.id, created: false };
+  }
+  const [row] = await db.insert(tasksTable).values({
+    projectId, name, description, status, priority,
+    endDate: it.dueDate ?? undefined,
+    milestoneId: rels.milestoneId ?? null,
+    parentTaskId: rels.parentTaskId ?? null,
+    jiraKey: it.key, jiraComponent: it.component ?? null, jiraSyncedAt: new Date(),
+  }).returning({ id: tasksTable.id });
+  return { id: row.id, created: true };
 }
 
 // ─── GET /api/integrations/jira/projects ──────────────────────────────────
@@ -109,32 +152,81 @@ router.post("/integrations/jira/import", async (req, res): Promise<void> => {
   try { issues = await jiraSearchIssues(cfg, `project = "${jiraProjectKey}"${compFilter} ORDER BY created ASC`); }
   catch (e) { res.status(502).json({ error: `Jira search failed: ${(e as Error).message}` }); return; }
 
-  let created = 0, updated = 0;
-  for (const it of issues) {
+  // Partition by hierarchy: Epics become milestones, everything else becomes a
+  // task. A task's parentKey pointing at an imported Epic nests it under that
+  // milestone; pointing at another (non-epic) issue makes it a sub-task.
+  const isEpic = (it: typeof issues[number]) => /epic/i.test(it.issueType);
+  const epicKeyList = issues.filter(isEpic).map((it) => it.key);
+  const epicKeys = new Set(epicKeyList);
+
+  // Cleanup for projects imported BEFORE epics-as-milestones existed: an epic
+  // that was previously stored as a flat pmo_task would now also become a
+  // milestone, duplicating it. Drop those leftover epic-tasks (scoped to this
+  // project + the epic keys in this import) before creating the milestones.
+  if (epicKeyList.length) {
+    await db.delete(tasksTable).where(
+      and(eq(tasksTable.projectId, projectId), inArray(tasksTable.jiraKey, epicKeyList)),
+    );
+  }
+
+  // ── Pass 1: Epics → milestones (upsert by jira_key) ──────────────────────
+  const milestoneIdByEpic = new Map<string, number>();
+  let milestonesCreated = 0, milestonesUpdated = 0;
+  for (const it of issues.filter(isEpic)) {
     const status = jiraStatusToPmo(it.statusCategory);
     const priority = jiraPriorityToPmo(it.priority);
     const name = it.summary || it.key;
-    // Store the clean Jira description (issue key/type live in jira_key /
-    // the issue itself) so a later export doesn't write a "[KEY] type"
-    // prefix back into Jira.
     const description = it.description ?? "";
-    const [existing] = await db.select({ id: tasksTable.id }).from(tasksTable).where(eq(tasksTable.jiraKey, it.key));
+    const [existing] = await db.select({ id: milestonesTable.id }).from(milestonesTable).where(eq(milestonesTable.jiraKey, it.key));
     if (existing) {
-      await db.update(tasksTable)
-        .set({ name, description, status, priority, endDate: it.dueDate ?? undefined, jiraComponent: it.component ?? null, jiraSyncedAt: new Date() })
-        .where(eq(tasksTable.id, existing.id));
-      updated++;
+      await db.update(milestonesTable)
+        .set({ name, description, status, priority, startDate: it.startDate ?? undefined, dueDate: it.dueDate ?? undefined, jiraSyncedAt: new Date() })
+        .where(eq(milestonesTable.id, existing.id));
+      milestoneIdByEpic.set(it.key, existing.id);
+      milestonesUpdated++;
     } else {
-      await db.insert(tasksTable).values({
+      const [row] = await db.insert(milestonesTable).values({
         projectId, name, description, status, priority,
-        endDate: it.dueDate ?? undefined,
-        jiraKey: it.key, jiraComponent: it.component ?? null, jiraSyncedAt: new Date(),
-      });
-      created++;
+        startDate: it.startDate ?? undefined, dueDate: it.dueDate ?? undefined,
+        jiraKey: it.key, jiraSyncedAt: new Date(),
+      }).returning({ id: milestonesTable.id });
+      milestoneIdByEpic.set(it.key, row.id);
+      milestonesCreated++;
     }
   }
 
-  res.json({ projectId, jiraProjectKey, total: issues.length, created, updated });
+  // ── Pass 2 (stories) then Pass 3 (sub-tasks) → tasks ─────────────────────
+  // Stories first so their task ids exist before sub-tasks reference them.
+  const taskIdByKey = new Map<string, number>();
+  const milestoneIdByTaskKey = new Map<string, number | null>();
+  let created = 0, updated = 0;
+
+  const nonEpics = issues.filter((it) => !isEpic(it));
+  const stories = nonEpics.filter((it) => !it.parentKey || epicKeys.has(it.parentKey)); // top-level or under an epic
+  const subtasks = nonEpics.filter((it) => it.parentKey && !epicKeys.has(it.parentKey)); // under another issue
+
+  for (const it of stories) {
+    const milestoneId = it.parentKey ? milestoneIdByEpic.get(it.parentKey) ?? null : null;
+    const r = await upsertTask(it, projectId, { milestoneId });
+    taskIdByKey.set(it.key, r.id);
+    milestoneIdByTaskKey.set(it.key, milestoneId);
+    if (r.created) created++; else updated++;
+  }
+  for (const it of subtasks) {
+    const parentTaskId = it.parentKey ? taskIdByKey.get(it.parentKey) ?? null : null;
+    const milestoneId = it.parentKey ? milestoneIdByTaskKey.get(it.parentKey) ?? null : null; // inherit parent's milestone
+    const r = await upsertTask(it, projectId, { milestoneId, parentTaskId });
+    if (r.created) created++; else updated++;
+  }
+
+  // Recompute hierarchy so the new epic-milestones show rolled-up progress.
+  try { await recomputeRollups(projectId); } catch { /* non-fatal */ }
+
+  res.json({
+    projectId, jiraProjectKey, total: issues.length,
+    created, updated,
+    milestonesCreated, milestonesUpdated,
+  });
 });
 
 // ─── POST /api/integrations/jira/export ───────────────────────────────────

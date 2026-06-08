@@ -6,6 +6,7 @@ import {
   purchaseOrdersTable,
   projectsTable,
   notificationsTable,
+  chartersTable,
 } from "@workspace/db";
 import { eq, desc, and, or } from "drizzle-orm";
 import { logActivity } from "./activity";
@@ -25,7 +26,10 @@ const LineItemSchema = z.object({
 
 const CreatePRBody = z.object({
   projectId: z.number().int(),
-  charterId: z.number().int().optional(),
+  // Required — PR creation is gated on an approved Charter+NFA. The charter
+  // is the consolidated investment-authorization artifact in the Granules
+  // governance model; SAP can't be hit without it.
+  charterId: z.number().int(),
   vendorId: z.number().int().optional(),
   sapVendorCode: z.string().optional(),
   lineItems: z.array(LineItemSchema).min(1),
@@ -92,6 +96,20 @@ router.post("/prs", async (req, res): Promise<void> => {
 
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
+
+  // Gate — the Charter+NFA must be fully approved through the DOA chain.
+  // Block both "draft" and any in-review status (parallel_review, scm_review,
+  // chairman_review, finance_review, pmo_review). Only "approved" passes.
+  const [charter] = await db.select().from(chartersTable).where(eq(chartersTable.id, charterId));
+  if (!charter) { res.status(404).json({ error: "Charter not found" }); return; }
+  if (charter.status !== "approved") {
+    res.status(409).json({
+      error: `Charter+NFA not yet approved (status: ${charter.status}). PR creation is blocked until the DOA chain completes.`,
+      charterId,
+      charterStatus: charter.status,
+    });
+    return;
+  }
 
   const adapter = getSapAdapter();
   let sapResp;
@@ -286,6 +304,39 @@ router.post("/prs/:id/refresh", async (req, res): Promise<void> => {
   const [refreshedPr] = await db.select().from(purchaseRequisitionsTable).where(eq(purchaseRequisitionsTable.id, id));
   const refreshedPos = await db.select().from(purchaseOrdersTable).where(eq(purchaseOrdersTable.prId, id));
   res.json({ ...refreshedPr, purchaseOrders: refreshedPos });
+});
+
+// Delete a purchase requisition. BLOCKED once converted to a PO (delete the PO
+// first) — the PR→PO link is a governance/SAP relationship.
+router.delete("/prs/:id", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [pr] = await db.select().from(purchaseRequisitionsTable).where(eq(purchaseRequisitionsTable.id, id));
+  if (!pr) { res.status(404).json({ error: "Purchase requisition not found" }); return; }
+  const pos = await db.select({ id: purchaseOrdersTable.id }).from(purchaseOrdersTable).where(eq(purchaseOrdersTable.prId, id));
+  if (pos.length) {
+    res.status(409).json({ error: "This requisition has been converted to a purchase order; delete the PO first." });
+    return;
+  }
+  await db.delete(purchaseRequisitionsTable).where(eq(purchaseRequisitionsTable.id, id));
+  await logActivity("pr_deleted", `Purchase requisition #${id} deleted`, id, "purchase_requisition");
+  res.sendStatus(204);
+});
+
+// Delete a purchase order. BLOCKED when it exists in SAP (sap_po_number set) —
+// that record must be removed in SAP, not here.
+router.delete("/pos/:id", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [po] = await db.select().from(purchaseOrdersTable).where(eq(purchaseOrdersTable.id, id));
+  if (!po) { res.status(404).json({ error: "Purchase order not found" }); return; }
+  if (po.sapPoNumber) {
+    res.status(409).json({ error: "This PO exists in SAP and can't be deleted from here." });
+    return;
+  }
+  await db.delete(purchaseOrdersTable).where(eq(purchaseOrdersTable.id, id));
+  await logActivity("po_deleted", `Purchase order #${id} deleted`, id, "purchase_order");
+  res.sendStatus(204);
 });
 
 // Re-export of `or` used above kept here for future expansion (search across

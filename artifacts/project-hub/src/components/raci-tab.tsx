@@ -8,10 +8,14 @@ import { UserCheck, Download, AlertTriangle } from "lucide-react";
 
 type Entry = { id: number; projectId: number; taskId?: number | null; workstreamId?: number | null; userId: number; raciType: string };
 
-const RACI_OPTS = ["R", "A", "C", "I"] as const;
+// RASCI: Responsible, Accountable, Support, Consulted, Informed. "Support" (S)
+// is the assist role the org governance asked for; "Consulted" (C) is kept —
+// they are distinct concepts (S does part of the work; C is asked for input).
+const RACI_OPTS = ["R", "A", "S", "C", "I"] as const;
 const RACI_META: Record<string, { color: string; bg: string; label: string }> = {
   R: { color: "hsl(var(--primary))", bg: "hsl(var(--primary) / 0.10)", label: "Responsible" },
   A: { color: "hsl(var(--success))", bg: "hsl(var(--success) / 0.10)", label: "Accountable" },
+  S: { color: "#0d9488", bg: "rgba(13,148,136,0.10)", label: "Support" },
   C: { color: "hsl(var(--warn))", bg: "hsl(var(--warn) / 0.10)", label: "Consulted" },
   I: { color: "hsl(var(--muted-foreground))", bg: "hsl(var(--border))", label: "Informed" },
 };

@@ -1,13 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useListDocuments, useCreateDocument, useUpdateDocument, useDeleteDocument,
   useListDocumentVersions, useAddDocumentVersion, useListUsers,
+  getListProjectStagesQueryKey, getGetProjectQueryKey,
 } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useUserStore } from "../lib/store";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, FileText, Trash2, Lock, Unlock, History, Tag, Folder, Search, Upload, ChevronDown, ChevronRight } from "lucide-react";
+import { FileDropzone } from "@/components/ui/file-dropzone";
+import { Plus, FileText, Trash2, Lock, Unlock, History, Tag, Folder, Search, Upload, ChevronDown, ChevronRight, Download, FileCheck2, Eye, Loader2, ExternalLink, Sparkles } from "lucide-react";
 import { formatDate } from "../lib/format";
 import { LIFECYCLE_STAGES } from "../lib/lifecycle-config";
 
@@ -36,22 +40,49 @@ const ACCESS_PILL: Record<string, { pill: string; icon: typeof Lock }> = {
 
 export function DocumentsTab({ projectId }: { projectId: number }) {
   const { toast } = useToast();
+  const { userId } = useUserStore();
+  const queryClient = useQueryClient();
   const { data: docs = [], refetch } = useListDocuments(projectId);
   const { data: users = [] } = useListUsers();
   const createDoc = useCreateDocument();
   const updateDoc = useUpdateDocument();
   const deleteDoc = useDeleteDocument();
 
+  // AI backfill — the upload route fires a fire-and-forget classification
+  // job on the server. We surface a subtle pill in the header while it's
+  // running, then refetch docs + lifecycle stages so newly-assigned stages,
+  // ticked checklist items and auto-advanced stages appear without a reload.
+  const [backfillingUntil, setBackfillingUntil] = useState<number | null>(null);
+  const backfillActive = backfillingUntil != null && Date.now() < backfillingUntil;
+
+  function announceBackfill() {
+    setBackfillingUntil(Date.now() + 9000);
+  }
+
+  useEffect(() => {
+    if (!backfillingUntil) return;
+    const ms = Math.max(0, backfillingUntil - Date.now());
+    const t = setTimeout(() => {
+      refetch();
+      queryClient.invalidateQueries({ queryKey: getListProjectStagesQueryKey(projectId) });
+      queryClient.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) });
+      setBackfillingUntil(null);
+    }, ms);
+    return () => clearTimeout(t);
+  }, [backfillingUntil, projectId, queryClient, refetch]);
+
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [view, setView] = useState<"folder" | "list">("folder");
   const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set(["__unstaged__"]));
   const [versionDocId, setVersionDocId] = useState<number | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<Doc | null>(null);
   const [tagFilter, setTagFilter] = useState<string>("");
   const [accessFilter, setAccessFilter] = useState<string>("");
   const [form, setForm] = useState({
     name: "", stage: "", description: "", accessLevel: "team",
-    fileUrl: "", fileType: "application/pdf", tags: [] as string[],
+    fileUrl: "", fileType: "application/pdf", fileSize: 0, fileName: "",
+    tags: [] as string[],
   });
 
   const allDocs = docs as Doc[];
@@ -98,14 +129,17 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
         accessLevel: form.accessLevel,
         fileUrl: form.fileUrl || undefined,
         fileType: form.fileType || undefined,
+        fileSize: form.fileSize || undefined,
+        uploadedBy: userId ?? undefined,
         tags: form.tags,
       },
     }, {
       onSuccess: () => {
         toast({ title: "Document added" });
         setShowAdd(false);
-        setForm({ name: "", stage: "", description: "", accessLevel: "team", fileUrl: "", fileType: "application/pdf", tags: [] });
+        setForm({ name: "", stage: "", description: "", accessLevel: "team", fileUrl: "", fileType: "application/pdf", fileSize: 0, fileName: "", tags: [] });
         refetch();
+        announceBackfill();
       },
       onError: (e: unknown) => {
         const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
@@ -135,16 +169,22 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
     const meta = ACCESS_PILL[d.accessLevel] ?? ACCESS_PILL.team;
     const Icon = meta.icon;
     const isLocked = d.approvalStatus === "checked_out";
+    const isTemplate = (d.tags ?? []).includes("template");
     return (
       <div className="glass-surface lift-card ph-rise rounded-2xl p-3 group">
         <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-primary/10 border border-primary/20">
-            <FileText size={16} className="text-primary" />
+          <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 border ${isTemplate ? "bg-amber-accent/10 border-amber-accent/30" : "bg-primary/10 border-primary/20"}`}>
+            {isTemplate ? <FileCheck2 size={16} className="text-amber-accent" /> : <FileText size={16} className="text-primary" />}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">{d.name}</p>
               <span className="text-[11px] font-mono font-semibold text-primary">v{d.version}</span>
+              {isTemplate && (
+                <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-amber-accent/10 text-amber-accent border-amber-accent/30">
+                  Template
+                </span>
+              )}
               {isLocked && (
                 <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-destructive/10 text-destructive border-destructive/20 inline-flex items-center gap-1">
                   <Lock size={9} /> Locked
@@ -156,7 +196,7 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
               <span className={`text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border inline-flex items-center gap-1 ${meta.pill}`}>
                 <Icon size={9} /> {d.accessLevel}
               </span>
-              {(d.tags ?? []).map(t => (
+              {(d.tags ?? []).filter(t => t !== "template").map(t => (
                 <span key={t} className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm border bg-muted text-muted-foreground border-border inline-flex items-center gap-1">
                   <Tag size={8} /> {t}
                 </span>
@@ -167,6 +207,25 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
             </div>
           </div>
           <div className="flex items-center gap-1 flex-shrink-0">
+            {d.fileUrl && (
+              <button
+                onClick={() => setPreviewDoc(d)}
+                className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-primary transition-colors"
+                title="Quick view"
+              >
+                <Eye size={13} />
+              </button>
+            )}
+            {d.fileUrl && (
+              <a
+                href={d.fileUrl}
+                download
+                className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-primary transition-colors"
+                title={isTemplate ? "Download template" : "Download"}
+              >
+                <Download size={13} />
+              </a>
+            )}
             <select
               value={d.accessLevel}
               onChange={e => changeAccess(d, e.target.value)}
@@ -192,6 +251,12 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
 
   return (
     <div className="space-y-4">
+      {backfillActive && (
+        <div className="rounded-2xl px-4 py-2.5 flex items-center gap-3 border border-primary/30 bg-primary/5 text-primary">
+          <Sparkles size={14} className="animate-pulse" />
+          <p className="text-xs font-semibold">AI is reading your documents — classifying to stages, ticking checklist items, and advancing the lifecycle where gates clear…</p>
+        </div>
+      )}
       {/* Toolbar */}
       <div className="glass-surface lift-card ph-rise rounded-2xl p-4 flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 flex-1 min-w-[200px]">
@@ -312,8 +377,23 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
               </div>
             </div>
             <div>
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">File URL</label>
-              <Input value={form.fileUrl} onChange={e => setForm({ ...form, fileUrl: e.target.value })} placeholder="https://…" className="mt-1" />
+              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">File</label>
+              <div className="mt-1">
+                <FileDropzone
+                  accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt"
+                  maxSizeMB={500}
+                  currentFileName={form.fileName || null}
+                  onUploaded={(meta) => setForm(prev => ({
+                    ...prev,
+                    fileUrl: meta.fileUrl,
+                    fileType: meta.fileType,
+                    fileSize: meta.fileSize,
+                    fileName: meta.fileName,
+                    name: prev.name || meta.fileName.replace(/\.[^.]+$/, ""),
+                  }))}
+                  onCleared={() => setForm(prev => ({ ...prev, fileUrl: "", fileType: "application/pdf", fileSize: 0, fileName: "" }))}
+                />
+              </div>
             </div>
             <div>
               <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Description</label>
@@ -351,18 +431,165 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
 
       {/* Version history modal */}
       {versionDocId !== null && (
-        <VersionHistoryModal documentId={versionDocId} onClose={() => { setVersionDocId(null); refetch(); }} />
+        <VersionHistoryModal documentId={versionDocId} onClose={() => { setVersionDocId(null); refetch(); }} onVersionAdded={announceBackfill} />
+      )}
+
+      {/* Quick-view preview modal */}
+      {previewDoc && (
+        <DocumentPreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
       )}
     </div>
   );
 }
 
-function VersionHistoryModal({ documentId, onClose }: { documentId: number; onClose: () => void }) {
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+function kindOf(doc: Doc): "docx" | "pdf" | "image" | "text" | "other" {
+  const url = (doc.fileUrl ?? "").toLowerCase().split("?")[0];
+  const type = (doc.fileType ?? "").toLowerCase();
+  if (type === DOCX_MIME || url.endsWith(".docx")) return "docx";
+  if (type === "application/pdf" || url.endsWith(".pdf")) return "pdf";
+  if (type.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|bmp)$/.test(url)) return "image";
+  if (type.startsWith("text/") || /\.(txt|md|csv|json|log)$/.test(url)) return "text";
+  return "other";
+}
+
+function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void }) {
+  const kind = kindOf(doc);
+  const docxRef = useRef<HTMLDivElement>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [errMsg, setErrMsg] = useState<string>("");
+  const [blobUrl, setBlobUrl] = useState<string>("");
+  const [textContent, setTextContent] = useState<string>("");
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = "";
+
+    async function load() {
+      if (!doc.fileUrl) { setStatus("error"); setErrMsg("This document has no file attached."); return; }
+      if (kind === "other") { setStatus("error"); setErrMsg("In-browser preview isn't supported for this file type."); return; }
+      try {
+        const res = await fetch(doc.fileUrl);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        if (cancelled) return;
+
+        if (kind === "docx") {
+          // Wait a tick so the modal's container ref is mounted.
+          const container = docxRef.current;
+          if (!container) throw new Error("Preview container unavailable");
+          container.innerHTML = "";
+          const { renderAsync } = await import("docx-preview");
+          if (cancelled) return;
+          await renderAsync(blob, container, undefined, {
+            className: "docx-preview",
+            inWrapper: true,
+            ignoreWidth: false,
+            ignoreHeight: false,
+            breakPages: true,
+            useBase64URL: true,
+          });
+        } else if (kind === "text") {
+          const txt = await blob.text();
+          if (cancelled) return;
+          setTextContent(txt);
+        } else {
+          objectUrl = URL.createObjectURL(blob);
+          if (cancelled) { URL.revokeObjectURL(objectUrl); return; }
+          setBlobUrl(objectUrl);
+        }
+        if (!cancelled) setStatus("ready");
+      } catch (e) {
+        if (cancelled) return;
+        setStatus("error");
+        setErrMsg(e instanceof Error ? e.message : "Failed to load preview");
+      }
+    }
+
+    // Defer one frame so the docx container is in the DOM before render.
+    const t = setTimeout(load, 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc.id]);
+
+  return (
+    <Dialog open={true} onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-5xl w-[90vw] h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <DialogHeader className="px-5 py-3 border-b border-border/60 flex-shrink-0">
+          <DialogTitle className="flex items-center gap-2 tracking-tight text-base">
+            <FileText size={16} className="text-primary" />
+            <span className="truncate">{doc.name}</span>
+            <span className="text-[11px] font-mono font-semibold text-primary">v{doc.version}</span>
+            <a
+              href={doc.fileUrl ?? "#"}
+              download
+              className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-accent transition-colors"
+              title="Download"
+            >
+              <Download size={13} /> Download
+            </a>
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 overflow-auto scrollbar-thin bg-muted/40">
+          {status === "loading" && (
+            <div className="h-full flex items-center justify-center text-muted-foreground gap-2">
+              <Loader2 size={18} className="animate-spin" /> <span className="text-sm">Loading preview…</span>
+            </div>
+          )}
+
+          {status === "error" && (
+            <div className="h-full flex flex-col items-center justify-center gap-3 text-center px-6">
+              <FileText size={32} className="text-muted-foreground/50" />
+              <p className="text-sm text-muted-foreground max-w-md">{errMsg}</p>
+              {doc.fileUrl && (
+                <div className="flex items-center gap-2">
+                  <a href={doc.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-muted text-foreground hover:bg-accent transition-colors">
+                    <ExternalLink size={13} /> Open in new tab
+                  </a>
+                  <a href={doc.fileUrl} download className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                    <Download size={13} /> Download
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* DOCX always-mounted target (rendered into even while "loading") */}
+          <div className={kind === "docx" && status !== "error" ? "flex justify-center py-4" : "hidden"}>
+            <div ref={docxRef} className="docx-preview-host" />
+          </div>
+
+          {kind === "pdf" && status === "ready" && blobUrl && (
+            <iframe src={blobUrl} title={doc.name} className="w-full h-full border-0" />
+          )}
+
+          {kind === "image" && status === "ready" && blobUrl && (
+            <div className="h-full flex items-center justify-center p-4">
+              <img src={blobUrl} alt={doc.name} className="max-w-full max-h-full object-contain rounded-md shadow-sm" />
+            </div>
+          )}
+
+          {kind === "text" && status === "ready" && (
+            <pre className="text-xs font-mono whitespace-pre-wrap p-5 text-foreground">{textContent}</pre>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function VersionHistoryModal({ documentId, onClose, onVersionAdded }: { documentId: number; onClose: () => void; onVersionAdded?: () => void }) {
   const { toast } = useToast();
   const { data: versions = [], refetch } = useListDocumentVersions(documentId);
   const addVersion = useAddDocumentVersion();
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ fileUrl: "", notes: "" });
+  const [form, setForm] = useState({ fileUrl: "", fileName: "", notes: "" });
 
   const vs = (versions as DocVersion[]).slice().sort((a, b) => b.version - a.version);
 
@@ -371,7 +598,7 @@ function VersionHistoryModal({ documentId, onClose }: { documentId: number; onCl
       id: documentId,
       data: { fileUrl: form.fileUrl || undefined, notes: form.notes || undefined },
     }, {
-      onSuccess: () => { setShowForm(false); setForm({ fileUrl: "", notes: "" }); refetch(); toast({ title: "New version added" }); },
+      onSuccess: () => { setShowForm(false); setForm({ fileUrl: "", fileName: "", notes: "" }); refetch(); toast({ title: "New version added" }); onVersionAdded?.(); },
       onError: () => toast({ title: "Failed to add version", variant: "destructive" }),
     });
   }
@@ -402,7 +629,13 @@ function VersionHistoryModal({ documentId, onClose }: { documentId: number; onCl
 
           {showForm ? (
             <div className="space-y-2 border-t border-border/60 pt-3">
-              <Input value={form.fileUrl} onChange={e => setForm({ ...form, fileUrl: e.target.value })} placeholder="New file URL" />
+              <FileDropzone
+                accept=".pdf,.docx,.doc,.xlsx,.xls,.pptx,.ppt"
+                maxSizeMB={25}
+                currentFileName={form.fileName || null}
+                onUploaded={(meta) => setForm(prev => ({ ...prev, fileUrl: meta.fileUrl, fileName: meta.fileName }))}
+                onCleared={() => setForm(prev => ({ ...prev, fileUrl: "", fileName: "" }))}
+              />
               <Input value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} placeholder="Change notes" />
               <div className="flex gap-2 justify-end">
                 <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-sm rounded-md font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">Cancel</button>

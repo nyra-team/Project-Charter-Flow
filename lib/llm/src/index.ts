@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
 /**
@@ -59,30 +58,75 @@ function resolveCredentials(): { apiKey?: string; baseURL?: string } {
   return { apiKey, baseURL };
 }
 
-let _client: Anthropic | null = null;
-function getClient(): Anthropic | null {
-  if (_client) return _client;
-  const { apiKey, baseURL } = resolveCredentials();
-  if (!apiKey) return null;
-  _client = new Anthropic({ apiKey, baseURL });
-  return _client;
-}
-
 export function isLLMConfigured(): boolean {
   return Boolean(resolveCredentials().apiKey);
+}
+
+// ---------------------------------------------------------------------------
+// Auth-mode-aware messages-API call.
+//
+// The Anthropic Messages API accepts EITHER an `sk-ant-api03-*` key (sent as
+// `x-api-key`) OR an `sk-ant-oat*` Claude Code OAuth token (sent as
+// `Authorization: Bearer ...` + specific beta headers + the "You are Claude
+// Code…" identity block + NO temperature). Send a key under the wrong scheme
+// and the API silently rejects with `invalid_request_error`. This helper
+// auto-detects which mode the credential needs.
+//
+// Mirrors the same auth handling used by `llmWithTools` below (and by
+// backend/shared/llm.js via pi-ai). Keep them in sync.
+// ---------------------------------------------------------------------------
+type StdMessagesBody = {
+  model: string;
+  max_tokens: number;
+  system?: unknown;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  temperature?: number;
+};
+
+type StdMessagesResponse = {
+  content?: Array<{ type: string; text?: string }>;
+  usage?: { input_tokens?: number; output_tokens?: number };
+};
+
+function isOAuthToken(key: string): boolean {
+  return key.includes("sk-ant-oat");
+}
+
+function authBase(): { url: string; key: string; oauth: boolean } | null {
+  const { apiKey, baseURL } = resolveCredentials();
+  if (!apiKey) return null;
+  const root = (baseURL || "https://api.anthropic.com").replace(/\/$/, "");
+  const url = /\/v\d+$/.test(root) ? `${root}/messages` : `${root}/v1/messages`;
+  return { url, key: apiKey, oauth: isOAuthToken(apiKey) };
+}
+
+function headersFor(key: string, oauth: boolean): Record<string, string> {
+  if (oauth) {
+    return {
+      authorization: `Bearer ${key}`,
+      "anthropic-version": "2023-06-01",
+      "anthropic-beta": "oauth-2025-04-20,claude-code-20250219",
+      "content-type": "application/json",
+    };
+  }
+  return {
+    "x-api-key": key,
+    "anthropic-version": "2023-06-01",
+    "content-type": "application/json",
+  };
 }
 
 /**
  * Single entry point for every AI call in the application.
  */
 export async function llm<T = string>(opts: LLMCallOptions<T>): Promise<LLMResult<T>> {
-  const client = getClient();
-  if (!client) {
+  const auth = authBase();
+  if (!auth) {
     return {
       ok: false,
       reason: "no_api_key",
       message:
-        "AI features require Anthropic credentials. Enable Replit AI Integrations for Anthropic, or add ANTHROPIC_API_KEY under Tools → Secrets and reload the page.",
+        "AI features require Anthropic credentials. Set ANTHROPIC_API_KEY (either an sk-ant-api03-* key or an sk-ant-oat* OAuth token) in the api-server's process env, then restart.",
     };
   }
 
@@ -105,24 +149,47 @@ export async function llm<T = string>(opts: LLMCallOptions<T>): Promise<LLMResul
     last.content = last.content + hint;
   }
 
-  try {
-    const response = await client.messages.create({
-      model: opts.model || DEFAULT_MODEL,
-      max_tokens: opts.maxTokens ?? 2048,
-      temperature: opts.temperature ?? 0.4,
-      system: opts.system,
-      messages,
-    });
+  // Build the request body. OAuth tokens REQUIRE the Claude Code identity as
+  // the first system block and MUST NOT carry temperature (Anthropic rejects
+  // both deviations with a generic invalid_request_error). API keys take an
+  // ordinary system string + temperature.
+  const body: StdMessagesBody = {
+    model: opts.model || DEFAULT_MODEL,
+    max_tokens: opts.maxTokens ?? 2048,
+    messages,
+  };
+  if (auth.oauth) {
+    const systemBlocks: Array<{ type: "text"; text: string }> = [
+      { type: "text", text: CLAUDE_CODE_IDENTITY },
+    ];
+    if (opts.system) systemBlocks.push({ type: "text", text: opts.system });
+    body.system = systemBlocks;
+  } else {
+    if (opts.system) body.system = opts.system;
+    body.temperature = opts.temperature ?? 0.4;
+  }
 
-    const textBlocks = response.content
-      .filter((c): c is Extract<typeof c, { type: "text" }> => c.type === "text")
+  try {
+    const res = await fetch(auth.url, {
+      method: "POST",
+      headers: headersFor(auth.key, auth.oauth),
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return { ok: false, reason: "llm_error", message: `${res.status} ${errText.slice(0, 400)}` };
+    }
+    const data = (await res.json()) as StdMessagesResponse;
+
+    const textBlocks = (data.content ?? [])
+      .filter((c): c is { type: "text"; text: string } => c.type === "text" && typeof c.text === "string")
       .map((c) => c.text)
       .join("\n")
       .trim();
 
     const usage = {
-      inputTokens: response.usage?.input_tokens,
-      outputTokens: response.usage?.output_tokens,
+      inputTokens: data.usage?.input_tokens,
+      outputTokens: data.usage?.output_tokens,
     };
 
     if (opts.jsonSchema) {
@@ -146,6 +213,153 @@ export async function llm<T = string>(opts: LLMCallOptions<T>): Promise<LLMResul
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, reason: "llm_error", message };
   }
+}
+
+// ===========================================================================
+// Agentic tool-use caller (NYRA / Ask-NYRA analyst)
+// ===========================================================================
+//
+// The standard `llm()` above goes through the Anthropic SDK using x-api-key.
+// That works for ordinary `sk-ant-...` API keys but NOT for the Claude Code
+// OAuth tokens (`sk-ant-oat*`) this deployment runs on — those require Bearer
+// auth + the OAuth beta headers + the Claude Code identity block, and reject
+// `temperature`. So the tool loop below talks to the Messages API directly via
+// fetch, replicating exactly what the OAuth tokens need. Keep this self-
+// contained; do NOT route it through the SDK client.
+
+const CLAUDE_CODE_IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude.";
+
+// Quality-first, degrade on overload rather than failing the chat.
+const TOOL_MODEL_CHAIN = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"];
+
+export type AnthropicTool = {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+};
+
+type AnthropicBlock =
+  | { type: "text"; text: string }
+  | { type: "tool_use"; id: string; name: string; input: unknown }
+  | { type: string; [k: string]: unknown };
+type AnthropicResponse = { content?: AnthropicBlock[]; stop_reason?: string };
+
+function toolAuthBase(): { url: string; key: string } | null {
+  const { apiKey, baseURL } = resolveCredentials();
+  if (!apiKey) return null;
+  const root = (baseURL || "https://api.anthropic.com").replace(/\/$/, "");
+  // SDK base URLs already include /v1; bare api.anthropic.com does not.
+  const url = /\/v\d+$/.test(root) ? `${root}/messages` : `${root}/v1/messages`;
+  return { url, key: apiKey };
+}
+
+function toolHeaders(key: string): Record<string, string> {
+  return {
+    authorization: `Bearer ${key}`,
+    "anthropic-version": "2023-06-01",
+    "anthropic-beta": "oauth-2025-04-20,claude-code-20250219",
+    "content-type": "application/json",
+  };
+}
+
+function toolTextOf(data: AnthropicResponse): string {
+  return (data.content ?? [])
+    .filter((b): b is { type: "text"; text: string } => b.type === "text")
+    .map((b) => b.text ?? "")
+    .join("")
+    .trim();
+}
+
+async function postMessages(
+  url: string,
+  key: string,
+  body: (model: string) => Record<string, unknown>,
+): Promise<AnthropicResponse> {
+  let lastErr = "";
+  for (const model of TOOL_MODEL_CHAIN) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: toolHeaders(key),
+      body: JSON.stringify(body(model)),
+    });
+    if (res.ok) return (await res.json()) as AnthropicResponse;
+    const errText = await res.text();
+    lastErr = `${res.status} ${errText.slice(0, 200)}`;
+    const retryable =
+      res.status === 429 || res.status === 529 || errText.includes("overloaded");
+    if (!retryable) break;
+  }
+  throw new Error(`Claude call failed: ${lastErr}`);
+}
+
+/**
+ * Agentic tool-use loop. The model may call tools (executed by `runTool`)
+ * across up to `maxTurns` rounds; returns its final natural-language text.
+ * `messages` is mutated in place with the assistant/tool turns so callers can
+ * inspect the full trace. Throws if no API key is configured.
+ */
+export async function llmWithTools(
+  messages: Array<{ role: "user" | "assistant"; content: unknown }>,
+  system: string,
+  tools: AnthropicTool[],
+  runTool: (name: string, input: any) => Promise<unknown>,
+  opts: { maxTokens?: number; maxTurns?: number } = {},
+): Promise<string> {
+  const auth = toolAuthBase();
+  if (!auth) throw new Error("ANTHROPIC_API_KEY is not configured");
+  const maxTokens = opts.maxTokens ?? 2000;
+  const maxTurns = opts.maxTurns ?? 5;
+
+  for (let turn = 0; turn < maxTurns; turn++) {
+    const data = await postMessages(auth.url, auth.key, (model) => ({
+      model,
+      max_tokens: maxTokens,
+      system: [
+        { type: "text", text: CLAUDE_CODE_IDENTITY },
+        { type: "text", text: system },
+      ],
+      tools,
+      messages,
+    }));
+
+    if (data.stop_reason !== "tool_use") return toolTextOf(data);
+
+    // Echo the assistant's full turn (text + tool_use blocks) back into history.
+    messages.push({ role: "assistant", content: data.content ?? [] });
+
+    const toolResults: unknown[] = [];
+    for (const block of data.content ?? []) {
+      if (block.type !== "tool_use") continue;
+      const tu = block as { id: string; name: string; input: unknown };
+      let result: unknown;
+      try {
+        result = await runTool(tu.name, tu.input);
+      } catch (err) {
+        result = { error: err instanceof Error ? err.message : String(err) };
+      }
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: tu.id,
+        content: JSON.stringify(result).slice(0, 30000),
+      });
+    }
+    messages.push({ role: "user", content: toolResults });
+  }
+
+  // Out of turns — one final call WITHOUT tools to force a text answer.
+  const data = await postMessages(auth.url, auth.key, (model) => ({
+    model,
+    max_tokens: maxTokens,
+    system: [
+      { type: "text", text: CLAUDE_CODE_IDENTITY },
+      {
+        type: "text",
+        text: system + "\n\nProvide your final answer now using the data already gathered.",
+      },
+    ],
+    messages,
+  }));
+  return toolTextOf(data);
 }
 
 /** Tolerant JSON extractor — strips markdown fences and grabs the outer object. */

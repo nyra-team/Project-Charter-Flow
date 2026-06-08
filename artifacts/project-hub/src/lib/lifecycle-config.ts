@@ -31,7 +31,7 @@
 // Spec (from the business — "mandatory documents" column per stage):
 //
 //   Plan
-//     1. Business Requirements                       URS / BRD Document
+//     1. Business Case                               URS / BRD Document
 //     2. Request for Proposal                        RFP Document
 //     3. Vendor Evaluation and Finalization          Comparison Matrix (Tech & Comm)
 //                                                    Project Charter / NFA
@@ -52,8 +52,8 @@
 export const LIFECYCLE_STAGES = [
   {
     key: "initiation",
-    label: "Business Requirements",
-    shortLabel: "Business Requirements",
+    label: "Business Case",
+    shortLabel: "Business Case",
     description: "URS / BRD — Business Owner + IT Team dual-approval. Captures the WHY (business case) and the WHAT (requirements) together.",
     color: "#6366F1",
     requiredDocs: [
@@ -81,7 +81,7 @@ export const LIFECYCLE_STAGES = [
     ],
     prerequisites: [] as string[],
     advanceRoles: ["initiator", "pmo", "hod"],
-    advanceLabel: "Approve Business Requirements — Advance to RFP",
+    advanceLabel: "Approve Business Case — Advance to RFP",
     stageSpecific: { hasDemandInitiation: true, hasURSDualApproval: true },
   },
   {
@@ -96,7 +96,7 @@ export const LIFECYCLE_STAGES = [
       { id: "vendor_list", name: "Vendor Shortlist", description: "List of invited vendors with justification", acceptedTypes: ["PDF", "DOCX", "XLSX"], maxSizeMB: 10 },
     ],
     checklistItems: [
-      { id: "urs_approved_gate", label: "Business Requirements stage approved ✓", blocking: true },
+      { id: "urs_approved_gate", label: "Business Case stage approved ✓", blocking: true },
       { id: "rfp_created", label: "RFP document created or uploaded", blocking: true },
       { id: "urs_populated", label: "RFP header auto-populated from Requirements", blocking: false },
       { id: "vendor_invited", label: "Vendor list defined and notified", blocking: true },
@@ -506,12 +506,41 @@ export function getStageConfig(key: string) {
   return LIFECYCLE_STAGES.find(s => s.key === key) ?? null;
 }
 
+// ── Legacy stage remap (2026-06-02 canonical-13 redesign) ─────────────────────
+// The 4 deprecated keys still live in LIFECYCLE_STAGES purely so getStageConfig()
+// resolves old project_stage / milestone rows without crashing, but they are NOT
+// part of the canonical flow (excluded from LIFECYCLE_PHASES). Any milestone /
+// stage still carrying a deprecated key must be folded into its canonical home so
+// it groups under the right stage in the Work Breakdown and lifecycle views
+// (mirrors LEGACY_STAGE_PHASE in project-lifecycle.tsx, at stage granularity):
+//   investment_authorization (Charter / NFA)      → vendor_selection
+//   contract_po              (Negotiation/PR/PO)  → vendor_selection
+//   design                   (Technical/Func. dsgn)→ solution_design
+//   build                    (Config Desc/Spec)   → dev_config
+export const DEPRECATED_STAGE_KEYS = ["investment_authorization", "contract_po", "design", "build"];
+export const LEGACY_STAGE_REMAP: Record<string, string> = {
+  investment_authorization: "vendor_selection",
+  contract_po: "vendor_selection",
+  design: "solution_design",
+  build: "dev_config",
+};
+
+/** Resolve any stage key (new, legacy, blank or unknown) to its canonical key,
+ *  or null when it can't be placed on the canonical flow (treat as unassigned). */
+export function canonicalStageKey(key: string | null | undefined): string | null {
+  if (!key) return null;
+  const remapped = LEGACY_STAGE_REMAP[key] ?? key;
+  return getStageConfig(remapped) ? remapped : null;
+}
+
 // ── Conditional paths (mirrors api-server/src/lib/stage-gates.ts) ──────────────
 // 'vendor' runs all 9 stages; 'internal' skips the two procurement stages.
 export const INTERNAL_SKIPPED_STAGES = ["vendor_selection", "contract_po"];
 
 export function applicableStageKeys(projectType?: string | null): string[] {
-  const all = LIFECYCLE_STAGES.map(s => s.key as string);
+  // Canonical flow only — deprecated keys are folded into their canonical home
+  // via canonicalStageKey(), so they must never render as their own stage box.
+  const all = LIFECYCLE_STAGES.map(s => s.key as string).filter(k => !DEPRECATED_STAGE_KEYS.includes(k));
   return projectType === "internal" ? all.filter(k => !INTERNAL_SKIPPED_STAGES.includes(k)) : all;
 }
 

@@ -18,6 +18,7 @@ import { GoLiveCountdown } from "./stage-sections/GoLiveCountdown";
 import { ClosureReport } from "./stage-sections/ClosureReport";
 import { URSDualApprovalSection } from "./stage-sections/URSDualApproval";
 import { RFPTemplateSection } from "./stage-sections/RFPTemplate";
+import { RFPSection } from "./stage-sections/RFPSection";
 import { KickoffAttendeesSection } from "./stage-sections/KickoffAttendees";
 import { VendorEvalScorecard } from "./stage-sections/VendorEvalScorecard";
 import { ClosureReadinessSection } from "./stage-sections/ClosureReadinessSection";
@@ -186,12 +187,11 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
   const isCompletedStage =
     displayStageIdx < currentStageIdx ||
     stageRecords.some((r: { stage: string; status: string }) => r.stage === displayStageKey && r.status === "complete");
-  const isLockedStage =
-    displayStageIdx > currentStageIdx &&
-    !stageRecords.some(
-      (r: { stage: string; status: string }) =>
-        r.stage === displayStageKey && (r.status === "in_progress" || r.status === "complete"),
-    );
+  // Stage locking disabled — every stage is accessible and editable regardless
+  // of the current active stage. (Was: locked when a stage sat ahead of the
+  // current one and wasn't already in_progress/complete.) Restore the original
+  // expression below to re-enable sequential locking.
+  const isLockedStage = false;
 
   const stageDocs = (documents as Array<{ id: number; stage?: string | null; name: string; approvalStatus: string; uploadedAt: string; fileType?: string | null; fileSize?: number | null }>).filter(
     (d) => d.stage === displayStageKey,
@@ -238,6 +238,25 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
           biz_owner_approved: !!notes.__urs_biz_approved,
           it_approved: !!notes.__urs_it_approved,
           version_ctrl: docByName("URS Document"),
+        };
+      }
+      case "rfp": {
+        // RFP authoring + vendor shortlist + proposal deadline.
+        // The AI-generated Annexure RFP sets __rfp_annexure_generated; we also
+        // accept a manually-uploaded "RFP Document" as satisfying creation.
+        const rfpGenerated = !!notes.__rfp_annexure_generated || docByName("RFP Document");
+        // Vendor shortlist is stored on the vendor_selection stage notes (shared
+        // <VendorShortlist> component) — read it from there.
+        const vsRec = allStageRecords.find((r) => r.stage === "vendor_selection");
+        const vsNotes = parseNotes(vsRec);
+        const vendorCount = Array.isArray(vsNotes.__vendors) ? (vsNotes.__vendors as unknown[]).length : 0;
+        return {
+          urs_approved_gate: isComplete("initiation"),
+          rfp_created: rfpGenerated,
+          urs_populated: rfpGenerated,
+          vendor_invited: vendorCount > 0 || docByName("Vendor Shortlist"),
+          // deadline_set intentionally omitted — no form drives it, so it stays
+          // manually toggleable (deriving it would lock a blocking item to false).
         };
       }
       case "vendor_selection": {
@@ -563,6 +582,7 @@ export function StagePanel({ projectId, charterId, currentStageKey, selectedStag
                 {stageHas(stageConfig, "hasURSDualApproval") && <URSDualApprovalSection projectId={projectId} />}
               </>
             )}
+            {stageHas(stageConfig, "hasRFP") && <RFPSection projectId={projectId} />}
             {stageHas(stageConfig, "hasRFPTemplate") && <RFPTemplateSection projectId={projectId} />}
             {stageHas(stageConfig, "hasVendorEvalScorecard") && <VendorEvalScorecard projectId={projectId} />}
             {stageHas(stageConfig, "hasCharter") && <CharterSection projectId={projectId} />}

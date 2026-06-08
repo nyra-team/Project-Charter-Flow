@@ -61,9 +61,11 @@ router.post("/projects/:id/stages/:stage/advance", async (req, res): Promise<voi
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { stage } = req.params;
-  // Role is read from the server-side session (set via POST /api/session/role when the
-  // user switches role in the sidebar). This cannot be forged per-request by a client.
-  const requestRole = req.session.simulatedRole;
+  // Real functional role from the master employee DB (resolved in requireAuth
+  // via derivePmoRole). Replaces the old self-selected session role.
+  if (!req.user) { res.status(401).json({ error: "Not authenticated." }); return; }
+  const requestRole = req.user.pmoRole;
+  const isPlatformAdmin = req.user.isSuperAdmin || requestRole === "admin";
 
   const gate = STAGE_GATES[stage];
   if (!gate) { res.status(400).json({ error: `Unknown stage: ${stage}` }); return; }
@@ -77,12 +79,11 @@ router.post("/projects/:id/stages/:stage/advance", async (req, res): Promise<voi
     return;
   }
 
-  // 1. Role authorization from server-side session
-  if (!requestRole) {
-    res.status(403).json({ error: "No role set in session. Please select a role before advancing a stage." });
-    return;
-  }
-  if (!gate.advanceRoles.includes(requestRole)) {
+  // 1. Role authorization from the real role. Platform admins bypass; a stage
+  // whose advanceRoles include "initiator" is intentionally open to any
+  // authenticated Project Hub user (e.g. Initiation).
+  const stageOpenToAll = gate.advanceRoles.includes("initiator");
+  if (!isPlatformAdmin && !stageOpenToAll && !gate.advanceRoles.includes(requestRole)) {
     res.status(403).json({
       error: `Role '${requestRole}' is not authorized to advance stage '${stage}'. Allowed roles: ${gate.advanceRoles.join(", ")}`,
     });
@@ -194,10 +195,12 @@ router.post("/projects/:id/stages/:stage/test-advance", async (req, res): Promis
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { stage } = req.params;
-  const requestRole = req.session.simulatedRole;
+  if (!req.user) { res.status(401).json({ error: "Not authenticated." }); return; }
+  const requestRole = req.user.pmoRole;
 
-  if (requestRole !== "initiator") {
-    res.status(403).json({ error: "Test-advance is only available in initiator (testing) role." });
+  // Test-advance bypasses every gate, so it's restricted to platform admins.
+  if (!(req.user.isSuperAdmin || requestRole === "admin")) {
+    res.status(403).json({ error: "Test-advance is restricted to platform administrators." });
     return;
   }
 

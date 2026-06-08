@@ -19,6 +19,12 @@ export const documentsTable = pgTable("pmo_documents", {
   accessLevel: text("access_level").notNull().default("team"),
   tags: jsonb("tags").notNull().default([]),
   description: text("description").default(""),
+  // Per-document AI summary cache (used by the Live Project Charter feature).
+  // `summaryVersion` records the document `version` the summary was generated
+  // for, so unchanged files are never re-summarized on charter refresh.
+  summary: text("summary"),
+  summaryVersion: integer("summary_version"),
+  summaryGeneratedAt: timestamp("summary_generated_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

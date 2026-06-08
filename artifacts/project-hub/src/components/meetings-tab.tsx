@@ -21,6 +21,8 @@ type Item = {
   id: number; meetingId: number; description: string;
   assignedToUserId: number | null; dueDate: string | null;
   percentComplete: number; status: string; notes: string; category: string;
+  // Set when this MOM item is mirrored to a CXO Action Center item (two-way sync).
+  execActionItemId?: number | null;
 };
 
 const STATUS_PILL: Record<string, string> = {
@@ -245,7 +247,7 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
               <button onClick={() => setShowAdd(false)} className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"><X size={15} /></button>
             </div>
             <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Title" className="w-full px-2.5 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/40" />
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <select value={form.type} onChange={e => setForm({ ...form, type: e.target.value })} className="px-2 py-1.5 rounded-md border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring/40">
                 <option value="wrm">WRM (Weekly Review)</option>
                 <option value="brm">BRM (Business Review)</option>
@@ -332,7 +334,12 @@ export function MeetingsTab({ projectId }: { projectId: number }) {
                       <li key={it.id} className="text-xs flex items-start gap-2 p-2.5 rounded-md bg-muted/50 border border-border/60 hover:border-border transition-colors">
                         <span className={`text-[10px] px-1.5 py-0.5 rounded-sm font-mono uppercase tracking-wider font-semibold border whitespace-nowrap ${pill}`}>{it.status}</span>
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-foreground">{it.description}</div>
+                          <div className="font-medium text-foreground flex items-center gap-1.5">
+                            <span className="min-w-0">{it.description}</span>
+                            {it.execActionItemId != null && (
+                              <span className="flex-shrink-0 px-1.5 py-px rounded text-[9px] font-semibold bg-indigo-50 text-indigo-600 border border-indigo-200" title="Synced with the CXO Action Center">CXO</span>
+                            )}
+                          </div>
                           <div className="text-muted-foreground font-mono text-[10px] mt-0.5">{it.category}{it.dueDate ? ` · due ${it.dueDate}` : ""}{it.assignedToUserId ? ` · @user${it.assignedToUserId}` : ""}</div>
                         </div>
                       </li>

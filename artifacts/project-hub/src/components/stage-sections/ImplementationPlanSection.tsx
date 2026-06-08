@@ -46,7 +46,7 @@ export function ImplementationPlanSection({ projectId }: { projectId: number }) 
  </span>
  </div>
 
- <div className="grid grid-cols-3 gap-2">
+ <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
  <div className="bg-card rounded-lg p-2 border border-border">
  <div className="flex items-center gap-1 mb-0.5">
  {planUploaded ? <CheckCircle2 size={11} className="text-success" /> : <AlertCircle size={11} className="text-warn" />}

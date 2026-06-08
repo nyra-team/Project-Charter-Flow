@@ -1,47 +1,127 @@
 import { useListProjects, useListPortfolios } from "@workspace/api-client-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
-import { BarChart2, DollarSign } from "lucide-react";
+import { BarChart2, DollarSign, SlidersHorizontal, Check } from "lucide-react";
 import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { DashboardCard, KPITile, FilterBar, exportCSV } from "../components/dashboard/primitives";
 import { formatCurrency } from "../lib/format";
 import { MondayBoard, ProgressCell, DateCell, TextCell, type BoardColumn, type BoardGroup } from "@/components/monday";
-import { ViewSwitcher, type BoardView } from "@/components/monday/ViewSwitcher";
-import { CalendarView } from "@/components/monday/CalendarView";
-import { StatusChip } from "@/components/ui-kit";
+import { StatusChip, PageHeader } from "@/components/ui-kit";
 import { PriorityChip, RagDot } from "@/components/task-status-chip";
+import { TASK_PRIORITIES, fmtVariance } from "@/lib/task-constants";
 
 const RAG_COLORS = { green: "#22C55E", amber: "#EAB308", red: "#EF4444", grey: "#94A3B8" };
+
+// Computed project health — industry-standard EVM Schedule Performance Index.
+// Health is NOT absolute progress; it's actual progress vs the progress you'd
+// EXPECT given how much of the planned timeline has elapsed (Planned Value).
+//
+//   SPI = actual% / expected%   (expected% = elapsed / total duration × 100)
+//     SPI ≥ 0.95          → Green   (on / ahead of schedule)
+//     0.85 ≤ SPI < 0.95   → Amber   (minor slip — watch)
+//     SPI < 0.85          → Red     (significant slip — off track)
+//
+// Universal gates applied first: completed/100% = Green, past end date and not
+// done = Red (overdue), not yet started = Green, no dates = Grey (can't assess).
+// Budget can only DOWNGRADE health when real variance data exists — the table
+// stores budgets, not actual spend, so cost is neutral until that's available.
+// This is a display signal; the manually-set rag_status is left untouched.
+function projectHealth(p: {
+  progress?: number | null; status?: string | null;
+  startDate?: string | null; endDate?: string | null;
+  budgetVariancePct?: number | null; budgetThresholdPct?: number | null;
+}): "green" | "amber" | "red" | "grey" {
+  const status = (p.status ?? "").toLowerCase();
+  const progress = p.progress ?? 0;
+  if (status === "completed" || status === "closed" || progress >= 100) return "green";
+  if (!p.startDate || !p.endDate) return "grey"; // no schedule baseline → unrated
+
+  const now = Date.now();
+  const s = Math.min(new Date(p.startDate).getTime(), new Date(p.endDate).getTime());
+  const e = Math.max(new Date(p.startDate).getTime(), new Date(p.endDate).getTime());
+  if (now < s) return "green";  // hasn't started — on track by default
+  if (now > e) return "red";    // past the deadline and not complete — overdue
+
+  const expected = e > s ? ((now - s) / (e - s)) * 100 : 100;
+  const spi = expected > 0 ? progress / expected : 1;
+  let health: "green" | "amber" | "red" = spi >= 0.95 ? "green" : spi >= 0.85 ? "amber" : "red";
+
+  // Cost overlay (worst-wins) — only when actual budget variance is present.
+  if (p.budgetVariancePct != null) {
+    const tol = p.budgetThresholdPct ?? 10; // org tolerance (budget_threshold_pct, default 10%)
+    const budget = p.budgetVariancePct <= tol * 0.5 ? "green" : p.budgetVariancePct <= tol ? "amber" : "red";
+    const rank = { green: 0, amber: 1, red: 2 } as const;
+    if (rank[budget] > rank[health]) health = budget;
+  }
+  return health;
+}
 
 // Structural subset of a project row used by the Monday board on this page.
 interface PortfolioRow {
   id: number; name: string; status: string; priority: string;
-  ragStatus?: string | null; progress?: number | null; endDate?: string | null;
+  ragStatus?: string | null; progress?: number | null; startDate?: string | null; endDate?: string | null;
   capexBudget?: number | null; opexBudget?: number | null;
+  scheduleVarianceDays?: number | null; budgetVarianceAmount?: number | null; budgetVariancePct?: number | null;
+  budgetThresholdPct?: number | null;
   function?: string | null;
 }
 
-const STATUS_GROUP_META: { key: string; label: string; color: string }[] = [
-  { key: "active", label: "Active", color: "#F59E0B" },
-  { key: "planning", label: "Planning", color: "#6366F1" },
-  { key: "on_hold", label: "On Hold", color: "#94A3B8" },
-  { key: "completed", label: "Completed", color: "#10B981" },
-  { key: "closed", label: "Closed", color: "#64748B" },
-];
+// Clean, enterprise-grade "Timeline" cell: a single full-width purple bar with
+// the start date at the left and end date at the right. No axis, grid, today
+// marker or scale positioning — every row reads the same, calm width.
+function TimelineBar({ start, end }: { start?: string | null; end?: string | null }) {
+  if (!start || !end) {
+    return <span className="text-[10px] italic text-muted-foreground/50">no dates</span>;
+  }
+  const t0 = new Date(start).getTime(), t1 = new Date(end).getTime();
+  const lo = Math.min(t0, t1), hi = Math.max(t0, t1);
+  const fmt = (d: number) => new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  return (
+    <div className="w-full pr-1" title={`${fmt(lo)} → ${fmt(hi)}`}>
+      <div
+        className="flex items-center justify-between gap-2 h-4 w-full rounded-full px-2.5"
+        style={{ background: "linear-gradient(90deg, #7C3AED, #9333EA)" }}
+      >
+        <span className="text-[10px] font-semibold tabular-nums text-white whitespace-nowrap leading-none">{fmt(lo)}</span>
+        <span className="text-[10px] font-semibold tabular-nums text-white whitespace-nowrap leading-none">{fmt(hi)}</span>
+      </div>
+    </div>
+  );
+}
 
-const STATUS_OPTS = ["active", "planning", "completed", "on_hold", "closed"].map(v => ({ value: v, label: v.replace(/_/g, " ").replace(/^\w/, c => c.toUpperCase()) }));
-const PRIORITY_OPTS = ["P1", "P2", "P3"].map(v => ({ value: v, label: v }));
+const STATUS_GROUP_META: { key: string; label: string; color: string }[] = [
+  { key: "planning", label: "Plan", color: "#6366F1" },
+  { key: "active", label: "Execute", color: "#F59E0B" },
+  { key: "on_hold", label: "Hold", color: "#94A3B8" },
+  { key: "completed", label: "Close", color: "#10B981" },
+  { key: "closed", label: "Close", color: "#64748B" },
+];
+// Status → display label (Plan/Execute/Hold/Close), shared with the group headers.
+const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUS_GROUP_META.map(g => [g.key, g.label]));
+
+// "Stage" filter — labels Plan / Execute / Hold / Close mapped onto the
+// underlying project-status values so filtering keeps working.
+const STATUS_OPTS = [
+  { value: "planning", label: "Plan" },
+  { value: "active", label: "Execute" },
+  { value: "on_hold", label: "Hold" },
+  { value: "closed", label: "Close" },
+];
+const PRIORITY_OPTS = TASK_PRIORITIES.map(p => ({ value: p.value, label: p.label }));
+// Investment category a project belongs to.
+// "All" is auto-prepended by FilterBar; order here = All, CAPEX, OPEX, NPL, CIP, IT.
+const CATEGORY_OPTS = ["CAPEX", "OPEX", "NPL", "CIP", "IT"].map(v => ({ value: v, label: v }));
 
 export default function PortfolioView() {
   const { data: projects, isLoading: loadingProjects } = useListProjects();
   const { data: portfolios, isLoading: loadingPortfolios } = useListPortfolios();
   const [, setLocation] = useLocation();
-  const [view, setView] = useState<BoardView>("table");
 
   const [filters, setFilters] = useState<Record<string, string>>({});
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  // Set by clicking a slice/legend in the Project Health pie; filters the
+  // table below to that RAG color ("" = no health filter). Click again clears.
+  const [ragFilter, setRagFilter] = useState<string>("");
   const handleFilter = (k: string, v: string) => setFilters(f => ({ ...f, [k]: v }));
 
   const deptOptions = useMemo(() => {
@@ -49,36 +129,42 @@ export default function PortfolioView() {
     return depts.map(d => ({ value: d, label: d }));
   }, [projects]);
 
-  const portfolioOptions = useMemo(() => {
-    return (portfolios ?? []).map(p => ({ value: String(p.id), label: p.name }));
-  }, [portfolios]);
-
   const filteredProjects = useMemo(() => {
     let list = projects ?? [];
     if (filters.dept) list = list.filter(p => (p as unknown as Record<string, unknown>).function === filters.dept);
+    if (filters.category) list = list.filter(p => (p as unknown as Record<string, unknown>).category === filters.category);
     if (filters.status) list = list.filter(p => p.status === filters.status);
     if (filters.priority) list = list.filter(p => p.priority === filters.priority);
     if (filters.portfolio) list = list.filter(p => String(p.portfolioId) === filters.portfolio);
-    if (dateFrom) list = list.filter(p => p.startDate && p.startDate >= dateFrom);
-    if (dateTo) list = list.filter(p => p.endDate && p.endDate <= dateTo);
     return list;
-  }, [projects, filters, dateFrom, dateTo]);
+  }, [projects, filters]);
 
   // Aggregate KPIs
   const ragCounts = useMemo(() => {
-    const green = filteredProjects.filter(p => (p.ragStatus ?? "green") === "green").length;
-    const amber = filteredProjects.filter(p => p.ragStatus === "amber").length;
-    const red = filteredProjects.filter(p => p.ragStatus === "red").length;
-    return { green, amber, red };
+    const list = filteredProjects as unknown as PortfolioRow[];
+    const green = list.filter(p => projectHealth(p) === "green").length;
+    const amber = list.filter(p => projectHealth(p) === "amber").length;
+    const red = list.filter(p => projectHealth(p) === "red").length;
+    const grey = list.filter(p => projectHealth(p) === "grey").length; // unrated — no schedule dates
+    return { green, amber, red, grey };
   }, [filteredProjects]);
 
   const totalBudget = filteredProjects.reduce((s, p) => s + ((p.capexBudget ?? 0) + (p.opexBudget ?? 0)), 0);
 
   const ragPieData = [
-    { name: "Green", value: ragCounts.green, color: RAG_COLORS.green },
-    { name: "Amber", value: ragCounts.amber, color: RAG_COLORS.amber },
-    { name: "Red", value: ragCounts.red, color: RAG_COLORS.red },
+    { name: "Green", rag: "green", value: ragCounts.green, color: RAG_COLORS.green },
+    { name: "Amber", rag: "amber", value: ragCounts.amber, color: RAG_COLORS.amber },
+    { name: "Red", rag: "red", value: ragCounts.red, color: RAG_COLORS.red },
+    { name: "Unrated", rag: "grey", value: ragCounts.grey, color: RAG_COLORS.grey },
   ].filter(d => d.value > 0);
+
+  // The board/table reflects the base filters PLUS any RAG slice the user
+  // clicked in the Project Health pie. KPIs + pie stay on the base set so the
+  // pie doesn't collapse to the clicked slice.
+  const tableProjects = useMemo(
+    () => (ragFilter ? filteredProjects.filter(p => projectHealth(p as unknown as PortfolioRow) === ragFilter) : filteredProjects),
+    [filteredProjects, ragFilter],
+  );
 
   const budgetData = filteredProjects.slice(0, 8).map(p => ({
     name: p.name.length > 16 ? p.name.substring(0, 16) + "…" : p.name,
@@ -89,7 +175,7 @@ export default function PortfolioView() {
 
   // ── Monday board over the filtered projects, grouped by status ─────────────
   const boardGroups = useMemo<BoardGroup<PortfolioRow>[]>(() => {
-    const rows = filteredProjects as unknown as PortfolioRow[];
+    const rows = tableProjects as unknown as PortfolioRow[];
     const byStatus = new Map<string, PortfolioRow[]>();
     for (const p of rows) { const a = byStatus.get(p.status) ?? []; a.push(p); byStatus.set(p.status, a); }
     const groups: BoardGroup<PortfolioRow>[] = [];
@@ -99,123 +185,155 @@ export default function PortfolioView() {
     }
     for (const [key, r] of byStatus) groups.push({ key, label: key.replace(/_/g, " "), color: "#94A3B8", rows: r });
     return groups;
-  }, [filteredProjects]);
+  }, [tableProjects]);
 
   const boardColumns = useMemo<BoardColumn<PortfolioRow>[]>(() => [
-    { key: "status", header: "Status", width: 120, align: "center", render: (p) => <StatusChip status={p.status} size="sm" /> },
-    { key: "rag", header: "Health", width: 56, align: "center", render: (p) => <RagDot rag={p.ragStatus ?? "green"} /> },
+    { key: "timeline", header: "Timeline", width: 118, render: (p) => (
+      <TimelineBar start={p.startDate} end={p.endDate} />
+    ) },
+    { key: "progress", header: "Project Progress", width: 130, render: (p) => <ProgressCell pct={p.progress ?? 0} /> },
+    { key: "status", header: "Status", width: 120, align: "center", render: (p) => <StatusChip status={p.status} label={STATUS_LABEL[p.status]} size="sm" /> },
+    { key: "sched_var", header: "Schedule Variance", width: 120, align: "center", render: (p) => {
+      const v = p.scheduleVarianceDays;
+      if (v == null) return <span className="text-[11px] text-muted-foreground/60">—</span>;
+      const f = fmtVariance(v);
+      return <span className="text-xs font-medium" style={{ color: f.color }}>{f.text}</span>;
+    } },
+    { key: "budget_var", header: "Budget Variance", width: 130, align: "right", render: (p) => {
+      const amt = p.budgetVarianceAmount;
+      if (amt == null) return <span className="text-[11px] text-muted-foreground/60">—</span>;
+      const color = amt > 0 ? "#DC2626" : amt < 0 ? "#16A34A" : undefined;
+      const pct = p.budgetVariancePct;
+      return <span className="text-xs font-medium tabular-nums" style={{ color }}>{amt > 0 ? "+" : ""}{formatCurrency(amt)}{pct != null ? ` (${pct > 0 ? "+" : ""}${pct}%)` : ""}</span>;
+    } },
+    { key: "rag", header: "Health", width: 56, align: "center", render: (p) => <RagDot rag={projectHealth(p)} /> },
     { key: "priority", header: "Priority", width: 92, align: "center", render: (p) => <PriorityChip priority={p.priority} /> },
+    { key: "category", header: "Category", width: 88, align: "center", render: (p) => <TextCell value={((p as unknown as Record<string, unknown>).category as string) || "—"} /> },
     { key: "budget", header: "Budget", width: 110, align: "right", render: (p) => <TextCell value={<span className="tabular-nums">{formatCurrency((p.capexBudget ?? 0) + (p.opexBudget ?? 0))}</span>} /> },
-    { key: "progress", header: "Progress", width: 120, render: (p) => <ProgressCell pct={p.progress ?? 0} /> },
     { key: "due", header: "Due", width: 84, align: "center", render: (p) => <DateCell value={p.endDate} /> },
   ], []);
 
-  const calendarItems = useMemo(
-    () => (filteredProjects as unknown as PortfolioRow[]).filter((p) => p.endDate).map((p) => ({ id: p.id, date: p.endDate ?? null, title: p.name, status: p.status })),
-    [filteredProjects],
-  );
+  // Column show/hide — the user can deselect columns via the "Columns" menu.
+  // Default-shown: Timeline · Project Progress · Status · Schedule Variance ·
+  // Budget Variance. The rest stay available in the "Columns" chooser.
+  const [hiddenCols, setHiddenCols] = useState<Set<string>>(new Set(["rag", "priority", "category", "budget", "due"]));
+  const shownColumns = useMemo(() => boardColumns.filter(c => !hiddenCols.has(c.key)), [boardColumns, hiddenCols]);
+  const [colMenuOpen, setColMenuOpen] = useState(false);
+  const colMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!colMenuOpen) return;
+    const onDoc = (e: MouseEvent) => { if (colMenuRef.current && !colMenuRef.current.contains(e.target as Node)) setColMenuOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [colMenuOpen]);
+  const toggleCol = (k: string) => setHiddenCols(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3 ph-rise">
-        <div>
-          <h2 className="text-xl font-bold text-foreground">Department Portfolio View</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Filter and drill into projects across departments and portfolios</p>
-        </div>
-        <button
-          onClick={() => exportCSV("portfolio-export.csv", filteredProjects.map(p => ({
-            Name: p.name, Status: p.status, Priority: p.priority ?? "",
-            RAG: p.ragStatus ?? "green", Budget: (p.capexBudget ?? 0) + (p.opexBudget ?? 0),
-            Department: ((p as unknown as Record<string, unknown>).function as string) ?? "",
-            StartDate: p.startDate ?? "", EndDate: p.endDate ?? "",
-          })))}
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors glass-surface lift-card text-muted-foreground hover:text-foreground"
-        >
-          Export CSV
-        </button>
-      </div>
+      {/* Header — collapses into a glass floating bar on scroll */}
+      <PageHeader
+        eyebrow="Portfolio"
+        title="Portfolio View"
+        titleClassName="text-lg sm:text-xl"
+        pill={false}
+        subtitle="Filter and drill into projects across departments and portfolios"
+        chips={[{ text: `${filteredProjects.length} projects`, className: "bg-primary/10 text-primary border-primary/20" }]}
+        actions={
+          <button
+            onClick={() => exportCSV("portfolio-export.csv", filteredProjects.map(p => ({
+              Name: p.name, Status: p.status, Priority: p.priority ?? "",
+              RAG: p.ragStatus ?? "green", Budget: (p.capexBudget ?? 0) + (p.opexBudget ?? 0),
+              Department: ((p as unknown as Record<string, unknown>).function as string) ?? "",
+              StartDate: p.startDate ?? "", EndDate: p.endDate ?? "",
+            })))}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-colors glass-surface lift-card text-muted-foreground hover:text-foreground"
+          >
+            Export CSV
+          </button>
+        }
+      />
 
       {/* Filter Bar */}
       <div className="glass-surface rounded-2xl p-4 space-y-3 ph-rise ph-rise-2">
         <FilterBar
           filters={[
-            { key: "portfolio", label: "Portfolio", options: portfolioOptions },
             { key: "dept", label: "Department", options: deptOptions },
-            { key: "status", label: "Status", options: STATUS_OPTS },
+            { key: "category", label: "Category", options: CATEGORY_OPTS },
+            { key: "status", label: "Stage", options: STATUS_OPTS },
             { key: "priority", label: "Priority", options: PRIORITY_OPTS },
           ]}
           values={filters}
           onChange={handleFilter}
         />
-        <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date Range</span>
-          <div className="flex items-center gap-1.5">
-            <label className="text-xs text-muted-foreground">From</label>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={e => setDateFrom(e.target.value)}
-              className="text-xs rounded-lg px-2 py-1 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40"
-            />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <label className="text-xs text-muted-foreground">To</label>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={e => setDateTo(e.target.value)}
-              className="text-xs rounded-lg px-2 py-1 bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40"
-            />
-          </div>
-          {(dateFrom || dateTo) && (
-            <button
-              onClick={() => { setDateFrom(""); setDateTo(""); }}
-              className="text-xs text-primary hover:text-primary/80 font-medium transition-colors"
-            >
-              Clear dates
-            </button>
-          )}
-        </div>
       </div>
 
       {/* KPI Row */}
       {isLoading ? (
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => <Skeleton key={i} className="h-24 rounded-2xl" />)}
+        <div className="grid grid-cols-2 xl:grid-cols-5 gap-4">
+          {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-24 rounded-2xl" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-          <KPITile label="Total Projects" value={filteredProjects.length} icon={BarChart2} gradient="linear-gradient(135deg,#6366F1,#8B5CF6)" sub="Matching filters" />
-          <KPITile label="On Track (Green)" value={ragCounts.green} gradient="linear-gradient(135deg,#10B981,#059669)" />
-          <KPITile label="At Risk (Amber/Red)" value={ragCounts.amber + ragCounts.red} gradient="linear-gradient(135deg,#F59E0B,#D97706)" />
-          <KPITile label="Total Budget" value={formatCurrency(totalBudget)} icon={DollarSign} gradient="linear-gradient(135deg,#3B82F6,#1D4ED8)" sub="Combined allocation" />
+        <div className="grid grid-cols-2 xl:grid-cols-5 gap-4">
+          <KPITile compact label="Total Projects" value={filteredProjects.length} icon={BarChart2} sub="Matching filters" />
+          <KPITile compact label="On Track" value={ragCounts.green} valueClassName="text-success" />
+          <KPITile compact label="At Risk" value={ragCounts.amber + ragCounts.red} valueClassName="text-warn" />
+          <KPITile compact label="On Hold" value={filteredProjects.filter(p => p.status === "on_hold").length} valueClassName="text-destructive" />
+          <KPITile compact label="Closed" value={filteredProjects.filter(p => p.status === "closed").length} valueClassName="text-blue-500" />
         </div>
       )}
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         {/* RAG Pie */}
-        <DashboardCard title="RAG Distribution" subtitle="Health status breakdown">
+        <DashboardCard title="Project Health" subtitle="RAG distribution">
           {ragPieData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={160}>
                 <PieChart>
-                  <Pie data={ragPieData} cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3} dataKey="value" nameKey="name">
-                    {ragPieData.map((entry, i) => <Cell key={i} fill={entry.color} strokeWidth={0} />)}
+                  <Pie
+                    data={ragPieData} cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={3} dataKey="value" nameKey="name"
+                    style={{ cursor: "pointer", outline: "none" }}
+                    onClick={(d: { payload?: { rag?: string }; rag?: string }) => {
+                      const rag = d?.payload?.rag ?? d?.rag;
+                      if (rag) setRagFilter(cur => (cur === rag ? "" : rag));
+                    }}
+                  >
+                    {ragPieData.map((entry, i) => (
+                      <Cell
+                        key={i}
+                        fill={entry.color}
+                        stroke={ragFilter === entry.rag ? "#0f172a" : "transparent"}
+                        strokeWidth={ragFilter === entry.rag ? 2 : 0}
+                        opacity={ragFilter && ragFilter !== entry.rag ? 0.35 : 1}
+                      />
+                    ))}
                   </Pie>
                   <Tooltip contentStyle={{ background: "#1E293B", border: "none", borderRadius: 8, color: "white", fontSize: 12 }} />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="flex justify-center gap-4 mt-1">
+              <div className="flex justify-center gap-3 mt-1 flex-wrap">
                 {ragPieData.map(d => (
-                  <div key={d.name} className="flex items-center gap-1.5 text-xs">
+                  <button
+                    key={d.name}
+                    type="button"
+                    onClick={() => setRagFilter(cur => (cur === d.rag ? "" : d.rag))}
+                    title={`Show only ${d.name} projects in the table`}
+                    className={`flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full transition-colors ${
+                      ragFilter === d.rag ? "bg-muted ring-1 ring-border" : "hover:bg-muted/50"
+                    } ${ragFilter && ragFilter !== d.rag ? "opacity-50" : ""}`}
+                  >
                     <div className="w-2.5 h-2.5 rounded-full" style={{ background: d.color }} />
                     <span className="text-muted-foreground">{d.name}</span>
                     <span className="font-bold text-foreground">({d.value})</span>
-                  </div>
+                  </button>
                 ))}
               </div>
+              {ragFilter && (
+                <p className="text-center text-[11px] text-muted-foreground mt-1">
+                  Table filtered to {ragFilter} health ·{" "}
+                  <button type="button" onClick={() => setRagFilter("")} className="text-primary hover:underline font-medium">clear</button>
+                </p>
+              )}
             </>
           ) : (
             <div className="text-center py-8 text-muted-foreground/70 text-sm">No projects match the current filters</div>
@@ -245,19 +363,46 @@ export default function PortfolioView() {
         </div>
       </div>
 
-      {/* Projects — Monday board (grouped by status) with Table / Calendar views */}
+      {/* Projects — Monday board (grouped by status) */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold text-foreground">Projects</h3>
             <p className="text-xs text-muted-foreground">{filteredProjects.length} matching current filters</p>
           </div>
-          <ViewSwitcher views={["table", "calendar"]} value={view} onChange={setView} />
+          {/* Columns chooser — show/hide table columns */}
+          <div className="relative" ref={colMenuRef}>
+            <button
+              type="button"
+              onClick={() => setColMenuOpen(o => !o)}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-border bg-card text-xs font-medium text-muted-foreground hover:text-foreground hover:border-primary/40 transition-colors"
+              title="Show / hide columns"
+            >
+              <SlidersHorizontal size={13} /> Columns
+            </button>
+            {colMenuOpen && (
+              <div role="menu" className="absolute right-0 mt-1 z-50 w-48 rounded-lg border border-border bg-popover text-popover-foreground shadow-lg py-1">
+                <p className="px-3 py-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">Show columns</p>
+                {boardColumns.map(c => {
+                  const shown = !hiddenCols.has(c.key);
+                  return (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => toggleCol(c.key)}
+                      className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-foreground hover:bg-accent/60 transition-colors"
+                    >
+                      <span>{c.header}</span>
+                      {shown && <Check size={13} className="text-primary" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
         {isLoading ? (
           <Skeleton className="h-72 w-full rounded-xl" />
-        ) : view === "calendar" ? (
-          <CalendarView items={calendarItems} onOpenItem={(it) => setLocation(`/projects/${it.id}`)} />
         ) : filteredProjects.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-card/50 p-12 text-center">
             <BarChart2 size={28} className="text-muted-foreground/40 mx-auto mb-2" />
@@ -266,7 +411,8 @@ export default function PortfolioView() {
         ) : (
           <MondayBoard<PortfolioRow>
             groups={boardGroups}
-            columns={boardColumns}
+            columns={shownColumns}
+            nameHeader="Project Name"
             getRowId={(p) => `project:${p.id}`}
             getName={(p) => (
               <span className="flex flex-col min-w-0">

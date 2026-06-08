@@ -47,15 +47,18 @@ import {
   UserCheck,
   Activity,
   Zap,
+  ShieldCheck,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { NotificationBell } from "./notification-bell";
+import { openAskNyra } from "./AskNyra";
+import { useAiStatus } from "./ai-button";
 import { ConnectorsPopup } from "./ConnectorsPopup";
 
 const SIDEBAR_COLLAPSED_KEY = "ph:sidebar:collapsed";
 
 const ROLES = [
-  { value: "initiator", label: "Initiator", initials: "IN" },
+  { value: "initiator", label: "Project Initiator", initials: "PI" },
   { value: "hod", label: "Head of Dept", initials: "HD" },
   { value: "executive_director", label: "Exec. Director", initials: "ED" },
   { value: "cfo", label: "CFO", initials: "CF" },
@@ -84,27 +87,8 @@ function isGroup(n: NavNode): n is NavGroup {
 // paths so bookmarks and the API surface are untouched.
 const PRIMARY_NAV: NavNode[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  {
-    label: "Pipeline",
-    icon: Workflow,
-    color: "#6366F1",
-    children: [
-      { href: "/pifs", label: "Requests", icon: ClipboardList },
-      { href: "/demands", label: "Demands", icon: Inbox },
-      { href: "/charters", label: "Charters", icon: FileText },
-      { href: "/pipeline", label: "Overview", icon: Workflow },
-    ],
-  },
-  {
-    label: "Projects",
-    icon: BarChart3,
-    color: "#0EA5E9",
-    children: [
-      { href: "/projects", label: "Active", icon: BarChart3 },
-      { href: "/portfolio", label: "Portfolio", icon: FolderOpen },
-      { href: "/projects/tree", label: "Tree", icon: FolderOpen },
-    ],
-  },
+  { href: "/portfolio", label: "Portfolio", icon: FolderOpen },
+  { href: "/projects", label: "Active Projects", icon: BarChart3 },
   {
     label: "Work",
     icon: Briefcase,
@@ -119,6 +103,10 @@ const PRIMARY_NAV: NavNode[] = [
     icon: ShoppingCart,
     color: "#F59E0B",
     children: [
+      // Charter + NFA is the consolidated investment-authorization artifact
+      // (merged June 2026). Old separate "Charters" and "NFAs" entries collapse
+      // into this single entry; the /nfas route still serves legacy rows.
+      { href: "/charters", label: "Charter + NFA", icon: FileText },
       { href: "/vendors", label: "Vendors", icon: Building2 },
       { href: "/rfx", label: "Sourcing", icon: ScrollText },
     ],
@@ -143,6 +131,7 @@ const ADMIN_NAV: NavLeaf[] = [
   { href: "/admin/stage-slas", label: "Stage SLAs", icon: Timer },
   { href: "/admin/role-directory", label: "Role Directory", icon: Users },
   { href: "/admin/stage-escalation", label: "Escalation Ladders", icon: BellRing },
+  { href: "/admin/doa-matrix", label: "DOA Matrix", icon: ShieldCheck },
 ];
 
 // Presentation-layer titles for the top header — keeps the plain-English
@@ -152,10 +141,13 @@ const PAGE_TITLES: Record<string, string> = {
   "/pipeline": "Pipeline",
   "/demands": "Demands",
   "/pifs": "Requests",
-  "/charters": "Charters",
+  "/nfas": "Notes for Approval (legacy)",
+  "/charters": "Project Charter + NFA",
+  "/charters/new": "New Project Charter + NFA",
   "/projects": "Projects",
   "/projects/tree": "Project Tree",
-  "/portfolio": "Portfolio View",
+  "/portfolio": "Portfolio",
+  "/portfolio-legacy": "Portfolio (Legacy)",
   "/vendors": "Vendors",
   "/rfx": "Sourcing",
   "/approvals": "Approvals",
@@ -171,6 +163,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/admin/stage-slas": "Stage SLA Configuration",
   "/admin/role-directory": "Role Directory",
   "/admin/stage-escalation": "Escalation Ladders",
+  "/admin/doa-matrix": "DOA Matrix",
   "/admin/integrations": "MCP Integrations",
 };
 
@@ -288,6 +281,32 @@ function LinkPill({ href, label, Icon, isActive, collapsed, indented }: {
         )}
       </div>
     </Link>
+  );
+}
+
+// "Ask NYRA" launcher for the top header — sits next to the search bar and
+// opens the floating analyst panel (AskNyra listens for ask-nyra:open). Hidden
+// when AI isn't configured. Brand cyan so it reads as the AI affordance.
+function AskNyraButton() {
+  const status = useAiStatus();
+  if (status && !status.configured) return null;
+  return (
+    <button
+      type="button"
+      onClick={openAskNyra}
+      aria-label="Ask NYRA"
+      title="Ask NYRA — your portfolio analyst"
+      className="group relative flex items-center justify-center gap-2 h-9 w-9 sm:w-auto sm:px-3.5 rounded-full text-white
+        bg-[linear-gradient(110deg,hsl(var(--primary)),#0ea5e9_55%,#6366f1)] bg-[length:200%_100%] bg-[position:0%]
+        shadow-[0_2px_12px_-2px_hsl(var(--primary)/0.55)] ring-1 ring-white/10
+        hover:bg-[position:100%] hover:shadow-[0_4px_18px_-2px_hsl(var(--primary)/0.7)]
+        transition-[background-position,box-shadow] duration-500 ease-out"
+    >
+      <Sparkles size={15} className="shrink-0 drop-shadow-sm transition-transform duration-500 group-hover:rotate-[18deg] group-hover:scale-110" />
+      <span className="hidden sm:inline text-[13px] font-semibold tracking-tight">Ask NYRA</span>
+      {/* sheen */}
+      <span aria-hidden className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-t from-transparent to-white/15" />
+    </button>
   );
 }
 
@@ -448,11 +467,17 @@ function ThemeToggle() {
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const { role, setRole } = useUserStore();
+  // Role simulator retired — the real role comes from the master employee DB.
+  // Flip to true only to re-expose the dev "act as role" picker.
+  const SHOW_ROLE_SIMULATOR = false;
   const { profile, signOut } = useAuth();
   const displayName = profile?.full_name || profile?.email || "Signed in";
   const initials = getInitials(profile?.full_name ?? profile?.email ?? null);
   const [showRoleMenu, setShowRoleMenu] = useState(false);
   const roleMenuRef = useRef<HTMLDivElement | null>(null);
+  // Top-bar role switcher (separate from the retired sidebar simulator).
+  const [showHeaderRole, setShowHeaderRole] = useState(false);
+  const headerRoleRef = useRef<HTMLDivElement | null>(null);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
@@ -487,18 +512,30 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // Close mobile drawer on route change
   useEffect(() => { setMobileOpen(false); }, [location]);
 
-  // Ensure the server-side session knows our current role. Without this, a
-  // fresh page load leaves session.simulatedRole unset and any stage-advance
-  // call fails with "No role set in session" until the user manually picks a
-  // role from the sidebar dropdown.
+  // Sync the UI role from the user's REAL role (resolved from the master
+  // employee DB, returned by /api/users/me). The old self-service role
+  // simulator is retired — authorization is enforced server-side off this
+  // same real role, so there's nothing to POST to /api/session/role anymore.
+  // The user's REAL role (kept so "View as Admin" can revert to it).
+  const [realRole, setRealRole] = useState<string | null>(null);
   useEffect(() => {
+    fetch("/api/users/me", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((me) => { if (me?.pmoRole) { setRealRole(me.pmoRole); setRole(me.pmoRole); } })
+      .catch(() => {});
+  }, [setRole]);
+
+  // Apply a (simulated) role: drive the UI gate + mirror it server-side so the
+  // legacy simulatedRole guards (scoring/storage/dashboard) follow along.
+  const applyRole = (value: string) => {
+    setRole(value);
     fetch("/api/session/role", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role }),
+      body: JSON.stringify({ role: value }),
     }).catch(() => {});
-  }, [role]);
+  };
 
   // Lock body scroll when mobile drawer is open
   useEffect(() => {
@@ -524,6 +561,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
       document.removeEventListener("keydown", onKey);
     };
   }, [showRoleMenu]);
+
+  useEffect(() => {
+    if (!showHeaderRole) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (headerRoleRef.current && !headerRoleRef.current.contains(e.target as Node)) {
+        setShowHeaderRole(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setShowHeaderRole(false); };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [showHeaderRole]);
 
   const currentRole = ROLES.find(r => r.value === role) || ROLES[0];
   const isAdmin = ADMIN_ROLES.includes(role);
@@ -592,17 +645,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
         </button>
 
-        {/* New Demand CTA — primary entry point into the lifecycle */}
+        {/* Business Case CTA — primary entry point into the lifecycle */}
         <div className={`relative ${effectiveCollapsed ? "px-2 pt-3" : "px-3 pt-3"}`}>
-          <Link href="/demands/new" aria-label="New Demand">
+          <Link href="/demands/new" aria-label="Business Case">
             <button
-              title={effectiveCollapsed ? "New Demand" : undefined}
+              title={effectiveCollapsed ? "Business Case" : undefined}
               className={`btn-glossy-cta flex items-center justify-center gap-2 rounded-md text-[12px] font-semibold w-full ${
                 effectiveCollapsed ? "h-10 px-0" : "h-9 px-3"
               }`}
             >
               <Sparkles size={13} />
-              {!effectiveCollapsed && <span>New Demand</span>}
+              {!effectiveCollapsed && <span>Business Case</span>}
             </button>
           </Link>
         </div>
@@ -616,6 +669,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Role Switcher + User */}
         <div className={`relative border-t border-sidebar-border ${effectiveCollapsed ? "p-2 space-y-2" : "p-3 space-y-3"}`}>
+          {SHOW_ROLE_SIMULATOR && (
           <div className="relative" ref={roleMenuRef}>
             {!effectiveCollapsed && (
               <div className="mb-1.5 px-1">
@@ -690,6 +744,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </div>
             )}
           </div>
+          )}
 
           {/* User Info */}
           <div className={`flex items-center ${effectiveCollapsed ? "justify-center" : "gap-3 px-1"}`}>
@@ -751,6 +806,60 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <button className="lg:hidden w-9 h-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors" aria-label="Search">
               <Search size={16} />
             </button>
+            {/* Top-bar role switcher — "View as <role>" with the full role
+                list. Drives the UI gate (admin nav + admin-gated controls) and
+                mirrors the simulated role server-side via applyRole. */}
+            <div className="relative hidden sm:block" ref={headerRoleRef}>
+              <button
+                type="button"
+                onClick={() => setShowHeaderRole((s) => !s)}
+                aria-haspopup="menu"
+                aria-expanded={showHeaderRole}
+                title={`View as · ${currentRole.label}`}
+                className={`flex items-center gap-2 px-3 h-9 rounded-md text-xs font-semibold border transition-all duration-200 ${
+                  isAdmin
+                    ? "bg-amber-500/15 text-amber-600 border-amber-500/40 hover:bg-amber-500/20"
+                    : "bg-muted/70 text-muted-foreground border-border hover:text-foreground hover:border-foreground/30 hover:bg-muted"
+                }`}
+              >
+                <ShieldCheck size={14} />
+                <span className="hidden md:inline">View as</span>
+                <span className="font-bold">{currentRole.label}</span>
+                <ChevronDown size={12} className={`transition-transform ${showHeaderRole ? "rotate-180" : ""}`} />
+              </button>
+              {showHeaderRole && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg max-h-[320px] overflow-y-auto scrollbar-thin"
+                >
+                  <div className="px-3 py-1.5 text-[10px] font-semibold tracking-[0.18em] uppercase text-muted-foreground">
+                    View as role
+                  </div>
+                  {ROLES.map((r) => (
+                    <button
+                      key={r.value}
+                      role="menuitemradio"
+                      aria-checked={r.value === role}
+                      onClick={() => { applyRole(r.value); setShowHeaderRole(false); }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs text-left transition-colors ${
+                        r.value === role ? "bg-accent text-primary" : "hover:bg-accent/60"
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${
+                        r.value === role ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                      }`}>
+                        {r.initials}
+                      </div>
+                      <span className="flex-1 truncate">{r.label}</span>
+                      {r.value === realRole && (
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">You</span>
+                      )}
+                      {r.value === role && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <ThemeToggle />
             <NotificationBell />
             {isAdmin && (
@@ -768,6 +877,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Settings size={16} />
               </button>
             </Link>
+            <AskNyraButton />
           </div>
           {/* Bottom hairline glow — only on docked header */}
           {!effectiveCollapsed && (

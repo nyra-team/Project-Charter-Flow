@@ -25,6 +25,7 @@ import changeRequestsRouter from "./change_requests";
 import meetingsRouter from "./meetings";
 import templatesRouter from "./templates";
 import pifsRouter from "./pifs";
+import nfasRouter from "./nfas";
 import userPreferencesRouter from "./user_preferences";
 import nudgesRouter, { jobsRouter } from "./nudges";
 import purchaseOrdersRouter from "./purchase_orders";
@@ -38,6 +39,7 @@ import stageSlasRouter from "./stage_slas";
 import roleDirectoryRouter from "./role-directory";
 import stageEscalationPolicyRouter from "./stage-escalation-policy";
 import workRouter from "./work";
+import doaMatrixRouter from "./doa_matrix";
 
 const router: IRouter = Router();
 
@@ -67,6 +69,7 @@ router.use(changeRequestsRouter);
 router.use(meetingsRouter);
 router.use(templatesRouter);
 router.use(pifsRouter);
+router.use(nfasRouter);
 router.use(userPreferencesRouter);
 router.use(nudgesRouter);
 router.use(jobsRouter);
@@ -81,5 +84,6 @@ router.use(stageSlasRouter);
 router.use(roleDirectoryRouter);
 router.use(stageEscalationPolicyRouter);
 router.use(workRouter);
+router.use(doaMatrixRouter);
 
 export default router;

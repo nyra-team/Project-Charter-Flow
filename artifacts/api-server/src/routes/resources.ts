@@ -64,6 +64,12 @@ router.post("/projects/:id/raci", async (req, res): Promise<void> => {
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { userId, taskId, workstreamId, raciType } = req.body as { userId: number; taskId?: number; workstreamId?: number; raciType: string };
   if (!userId || !raciType) { res.status(400).json({ error: "userId and raciType are required" }); return; }
+  // RASCI allowlist: Responsible, Accountable, Support, Consulted, Informed.
+  const RACI_TYPES = ["R", "A", "S", "C", "I"];
+  if (!RACI_TYPES.includes(raciType)) {
+    res.status(400).json({ error: `Invalid raciType '${raciType}'. Allowed: ${RACI_TYPES.join(", ")}.` });
+    return;
+  }
   const [entry] = await db.insert(raciMatrixTable).values({ projectId, userId, taskId, workstreamId, raciType }).returning();
   res.status(201).json(entry);
 });

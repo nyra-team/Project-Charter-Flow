@@ -20,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   ChevronLeft, Edit2, Send, FolderOpen,
   CheckCircle2, XCircle, Clock, IndianRupee,
-  Users, AlertTriangle, Building2, Target, TrendingUp, Save, X,
+  Users, AlertTriangle, Building2, Target, TrendingUp, Save, X, FileDown,
 } from "lucide-react";
 
 const editSchema = z.object({
@@ -196,7 +196,7 @@ export default function CharterDetail() {
         className="rounded-2xl p-6"
         style={{ background: "white", border: "1px solid #E2E8F0" }}
       >
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="flex-1 min-w-0">
             {isEditing ? (
               <input
@@ -214,7 +214,19 @@ export default function CharterDetail() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+            {!isEditing && (
+              <a
+                href={`/api/charters/${charterId}/docx`}
+                target="_blank"
+                rel="noopener"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-all"
+                style={{ background: "#CCE7E9", color: "#0E7C86", border: "1px solid #99CFD3" }}
+              >
+                <FileDown size={14} />
+                Charter+NFA (.docx)
+              </a>
+            )}
             {canEdit && !isEditing && (
               <button
                 onClick={() => setIsEditing(true)}
@@ -514,8 +526,8 @@ export default function CharterDetail() {
           {activeTab === "vendors" && (
             <SectionBox title="Vendor Comparison" icon={<Building2 size={16} />}>
               {vendors?.length ? (
-                <div className="overflow-hidden rounded-xl border border-gray-100">
-                  <table className="w-full text-sm">
+                <div className="overflow-x-auto rounded-xl border border-gray-100">
+                  <table className="w-full text-sm min-w-[560px]">
                     <thead style={{ background: "#F8FAFC" }}>
                       <tr>
                         <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Vendor</th>

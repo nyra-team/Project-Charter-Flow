@@ -1,7 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { useListProjects } from "@workspace/api-client-react";
 import { formatDate } from "../lib/format";
-import { StatusBadge } from "../components/status-badge";
 import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -13,6 +12,7 @@ import { MondayBoard, ProgressCell, DateCell, type BoardColumn, type BoardGroup 
 import { ViewSwitcher, type BoardView } from "@/components/monday/ViewSwitcher";
 import { CalendarView } from "@/components/monday/CalendarView";
 import { StatusChip } from "@/components/ui-kit";
+import { projectStatusLabel } from "@/lib/status-tokens";
 import { PriorityChip, RagDot } from "@/components/task-status-chip";
 
 // Structural subset of a project row — the fields the board reads. Real
@@ -30,16 +30,18 @@ interface ProjectRow {
 }
 
 // Monday-style status groups for the board, in lifecycle order.
+// Labels use lifecycle vocabulary (Plan → Execute → Close) to match the filter
+// chips and the rest of the project surfaces.
 const STATUS_GROUPS: { key: string; label: string; color: string }[] = [
-  { key: "active", label: "Active", color: "#F59E0B" },
-  { key: "planning", label: "Planning", color: "#6366F1" },
+  { key: "active", label: "Execute", color: "#F59E0B" },
+  { key: "planning", label: "Plan", color: "#6366F1" },
   { key: "on_hold", label: "On Hold", color: "#94A3B8" },
-  { key: "completed", label: "Completed", color: "#10B981" },
+  { key: "completed", label: "Closed", color: "#10B981" },
   { key: "closed", label: "Closed", color: "#64748B" },
 ];
 
 const PROJECT_COLUMNS: BoardColumn<ProjectRow>[] = [
-  { key: "status", header: "Status", width: 130, align: "center", render: (p) => <StatusChip status={p.status} size="sm" /> },
+  { key: "status", header: "Status", width: 130, align: "center", render: (p) => <StatusChip status={p.status} size="sm" label={projectStatusLabel(p.status)} /> },
   { key: "priority", header: "Priority", width: 96, align: "center", render: (p) => <PriorityChip priority={p.priority} /> },
   { key: "rag", header: "Health", width: 60, align: "center", render: (p) => <RagDot rag={p.ragStatus ?? "green"} /> },
   { key: "progress", header: "Progress", width: 130, render: (p) => <ProgressCell pct={p.progress ?? 0} /> },
@@ -57,10 +59,10 @@ const FALLBACK: ProjectsViewConfig = { search: "", status: "", sort: "updated" }
 
 const STATUS_CHIPS: { value: string; label: string }[] = [
   { value: "", label: "All" },
-  { value: "active", label: "Active" },
-  { value: "planning", label: "Planning" },
-  { value: "on_hold", label: "On hold" },
-  { value: "completed", label: "Completed" },
+  { value: "planning", label: "Plan" },
+  { value: "active", label: "Execute" },
+  { value: "on_hold", label: "Hold" },
+  { value: "completed", label: "Close" },
 ];
 
 const SORT_OPTIONS: { value: ProjectsViewConfig["sort"]; label: string }[] = [
@@ -72,7 +74,6 @@ const SORT_OPTIONS: { value: ProjectsViewConfig["sort"]; label: string }[] = [
 export default function ProjectsList() {
   const { data: projects, isLoading, refetch } = useListProjects();
   const [, setLocation] = useLocation();
-  const [view, setView] = useState<BoardView>("table");
 
   // ── Saved views (Stage 3 — Customization)
   const views = useUserView<ProjectsViewConfig>({ scope: "project_list", fallback: FALLBACK });
@@ -144,13 +145,6 @@ export default function ProjectsList() {
           <p className="text-sm text-muted-foreground mt-0.5">All projects in execution and planning</p>
         </div>
         <div className="flex items-center gap-3">
-          {projects && projects.length > 0 && (
-            <div className="flex gap-3 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1"><Clock size={11} className="text-primary" />{active.length} active</span>
-              <span className="flex items-center gap-1"><CheckCircle2 size={11} className="text-success" />{completed.length} completed</span>
-            </div>
-          )}
-          <ViewSwitcher views={["table", "cards", "calendar"]} value={view} onChange={setView} />
           <JiraImportButton onDone={() => { void refetch(); }} />
         </div>
       </div>
@@ -209,19 +203,6 @@ export default function ProjectsList() {
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-52 rounded-2xl" />)}
         </div>
       ) : filtered.length > 0 ? (
-        view === "table" ? (
-          <MondayBoard<ProjectRow>
-            groups={boardGroups}
-            columns={PROJECT_COLUMNS}
-            getRowId={(p) => `project:${p.id}`}
-            getName={(p) => <span className="font-medium">{p.name}</span>}
-            getProgress={(p) => p.progress ?? 0}
-            storageKey="projects-list"
-            onOpenRow={(p) => setLocation(`/projects/${p.id}`)}
-          />
-        ) : view === "calendar" ? (
-          <CalendarView items={calendarItems} onOpenItem={(it) => setLocation(`/projects/${it.id}`)} />
-        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 stagger-children">
           {filtered.map(project => {
             const progress = project.progress ?? 0;
@@ -230,7 +211,7 @@ export default function ProjectsList() {
               <Link key={project.id} href={`/projects/${project.id}`}>
                 <div className="glass-surface lift-card rounded-2xl p-5 cursor-pointer h-full flex flex-col">
                   <div className="flex items-start justify-between mb-3">
-                    <StatusBadge status={project.status} />
+                    <StatusChip status={project.status} size="sm" label={projectStatusLabel(project.status)} />
                     <ArrowUpRight size={15} className="text-muted-foreground/50" />
                   </div>
 
@@ -280,7 +261,6 @@ export default function ProjectsList() {
             );
           })}
         </div>
-        )
       ) : (
         // ── Glassmorphic empty-state surface — frosted panel + ambient mesh
         //    + ghost project-card silhouettes so the white space reads as

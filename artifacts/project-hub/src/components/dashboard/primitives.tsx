@@ -53,11 +53,13 @@ const KPI_TONES: Record<KpiTone, { iconText: string; iconBg: string; accentText:
 };
 
 export function KPITile({
-  label, value, sub, icon: Icon, tone = "default", trend, trendLabel, highlight,
+  label, value, sub, icon: Icon, tone = "default", trend, trendLabel, highlight, compact = false, valueClassName,
 }: {
   label: string;
   value: string | number;
   sub?: string;
+  /** Override the value's text color (e.g. "text-success" / "text-warn"). */
+  valueClassName?: string;
   icon?: React.ComponentType<{ size?: number; className?: string }>;
   tone?: KpiTone;
   /** ignored — legacy compat */
@@ -66,6 +68,8 @@ export function KPITile({
   trendLabel?: string;
   /** Show a thin colored bar across the top — for critical metrics. */
   highlight?: boolean;
+  /** Smaller padding + value — for dense KPI rows. */
+  compact?: boolean;
 }) {
   const TrendIcon = trend === "up" ? TrendingUp : trend === "down" ? TrendingDown : Minus;
   const trendCls = trend === "up" ? "text-success" : trend === "down" ? "text-destructive" : "text-muted-foreground";
@@ -79,8 +83,8 @@ export function KPITile({
         className={`absolute inset-0 bg-gradient-to-br ${t.glow} to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none`}
       />
       {highlight && <div className={`absolute top-0 left-0 right-0 h-0.5 ${t.bar}`} />}
-      <div className="relative p-4 sm:p-5">
-        <div className="flex justify-between items-start mb-3">
+      <div className={`relative ${compact ? "p-3" : "p-4 sm:p-5"}`}>
+        <div className={`flex justify-between items-start ${compact ? "mb-1.5" : "mb-3"}`}>
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
           {Icon && (
             <div className={`p-1.5 rounded-md ${t.iconBg} transition-transform duration-300 group-hover:scale-105`}>
@@ -88,7 +92,7 @@ export function KPITile({
             </div>
           )}
         </div>
-        <div className={`text-3xl font-semibold font-mono num-tabular tracking-tight truncate ${t.accentText}`}>
+        <div className={`font-semibold font-mono num-tabular tracking-tight truncate ${compact ? "text-xl" : "text-3xl"} ${valueClassName ?? t.accentText}`}>
           {value}
         </div>
         {(sub || trendLabel) && (

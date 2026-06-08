@@ -16,6 +16,8 @@ export const projectsTable = pgTable("pmo_projects", {
   // contract_po. Drives the stage-governance critical path. Default "vendor" so
   // existing projects keep the full procurement path unchanged. See lib/stage-gates.ts.
   projectType: text("project_type").notNull().default("vendor"),
+  // Investment category: CAPEX | NPX | CIP | IT (nullable until assigned).
+  category: text("category"),
   strategicTheme: text("strategic_theme").default(""),
   ragStatus: text("rag_status").notNull().default("green"),
   ragOverrideJustification: text("rag_override_justification").default(""),

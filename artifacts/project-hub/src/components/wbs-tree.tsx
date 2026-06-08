@@ -5,6 +5,7 @@
 // (task→milestone, milestone→stage, subtask→task). Row click opens the
 // shared TaskDetailModal (handled by the parent page).
 import { useState, useCallback } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   DndContext, DragEndEvent, DragStartEvent, PointerSensor, useSensor, useSensors,
   useDroppable, useDraggable,
@@ -12,7 +13,7 @@ import {
 import { useUpdateTask, useUpdateMilestone, useCreateTask, useCreateMilestone } from "@workspace/api-client-react";
 import { ChevronRight, Plus, GripVertical, GitBranch, Stamp, Flag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { applicableStageKeys, getStageConfig } from "@/lib/lifecycle-config";
+import { applicableStageKeys, getStageConfig, canonicalStageKey } from "@/lib/lifecycle-config";
 import { TaskStatusChip, PriorityChip } from "./task-status-chip";
 import { PersonAvatar } from "./person-avatar";
 
@@ -66,7 +67,12 @@ export function WbsTree({
 
   const [expanded, setExpanded] = useState<Set<string>>(() => {
     try { const raw = localStorage.getItem(`wbs:${projectId}`); if (raw) return new Set(JSON.parse(raw)); } catch { /* ignore */ }
-    return new Set<string>();
+    // First open (no saved state): expand every stage that has milestones so the
+    // breakdown shows all milestones under each stage right away — no need to
+    // click each collapsed stage open.
+    const def = new Set<string>();
+    for (const m of milestones) def.add(`stage:${canonicalStageKey(m.stage) ?? UNASSIGNED}`);
+    return def;
   });
   const toggle = useCallback((key: string) => {
     setExpanded((prev) => {
@@ -86,7 +92,11 @@ export function WbsTree({
   for (const t of tasks) if (t.parentTaskId == null && t.milestoneId != null) (tasksByMs.get(t.milestoneId) ?? tasksByMs.set(t.milestoneId, []).get(t.milestoneId)!).push(t);
   const msByStage = new Map<string, WbsMilestone[]>();
   for (const m of milestones) {
-    const key = m.stage && getStageConfig(m.stage) ? m.stage : UNASSIGNED;
+    // Fold deprecated stage keys into their canonical home (e.g. legacy
+    // "design" → "solution_design") so post-redesign milestones still group
+    // under the stage the user expects instead of vanishing into a deprecated
+    // box that the canonical flow no longer renders.
+    const key = canonicalStageKey(m.stage) ?? UNASSIGNED;
     (msByStage.get(key) ?? msByStage.set(key, []).get(key)!).push(m);
   }
 
@@ -168,9 +178,25 @@ export function WbsTree({
     }
   }
 
+  const setAll = useCallback((next: Set<string>) => {
+    setExpanded(next);
+    try { localStorage.setItem(`wbs:${projectId}`, JSON.stringify([...next])); } catch { /* ignore */ }
+  }, [projectId]);
+  const stagesWithMs = stageKeys.filter((k) => (msByStage.get(k)?.length ?? 0) > 0);
+
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="space-y-2">
+        <div className="flex items-center gap-2 justify-end">
+          <button
+            onClick={() => setAll(new Set(stagesWithMs.map((k) => `stage:${k}`)))}
+            className="text-[11px] px-2 py-1 rounded-md border border-border bg-background hover:bg-accent/40 text-muted-foreground hover:text-foreground"
+          >Expand all</button>
+          <button
+            onClick={() => setAll(new Set())}
+            className="text-[11px] px-2 py-1 rounded-md border border-border bg-background hover:bg-accent/40 text-muted-foreground hover:text-foreground"
+          >Collapse all</button>
+        </div>
         {stageKeys.map((stageKey) => {
           const cfg = stageKey === UNASSIGNED ? null : getStageConfig(stageKey);
           const ms = (msByStage.get(stageKey) ?? []).slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
@@ -191,7 +217,7 @@ export function WbsTree({
                   <button onClick={() => { setAddingTo(`stage:${stageKey}`); setDraftName(""); }} className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-accent/50" title="Add milestone"><Plus size={14} /></button>
                 </div>
 
-                {sExpanded && (
+                <Collapsible open={sExpanded}>
                   <div className="pl-3 pr-2 pb-2 space-y-1.5">
                     {addingTo === `stage:${stageKey}` && <AddRow placeholder="New milestone name…" onSubmit={submitAdd} onCancel={() => setAddingTo(null)} value={draftName} setValue={setDraftName} />}
                     {ms.map((m) => {
@@ -216,7 +242,7 @@ export function WbsTree({
                               <button onClick={() => { setAddingTo(`ms:${m.id}`); setDraftName(""); }} className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-accent/50" title="Add task"><Plus size={13} /></button>
                             </div>
 
-                            {mExpanded && (
+                            <Collapsible open={mExpanded}>
                               <div className="pl-6 pr-2 pb-2 space-y-1">
                                 {addingTo === `ms:${m.id}` && <AddRow placeholder="New task name…" onSubmit={submitAdd} onCancel={() => setAddingTo(null)} value={draftName} setValue={setDraftName} />}
                                 {mTasks.map((t) => {
@@ -241,7 +267,7 @@ export function WbsTree({
                                           <TaskStatusChip status={t.status} />
                                           <button onClick={() => { setAddingTo(`task:${t.id}`); setDraftName(""); }} className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-accent/50" title="Add subtask"><Plus size={12} /></button>
                                         </div>
-                                        {tExpanded && (
+                                        <Collapsible open={tExpanded}>
                                           <div className="pl-7 pr-2 pb-1.5 space-y-1">
                                             {addingTo === `task:${t.id}` && <AddRow placeholder="New subtask name…" onSubmit={submitAdd} onCancel={() => setAddingTo(null)} value={draftName} setValue={setDraftName} />}
                                             {subs.map((s) => (
@@ -254,21 +280,21 @@ export function WbsTree({
                                               </div>
                                             ))}
                                           </div>
-                                        )}
+                                        </Collapsible>
                                       </div>
                                     </TaskDrop>
                                   );
                                 })}
                                 {mTasks.length === 0 && addingTo !== `ms:${m.id}` && <p className="text-[11px] text-muted-foreground/60 italic py-1">No tasks — drag one here or click +</p>}
                               </div>
-                            )}
+                            </Collapsible>
                           </div>
                         </MilestoneDrop>
                       );
                     })}
                     {ms.length === 0 && addingTo !== `stage:${stageKey}` && <p className="text-[11px] text-muted-foreground/60 italic py-1">No milestones in this stage</p>}
                   </div>
-                )}
+                </Collapsible>
               </div>
             </StageDrop>
           );
@@ -276,6 +302,28 @@ export function WbsTree({
       </div>
       {dragLabel && <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 text-[11px] px-3 py-1.5 rounded-full bg-foreground text-background shadow-lg">Drop on a milestone / stage / task to move</div>}
     </DndContext>
+  );
+}
+
+// Smooth Monday.com-style expand/collapse: animates height 0↔auto + opacity.
+// Uses framer-motion (already a dependency). overflow:hidden so the parent
+// clips children during the transition; the ease matches Monday's snappy feel.
+function Collapsible({ open, children }: { open: boolean; children: React.ReactNode }) {
+  return (
+    <AnimatePresence initial={false}>
+      {open && (
+        <motion.div
+          key="c"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+          style={{ overflow: "hidden" }}
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 

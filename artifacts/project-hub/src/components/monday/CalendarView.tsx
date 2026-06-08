@@ -63,6 +63,9 @@ export function CalendarView<T extends CalendarItem>({
         </div>
       </div>
 
+      {/* Weekday header + Day grid — scroll horizontally on very narrow screens */}
+      <div className="overflow-x-auto">
+      <div className="min-w-[640px]">
       {/* Weekday header */}
       <div className="grid grid-cols-7 border-b border-border bg-muted/30">
         {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
@@ -110,6 +113,8 @@ export function CalendarView<T extends CalendarItem>({
           );
         })}
       </div>
+      </div>{/* min-w */}
+      </div>{/* overflow-x-auto */}
     </div>
   );
 }

@@ -37,6 +37,7 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Role preview now lives in the top-bar "View as" switcher (Layout). */}
       {/* Monday-style personal work board — sits above the role dashboard,
           which is kept intact as the analytics layer. Renders nothing when
           the user has no assigned work. */}

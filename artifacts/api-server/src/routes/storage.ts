@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
+import { randomUUID } from "node:crypto";
 import { Readable } from "stream";
 import { like } from "drizzle-orm";
 import {
@@ -7,6 +8,7 @@ import {
 } from "@workspace/api-zod";
 import { db, documentsTable } from "@workspace/db";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { localFileExists, openLocalFileStream, readLocalMeta } from "../lib/localStorage";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -25,9 +27,14 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
     return;
   }
 
-  try {
-    const { name, size, contentType } = parsed.data;
+  const { name, size, contentType } = parsed.data;
 
+  // Try Replit Object Storage first; on any failure (e.g. running off-Replit,
+  // sidecar unreachable, signing endpoint down) fall back to the local-FS
+  // upload route. The client's XHR PUT flow doesn't care which backend
+  // returned the URL — it just PUTs the body and the path is normalised to
+  // /objects/<id> either way.
+  try {
     const uploadURL = await objectStorageService.getObjectEntityUploadURL();
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 
@@ -38,10 +45,22 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
         metadata: { name, size, contentType },
       }),
     );
+    return;
   } catch (error) {
-    req.log.error({ err: error }, "Error generating upload URL");
-    res.status(500).json({ error: "Failed to generate upload URL" });
+    req.log.warn({ err: error }, "Replit Object Storage unavailable; falling back to local-FS uploads");
   }
+
+  // Local-FS fallback path. The objectId is prefixed "local-" so the GET
+  // /storage/objects/* handler can detect and serve from disk.
+  const objectId = `local-${randomUUID()}`;
+  const origin = req.get("origin") || `${req.protocol}://${req.get("host")}`;
+  const uploadURL = `${origin}/api/storage/local-uploads/${objectId}`;
+  const objectPath = `/objects/${objectId}`;
+  res.json({
+    uploadURL,
+    objectPath,
+    metadata: { name, size, contentType },
+  });
 });
 
 /**
@@ -91,13 +110,11 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
     const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
     const objectPath = `/objects/${wildcardPath}`;
 
-    // Authorization layer 1: the requester must have an active session role.
-    // In this system, simulatedRole is set when a user selects their role in
-    // the sidebar — it serves as the session authentication token. Unauthenticated
-    // requests (no session) are rejected regardless of path.
-    const sessionRole = req.session.simulatedRole;
-    if (!sessionRole) {
-      res.status(401).json({ error: "Authentication required: please select a role before accessing documents." });
+    // Authorization layer 1: the requester must be authenticated. requireAuth
+    // already enforces a valid master-DB session (JWT + access_pmo) for every
+    // /api route, so req.user is the authentication token here.
+    if (!req.user) {
+      res.status(401).json({ error: "Authentication required." });
       return;
     }
 
@@ -111,6 +128,21 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
       .limit(1);
     if (!linkedDoc) {
       res.status(403).json({ error: "Access denied: no project document is registered for this path." });
+      return;
+    }
+
+    // Local-FS path (off-Replit fallback): objectId starts with "local-".
+    if (wildcardPath.startsWith("local-")) {
+      const objectId = wildcardPath;
+      if (!(await localFileExists(objectId))) {
+        res.status(404).json({ error: "Object not found" });
+        return;
+      }
+      const meta = await readLocalMeta(objectId);
+      res.setHeader("Content-Type", meta?.contentType || "application/octet-stream");
+      if (meta?.size) res.setHeader("Content-Length", String(meta.size));
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      openLocalFileStream(objectId).pipe(res);
       return;
     }
 

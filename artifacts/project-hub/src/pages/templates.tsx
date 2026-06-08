@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Layers, Flag, Sparkles, Library, ChevronRight, Trash2 } from "lucide-react";
+import { Plus, Layers, Flag, Sparkles, Library, ChevronRight, Trash2, Upload, Download } from "lucide-react";
 import { formatDate } from "../lib/format";
 
 // ─── Types (mirror the inline Zod shapes from routes/templates.ts) ──────────
@@ -125,6 +125,59 @@ export default function TemplatesPage() {
     onError: (e: Error) => toast({ variant: "destructive", title: "Couldn't create project", description: e.message }),
   });
 
+  // ── Upload / import a populated template from a JSON file ──────────────────
+  const fileRef = useRef<HTMLInputElement>(null);
+  const importTpl = useMutation({
+    mutationFn: (body: unknown) =>
+      fetchJson<ProjectTemplate & { milestoneCount: number; taskCount: number }>("/api/templates/import", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (created) => {
+      toast({ title: "Template imported", description: `“${created.name}” — ${created.milestoneCount} milestone(s), ${created.taskCount} task(s).` });
+      qc.invalidateQueries({ queryKey: ["templates"] });
+      setSelectedId(created.id);
+    },
+    onError: (e: Error) => toast({ variant: "destructive", title: "Import failed", description: e.message }),
+  });
+
+  async function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    try {
+      const json = JSON.parse(await file.text());
+      if (!json || typeof json !== "object" || typeof json.name !== "string" || !json.name.trim()) {
+        throw new Error('File must be a JSON object with at least a "name" field.');
+      }
+      importTpl.mutate(json);
+    } catch (err) {
+      toast({ variant: "destructive", title: "Couldn't read file", description: (err as Error).message });
+    }
+  }
+
+  function downloadSample() {
+    const sample = {
+      name: "Sample IT Rollout",
+      description: "Edit this file, then upload it to create a populated template.",
+      category: "it",
+      milestones: [
+        { name: "URS Approved", defaultDayOffset: 14, gateDecision: "approval_gate" },
+        { name: "Go Live", defaultDayOffset: 60 },
+      ],
+      tasks: [
+        { name: "Draft URS", defaultDurationDays: 5, defaultDayOffset: 0, defaultPriority: "P1", defaultOwnerRole: "pm" },
+        { name: "Review URS", defaultDurationDays: 2, defaultDayOffset: 5, predecessors: ["Draft URS"] },
+        { name: "Collect sign-offs", defaultDurationDays: 1, defaultDayOffset: 7, parent: "Review URS" },
+      ],
+    };
+    const blob = new Blob([JSON.stringify(sample, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "pmo-template-sample.json"; a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="space-y-6">
       {/* ── Header ─────────────────────────────────────────────────── */}
@@ -137,18 +190,45 @@ export default function TemplatesPage() {
             </p>
             <h2 className="text-3xl lg:text-4xl font-bold tracking-tight text-card-foreground">Project Templates</h2>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
-              Pre-wired task graphs + milestones. Spin up a new project from one in seconds, or save any live project as a
-              new template to standardise repeating work.
+              Pre-wired task graphs + milestones. Spin up a new project from one in seconds, save any live project as a
+              new template, or upload one from a JSON file to standardise repeating work.
             </p>
           </div>
-          <button
-            onClick={() => setNewOpen(true)}
-            className="btn-glossy-cta flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold"
-            data-testid="btn-new-template"
-          >
-            <Plus size={14} />
-            <span>New blank template</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              onChange={onFilePicked}
+              className="hidden"
+              data-testid="input-import-template"
+            />
+            <button
+              onClick={downloadSample}
+              className="flex items-center gap-1.5 px-3 h-9 rounded-md text-[13px] font-medium text-muted-foreground hover:text-foreground"
+              title="Download a sample JSON you can edit and upload"
+            >
+              <Download size={14} />
+              <span className="hidden sm:inline">Sample</span>
+            </button>
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={importTpl.isPending}
+              className="flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold border border-border hover:bg-muted/40 disabled:opacity-50"
+              data-testid="btn-import-template"
+            >
+              <Upload size={14} />
+              <span>{importTpl.isPending ? "Importing…" : "Upload template"}</span>
+            </button>
+            <button
+              onClick={() => setNewOpen(true)}
+              className="btn-glossy-cta flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold"
+              data-testid="btn-new-template"
+            >
+              <Plus size={14} />
+              <span>New blank template</span>
+            </button>
+          </div>
         </div>
       </div>
 

@@ -8,6 +8,9 @@ import {
   vendorRiskEventsTable,
   vendorQuestionnaireTemplatesTable,
   vendorQuestionnaireResponsesTable,
+  purchaseOrdersTable,
+  purchaseRequisitionsTable,
+  rfxInvitationsTable,
 } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
@@ -434,6 +437,38 @@ router.patch("/vendor-questionnaire-templates/:id", async (req, res) => {
   const [row] = await db.update(vendorQuestionnaireTemplatesTable).set(parsed.data).where(eq(vendorQuestionnaireTemplatesTable.id, id)).returning();
   if (!row) { res.status(404).json({ error: "Template not found" }); return; }
   res.json(row);
+});
+
+// Delete a vendor (master) + its owned detail rows (documents / qualifications
+// / KPIs / risk events / questionnaire responses). BLOCKED when the vendor is
+// referenced by procurement (PR/PO) or a sourcing invitation — those carry
+// governance + audit weight and must be removed first.
+router.delete("/vendors/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [vendor] = await db.select().from(vendorMasterTable).where(eq(vendorMasterTable.id, id));
+  if (!vendor) { res.status(404).json({ error: "Vendor not found" }); return; }
+
+  const pos = await db.select({ id: purchaseOrdersTable.id }).from(purchaseOrdersTable).where(eq(purchaseOrdersTable.vendorId, id));
+  const prs = await db.select({ id: purchaseRequisitionsTable.id }).from(purchaseRequisitionsTable).where(eq(purchaseRequisitionsTable.vendorId, id));
+  const invs = await db.select({ id: rfxInvitationsTable.id }).from(rfxInvitationsTable).where(eq(rfxInvitationsTable.vendorId, id));
+  const refs: string[] = [];
+  if (pos.length) refs.push(`${pos.length} purchase order(s)`);
+  if (prs.length) refs.push(`${prs.length} purchase requisition(s)`);
+  if (invs.length) refs.push(`${invs.length} sourcing invitation(s)`);
+  if (refs.length) {
+    res.status(409).json({ error: `Vendor is referenced by ${refs.join(", ")}. Remove those first.` });
+    return;
+  }
+
+  await db.delete(vendorDocumentsTable).where(eq(vendorDocumentsTable.vendorId, id));
+  await db.delete(vendorQualificationsTable).where(eq(vendorQualificationsTable.vendorId, id));
+  await db.delete(vendorKpisTable).where(eq(vendorKpisTable.vendorId, id));
+  await db.delete(vendorRiskEventsTable).where(eq(vendorRiskEventsTable.vendorId, id));
+  await db.delete(vendorQuestionnaireResponsesTable).where(eq(vendorQuestionnaireResponsesTable.vendorId, id));
+  await db.delete(vendorMasterTable).where(eq(vendorMasterTable.id, id));
+  await logActivity("vendor_deleted", `Vendor "${vendor.name}" deleted`, id, "vendor");
+  res.sendStatus(204);
 });
 
 export default router;

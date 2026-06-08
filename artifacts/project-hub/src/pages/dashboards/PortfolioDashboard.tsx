@@ -120,7 +120,7 @@ function CapacityHeatmap({ data }: { data: ReturnType<typeof useCapacityDemand>[
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-xs">
+      <table className="w-full min-w-[560px] text-xs">
         <thead>
           <tr>
             <th className="text-left pb-2 pr-3 text-muted-foreground font-semibold w-28">Function</th>

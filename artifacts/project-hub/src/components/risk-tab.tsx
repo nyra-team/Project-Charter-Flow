@@ -111,7 +111,7 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 flex items-center justify-between">
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="font-semibold text-foreground flex items-center gap-2">
             <Shield size={16} className="text-destructive" /> Risk Register & Heat Map
@@ -131,7 +131,7 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
                   ✨ Suggest Risks (AI)
                 </button>
                 {(loading || error || result) && (
-                  <div className="w-[420px]"><AiResultPanel loading={loading} error={error} result={result} render={(r) => {
+                  <div className="w-full max-w-[420px]"><AiResultPanel loading={loading} error={error} result={result} render={(r) => {
                     const suggestions = (r as { risks?: Array<{ title: string; description: string; impact: string; likelihood: string; mitigation?: string }>; suggestions?: Array<{ title: string; description: string; impact: string; likelihood: string; mitigation?: string }> }).risks ?? (r as { suggestions?: Array<{ title: string; description: string; impact: string; likelihood: string; mitigation?: string }> }).suggestions ?? [];
                     return (
                       <div className="space-y-2 text-xs max-h-[260px] overflow-y-auto">
@@ -239,7 +239,7 @@ export function RiskTab({ projectId, charterId }: { projectId: number; charterId
           <div className="p-10 text-center text-sm text-muted-foreground">{risksArr.length === 0 ? "No risks yet. Click 'Add Risk'." : "No risks match this filter."}</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[800px] text-sm">
               <thead style={{ background: "hsl(var(--muted) / 0.40)" }}>
                 <tr>
                   <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase">#</th>

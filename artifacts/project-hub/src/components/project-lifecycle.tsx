@@ -4,8 +4,29 @@ import { CheckCircle2, Circle, AlertOctagon, Clock, Bell, FileWarning, ListCheck
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getChecklistLabel } from "@/lib/lifecycle-config";
-import { LIFECYCLE_PHASES, getPhaseForStage } from "@/lib/lifecycle-phases";
+import { LIFECYCLE_PHASES, getPhaseForStage, type LifecyclePhase, type PhaseKey } from "@/lib/lifecycle-phases";
 import { HealthChip, OwnerStrip } from "@/components/ui-kit";
+
+// Resolve EVERY stage — new or legacy — to one of the 3 canonical phases
+// (Plan / Execute / Close). The new 13-stage keys resolve straight through
+// getPhaseForStage(); the 4 deprecated Option-B keys (kept in LIFECYCLE_STAGES
+// for back-compat but excluded from LIFECYCLE_PHASES) are mapped here so old
+// projects still render a clean Plan → Execute → Close path instead of dumping
+// half their stages into an "Other" bucket. Authorization + PO are planning /
+// procurement work → Plan; design + build are delivery work → Execute.
+const LEGACY_STAGE_PHASE: Record<string, PhaseKey> = {
+  investment_authorization: "plan",
+  contract_po: "plan",
+  design: "execute",
+  build: "execute",
+};
+
+function phaseForStage(stageKey: string): LifecyclePhase | null {
+  const canonical = getPhaseForStage(stageKey);
+  if (canonical) return canonical;
+  const legacy = LEGACY_STAGE_PHASE[stageKey];
+  return legacy ? LIFECYCLE_PHASES.find((p) => p.key === legacy) ?? null : null;
+}
 
 // Matches GET /api/projects/:id/critical-path-stages
 type Person = { id: number | null; name: string } | null;
@@ -66,10 +87,10 @@ function ReasonIcon({ type, size = 12 }: { type: BlockingReason["type"]; size?: 
   return <AlertOctagon size={size} />;
 }
 
-const SUBGATE_SHORT: Record<string, string> = { brd: "Business Requirements" };
+const SUBGATE_SHORT: Record<string, string> = { brd: "Business Case" };
 
 // Collapse the two internal Initiation sub-gates (Business Case + Requirements
-// — formerly URS) into ONE umbrella sub-gate labelled "Business Requirements".
+// — formerly URS) into ONE umbrella sub-gate labelled "Business Case".
 // The user-facing lifecycle queue shows the initiative as a single line item;
 // the underlying server endpoints + DB keys (business_case / urs) stay split
 // and continue to drive the dual approval workflow internally.
@@ -94,7 +115,7 @@ function mergeInitiationSubGates(stage: CPStage | undefined): CPSubGate[] | unde
   const approvedDates = all.map((g) => g.approvedAt).filter((x): x is string => !!x).sort();
   const merged: CPSubGate = {
     key: "brd",
-    label: "Business Requirements",
+    label: "Business Case",
     status: allSatisfied ? "complete" : anyBlocked ? "blocked" : "active",
     satisfied: allSatisfied,
     slaDays: all.reduce<number | null>((acc, g) => (g.slaDays != null ? Math.max(acc ?? 0, g.slaDays) : acc), null),
@@ -298,18 +319,20 @@ export function ProjectLifecycle({ projectId }: { projectId: number }) {
   const completed = lane.filter((s) => s.status === "complete").length;
   const total = lane.length;
   const pct = total ? Math.round((completed / total) * 100) : 0;
-  const currentPhase = getPhaseForStage(data.currentStageKey);
+  const currentPhase = phaseForStage(data.currentStageKey);
   // Stretch the 3-colour gradient so the visible fill maps to absolute phase
   // colours rather than re-compressing into the filled width.
   const fillBgSize = pct > 0 ? `${(100 / pct) * 100}% 100%` : "100% 100%";
 
   // Group the visible stages under their phase, preserving lifecycle order.
+  // Resolve by stage KEY (phaseForStage) — not the server's phaseKey, which is
+  // stale for legacy stages — so Plan / Execute / Close always read cleanly.
   const grouped = LIFECYCLE_PHASES.map((p) => ({
     phase: p,
-    stages: lane.filter((s) => s.phaseKey === p.key),
+    stages: lane.filter((s) => phaseForStage(s.key)?.key === p.key),
   })).filter((g) => g.stages.length > 0);
-  // Any stage whose phaseKey isn't one of the canonical 3 (legacy data) goes last.
-  const orphanStages = lane.filter((s) => !LIFECYCLE_PHASES.some((p) => p.key === s.phaseKey));
+  // Any stage that resolves to no canonical phase (truly unknown key) goes last.
+  const orphanStages = lane.filter((s) => !phaseForStage(s.key));
 
   return (
     <div className="rounded-2xl bg-card text-card-foreground border border-card-border glass-surface lift-card p-5 space-y-5">
