@@ -1,9 +1,10 @@
-import { db, notificationsTable, usersTable, escalationLogTable } from "@workspace/db";
-import { inArray } from "drizzle-orm";
+import { db, notificationsTable, usersTable, escalationLogTable, projectsTable } from "@workspace/db";
+import { eq, inArray } from "drizzle-orm";
 import { logger } from "./logger";
 import { computeStageCriticalPath } from "./critical-path";
 import { resolveRole, type Recipient } from "./role-resolver";
 import { sendEscalationEmail } from "./escalation-email";
+import { sendPlainEmail } from "./mailer";
 import { logActivity } from "../routes/activity";
 
 export type EscalateAction = "escalate" | "remind";
@@ -94,6 +95,22 @@ export async function runCriticalPathAction(
     const html = `<p>Hi ${r.name},</p><p><strong>${title}</strong></p><p>${body}</p>` +
       `<p><a href="${link}">Open the project</a> to review and act.</p>`;
     if (await sendEscalationEmail({ to: r.email, subject: title, bodyHtml: html, text: `${title}\n\n${body}\n\n${link}` })) emailed++;
+  }
+
+  // Mirror to the project's Teams channel (email-to-channel). Manual actions
+  // always send — same policy as the recipient emails above.
+  const [proj] = await db
+    .select({ teamsChannelEmail: projectsTable.teamsChannelEmail })
+    .from(projectsTable)
+    .where(eq(projectsTable.id, projectId));
+  if (proj?.teamsChannelEmail) {
+    const base = (process.env.PMO_BASE_URL ?? "https://pmo.granulesrecruit.com").replace(/\/$/, "");
+    await sendPlainEmail({
+      to: proj.teamsChannelEmail,
+      subject: title,
+      html: `<p><strong>${title}</strong></p><p>${body}</p><p><a href="${base}${link}">Open in Project Hub</a></p>`,
+      text: `${title}\n\n${body}\n\n${base}${link}`,
+    });
   }
 
   await logActivity(

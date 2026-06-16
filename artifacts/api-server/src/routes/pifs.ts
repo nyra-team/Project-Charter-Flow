@@ -15,8 +15,12 @@ import {
 import { eq, desc, asc, and, isNotNull } from "drizzle-orm";
 import { seedProjectTemplateDocuments } from "../lib/templateDocuments";
 import { logActivity } from "./activity";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
+const DECIDE_ROLES = ["pmo", "hod", "cfo", "chairman", "executive_director", "scm", "finance"];
 
 // ─── Validation schemas (inline; lift to api-zod in one harmonisation pass later) ─
 
@@ -87,7 +91,7 @@ router.get("/pifs/:id", async (req, res): Promise<void> => {
   res.json(pif);
 });
 
-router.post("/pifs", async (req, res): Promise<void> => {
+router.post("/pifs", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const parsed = CreatePifBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const { estimatedCapex, estimatedOpex, ...rest } = parsed.data;
@@ -103,7 +107,7 @@ router.post("/pifs", async (req, res): Promise<void> => {
   res.status(201).json(pif);
 });
 
-router.patch("/pifs/:id", async (req, res): Promise<void> => {
+router.patch("/pifs/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const parsed = UpdatePifBody.safeParse(req.body);
@@ -128,7 +132,7 @@ router.patch("/pifs/:id", async (req, res): Promise<void> => {
   res.json(pif);
 });
 
-router.delete("/pifs/:id", async (req, res): Promise<void> => {
+router.delete("/pifs/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   // Only drafts can be hard-deleted. Decided rows stay for audit.
@@ -146,7 +150,7 @@ router.delete("/pifs/:id", async (req, res): Promise<void> => {
 // SUBMIT FOR APPROVAL — hands ownership to the HOD
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.post("/pifs/:id/submit", async (req, res): Promise<void> => {
+router.post("/pifs/:id/submit", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [pif] = await db.select().from(pifsTable).where(eq(pifsTable.id, id));
@@ -191,7 +195,7 @@ router.post("/pifs/:id/submit", async (req, res): Promise<void> => {
 // routing, lift into the engine then.
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.post("/pifs/:id/decide", async (req, res): Promise<void> => {
+router.post("/pifs/:id/decide", requireRole(...DECIDE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const parsed = DecideBody.safeParse(req.body);
@@ -254,7 +258,7 @@ router.post("/pifs/:id/decide", async (req, res): Promise<void> => {
 // converted_project_id backlink.
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.post("/pifs/:id/convert-to-project", async (req, res): Promise<void> => {
+router.post("/pifs/:id/convert-to-project", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const parsed = ConvertBody.safeParse(req.body);

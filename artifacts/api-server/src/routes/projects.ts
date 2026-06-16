@@ -30,6 +30,44 @@ import { generateGateMilestones, ensureUnscheduledMilestone } from "../lib/gate-
 import { seedProjectTemplateDocuments } from "../lib/templateDocuments";
 import { recomputeRollups } from "../lib/rollup";
 import { mergeTaskWorkbook } from "../lib/import-tasks";
+import { requireRole } from "../lib/guard";
+import { notify } from "../lib/notify";
+import { resolveRole, type Recipient } from "../lib/role-resolver";
+import type { EmailBanner } from "../lib/mailer";
+
+// Fan a task-level event out to in-app bell + email + the project's Teams
+// channel. Recipients = assignee (when given) + the project manager
+// (role-resolved with charter fallback). Detached: called AFTER res.json so a
+// slow SMTP send can never block the API response; failures are logged only.
+function notifyTaskEventDetached(o: {
+  projectId: number;
+  assigneeId?: number | null;
+  type: string;
+  title: string;
+  body: string;
+  relatedEntityId: number;
+  banner?: EmailBanner;
+}): void {
+  void (async () => {
+    const recipients: Recipient[] = [];
+    if (o.assigneeId) {
+      const [u] = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+        .from(usersTable).where(eq(usersTable.id, o.assigneeId));
+      if (u) recipients.push({ userId: u.id, name: u.name, email: u.email ?? null });
+    }
+    recipients.push(...(await resolveRole("pm", o.projectId)));
+    await notify({
+      projectId: o.projectId,
+      type: o.type,
+      title: o.title,
+      body: o.body,
+      relatedEntityType: "task",
+      relatedEntityId: o.relatedEntityId,
+      recipients,
+      email: { banner: o.banner },
+    });
+  })().catch((err) => console.warn(`[notify] ${o.type} failed:`, String(err)));
+}
 
 // Recompute the project's progress rollup (subtask -> task -> milestone ->
 // project) after a work-item mutation. Best-effort: a rollup failure must never
@@ -52,6 +90,8 @@ async function enrichOne(taskId: number) {
 }
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
 
 // Projects
 router.get("/projects", async (req, res): Promise<void> => {
@@ -129,7 +169,7 @@ router.get("/projects", async (req, res): Promise<void> => {
   }));
 });
 
-router.post("/projects", async (req, res): Promise<void> => {
+router.post("/projects", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const parsed = CreateProjectBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const d = parsed.data as Record<string, unknown>;
@@ -211,7 +251,7 @@ router.get("/projects/:id", async (req, res): Promise<void> => {
   res.json(formatProject(project as unknown as Record<string, unknown>));
 });
 
-router.patch("/projects/:id", async (req, res): Promise<void> => {
+router.patch("/projects/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = UpdateProjectParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   // Closed projects are archived and read-only (allow only explicit status re-opens if needed)
@@ -240,7 +280,7 @@ router.get("/projects/:id/milestones", async (req, res): Promise<void> => {
   res.json(milestones);
 });
 
-router.post("/projects/:id/milestones", async (req, res): Promise<void> => {
+router.post("/projects/:id/milestones", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = CreateMilestoneParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [proj] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, params.data.id));
@@ -259,7 +299,7 @@ router.post("/projects/:id/milestones", async (req, res): Promise<void> => {
   res.status(201).json(milestone);
 });
 
-router.patch("/milestones/:id", async (req, res): Promise<void> => {
+router.patch("/milestones/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = UpdateMilestoneParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateMilestoneBody.safeParse(req.body);
@@ -296,7 +336,7 @@ router.patch("/milestones/:id", async (req, res): Promise<void> => {
   res.json(milestone);
 });
 
-router.delete("/milestones/:id", async (req, res): Promise<void> => {
+router.delete("/milestones/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const params = DeleteMilestoneParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [doomed] = await db.select({ projectId: milestonesTable.projectId }).from(milestonesTable).where(eq(milestonesTable.id, params.data.id));
@@ -314,10 +354,10 @@ router.get("/projects/:id/tasks", async (req, res): Promise<void> => {
   res.json(enriched);
 });
 
-router.post("/projects/:id/tasks", async (req, res): Promise<void> => {
+router.post("/projects/:id/tasks", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = CreateTaskParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const [projT] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, params.data.id));
+  const [projT] = await db.select({ status: projectsTable.status, name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, params.data.id));
   if (projT?.status === "closed") { res.status(409).json({ error: "Project is closed. Tasks cannot be added." }); return; }
   const parsed = CreateTaskBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -369,12 +409,25 @@ router.post("/projects/:id/tasks", async (req, res): Promise<void> => {
   const [enriched] = await enrichTasks([task as unknown as Record<string, unknown>]);
   await rollup(params.data.id);
   res.status(201).json(enriched);
+  notifyTaskEventDetached({
+    projectId: params.data.id,
+    assigneeId: parsed.data.assigneeId,
+    type: "task_added",
+    title: `New task "${task.name}" in "${projT?.name ?? "project"}"`,
+    body: [
+      parsed.data.assigneeId ? "Assigned" : "Unassigned",
+      task.startDate && task.endDate ? `scheduled ${task.startDate} → ${task.endDate}` : task.endDate ? `due ${task.endDate}` : null,
+      `priority ${task.priority}`,
+    ].filter(Boolean).join(", ") + ".",
+    relatedEntityId: task.id,
+    banner: { emoji: "🆕", title: "Task added", color: "blue" },
+  });
 });
 
 // Merge/upsert tasks for a project from an uploaded .xlsx (base64 in JSON).
 // Matched by ID column then case-insensitive name — matches are updated (blank
 // cells keep current values), new rows are inserted, others left untouched.
-router.post("/projects/:id/tasks/import", async (req, res): Promise<void> => {
+router.post("/projects/:id/tasks/import", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = CreateTaskParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [projT] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, params.data.id));
@@ -406,7 +459,7 @@ router.get("/tasks/:id", async (req, res): Promise<void> => {
   res.json(enriched);
 });
 
-router.patch("/tasks/:id", async (req, res): Promise<void> => {
+router.patch("/tasks/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = UpdateTaskParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateTaskBody.safeParse(req.body);
@@ -427,8 +480,11 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
   // Recompute scheduleVarianceDays whenever endDate or actualEnd changes
   const [existing] = await db.select().from(tasksTable).where(eq(tasksTable.id, params.data.id));
   if (!existing) { res.status(404).json({ error: "Task not found" }); return; }
-  const [projTask] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, existing.projectId));
+  const [projTask] = await db.select({ status: projectsTable.status, name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, existing.projectId));
   if (projTask?.status === "closed") { res.status(409).json({ error: "Project is closed. Tasks cannot be updated." }); return; }
+  // Edge-trigger for the completion alert: only on the not-completed → completed
+  // transition, so a later PATCH on other fields can't re-fire it.
+  const completedNow = parsed.data.status === "completed" && existing.status !== "completed";
   const newEndDate = (updateData.endDate as string | undefined) ?? existing.endDate;
   const newActualEnd = (updateData.actualEnd as string | undefined) ?? existing.actualEnd;
   updateData.scheduleVarianceDays = computeScheduleVarianceDays(newEndDate, newActualEnd);
@@ -490,6 +546,16 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
           "task",
           parentRow.id,
         );
+        if (derived === "completed") {
+          notifyTaskEventDetached({
+            projectId: parentRow.projectId,
+            type: "task_completed",
+            title: `Task completed: "${parentRow.name}" in "${projTask?.name ?? "project"}"`,
+            body: "All subtasks are complete — the parent task auto-completed.",
+            relatedEntityId: parentRow.id,
+            banner: { emoji: "✅", title: "Task completed", color: "green" },
+          });
+        }
       }
     }
   }
@@ -507,9 +573,19 @@ router.patch("/tasks/:id", async (req, res): Promise<void> => {
   if (moved) await rollup(existing.projectId);
 
   res.json(enriched);
+  if (completedNow) {
+    notifyTaskEventDetached({
+      projectId: existing.projectId,
+      type: "task_completed",
+      title: `Task completed: "${existing.name}" in "${projTask?.name ?? "project"}"`,
+      body: existing.endDate ? `Planned end date was ${existing.endDate}.` : "Marked completed.",
+      relatedEntityId: existing.id,
+      banner: { emoji: "✅", title: "Task completed", color: "green" },
+    });
+  }
 });
 
-router.delete("/tasks/:id", async (req, res): Promise<void> => {
+router.delete("/tasks/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const params = DeleteTaskParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [doomed] = await db.select({ projectId: tasksTable.projectId }).from(tasksTable).where(eq(tasksTable.id, params.data.id));
@@ -535,7 +611,7 @@ router.get("/tasks/:id/timelogs", async (req, res): Promise<void> => {
   })));
 });
 
-router.post("/tasks/:id/timelogs", async (req, res): Promise<void> => {
+router.post("/tasks/:id/timelogs", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const taskId = parseInt(req.params.id);
   if (isNaN(taskId)) { res.status(400).json({ error: "Invalid task id" }); return; }
   const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId)).limit(1);
@@ -554,22 +630,21 @@ router.post("/tasks/:id/timelogs", async (req, res): Promise<void> => {
   const totalHours = allLogs.reduce((s, l) => s + Number(l.hours), 0);
   await db.update(tasksTable).set({ actualHours: sql`${totalHours}` }).where(eq(tasksTable.id, taskId));
 
-  // Over-log warning notification (Task #23)
+  // Over-log warning (Task #23). Edge-triggered: alert only when THIS log crosses
+  // the planned threshold, so further logging on an already-overrun task doesn't
+  // re-spam email/Teams. The activity log still records every over-logged state.
   const planned = Number(task.plannedEffortHours ?? 0);
   if (planned > 0 && totalHours > planned) {
-    const notifyUserIds = new Set<number>();
-    if (task.assigneeId) notifyUserIds.add(task.assigneeId);
-    const [proj] = await db.select({ pmId: projectsTable.projectManagerId }).from(projectsTable).where(eq(projectsTable.id, task.projectId)).limit(1);
-    if (proj?.pmId) notifyUserIds.add(proj.pmId);
-    for (const uid of notifyUserIds) {
-      await db.insert(notificationsTable).values({
-        userId: uid,
+    const prevTotal = totalHours - hours;
+    if (prevTotal <= planned) {
+      notifyTaskEventDetached({
+        projectId: task.projectId,
+        assigneeId: task.assigneeId,
         type: "effort_overrun",
         title: `Task "${task.name}" exceeded planned effort`,
         body: `Logged ${totalHours.toFixed(1)}h / ${planned}h planned (${Math.round((totalHours / planned) * 100)}%)`,
-        link: `/projects/${task.projectId}`,
-        relatedEntityType: "task",
         relatedEntityId: task.id,
+        banner: { emoji: "⚠️", title: "Effort overrun", color: "amber" },
       });
     }
     await logActivity("task_overrun", `Task "${task.name}" over-logged: ${totalHours.toFixed(1)}h / ${planned}h`, task.id, "task", userId);
@@ -583,7 +658,7 @@ router.post("/tasks/:id/timelogs", async (req, res): Promise<void> => {
   res.status(201).json({ ...row, hours: Number(row.hours), userName });
 });
 
-router.patch("/tasks/:taskId/timelogs/:id", async (req, res): Promise<void> => {
+router.patch("/tasks/:taskId/timelogs/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const taskId = parseInt(req.params.taskId);
   const id = parseInt(req.params.id);
   if (isNaN(taskId) || isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -604,7 +679,7 @@ router.patch("/tasks/:taskId/timelogs/:id", async (req, res): Promise<void> => {
   res.json({ ...row, hours: Number(row.hours) });
 });
 
-router.delete("/tasks/:taskId/timelogs/:id", async (req, res): Promise<void> => {
+router.delete("/tasks/:taskId/timelogs/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const taskId = parseInt(req.params.taskId);
   const id = parseInt(req.params.id);
   if (isNaN(taskId) || isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -745,7 +820,7 @@ router.get("/projects/:id/schedule", async (req, res): Promise<void> => {
 // Add a single task dependency (predecessor). Validates existence, same-project
 // scope, and rejects edges that would create a cycle (which would otherwise
 // break the CPM recursion). Dependencies don't affect progress, so no rollup.
-router.post("/tasks/:id/dependencies", async (req, res): Promise<void> => {
+router.post("/tasks/:id/dependencies", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const predecessorId = Number((req.body ?? {}).predecessorId);
@@ -776,7 +851,7 @@ router.post("/tasks/:id/dependencies", async (req, res): Promise<void> => {
 });
 
 // Remove a single task dependency (predecessor).
-router.delete("/tasks/:id/dependencies/:predId", async (req, res): Promise<void> => {
+router.delete("/tasks/:id/dependencies/:predId", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   const predId = parseInt(req.params.predId);
   if (isNaN(id) || isNaN(predId)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -804,7 +879,7 @@ router.get("/projects/:id/critical-path-stages", async (req, res): Promise<void>
 // Escalate / remind on a project's blocked stage. Writes in-app notifications to
 // the pending approver + owner (escalate) or owner (remind), logs an audit entry,
 // and sends a best-effort email.
-router.post("/projects/:id/critical-path/escalate", async (req, res): Promise<void> => {
+router.post("/projects/:id/critical-path/escalate", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { stageKey, action, subGateKey } = (req.body ?? {}) as { stageKey?: string; action?: string; subGateKey?: string };
@@ -898,7 +973,7 @@ router.get("/projects/:id/nfa-status", async (req, res): Promise<void> => {
 
 // NFA overrun approval chain creation — explicit POST action, idempotent
 // Chain order: Functional Head (hod) → SCM Head (scm) → CFO (cfo) → Management (chairman)
-router.post("/projects/:id/nfa-trigger", async (req, res): Promise<void> => {
+router.post("/projects/:id/nfa-trigger", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, projectId));

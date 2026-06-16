@@ -12,10 +12,11 @@ import { Slider } from "@/components/ui/slider";
 import { ViewsMenu } from "../../components/views-menu";
 import { useUserView } from "../../hooks/use-user-view";
 import {
-  KPITile, RAGBadge, DashboardCard, FilterBar, useAutoRefresh, exportCSV,
+  KPITile, RAGBadge, DashboardCard, FilterBar, useAutoRefresh, exportCSV, type DrillColumn,
 } from "../../components/dashboard/primitives";
 import { BottlenecksByPerson } from "../../components/dashboard/bottlenecks-by-person";
 import { PageHeader, MetricCard } from "@/components/ui-kit";
+import { chartTooltipProps } from "@/components/ui-kit";
 
 type StuckApproval = { id: number; charterId: number; charterTitle: string; stage: string; approverName: string; approverRole: string; daysWaiting: number; severity: "red" | "amber" | "green" };
 type Achiever = { userId: number; name: string; role: string; department: string; completed: number; onTimeOrEarly: number; late: number; onTimePct: number; avgDaysVsPlan: number };
@@ -180,7 +181,7 @@ function CriticalPathHealthDonut({ data }: { data?: CPPortfolio }) {
           <Pie data={slices} dataKey="value" nameKey="name" innerRadius={42} outerRadius={62} paddingAngle={2} stroke="none">
             {slices.map((s, i) => <Cell key={i} fill={s.color} />)}
           </Pie>
-          <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--popover-border))", borderRadius: 8, fontSize: 12 }} />
+          <Tooltip {...chartTooltipProps} />
         </PieChart>
       </ResponsiveContainer>
       <div className="space-y-1.5 flex-1">
@@ -285,6 +286,43 @@ export default function PortfolioDashboard() {
     .filter(c => ["parallel_review", "scm_review", "chairman_review", "finance_review", "pmo_review"].includes(c.status))
     .reduce((s, c) => s + c.count, 0);
 
+  // ── Drill-down data — the actual rows behind each metric / chart ───────────
+  const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const projectCols: DrillColumn[] = [
+    { key: "name", label: "Project" },
+    { key: "rag", label: "RAG", render: (v) => titleCase(String(v ?? "—")) },
+    { key: "progress", label: "Progress", align: "right", render: (v) => `${v ?? 0}%` },
+    { key: "priority", label: "Priority" },
+  ];
+  type PRow = { name: string; ragStatus?: string | null; progress?: number | null; priority?: string | null; status?: string | null };
+  const toProjectRow = (p: PRow) => ({ name: p.name, rag: p.ragStatus ?? "—", progress: p.progress ?? 0, priority: p.priority ?? "—" });
+  const allProjects = (projects ?? []) as unknown as PRow[];
+  const activeProjectRows = allProjects.filter((p) => p.status === "active").map(toProjectRow);
+  const greenProjectRows = allProjects.filter((p) => p.status === "active" && (p.ragStatus ?? "green") === "green").map(toProjectRow);
+  const amberProjectRows = allProjects.filter((p) => p.status === "active" && p.ragStatus === "amber").map(toProjectRow);
+
+  const cpCompositionRows = [
+    { status: "On Track", count: cpPortfolio?.onTrack ?? 0 },
+    { status: "At Risk", count: cpPortfolio?.atRisk ?? 0 },
+    { status: "Blocked", count: cpPortfolio?.blocked ?? 0 },
+    { status: "Pre-lifecycle", count: cpPortfolio?.unmapped ?? 0 },
+  ];
+  const blockedRows = (cpPortfolio?.blockedProjects ?? []).map((p) => ({
+    name: p.name, stage: p.stageLabel, overdue: `${p.daysOverdue}d`, owner: p.owner?.name ?? "—",
+  }));
+  const stuckRows = (stuck?.items ?? []).map((a) => ({ charter: a.charterTitle, stage: titleCase(a.stage), approver: a.approverName, days: `${a.daysWaiting}d` }));
+  const stuckCols: DrillColumn[] = [
+    { key: "charter", label: "Charter" }, { key: "stage", label: "Stage" }, { key: "approver", label: "Approver" }, { key: "days", label: "Waiting", align: "right" },
+  ];
+  const escRowsData = (escRows ?? []) as Array<Record<string, unknown>>;
+  const slaRowsData = (slaRows ?? []) as unknown as Array<Record<string, unknown>>;
+
+  const charterStatusList = (summary?.chartersByStatus as Array<{ status: string; count: number }> ?? []);
+  const submittedRows = charterStatusList.filter((c) => c.status === "submitted").map((c) => ({ status: titleCase(c.status), count: c.count }));
+  const reviewRows = charterStatusList.filter((c) => ["parallel_review", "scm_review", "chairman_review", "finance_review", "pmo_review"].includes(c.status)).map((c) => ({ stage: titleCase(c.status), count: c.count }));
+  const statusCountCols: DrillColumn[] = [{ key: "status", label: "Status" }, { key: "count", label: "Charters", align: "right" }];
+  const bottleneckRows = (cpPortfolio?.bottlenecks ?? []).map((b) => ({ stage: b.label, count: b.count }));
+
   return (
     <div className="space-y-5" data-print-target>
       <PageHeader
@@ -296,21 +334,32 @@ export default function PortfolioDashboard() {
 
       {/* ── Executive governance metric row ──────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-        <MetricCard label="Total Projects" value={cpPortfolio?.total ?? 0} icon={FolderKanban} tone="muted" sub={cpPortfolio?.unmapped ? `${cpPortfolio.unmapped} pre-lifecycle` : undefined} />
-        <MetricCard label="On Track" value={cpPortfolio?.onTrack ?? 0} icon={CheckCircle2} tone="success" />
-        <MetricCard label="At Risk" value={cpPortfolio?.atRisk ?? 0} icon={Clock} tone="warn" />
-        <MetricCard label="Blocked" value={cpPortfolio?.blocked ?? 0} icon={AlertOctagon} tone="danger" highlight />
-        <MetricCard label="Pending Approvals" value={summary?.pendingApprovals ?? 0} icon={CheckSquare} tone="primary" />
-        <MetricCard label="Escalations Req." value={escRows?.length ?? 0} icon={Bell} tone="danger" highlight={(escRows?.length ?? 0) > 0} />
-        <MetricCard label="Avg Approval SLA" value={avgSla == null ? "—" : `${avgSla}%`} icon={Gauge} tone={avgSla == null ? "muted" : avgSla >= 80 ? "success" : avgSla >= 50 ? "warn" : "danger"} sub="on-time" />
+        <MetricCard label="Total Projects" value={cpPortfolio?.total ?? 0} icon={FolderKanban} tone="muted" sub={cpPortfolio?.unmapped ? `${cpPortfolio.unmapped} pre-lifecycle` : undefined}
+          drill={{ subtitle: "Critical-path status composition", columns: statusCountCols, rows: cpCompositionRows, emptyText: "No active projects." }} />
+        <MetricCard label="On Track" value={cpPortfolio?.onTrack ?? 0} icon={CheckCircle2} tone="success"
+          drill={{ subtitle: "Active projects with a green RAG status", columns: projectCols, rows: greenProjectRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No on-track projects." }} />
+        <MetricCard label="At Risk" value={cpPortfolio?.atRisk ?? 0} icon={Clock} tone="warn"
+          drill={{ subtitle: "Active projects with an amber RAG status", columns: projectCols, rows: amberProjectRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No at-risk projects." }} />
+        <MetricCard label="Blocked" value={cpPortfolio?.blocked ?? 0} icon={AlertOctagon} tone="danger" highlight
+          drill={{ subtitle: "Projects blocked at a lifecycle stage", columns: [{ key: "name", label: "Project" }, { key: "stage", label: "Blocked Stage" }, { key: "overdue", label: "Overdue", align: "right" }, { key: "owner", label: "Owner" }], rows: blockedRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No blocked projects." }} />
+        <MetricCard label="Pending Approvals" value={summary?.pendingApprovals ?? 0} icon={CheckSquare} tone="primary"
+          drill={{ subtitle: "Charters awaiting approval, oldest first", columns: stuckCols, rows: stuckRows, linkHref: "/approvals", linkLabel: "Open approvals queue", emptyText: "No pending approvals." }} />
+        <MetricCard label="Escalations Req." value={escRows?.length ?? 0} icon={Bell} tone="danger" highlight={(escRows?.length ?? 0) > 0}
+          drill={{ subtitle: "Approvals breaching SLA that require escalation", rows: escRowsData, emptyText: "No escalations required." }} />
+        <MetricCard label="Avg Approval SLA" value={avgSla == null ? "—" : `${avgSla}%`} icon={Gauge} tone={avgSla == null ? "muted" : avgSla >= 80 ? "success" : avgSla >= 50 ? "warn" : "danger"} sub="on-time"
+          drill={{ subtitle: "Per-approver on-time SLA performance", rows: slaRowsData, emptyText: "No SLA data." }} />
       </div>
 
       {/* Intake Pipeline KPIs */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPITile label="New Submissions" value={submittedCharters} icon={TrendingUp} tone="primary" sub="Awaiting review" />
-        <KPITile label="In Review" value={pendingReviews} icon={Clock} tone="warn" sub="Active review stages" />
-        <KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0} icon={CheckSquare} tone="success" sub="Awaiting sign-off" />
-        <KPITile label="Active Projects" value={health?.active ?? 0} icon={AlertTriangle} tone="primary" sub="In execution" />
+        <KPITile label="New Submissions" value={submittedCharters} icon={TrendingUp} tone="primary" sub="Awaiting review"
+          drill={{ subtitle: "Charters in the submitted stage", columns: statusCountCols, rows: submittedRows, linkHref: "/charters/new", linkLabel: "Start Charter + e-NFA", emptyText: "No new submissions." }} />
+        <KPITile label="In Review" value={pendingReviews} icon={Clock} tone="warn" sub="Active review stages"
+          drill={{ subtitle: "Charters across the active review stages", columns: [{ key: "stage", label: "Review Stage" }, { key: "count", label: "Charters", align: "right" }], rows: reviewRows, linkHref: "/charters/new", linkLabel: "Start Charter + e-NFA", emptyText: "No charters in review." }} />
+        <KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0} icon={CheckSquare} tone="success" sub="Awaiting sign-off"
+          drill={{ subtitle: "Charters awaiting approval, oldest first", columns: stuckCols, rows: stuckRows, linkHref: "/approvals", linkLabel: "Open approvals queue", emptyText: "No pending approvals." }} />
+        <KPITile label="Active Projects" value={health?.active ?? 0} icon={AlertTriangle} tone="primary" sub="In execution"
+          drill={{ subtitle: "Projects currently in execution", columns: projectCols, rows: activeProjectRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No active projects." }} />
       </div>
 
       {/* ── Critical Path Health ─────────────────────────────────────────── */}
@@ -318,7 +367,8 @@ export default function PortfolioDashboard() {
         {/* Health donut + most delayed stage + bottlenecks */}
         <div className="xl:col-span-2 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <DashboardCard title="Critical Path Health" subtitle="Distribution across active projects">
+            <DashboardCard title="Critical Path Health" subtitle="Distribution across active projects"
+              drill={{ subtitle: "Critical-path status composition", columns: statusCountCols, rows: cpCompositionRows, emptyText: "No active projects." }}>
               <CriticalPathHealthDonut data={cpPortfolio} />
             </DashboardCard>
             <DashboardCard title="Most Delayed Stage" subtitle="Lifecycle stage blocking the most projects">
@@ -337,6 +387,7 @@ export default function PortfolioDashboard() {
             title="Most Common Bottlenecks"
             subtitle="Lifecycle stages blocking the most projects"
             onExportCSV={() => exportCSV("critical-path-bottlenecks.csv", (cpPortfolio?.bottlenecks ?? []).map(b => ({ Stage: b.label, Projects: b.count })))}
+            drill={{ subtitle: "Projects blocked / at risk per lifecycle stage", columns: [{ key: "stage", label: "Lifecycle Stage" }, { key: "count", label: "Projects", align: "right" }], rows: bottleneckRows, emptyText: "No bottlenecks." }}
           >
             {!cpPortfolio ? (
               <Skeleton className="h-32 rounded-xl" />
@@ -683,14 +734,25 @@ export default function PortfolioDashboard() {
 
       {/* Bottom row: Health Trend + Capacity Heatmap */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <DashboardCard title="Portfolio Health Trend" subtitle="12-week RAG trend">
+        <DashboardCard title="Portfolio Health Trend" subtitle="12-week RAG trend"
+          drill={{
+            subtitle: "RAG counts per week",
+            columns: [
+              { key: "week", label: "Week" },
+              { key: "green", label: "Green", align: "right" },
+              { key: "amber", label: "Amber", align: "right" },
+              { key: "red", label: "Red", align: "right" },
+            ],
+            rows: (healthData?.trend ?? []) as unknown as Array<Record<string, unknown>>,
+            emptyText: "No trend data yet.",
+          }}>
           {healthData ? (
             <ResponsiveContainer width="100%" height={200}>
               <LineChart data={healthData.trend} margin={{ top: 5, right: 10, bottom: 0, left: -10 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="week" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} interval={1} />
                 <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
-                <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--popover-border))", borderRadius: 8, color: "hsl(var(--popover-foreground))", fontSize: 12 }} />
+                <Tooltip {...chartTooltipProps} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                 <Line type="monotone" dataKey="green" stroke="hsl(var(--success))" strokeWidth={2} dot={false} name="Green" />
                 <Line type="monotone" dataKey="amber" stroke="hsl(var(--warn))" strokeWidth={2} dot={false} name="Amber" />

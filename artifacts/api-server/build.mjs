@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { rm, cp, mkdir } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -118,6 +118,16 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  // The bundled backend/shared/mailer.js resolves its email-logo cid attachment
+  // relative to dist/ → ../../public. Keep the repo-root logo copied there so
+  // branded sends don't ENOENT on a fresh clone.
+  const logoDir = path.resolve(artifactDir, "..", "public");
+  await mkdir(logoDir, { recursive: true });
+  await cp(
+    path.resolve(artifactDir, "..", "..", "..", "..", "public", "GRANULES.White.email.png"),
+    path.join(logoDir, "GRANULES.White.email.png"),
+  );
 }
 
 buildAll().catch((err) => {

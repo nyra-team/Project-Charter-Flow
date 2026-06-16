@@ -18,6 +18,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod/v4";
 import { isPastDeadline, openJson, recombineKey, sealJson } from "../lib/envelopeCrypto";
 import { logActivity } from "./activity";
+import { requireRole } from "../lib/guard";
 
 // ─── RFx routes — events, invitations, envelopes, scoring, award ────────────
 //
@@ -26,6 +27,8 @@ import { logActivity } from "./activity";
 // envelope submission lives in vendor_portal.ts.
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "scm", "initiator"];
 
 function actor(req: { user?: { employeeId: string | null; email: string } }): string {
   return req.user?.employeeId ?? req.user?.email ?? "unknown";
@@ -75,7 +78,7 @@ const CreateRfxBody = z.object({
   publicDiscovery: z.boolean().optional(),
 });
 
-router.post("/rfx", async (req, res) => {
+router.post("/rfx", requireRole(...WRITE_ROLES), async (req, res) => {
   const parsed = CreateRfxBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const d = parsed.data;
@@ -127,7 +130,7 @@ router.get("/rfx/:id", async (req, res) => {
   res.json({ event: evt, invitations, questions, dimensions, envelopes: safeEnvelopes, clarifications, awards });
 });
 
-router.patch("/rfx/:id", async (req, res) => {
+router.patch("/rfx/:id", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = CreateRfxBody.partial().safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -140,7 +143,7 @@ router.patch("/rfx/:id", async (req, res) => {
   res.json(row);
 });
 
-router.post("/rfx/:id/publish", async (req, res) => {
+router.post("/rfx/:id/publish", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const evt = await loadEvent(id);
   if (!evt) { res.status(404).json({ error: "RFx not found" }); return; }
@@ -175,7 +178,7 @@ router.post("/rfx/:id/publish", async (req, res) => {
   res.json(row);
 });
 
-router.post("/rfx/:id/cancel", async (req, res) => {
+router.post("/rfx/:id/cancel", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const evt = await loadEvent(id);
   if (!evt) { res.status(404).json({ error: "RFx not found" }); return; }
@@ -201,7 +204,7 @@ const SaveQuestionsBody = z.object({
   })),
 });
 
-router.put("/rfx/:id/questions", async (req, res) => {
+router.put("/rfx/:id/questions", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = SaveQuestionsBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -239,7 +242,7 @@ const SaveDimensionsBody = z.object({
   })),
 });
 
-router.put("/rfx/:id/dimensions", async (req, res) => {
+router.put("/rfx/:id/dimensions", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = SaveDimensionsBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -260,7 +263,7 @@ const InviteBody = z.object({
   vendorIds: z.array(z.number().int()).min(1),
 });
 
-router.post("/rfx/:id/invitations", async (req, res) => {
+router.post("/rfx/:id/invitations", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = InviteBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -314,7 +317,7 @@ function cryptoRandomHex(bytes: number): string {
 
 const ReleaseShareBody = z.object({ side: z.enum(["a", "b"]) });
 
-router.post("/rfx/:id/envelopes/:kind/release-share", async (req, res) => {
+router.post("/rfx/:id/envelopes/:kind/release-share", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const kind = req.params.kind as "technical" | "commercial" | "alternative";
   const parsed = ReleaseShareBody.safeParse(req.body);
@@ -510,7 +513,7 @@ const SubmitScoreBody = z.object({
   rationale: z.string().optional(),
 });
 
-router.post("/rfx/:id/scores", async (req, res) => {
+router.post("/rfx/:id/scores", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = SubmitScoreBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -588,7 +591,7 @@ const DecideAwardBody = z.object({
   awardRationale: z.string().optional(),
 });
 
-router.post("/rfx/:id/award", async (req, res) => {
+router.post("/rfx/:id/award", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = DecideAwardBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -628,7 +631,7 @@ const RaiseClarBody = z.object({
   isPublic: z.boolean().optional(),
 });
 
-router.post("/rfx/:id/clarifications", async (req, res) => {
+router.post("/rfx/:id/clarifications", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = RaiseClarBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -646,7 +649,7 @@ router.post("/rfx/:id/clarifications", async (req, res) => {
 
 const AnswerClarBody = z.object({ answer: z.string().min(1), isPublic: z.boolean().optional() });
 
-router.post("/rfx/:id/clarifications/:clarId/answer", async (req, res) => {
+router.post("/rfx/:id/clarifications/:clarId/answer", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const clarId = Number(req.params.clarId);
   const parsed = AnswerClarBody.safeParse(req.body);
@@ -682,7 +685,7 @@ const SurrogateBidBody = z.object({
   reason: z.string().min(1),
 });
 
-router.post("/rfx/:id/surrogate-bid", async (req, res) => {
+router.post("/rfx/:id/surrogate-bid", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = SurrogateBidBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -732,7 +735,7 @@ router.post("/rfx/:id/surrogate-bid", async (req, res) => {
 
 // Delete a sourcing event + all its child rows. AWARDED events are protected
 // (the award + audit trail must survive) — cancel them instead.
-router.delete("/rfx/:id", async (req, res) => {
+router.delete("/rfx/:id", requireRole("pmo", "pm", "scm"), async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [evt] = await db.select().from(rfxEventsTable).where(eq(rfxEventsTable.id, id));

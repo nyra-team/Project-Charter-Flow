@@ -59,7 +59,7 @@ export default function VendorNewPage() {
       </div>
 
       <div className="rounded-2xl border border-border bg-card/40 p-5 space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Vendor name *" v={form.name} onChange={v => set("name", v)} placeholder="Acme Pvt Ltd" />
           <Field label="Legal name" v={form.legalName ?? ""} onChange={v => set("legalName", v)} placeholder="Acme Private Limited" />
           <Field label="GST" v={form.gst ?? ""} onChange={v => set("gst", v)} placeholder="29ABCDE1234F1Z5" />

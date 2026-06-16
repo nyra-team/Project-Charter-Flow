@@ -4,3 +4,5 @@ export { OwnerStrip, type Person } from "./OwnerStrip";
 export { PhaseChip, phaseByKey } from "./PhaseChip";
 export { MetricCard } from "./MetricCard";
 export { PageHeader, SectionHeader } from "./PageHeader";
+export { HoverHint, chartTooltipProps, type HoverHintRow } from "./HoverHint";
+export { RephraseField } from "./RephraseField";

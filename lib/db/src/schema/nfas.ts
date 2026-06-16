@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, jsonb, numeric, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -27,8 +27,24 @@ export const nfasTable = pgTable("pmo_nfas", {
   totalUsd: text("total_usd").notNull().default(""),
   totalInr: text("total_inr").notNull().default(""),
   recommendation: text("recommendation").notNull().default(""),
+
+  // === Corporate e-NFA template fields (single-page e-NFA form parity) ===
+  functionDept: text("function_dept").notNull().default(""),
+  requirements: text("requirements").notNull().default(""),          // Procurement details
+  justification: text("justification").notNull().default(""),
+  vendorDetails: text("vendor_details").notNull().default(""),
+  modeOfProcurement: text("mode_of_procurement").notNull().default(""),
+  financialImplication: text("financial_implication").notNull().default(""),
+  financialAmount: numeric("financial_amount", { precision: 15, scale: 2 }),
+  // DOA-derived: does this note need the CMD/Chairman signature?
+  cmdRequired: boolean("cmd_required").notNull().default(false),
+
   // [{ role, name, empCode?, status: 'pending'|'approved'|'rejected', comment?, decidedAt? }]
+  // Approval workflow: Requestor → Functional Head → CFO → ED → (CMD if DOA requires)
   signatories: jsonb("signatories").notNull().default([]),
+  // User-defined extra fields added on the e-NFA form (step 2). Array of
+  // { id, label, value }, ordered as the author arranged them (drag-and-drop).
+  customFields: jsonb("custom_fields").notNull().default([]),
   // draft | pending_approval | approved | rejected
   status: text("status").notNull().default("draft"),
   createdById: integer("created_by_id"),

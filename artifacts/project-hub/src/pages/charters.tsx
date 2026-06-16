@@ -40,7 +40,7 @@ export default function ChartersList() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between ph-rise">
+      <div className="flex items-center justify-between gap-3 flex-wrap ph-rise">
         <div>
           <h2 className="text-xl font-bold text-foreground">Project Charters</h2>
           <p className="text-sm text-muted-foreground mt-0.5">Manage and track all project charter requests</p>

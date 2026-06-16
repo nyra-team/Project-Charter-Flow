@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, Trash2, DollarSign, AlertTriangle, Pencil, Check, X } from "lucide-react";
 import { AiButton, AiResultPanel } from "./ai-button";
 import { formatCurrency } from "../lib/format";
+import { chartTooltipProps } from "@/components/ui-kit";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell,
 } from "recharts";
@@ -309,7 +310,7 @@ export function BudgetTab({
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} angle={-25} textAnchor="end" height={60} />
                 <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} tickFormatter={v => formatCurrency(v as number)} />
                 <Tooltip
-                  contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--popover-border))", borderRadius: 8, color: "hsl(var(--popover-foreground))", fontSize: 12 }}
+                  {...chartTooltipProps}
                   formatter={v => formatCurrency(v as number)}
                 />
                 <Legend wrapperStyle={{ fontSize: 11 }} />

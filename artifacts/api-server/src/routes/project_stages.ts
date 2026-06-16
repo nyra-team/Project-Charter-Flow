@@ -3,8 +3,11 @@ import { db, projectStagesTable, projectsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logActivity } from "./activity";
 import { STAGE_GATES, evaluateStageGate, nextStageFor } from "../lib/stage-gates";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
 
 // Lifecycle gate config + evaluation now live in ../lib/stage-gates.ts (the single
 // source of truth shared by this advance endpoint and the read-only critical-path /
@@ -18,7 +21,7 @@ router.get("/projects/:id/stages", async (req, res): Promise<void> => {
   res.json(stages);
 });
 
-router.post("/projects/:id/stages", async (req, res): Promise<void> => {
+router.post("/projects/:id/stages", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { stage, status, notes } = req.body as { stage: string; status?: string; notes?: string };
@@ -41,7 +44,7 @@ router.get("/project-stages/:id", async (req, res): Promise<void> => {
   res.json(stage);
 });
 
-router.patch("/project-stages/:id", async (req, res): Promise<void> => {
+router.patch("/project-stages/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { status, notes, enteredAt, completedAt } = req.body as { status?: string; notes?: string; enteredAt?: string; completedAt?: string };
@@ -57,7 +60,7 @@ router.patch("/project-stages/:id", async (req, res): Promise<void> => {
   res.json(projectStage);
 });
 
-router.post("/projects/:id/stages/:stage/advance", async (req, res): Promise<void> => {
+router.post("/projects/:id/stages/:stage/advance", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { stage } = req.params;
@@ -191,7 +194,7 @@ router.post("/projects/:id/stages/:stage/advance", async (req, res): Promise<voi
 // the next stage. Restricted to the "initiator" session role for demo/testing.
 // Records the simulated approver role in the activity log so the audit trail
 // still tells the story of who "approved".
-router.post("/projects/:id/stages/:stage/test-advance", async (req, res): Promise<void> => {
+router.post("/projects/:id/stages/:stage/test-advance", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { stage } = req.params;
@@ -270,7 +273,7 @@ router.post("/projects/:id/stages/:stage/test-advance", async (req, res): Promis
   res.json({ projectId, stages, advancedTo: nextStage ?? null });
 });
 
-router.delete("/project-stages/:id", async (req, res): Promise<void> => {
+router.delete("/project-stages/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(projectStagesTable).where(eq(projectStagesTable.id, id));

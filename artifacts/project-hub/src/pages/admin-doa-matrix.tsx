@@ -113,7 +113,7 @@ export default function AdminDoaMatrix() {
           </div>
           <div>
             <h2 className="text-xl font-bold text-foreground">Delegation Of Authority (DOA) Matrix</h2>
-            <p className="text-sm text-muted-foreground mt-0.5">Spend-band → approver-chain rules. Most-specific match wins on Charter+NFA submission.</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Spend-band → approver-chain rules. Most-specific match wins on Charter+e-NFA submission.</p>
           </div>
         </div>
         <button

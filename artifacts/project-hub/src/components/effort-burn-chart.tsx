@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { customFetch } from "@workspace/api-client-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from "recharts";
 import { Flame } from "lucide-react";
+import { chartTooltipProps } from "@/components/ui-kit";
 
 type EffortBurn = {
   weeks: Array<{ week: string; actual: number; cumulativeActual: number; planned: number }>;
@@ -45,7 +46,7 @@ export function EffortBurnChart({ projectId }: { projectId: number }) {
             <XAxis dataKey="week" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
             <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} label={{ value: "hours", angle: -90, position: "insideLeft", fill: "hsl(var(--muted-foreground))", fontSize: 11 }} />
             <Tooltip
-              contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--popover-border))", borderRadius: 8, color: "hsl(var(--popover-foreground))", fontSize: 12 }}
+              {...chartTooltipProps}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <ReferenceLine y={totalPlanned} stroke="hsl(var(--muted-foreground))" strokeDasharray="4 4" label={{ value: "planned", fontSize: 10, fill: "hsl(var(--muted-foreground))", position: "right" }} />

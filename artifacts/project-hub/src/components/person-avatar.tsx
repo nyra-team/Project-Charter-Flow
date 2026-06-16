@@ -1,6 +1,8 @@
 // Monday.com-style person avatar — coloured circle with initials.
 // Deterministic colour per user id so people are visually recognisable.
 
+import { HoverHint } from "./ui-kit/HoverHint";
+
 const PALETTE = [
   "#6366F1", "#EC4899", "#F59E0B", "#10B981", "#3B82F6",
   "#8B5CF6", "#EF4444", "#14B8A6", "#F97316", "#A855F7",
@@ -29,19 +31,20 @@ export function PersonAvatar({
 }) {
   const color = pickColor(id);
   return (
-    <span
-      title={name ?? ""}
-      className="inline-flex items-center justify-center rounded-full font-semibold text-white flex-shrink-0"
-      style={{
-        width: size,
-        height: size,
-        background: color,
-        fontSize: Math.max(9, Math.floor(size * 0.4)),
-        boxShadow: "0 0 0 1.5px rgba(255,255,255,0.6)",
-      }}
-    >
-      {initials(name)}
-    </span>
+    <HoverHint label={name || "Unassigned"}>
+      <span
+        className="inline-flex items-center justify-center rounded-full font-semibold text-white flex-shrink-0"
+        style={{
+          width: size,
+          height: size,
+          background: color,
+          fontSize: Math.max(9, Math.floor(size * 0.4)),
+          boxShadow: "0 0 0 1.5px rgba(255,255,255,0.6)",
+        }}
+      >
+        {initials(name)}
+      </span>
+    </HoverHint>
   );
 }
 

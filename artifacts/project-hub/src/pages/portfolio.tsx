@@ -4,12 +4,13 @@ import { BarChart2, DollarSign, SlidersHorizontal, Check } from "lucide-react";
 import { useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { DashboardCard, KPITile, FilterBar, exportCSV } from "../components/dashboard/primitives";
+import { DashboardCard, KPITile, FilterBar, exportCSV, type DrillColumn } from "../components/dashboard/primitives";
 import { formatCurrency } from "../lib/format";
 import { MondayBoard, ProgressCell, DateCell, TextCell, type BoardColumn, type BoardGroup } from "@/components/monday";
 import { StatusChip, PageHeader } from "@/components/ui-kit";
 import { PriorityChip, RagDot } from "@/components/task-status-chip";
 import { TASK_PRIORITIES, fmtVariance } from "@/lib/task-constants";
+import { chartTooltipProps } from "@/components/ui-kit";
 
 const RAG_COLORS = { green: "#22C55E", amber: "#EAB308", red: "#EF4444", grey: "#94A3B8" };
 
@@ -90,24 +91,21 @@ function TimelineBar({ start, end }: { start?: string | null; end?: string | nul
   );
 }
 
+// Canonical project-status vocabulary for the Portfolio — drives the Status
+// filter dropdown, the board's status groups, and the status chips.
 const STATUS_GROUP_META: { key: string; label: string; color: string }[] = [
-  { key: "planning", label: "Plan", color: "#6366F1" },
-  { key: "active", label: "Execute", color: "#F59E0B" },
-  { key: "on_hold", label: "Hold", color: "#94A3B8" },
-  { key: "completed", label: "Close", color: "#10B981" },
-  { key: "closed", label: "Close", color: "#64748B" },
+  { key: "new", label: "New", color: "#6366F1" },
+  { key: "active", label: "Active", color: "#F59E0B" },
+  { key: "completed", label: "Completed", color: "#10B981" },
+  { key: "cancelled", label: "Cancelled", color: "#EF4444" },
+  { key: "postponed", label: "Postponed", color: "#94A3B8" },
 ];
-// Status → display label (Plan/Execute/Hold/Close), shared with the group headers.
+// Status → display label, shared with the group headers.
 const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUS_GROUP_META.map(g => [g.key, g.label]));
 
-// "Stage" filter — labels Plan / Execute / Hold / Close mapped onto the
-// underlying project-status values so filtering keeps working.
-const STATUS_OPTS = [
-  { value: "planning", label: "Plan" },
-  { value: "active", label: "Execute" },
-  { value: "on_hold", label: "Hold" },
-  { value: "closed", label: "Close" },
-];
+// "Status" filter options — derived from the canonical list above so the
+// dropdown, board groups and chips never drift apart.
+const STATUS_OPTS = STATUS_GROUP_META.map(g => ({ value: g.key, label: g.label }));
 const PRIORITY_OPTS = TASK_PRIORITIES.map(p => ({ value: p.value, label: p.label }));
 // Investment category a project belongs to.
 // "All" is auto-prepended by FilterBar; order here = All, CAPEX, OPEX, NPL, CIP, IT.
@@ -125,7 +123,11 @@ export default function PortfolioView() {
   const handleFilter = (k: string, v: string) => setFilters(f => ({ ...f, [k]: v }));
 
   const deptOptions = useMemo(() => {
-    const depts = [...new Set((projects ?? []).map(p => (p as unknown as Record<string, unknown>).function as string).filter(Boolean))];
+    const derived = (projects ?? []).map(p => (p as unknown as Record<string, unknown>).function as string).filter(Boolean);
+    // Always offer HR (and any departments present in the data). HR is pinned so
+    // it can be selected even before an HR project loads; selecting it filters
+    // the fetched projects down to function === "HR".
+    const depts = [...new Set(["HR", ...derived])];
     return depts.map(d => ({ value: d, label: d }));
   }, [projects]);
 
@@ -172,6 +174,35 @@ export default function PortfolioView() {
   }));
 
   const isLoading = loadingProjects || loadingPortfolios;
+
+  // ── Drill-down data — the actual rows behind each KPI / chart ──────────────
+  const HEALTH_LABEL: Record<string, string> = { green: "On Track", amber: "At Risk", red: "Delayed", grey: "Unrated" };
+  const titleCaseP = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const projectDrillCols: DrillColumn[] = [
+    { key: "name", label: "Project" },
+    { key: "dept", label: "Department" },
+    { key: "status", label: "Status", render: (v) => titleCaseP(String(v ?? "—")) },
+    { key: "priority", label: "Priority" },
+    { key: "progress", label: "Progress", align: "right", render: (v) => `${v ?? 0}%` },
+    { key: "health", label: "Health" },
+    { key: "budget", label: "Budget", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) },
+  ];
+  const toDrillRow = (p: PortfolioRow) => ({
+    name: p.name, dept: p.function ?? "—", status: p.status, priority: p.priority ?? "—",
+    progress: p.progress ?? 0, health: HEALTH_LABEL[projectHealth(p)] ?? "—", budget: (p.capexBudget ?? 0) + (p.opexBudget ?? 0),
+  });
+  const projRows = filteredProjects as unknown as PortfolioRow[];
+  const allDrillRows = projRows.map(toDrillRow);
+  const greenDrillRows = projRows.filter((p) => projectHealth(p) === "green").map(toDrillRow);
+  const atRiskDrillRows = projRows.filter((p) => { const h = projectHealth(p); return h === "amber" || h === "red"; }).map(toDrillRow);
+  const postponedDrillRows = projRows.filter((p) => p.status === "postponed").map(toDrillRow);
+  const completedDrillRows = projRows.filter((p) => p.status === "completed").map(toDrillRow);
+  const healthDrillRows = ragPieData.map((d) => ({ status: d.name, projects: d.value }));
+  const budgetDrillCols: DrillColumn[] = [
+    { key: "name", label: "Project" },
+    { key: "budget", label: "Budget", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) },
+  ];
+  const budgetDrillRows = projRows.map((p) => ({ name: p.name, budget: (p.capexBudget ?? 0) + (p.opexBudget ?? 0) }));
 
   // ── Monday board over the filtered projects, grouped by status ─────────────
   const boardGroups = useMemo<BoardGroup<PortfolioRow>[]>(() => {
@@ -259,7 +290,7 @@ export default function PortfolioView() {
           filters={[
             { key: "dept", label: "Department", options: deptOptions },
             { key: "category", label: "Category", options: CATEGORY_OPTS },
-            { key: "status", label: "Stage", options: STATUS_OPTS },
+            { key: "status", label: "Status", options: STATUS_OPTS },
             { key: "priority", label: "Priority", options: PRIORITY_OPTS },
           ]}
           values={filters}
@@ -274,18 +305,25 @@ export default function PortfolioView() {
         </div>
       ) : (
         <div className="grid grid-cols-2 xl:grid-cols-5 gap-4">
-          <KPITile compact label="Total Projects" value={filteredProjects.length} icon={BarChart2} sub="Matching filters" />
-          <KPITile compact label="On Track" value={ragCounts.green} valueClassName="text-success" />
-          <KPITile compact label="At Risk" value={ragCounts.amber + ragCounts.red} valueClassName="text-warn" />
-          <KPITile compact label="On Hold" value={filteredProjects.filter(p => p.status === "on_hold").length} valueClassName="text-destructive" />
-          <KPITile compact label="Closed" value={filteredProjects.filter(p => p.status === "closed").length} valueClassName="text-blue-500" />
+          <KPITile compact label="Total Projects" value={filteredProjects.length} icon={BarChart2} sub="Matching filters"
+            drill={{ subtitle: "Projects matching the current filters", columns: projectDrillCols, rows: allDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No projects match the filters." }} />
+          <KPITile compact label="On Track" value={ragCounts.green} valueClassName="text-success"
+            drill={{ subtitle: "Projects with healthy schedule performance (green)", columns: projectDrillCols, rows: greenDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No on-track projects." }} />
+          <KPITile compact label="At Risk" value={ragCounts.amber + ragCounts.red} valueClassName="text-warn"
+            drill={{ subtitle: "Projects slipping schedule (amber + red)", columns: projectDrillCols, rows: atRiskDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No at-risk projects." }} />
+          <KPITile compact label="Postponed" value={filteredProjects.filter(p => p.status === "postponed").length} valueClassName="text-warn"
+            drill={{ subtitle: "Projects currently postponed", columns: projectDrillCols, rows: postponedDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No postponed projects." }} />
+          <KPITile compact label="Completed" value={filteredProjects.filter(p => p.status === "completed").length} valueClassName="text-success"
+            drill={{ subtitle: "Completed projects", columns: projectDrillCols, rows: completedDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No completed projects." }} />
         </div>
       )}
 
       {/* Charts Row */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         {/* RAG Pie */}
-        <DashboardCard title="Project Health" subtitle="RAG distribution">
+        <DashboardCard title="Project Health" subtitle="RAG distribution"
+          drillBodyClickable={false}
+          drill={{ subtitle: "Project count by health status", columns: [{ key: "status", label: "Health" }, { key: "projects", label: "Projects", align: "right" }], rows: healthDrillRows, emptyText: "No projects match the filters." }}>
           {ragPieData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={160}>
@@ -308,7 +346,7 @@ export default function PortfolioView() {
                       />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ background: "#1E293B", border: "none", borderRadius: 8, color: "white", fontSize: 12 }} />
+                  <Tooltip {...chartTooltipProps} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex justify-center gap-3 mt-1 flex-wrap">
@@ -342,7 +380,8 @@ export default function PortfolioView() {
 
         {/* Budget Bar */}
         <div className="xl:col-span-2">
-          <DashboardCard title="Budget Utilization" subtitle="Budget by project (top 8)">
+          <DashboardCard title="Budget Utilization" subtitle="Budget by project (top 8)"
+            drill={{ subtitle: "Allocated budget per project (CapEx + OpEx)", columns: budgetDrillCols, rows: budgetDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No budget data." }}>
             {budgetData.length > 0 ? (
               <ResponsiveContainer width="100%" height={175}>
                 <BarChart data={budgetData} margin={{ top: 5, right: 10, bottom: 25, left: 10 }}>
@@ -350,7 +389,7 @@ export default function PortfolioView() {
                   <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-30} textAnchor="end" interval={0} />
                   <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `₹${(v / 1e6).toFixed(0)}M`} />
                   <Tooltip
-                    contentStyle={{ background: "#1E293B", border: "none", borderRadius: 8, color: "white", fontSize: 12 }}
+                    {...chartTooltipProps}
                     formatter={(v: number) => [formatCurrency(v), "Budget"]}
                   />
                   <Bar dataKey="budget" fill="#6366F1" radius={[4, 4, 0, 0]} />

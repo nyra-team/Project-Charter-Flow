@@ -3,6 +3,7 @@ import { Link, useSearch } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkles, Inbox, CheckCircle2, XCircle, Clock, AlertCircle } from "lucide-react";
 import { formatDate } from "../lib/format";
+import { Drillable } from "../components/dashboard/primitives";
 
 // ─── Types — mirror routes/nfas.ts ──────────────────────────────────────────
 type NfaStatus = "draft" | "pending_approval" | "approved" | "rejected";
@@ -83,10 +84,28 @@ export default function NfasList() {
       {/* ── Status tiles ───────────────────────────────────────────── */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
         {byBucket.map((b) => (
-          <div key={b.key} className="glass-surface rounded-2xl p-4">
+          <Drillable
+            key={b.key}
+            className="glass-surface rounded-2xl p-4"
+            drill={{
+              title: b.label,
+              subtitle: "Notes for Approval in this bucket",
+              columns: [
+                { key: "noteNo", label: "Note No." },
+                { key: "subject", label: "Subject" },
+                { key: "department", label: "Department" },
+                { key: "total", label: "Total (INR)", align: "right" },
+                { key: "created", label: "Created" },
+              ],
+              rows: b.items.map((n) => ({ noteNo: n.noteNo, subject: n.subject, department: n.department, total: n.totalInr, created: n.createdAt ? formatDate(n.createdAt) : "—" })),
+              linkHref: "/nfas",
+              linkLabel: "View all NFAs",
+              emptyText: "No NFAs in this bucket.",
+            }}
+          >
             <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">{b.label}</p>
             <p className="text-2xl font-mono font-semibold text-card-foreground num-tabular mt-1">{b.items.length}</p>
-          </div>
+          </Drillable>
         ))}
       </div>
 

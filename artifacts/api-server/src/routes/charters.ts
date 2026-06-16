@@ -38,8 +38,11 @@ import {
   ListChartersQueryParams,
 } from "@workspace/api-zod";
 import { logActivity } from "./activity";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
 
 // Extended PATCH body — accepts all Charter+NFA merged columns.
 // Lives inline until lib/api-zod is regenerated from the updated OpenAPI spec.
@@ -56,6 +59,18 @@ const ExtendedCharterPatch = z.object({
   category: z.string().optional(),
   entity: z.string().optional(),
   revision: z.number().int().optional(),
+  // Project Charter template fields
+  projectSponsor: z.string().optional(),
+  pmType: z.string().optional(),
+  pmName: z.string().optional(),
+  projectApprovalDate: z.string().optional(),
+  lastRevisionDate: z.string().optional(),
+  businessOutcome: z.string().optional(),
+  scopeLimitations: z.string().optional(),
+  risks: z.string().optional(),
+  vendorMatrix: z.object({ columns: z.array(z.string()), rows: z.array(z.array(z.string())) }).optional(),
+  // User-defined extra fields (step-2 form), in author-arranged order.
+  customFields: z.array(z.object({ id: z.string(), label: z.string(), value: z.string() })).optional(),
   // Investment summary
   kind: z.enum(["capex", "opex", "mixed"]).optional(),
   capexAmount: z.coerce.number().optional(),
@@ -113,7 +128,7 @@ router.get("/charters", async (req, res): Promise<void> => {
 });
 
 // Create charter
-router.post("/charters", async (req, res): Promise<void> => {
+router.post("/charters", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const parsed = CreateCharterBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -184,7 +199,7 @@ router.get("/charters/:id", async (req, res): Promise<void> => {
 });
 
 // Update charter
-router.patch("/charters/:id", async (req, res): Promise<void> => {
+router.patch("/charters/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = UpdateCharterParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -222,7 +237,7 @@ router.patch("/charters/:id", async (req, res): Promise<void> => {
 });
 
 // Submit charter
-router.post("/charters/:id/submit", async (req, res): Promise<void> => {
+router.post("/charters/:id/submit", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = SubmitCharterParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -289,7 +304,7 @@ router.post("/charters/:id/submit", async (req, res): Promise<void> => {
 });
 
 // SCM negotiate
-router.post("/charters/:id/scm-negotiate", async (req, res): Promise<void> => {
+router.post("/charters/:id/scm-negotiate", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = ScmNegotiateParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -352,7 +367,7 @@ router.post("/charters/:id/scm-negotiate", async (req, res): Promise<void> => {
 });
 
 // Finance order
-router.post("/charters/:id/finance-order", async (req, res): Promise<void> => {
+router.post("/charters/:id/finance-order", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = EnterFinanceOrderParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -423,7 +438,7 @@ router.get("/charters/:id/vendors", async (req, res): Promise<void> => {
   })));
 });
 
-router.post("/charters/:id/vendors", async (req, res): Promise<void> => {
+router.post("/charters/:id/vendors", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = AddCharterVendorParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = AddCharterVendorBody.safeParse(req.body);
@@ -446,7 +461,7 @@ router.get("/charters/:id/risks", async (req, res): Promise<void> => {
   res.json(risks);
 });
 
-router.post("/charters/:id/risks", async (req, res): Promise<void> => {
+router.post("/charters/:id/risks", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = AddCharterRiskParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = AddCharterRiskBody.safeParse(req.body);
@@ -467,7 +482,7 @@ router.get("/charters/:id/squad", async (req, res): Promise<void> => {
   res.json(members);
 });
 
-router.post("/charters/:id/squad", async (req, res): Promise<void> => {
+router.post("/charters/:id/squad", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = AddSquadMemberParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = AddSquadMemberBody.safeParse(req.body);
@@ -515,7 +530,7 @@ router.get("/charters/:id/docx", async (req, res): Promise<void> => {
     dir = await mkdtemp(path.join(tmpdir(), "charter-nfa-"));
     const inPath = path.join(dir, "in.json");
     const outPath = path.join(dir, "out.docx");
-    const payload = { ...formatCharter(charter as Record<string, unknown>), risks };
+    const payload = { ...formatCharter(charter as Record<string, unknown>), structuredRisks: risks };
     await writeFile(inPath, JSON.stringify(payload), "utf-8");
 
     await new Promise<void>((resolve, reject) => {

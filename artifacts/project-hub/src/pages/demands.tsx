@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkles, ArrowUpRight, Clock, Layers, AlertCircle } from "lucide-react";
 import { getStageConfig } from "../lib/lifecycle-config";
 import { formatDate } from "../lib/format";
+import { Drillable } from "../components/dashboard/primitives";
 
 const DEMAND_STAGES = ["initiation", "vendor_selection"] as const;
 
@@ -52,7 +53,23 @@ export default function DemandsList() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {byStage.map(({ key, idx, cfg, items }) => (
-          <div key={key} className="glass-surface rounded-2xl p-4">
+          <Drillable
+            key={key}
+            className="glass-surface rounded-2xl p-4"
+            drill={{
+              title: cfg.label,
+              subtitle: `Demands at the ${cfg.shortLabel} stage`,
+              columns: [
+                { key: "name", label: "Demand" },
+                { key: "priority", label: "Priority" },
+                { key: "created", label: "Created" },
+              ],
+              rows: items.map((p) => ({ name: p.name, priority: p.priority?.replace(/_/g, " ") ?? "—", created: p.createdAt ? formatDate(p.createdAt) : "—" })),
+              linkHref: "/demands",
+              linkLabel: "View all demands",
+              emptyText: "No demands at this stage.",
+            }}
+          >
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full" style={{ background: cfg.color }} />
@@ -62,7 +79,7 @@ export default function DemandsList() {
             </div>
             <p className="text-2xl font-mono font-semibold text-card-foreground num-tabular">{items.length}</p>
             <p className="text-xs text-muted-foreground mt-0.5 truncate">{cfg.label}</p>
-          </div>
+          </Drillable>
         ))}
       </div>
 

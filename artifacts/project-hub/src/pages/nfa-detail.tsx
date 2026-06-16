@@ -194,6 +194,13 @@ export default function NfaDetail() {
           {nfa.recommendation && (
             <Section title="Recommendation"><p className="text-sm text-foreground/90 whitespace-pre-wrap">{nfa.recommendation}</p></Section>
           )}
+          {((nfa as unknown as { customFields?: { id: string; label: string; value: string }[] }).customFields ?? [])
+            .filter((f) => f && (f.label?.trim() || f.value?.trim()))
+            .map((f) => (
+              <Section key={f.id} title={f.label || "Additional Field"}>
+                <p className="text-sm text-foreground/90 whitespace-pre-wrap">{f.value}</p>
+              </Section>
+            ))}
         </div>
 
         {/* Right — approval grid */}

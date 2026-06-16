@@ -1764,6 +1764,162 @@ paths:
         "204":
           description: Deleted
 
+  /team-members:
+    get:
+      operationId: listAllProjectTeamMembers
+      tags: [team]
+      summary: List team members across all projects
+      responses:
+        "200":
+          description: All project team members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectTeamMember"
+
+  /projects/{id}/team-members:
+    get:
+      operationId: listProjectTeamMembers
+      tags: [team]
+      summary: List team members for a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Project team members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectTeamMember"
+    post:
+      operationId: createProjectTeamMember
+      tags: [team]
+      summary: Add a team member to a project
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectTeamMemberBody"
+      responses:
+        "201":
+          description: Created team member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectTeamMember"
+
+  /team-members/{id}:
+    patch:
+      operationId: updateProjectTeamMember
+      tags: [team]
+      summary: Update a team member
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectTeamMemberBody"
+      responses:
+        "200":
+          description: Updated team member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectTeamMember"
+    delete:
+      operationId: deleteProjectTeamMember
+      tags: [team]
+      summary: Remove a team member (and their RACI cells)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /projects/{id}/team-raci:
+    get:
+      operationId: listProjectTeamRaci
+      tags: [team]
+      summary: List project-level RACI cells
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: RACI cells
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProjectTeamRaci"
+    post:
+      operationId: createProjectTeamRaci
+      tags: [team]
+      summary: Create a project-level RACI cell
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectTeamRaciBody"
+      responses:
+        "201":
+          description: Created RACI cell
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectTeamRaci"
+
+  /team-raci/{id}:
+    delete:
+      operationId: deleteProjectTeamRaci
+      tags: [team]
+      summary: Delete a project-level RACI cell
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
   /projects/{id}/budget-lines:
     get:
       operationId: listBudgetLines
@@ -2654,6 +2810,9 @@ components:
           type: ["string", "null"]
         projectManagerId:
           type: ["integer", "null"]
+        teamsChannelEmail:
+          type: ["string", "null"]
+          description: "Email address of the project's Teams channel (Channel → ⋯ → Get email address); alerts are mirrored there. Null = no mirror."
         startDate:
           type: ["string", "null"]
         endDate:
@@ -2734,6 +2893,8 @@ components:
           type: string
         stage:
           type: string
+        category:
+          type: string
         strategicTheme:
           type: string
         ragStatus:
@@ -2754,6 +2915,8 @@ components:
           type: string
         projectManagerId:
           type: integer
+        teamsChannelEmail:
+          type: string
         startDate:
           type: string
         endDate:
@@ -3856,6 +4019,120 @@ components:
           type: string
       required:
         - userId
+        - raciType
+
+    ProjectTeamMember:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        memberType:
+          type: string
+          description: "internal | external"
+        userId:
+          type: ["integer", "null"]
+        externalName:
+          type: ["string", "null"]
+        externalOrg:
+          type: ["string", "null"]
+        externalEmail:
+          type: ["string", "null"]
+        externalKind:
+          type: ["string", "null"]
+          description: "vendor | partner | consultant | contractor"
+        role:
+          type: ["string", "null"]
+        responsibilities:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - projectId
+        - memberType
+        - createdAt
+        - updatedAt
+
+    CreateProjectTeamMemberBody:
+      type: object
+      properties:
+        memberType:
+          type: string
+        userId:
+          type: integer
+        externalName:
+          type: string
+        externalOrg:
+          type: string
+        externalEmail:
+          type: string
+        externalKind:
+          type: string
+        role:
+          type: string
+        responsibilities:
+          type: string
+      required:
+        - memberType
+
+    UpdateProjectTeamMemberBody:
+      type: object
+      properties:
+        userId:
+          type: integer
+        externalName:
+          type: string
+        externalOrg:
+          type: string
+        externalEmail:
+          type: string
+        externalKind:
+          type: string
+        role:
+          type: string
+        responsibilities:
+          type: string
+
+    ProjectTeamRaci:
+      type: object
+      properties:
+        id:
+          type: integer
+        projectId:
+          type: integer
+        memberId:
+          type: integer
+        deliverable:
+          type: string
+        raciType:
+          type: string
+          description: "RACI type: R, A, S, C, I"
+        createdAt:
+          type: string
+      required:
+        - id
+        - projectId
+        - memberId
+        - deliverable
+        - raciType
+        - createdAt
+
+    CreateProjectTeamRaciBody:
+      type: object
+      properties:
+        memberId:
+          type: integer
+        deliverable:
+          type: string
+        raciType:
+          type: string
+      required:
+        - memberId
+        - deliverable
         - raciType
 
     BudgetLine:

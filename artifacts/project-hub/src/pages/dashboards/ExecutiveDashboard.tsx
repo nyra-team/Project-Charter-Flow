@@ -15,10 +15,11 @@ import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, addDays } from "date-fns";
 import {
-  KPITile, RAGBadge, DashboardCard, FilterBar, useAutoRefresh, exportCSV, exportXLSX, exportPDF,
+  KPITile, RAGBadge, DashboardCard, FilterBar, useAutoRefresh, exportCSV, exportXLSX, exportPDF, type DrillColumn,
 } from "../../components/dashboard/primitives";
 import { useState, useEffect } from "react";
 import { formatCurrency } from "../../lib/format";
+import { chartTooltipProps } from "@/components/ui-kit";
 
 type IssueRow = { id: number; projectId: number; type?: string | null; status?: string | null; createdAt?: string | null; resolvedAt?: string | null; title?: string | null };
 type StuckApproval = { id: number; charterId: number; charterTitle: string; stage: string; approverName: string; approverRole: string; daysWaiting: number; severity: "red" | "amber" | "green" };
@@ -146,6 +147,69 @@ export default function ExecutiveDashboard() {
 
   const isLoading = loadingSummary || loadingProjects;
 
+  // ── Drill-down data — the actual rows behind each KPI / chart ──────────────
+  const healthFull = summary?.projectHealth as {
+    active?: number; onTrack?: number; offTrack?: number; delayed?: number;
+    offTrackProjects?: Array<{ id: number; name: string; reason?: string; behindBy?: number }>;
+    delayedProjects?: Array<{ id: number; name: string; reason?: string; daysOverdue?: number }>;
+  } | undefined;
+  const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const fmtDate = (d?: string | null) => (d ? format(new Date(d), "MMM d, yyyy") : "—");
+  const schedVarDays = (p: { startDate?: string | null; endDate?: string | null; progress?: number | null }) => {
+    if (!p.startDate || !p.endDate) return 0;
+    const start = new Date(p.startDate).getTime(), end = new Date(p.endDate).getTime();
+    const totalDays = Math.max(1, (end - start) / 86400000);
+    const elapsed = Math.max(0, (Date.now() - start) / 86400000);
+    const expected = Math.min(100, (elapsed / totalDays) * 100);
+    return Math.round((((p.progress ?? 0) - expected) / 100) * totalDays);
+  };
+
+  const projectCols: DrillColumn[] = [
+    { key: "name", label: "Project" },
+    { key: "rag", label: "RAG", render: (v) => titleCase(String(v ?? "—")) },
+    { key: "progress", label: "Progress", align: "right", render: (v) => `${v ?? 0}%` },
+    { key: "budget", label: "Budget", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) },
+    { key: "due", label: "Due", render: (v) => String(v ?? "—") },
+  ];
+  const toProjectRow = (p: typeof activeProjects[number]) => ({
+    name: p.name, rag: p.ragStatus ?? "—", progress: p.progress ?? 0,
+    budget: (p.capexBudget ?? 0) + (p.opexBudget ?? 0), due: fmtDate(p.endDate),
+  });
+  const activeRows = activeProjects.map(toProjectRow);
+  const greenRows = activeProjects.filter((p) => (p.ragStatus ?? "green") === "green").map(toProjectRow);
+  const amberRows = (healthFull?.offTrackProjects ?? []).map((p) => ({ name: p.name, reason: p.reason ?? "—", behind: p.behindBy != null ? `${p.behindBy}% behind` : "—" }));
+  const redRows = (healthFull?.delayedProjects ?? []).map((p) => ({ name: p.name, reason: p.reason ?? "—", overdue: p.daysOverdue != null ? `+${p.daysOverdue}d` : "—" }));
+  const budgetRows = activeProjects.map((p) => ({
+    name: p.name, capex: p.capexBudget ?? 0, opex: p.opexBudget ?? 0,
+    total: (p.capexBudget ?? 0) + (p.opexBudget ?? 0), progress: `${p.progress ?? 0}%`,
+  }));
+  const budgetCols: DrillColumn[] = [
+    { key: "name", label: "Project" },
+    { key: "capex", label: "CapEx", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) },
+    { key: "opex", label: "OpEx", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) },
+    { key: "total", label: "Total", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) },
+    { key: "progress", label: "Progress", align: "right" },
+  ];
+  const schedRows = activeProjects.filter((p) => p.startDate && p.endDate).map((p) => ({
+    name: p.name, progress: `${p.progress ?? 0}%`, variance: schedVarDays(p),
+  }));
+  const schedCols: DrillColumn[] = [
+    { key: "name", label: "Project" },
+    { key: "progress", label: "Progress", align: "right" },
+    { key: "variance", label: "Schedule Variance", align: "right", render: (v) => `${Number(v) >= 0 ? "+" : ""}${v}d` },
+  ];
+  const dueRows = upcomingIn30.map((p) => ({ name: p.name, due: fmtDate(p.endDate) }));
+  const dueCols: DrillColumn[] = [{ key: "name", label: "Project" }, { key: "due", label: "Due Date" }];
+  const approvalRows = (stuck?.items ?? []).map((a) => ({
+    charter: a.charterTitle, stage: titleCase(a.stage), approver: a.approverName, days: a.daysWaiting,
+  }));
+  const approvalCols: DrillColumn[] = [
+    { key: "charter", label: "Charter" },
+    { key: "stage", label: "Stage" },
+    { key: "approver", label: "Approver" },
+    { key: "days", label: "Days Waiting", align: "right", render: (v) => `${v}d` },
+  ];
+
   // ── Tile customization (Stage 3 — Customization). Stable keys for each
   // KPI tile let the user hide/reorder per-saved-view. Re-ordering is a
   // follow-up; for v1 we ship hide-only because it covers the highest-value
@@ -269,10 +333,14 @@ export default function ExecutiveDashboard() {
             }, 0) / Math.max(1, activeProjects.filter(p => p.startDate && p.endDate).length));
             return (
               <>
-                {isShown("active") && <KPITile label="Total Active Projects" value={health?.active ?? 0} icon={BarChart3} tone="primary" />}
-                {isShown("green") && <KPITile label="On Track (Green)" value={greenCount} icon={CheckSquare} tone="success" />}
-                {isShown("amber") && <KPITile label="At Risk (Amber)" value={amberCount} icon={AlertTriangle} tone="warn" />}
-                {isShown("red") && <KPITile label="Delayed (Red)" value={redCount} icon={AlertTriangle} tone="danger" highlight={redCount > 0} />}
+                {isShown("active") && <KPITile label="Total Active Projects" value={health?.active ?? 0} icon={BarChart3} tone="primary"
+                  drill={{ subtitle: "Projects currently in execution", columns: projectCols, rows: activeRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No active projects." }} />}
+                {isShown("green") && <KPITile label="On Track (Green)" value={greenCount} icon={CheckSquare} tone="success"
+                  drill={{ subtitle: "Active projects with a green RAG status", columns: projectCols, rows: greenRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No on-track projects." }} />}
+                {isShown("amber") && <KPITile label="At Risk (Amber)" value={amberCount} icon={AlertTriangle} tone="warn"
+                  drill={{ subtitle: "Projects flagged off-track", columns: [{ key: "name", label: "Project" }, { key: "reason", label: "Reason" }, { key: "behind", label: "Status", align: "right" }], rows: amberRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No at-risk projects." }} />}
+                {isShown("red") && <KPITile label="Delayed (Red)" value={redCount} icon={AlertTriangle} tone="danger" highlight={redCount > 0}
+                  drill={{ subtitle: "Projects past their planned schedule", columns: [{ key: "name", label: "Project" }, { key: "reason", label: "Reason" }, { key: "overdue", label: "Overdue", align: "right" }], rows: redRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No delayed projects." }} />}
                 {isShown("budgetVar") && (
                   <KPITile
                     label="Budget Variance"
@@ -282,6 +350,8 @@ export default function ExecutiveDashboard() {
                     sub={`Portfolio: ${formatCurrency(totalPlanned)}`}
                     trend={budgetVariancePct > 5 ? "down" : budgetVariancePct < -5 ? "up" : "flat"}
                     trendLabel={budgetVariancePct > 0 ? "Over baseline" : "Under baseline"}
+                    caption="(Est. Spend − 50% of Planned) ÷ Planned × 100 · Est. Spend = Planned × Avg Progress%"
+                    drill={{ subtitle: "Budget per active project (CapEx + OpEx) feeding the variance", columns: budgetCols, rows: budgetRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No project budgets." }}
                   />
                 )}
                 {isShown("schedVar") && (
@@ -293,10 +363,14 @@ export default function ExecutiveDashboard() {
                     sub="Avg across active projects"
                     trend={schedVarianceDays >= 0 ? "up" : "down"}
                     trendLabel={schedVarianceDays >= 0 ? "Ahead of plan" : "Behind plan"}
+                    caption="Avg of (Actual Progress% − Expected Progress%) × Duration · Expected% = Elapsed ÷ Total Days"
+                    drill={{ subtitle: "Schedule variance per active project (progress vs elapsed time)", columns: schedCols, rows: schedRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No projects with start/end dates." }}
                   />
                 )}
-                {isShown("dueIn30") && <KPITile label="Due in 30 Days" value={upcomingIn30.length} icon={Clock} tone="amber" sub="Upcoming deadlines" />}
-                {isShown("pendingApprovals") && <KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0} icon={FileText} tone="primary" sub="Awaiting action" />}
+                {isShown("dueIn30") && <KPITile label="Due in 30 Days" value={upcomingIn30.length} icon={Clock} tone="amber" sub="Upcoming deadlines"
+                  drill={{ subtitle: "Active projects due within 30 days", columns: dueCols, rows: dueRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No deadlines in the next 30 days." }} />}
+                {isShown("pendingApprovals") && <KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0} icon={FileText} tone="primary" sub="Awaiting action"
+                  drill={{ subtitle: "Charters awaiting approval, oldest first", columns: approvalCols, rows: approvalRows, linkHref: "/approvals", linkLabel: "Open approvals queue", emptyText: "No pending approvals." }} />}
               </>
             );
           })()}
@@ -713,6 +787,18 @@ export default function ExecutiveDashboard() {
             subtitle="12-week RAG distribution over time"
             onExportCSV={() => exportCSV("portfolio-health.csv", healthData?.trend ?? [])}
             onExportPDF={() => exportPDF("Executive Dashboard - Portfolio Health")}
+            drill={{
+              subtitle: "RAG counts per week",
+              columns: [
+                { key: "week", label: "Week" },
+                { key: "green", label: "Green", align: "right" },
+                { key: "amber", label: "Amber", align: "right" },
+                { key: "red", label: "Red", align: "right" },
+                { key: "total", label: "Total", align: "right" },
+              ],
+              rows: (healthData?.trend ?? []) as unknown as Array<Record<string, unknown>>,
+              emptyText: "No trend data yet.",
+            }}
           >
             {healthData ? (
               <ResponsiveContainer width="100%" height={200}>
@@ -720,7 +806,7 @@ export default function ExecutiveDashboard() {
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="week" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
                   <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
-                  <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--popover-border))", borderRadius: 8, color: "hsl(var(--popover-foreground))", fontSize: 12 }} />
+                  <Tooltip {...chartTooltipProps} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                   <Line type="monotone" dataKey="green" stroke="hsl(var(--success))" strokeWidth={2} dot={false} name="Green" />
                   <Line type="monotone" dataKey="amber" stroke="hsl(var(--warn))" strokeWidth={2} dot={false} name="Amber" />

@@ -1,8 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db, workstreamsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
 
 router.get("/projects/:id/workstreams", async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
@@ -11,7 +14,7 @@ router.get("/projects/:id/workstreams", async (req, res): Promise<void> => {
   res.json(workstreams);
 });
 
-router.post("/projects/:id/workstreams", async (req, res): Promise<void> => {
+router.post("/projects/:id/workstreams", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { name, description, order, parentWorkstreamId } = req.body as { name: string; description?: string; order?: number; parentWorkstreamId?: number };
@@ -20,7 +23,7 @@ router.post("/projects/:id/workstreams", async (req, res): Promise<void> => {
   res.status(201).json(workstream);
 });
 
-router.patch("/workstreams/:id", async (req, res): Promise<void> => {
+router.patch("/workstreams/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { name, description, order, parentWorkstreamId } = req.body as { name?: string; description?: string; order?: number; parentWorkstreamId?: number };
@@ -29,7 +32,7 @@ router.patch("/workstreams/:id", async (req, res): Promise<void> => {
   res.json(workstream);
 });
 
-router.delete("/workstreams/:id", async (req, res): Promise<void> => {
+router.delete("/workstreams/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(workstreamsTable).where(eq(workstreamsTable.id, id));

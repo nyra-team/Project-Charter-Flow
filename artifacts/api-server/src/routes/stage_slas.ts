@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, stageSlasTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { STAGE_META } from "../lib/stage-gates";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
 
@@ -34,7 +35,7 @@ router.get("/stage-slas", async (_req, res): Promise<void> => {
 });
 
 // Update a stage SLA's target days / active flag.
-router.patch("/stage-slas/:stage", async (req, res): Promise<void> => {
+router.patch("/stage-slas/:stage", requireRole("pmo"), async (req, res): Promise<void> => {
   const { stage } = req.params;
   const { targetDays, isActive } = (req.body ?? {}) as { targetDays?: number; isActive?: boolean };
   const update: Record<string, unknown> = {};

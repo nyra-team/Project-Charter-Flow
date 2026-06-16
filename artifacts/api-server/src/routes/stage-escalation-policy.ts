@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { db, stageEscalationPolicyTable } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
 import { STAGE_META } from "../lib/stage-gates";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
 
@@ -25,7 +26,7 @@ function validate(body: Record<string, unknown>): string | null {
   return null;
 }
 
-router.post("/stage-escalation-policy", async (req, res): Promise<void> => {
+router.post("/stage-escalation-policy", requireRole("pmo"), async (req, res): Promise<void> => {
   const body = (req.body ?? {}) as Record<string, unknown>;
   if (!body.stage) { res.status(400).json({ error: "stage is required" }); return; }
   if (!body.targetRole) { res.status(400).json({ error: "targetRole is required" }); return; }
@@ -43,7 +44,7 @@ router.post("/stage-escalation-policy", async (req, res): Promise<void> => {
   res.status(201).json(row);
 });
 
-router.patch("/stage-escalation-policy/:id", async (req, res): Promise<void> => {
+router.patch("/stage-escalation-policy/:id", requireRole("pmo"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const body = (req.body ?? {}) as Record<string, unknown>;
@@ -62,7 +63,7 @@ router.patch("/stage-escalation-policy/:id", async (req, res): Promise<void> => 
   res.json(row);
 });
 
-router.delete("/stage-escalation-policy/:id", async (req, res): Promise<void> => {
+router.delete("/stage-escalation-policy/:id", requireRole("pmo"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(stageEscalationPolicyTable).where(eq(stageEscalationPolicyTable.id, id));

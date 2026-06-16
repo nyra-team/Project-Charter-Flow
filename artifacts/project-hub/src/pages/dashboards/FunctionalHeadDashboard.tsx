@@ -7,10 +7,11 @@ import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format, addDays } from "date-fns";
 import {
-  KPITile, RAGBadge, DashboardCard, SLACountdown, useAutoRefresh, exportCSV, exportXLSX,
+  KPITile, RAGBadge, DashboardCard, SLACountdown, useAutoRefresh, exportCSV, exportXLSX, type DrillColumn,
 } from "../../components/dashboard/primitives";
 import { formatCurrency } from "../../lib/format";
 import { getPriorityMeta } from "../../lib/task-constants";
+import { chartTooltipProps } from "@/components/ui-kit";
 
 type DeliveryStats = {
   window: string;
@@ -120,6 +121,41 @@ export default function FunctionalHeadDashboard() {
     budget: (p.capexBudget ?? 0) + (p.opexBudget ?? 0),
   }));
 
+  // ── Drill-down data — the actual rows behind each KPI / chart ──────────────
+  const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const fmtDate = (d?: string | null) => (d ? format(new Date(d), "MMM d, yyyy") : "—");
+  const projectCols: DrillColumn[] = [
+    { key: "name", label: "Project" },
+    { key: "rag", label: "RAG", render: (v) => titleCase(String(v ?? "—")) },
+    { key: "progress", label: "Progress", align: "right", render: (v) => `${v ?? 0}%` },
+    { key: "budget", label: "Budget", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) },
+    { key: "due", label: "Due", render: (v) => String(v ?? "—") },
+  ];
+  const toProjectRow = (p: typeof activeProjects[number]) => ({
+    name: p.name, rag: p.ragStatus ?? "—", progress: p.progress ?? 0,
+    budget: (p.capexBudget ?? 0) + (p.opexBudget ?? 0), due: fmtDate(p.endDate),
+  });
+  const activeProjectRows = activeProjects.map(toProjectRow);
+  const greenProjectRows = activeProjects.filter((p) => (p.ragStatus ?? "green") === "green").map(toProjectRow);
+  const conflictRows = Object.entries(conflictsByFunction).map(([fn, d]) => ({
+    fn, util: `${Math.round((d.demand / d.capacity) * 100)}%`, demand: `${d.demand}%`, capacity: `${d.capacity}%`, months: d.months.join(", "),
+  }));
+  const conflictCols: DrillColumn[] = [
+    { key: "fn", label: "Function" },
+    { key: "util", label: "Utilization", align: "right" },
+    { key: "demand", label: "Demand", align: "right" },
+    { key: "capacity", label: "Capacity", align: "right" },
+    { key: "months", label: "Months" },
+  ];
+  const ragRows = ragPieData.map((d) => ({ status: d.name, count: d.value }));
+  const budgetRows = activeProjects.map((p) => ({ name: p.name, budget: (p.capexBudget ?? 0) + (p.opexBudget ?? 0) }));
+  const utilizationRows = (capacityData?.functions ?? []).map((fn) => {
+    const fnCells = (capacityData?.cells ?? []).filter((c) => c.function === fn);
+    const avgUtil = fnCells.length ? Math.round(fnCells.reduce((s, c) => s + c.utilization, 0) / fnCells.length) : 0;
+    const peakUtil = fnCells.length ? Math.max(...fnCells.map((c) => c.utilization)) : 0;
+    return { fn, avg: `${avgUtil}%`, peak: `${peakUtil}%` };
+  });
+
   return (
     <div className="space-y-5" data-print-target>
       {/* Header */}
@@ -133,16 +169,35 @@ export default function FunctionalHeadDashboard() {
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <KPITile label="Projects Under Function" value={activeProjects.length} icon={TrendingUp} tone="primary" />
-        <KPITile label="On Track (Green)" value={health?.onTrack ?? 0} icon={CheckSquare} tone="success" sub="Healthy projects" />
-        <KPITile label="Resource Conflicts" value={Object.keys(conflictsByFunction).length} icon={Users} tone="danger" sub="Over-allocated teams" highlight={Object.keys(conflictsByFunction).length > 0} />
-        <KPITile label="Total Budget" value={formatCurrency(totalBudget)} icon={DollarSign} tone="primary" sub="CapEx + OpEx" />
+        <KPITile label="Projects Under Function" value={activeProjects.length} icon={TrendingUp} tone="primary"
+          drill={{ subtitle: "Active projects in your function", columns: projectCols, rows: activeProjectRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No active projects." }} />
+        <KPITile label="On Track (Green)" value={health?.onTrack ?? 0} icon={CheckSquare} tone="success" sub="Healthy projects"
+          drill={{ subtitle: "Active projects with a green RAG status", columns: projectCols, rows: greenProjectRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No on-track projects." }} />
+        <KPITile label="Resource Conflicts" value={Object.keys(conflictsByFunction).length} icon={Users} tone="danger" sub="Over-allocated teams" highlight={Object.keys(conflictsByFunction).length > 0}
+          drill={{ subtitle: "Functions over-allocated this period", columns: conflictCols, rows: conflictRows, emptyText: "No resource conflicts detected." }} />
+        <KPITile label="Total Budget" value={formatCurrency(totalBudget)} icon={DollarSign} tone="primary" sub="CapEx + OpEx"
+          drill={{ subtitle: "Budget per active project (CapEx + OpEx)", columns: [{ key: "name", label: "Project" }, { key: "budget", label: "Budget", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) }], rows: budgetRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No project budgets." }} />
       </div>
 
       {/* Delivery Stats Row (90d) — earned signal, not vanity */}
       <DashboardCard
         title="Delivery Performance — Last 90 Days"
         subtitle="On-time completion rate across tasks, milestones, and open-risk burden"
+        drill={{
+          subtitle: "On-time completion by scope (last 90 days)",
+          columns: [
+            { key: "scope", label: "Scope" },
+            { key: "onTime", label: "On Time", align: "right" },
+            { key: "total", label: "Total", align: "right" },
+            { key: "pct", label: "On-time %", align: "right", render: (v) => `${v}%` },
+          ],
+          rows: delivery ? [
+            { scope: "Tasks", onTime: delivery.tasks.onTime, total: delivery.tasks.total, pct: delivery.tasks.pct },
+            { scope: "Milestones", onTime: delivery.milestones.onTime, total: delivery.milestones.total, pct: delivery.milestones.pct },
+            { scope: "Overall", onTime: delivery.overall.onTime, total: delivery.overall.total, pct: delivery.overall.pct },
+          ] : [],
+          emptyText: "No delivery data available.",
+        }}
         onExportCSV={delivery ? () => exportCSV("delivery-stats.csv", [
           { Scope: "Tasks", "On Time": delivery.tasks.onTime, Total: delivery.tasks.total, "%": delivery.tasks.pct },
           { Scope: "Milestones", "On Time": delivery.milestones.onTime, Total: delivery.milestones.total, "%": delivery.milestones.pct },
@@ -204,7 +259,8 @@ export default function FunctionalHeadDashboard() {
 
       {/* Middle row: RAG Pie + Budget Bar */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <DashboardCard title="RAG Distribution" subtitle="Active projects by health status">
+        <DashboardCard title="RAG Distribution" subtitle="Active projects by health status"
+          drill={{ subtitle: "Active project count by RAG status", columns: [{ key: "status", label: "RAG" }, { key: "count", label: "Projects", align: "right" }], rows: ragRows, emptyText: "No active projects." }}>
           {ragPieData.length > 0 ? (
             <>
               <ResponsiveContainer width="100%" height={160}>
@@ -218,7 +274,7 @@ export default function FunctionalHeadDashboard() {
                       <Cell key={i} fill={entry.fill} strokeWidth={0} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--popover-border))", borderRadius: 8, color: "hsl(var(--popover-foreground))", fontSize: 12 }} />
+                  <Tooltip {...chartTooltipProps} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex justify-center gap-4 mt-1">
@@ -241,6 +297,7 @@ export default function FunctionalHeadDashboard() {
             title="Budget by Project"
             subtitle="Total allocated budget (CapEx + OpEx)"
             onExportCSV={() => exportCSV("budget-by-project.csv", budgetBarData)}
+            drill={{ subtitle: "Allocated budget per active project", columns: [{ key: "name", label: "Project" }, { key: "budget", label: "Budget", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) }], rows: budgetRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No project budget data." }}
           >
             {budgetBarData.length > 0 ? (
               <ResponsiveContainer width="100%" height={175}>
@@ -249,7 +306,7 @@ export default function FunctionalHeadDashboard() {
                   <XAxis dataKey="name" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} angle={-30} textAnchor="end" interval={0} />
                   <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickFormatter={v => `₹${(v / 1e6).toFixed(1)}M`} />
                   <Tooltip
-                    contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--popover-border))", borderRadius: 8, color: "hsl(var(--popover-foreground))", fontSize: 12 }}
+                    {...chartTooltipProps}
                     formatter={(v: number) => [formatCurrency(v), "Budget"]}
                   />
                   <Bar dataKey="budget" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
@@ -343,6 +400,7 @@ export default function FunctionalHeadDashboard() {
         <DashboardCard
           title="Function Utilization Summary"
           subtitle="Average utilization across all tracked months"
+          drill={{ subtitle: "Average and peak utilization per function", columns: [{ key: "fn", label: "Function" }, { key: "avg", label: "Avg Utilization", align: "right" }, { key: "peak", label: "Peak", align: "right" }], rows: utilizationRows, emptyText: "No utilization data." }}
           onExportCSV={() => exportCSV("utilization.csv", capacityData.functions.map(fn => {
             const fnCells = capacityData.cells.filter(c => c.function === fn);
             const avgUtil = fnCells.length > 0 ? Math.round(fnCells.reduce((s, c) => s + c.utilization, 0) / fnCells.length) : 0;

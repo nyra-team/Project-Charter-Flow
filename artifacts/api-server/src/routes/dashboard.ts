@@ -42,8 +42,20 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
   const now = new Date();
 
   // Project health analysis
-  type DelayedProject = { id: number; name: string; reason: string; daysOverdue: number };
-  type OffTrackProject = { id: number; name: string; reason: string; behindBy: number };
+  // `citation` carries the raw evidence behind each flag so the UI can show
+  // exactly which data triggered it (dates, task counts, progress math).
+  type HealthCitation = {
+    rule: string;
+    startDate: string | null;
+    endDate: string | null;
+    completedTasks: number;
+    totalTasks: number;
+    blockedTasks: number;
+    actualProgress: number;
+    expectedProgress: number | null;
+  };
+  type DelayedProject = { id: number; name: string; reason: string; daysOverdue: number; citation: HealthCitation };
+  type OffTrackProject = { id: number; name: string; reason: string; behindBy: number; citation: HealthCitation };
 
   const projectHealth = {
     total: projects.length,
@@ -70,13 +82,25 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
     const endDate = p.endDate ? new Date(p.endDate) : null;
     const startDate = p.startDate ? new Date(p.startDate) : new Date(p.createdAt);
 
+    const baseCitation = {
+      startDate: p.startDate ?? null,
+      endDate: p.endDate ?? null,
+      completedTasks: completedTaskCount,
+      totalTasks: totalTaskCount,
+      blockedTasks,
+      actualProgress: Math.round(actualProgress),
+    };
+
     if (endDate && endDate < now) {
       projectHealth.delayed++;
       const daysOverdue = Math.ceil((now.getTime() - endDate.getTime()) / (1000 * 60 * 60 * 24));
       const reason = blockedTasks > 0
         ? `${blockedTasks} blocked task${blockedTasks > 1 ? "s" : ""}, completion overdue`
         : `${Math.round(actualProgress)}% complete — past due date`;
-      projectHealth.delayedProjects.push({ id: p.id, name: p.name, reason, daysOverdue });
+      projectHealth.delayedProjects.push({
+        id: p.id, name: p.name, reason, daysOverdue,
+        citation: { ...baseCitation, rule: "Planned end date is in the past", expectedProgress: null },
+      });
     } else {
       const totalDuration = endDate
         ? Math.max(1, endDate.getTime() - startDate.getTime())
@@ -90,7 +114,10 @@ router.get("/dashboard/summary", async (req, res): Promise<void> => {
         const reason = blockedTasks > 0
           ? `${blockedTasks} blocked task${blockedTasks > 1 ? "s" : ""}`
           : `Behind schedule by ${Math.round(behindBy)}%`;
-        projectHealth.offTrackProjects.push({ id: p.id, name: p.name, reason, behindBy: Math.round(behindBy) });
+        projectHealth.offTrackProjects.push({
+          id: p.id, name: p.name, reason, behindBy: Math.round(behindBy),
+          citation: { ...baseCitation, rule: "Task completion trails the timeline by more than 15%", expectedProgress: Math.round(expectedProgress) },
+        });
       } else {
         projectHealth.onTrack++;
       }
@@ -424,8 +451,18 @@ router.get("/dashboard/critical-path-portfolio", async (_req, res): Promise<void
   const byPhaseMap = new Map<string, { phaseKey: string; projects: number; blocked: number; overdue: number; activeApprovals: number }>();
   for (const k of PHASE_ORDER) byPhaseMap.set(k, { phaseKey: k, projects: 0, blocked: 0, overdue: 0, activeApprovals: 0 });
 
-  for (const p of projects) {
-    const cp = await computeStageCriticalPath(p.id);
+  // Compute every project's stage critical path concurrently (chunked to bound
+  // DB load) instead of one-at-a-time — the per-project compute does several DB
+  // round-trips, so sequential over the whole portfolio was the slow path. The
+  // aggregation below stays sequential so the rollup remains deterministic.
+  const CP_CONCURRENCY = 8;
+  const cps: Array<Awaited<ReturnType<typeof computeStageCriticalPath>>> = [];
+  for (let i = 0; i < projects.length; i += CP_CONCURRENCY) {
+    const batch = projects.slice(i, i + CP_CONCURRENCY);
+    cps.push(...await Promise.all(batch.map((p) => computeStageCriticalPath(p.id))));
+  }
+
+  for (const cp of cps) {
     if (!cp) continue;
     // Projects on legacy stage keys (pre-Option-B data) can't be placed on the
     // critical path — count them separately rather than inflating "on track".

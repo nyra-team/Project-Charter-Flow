@@ -1,122 +1,156 @@
-import { useMemo, useState } from "react";
-import { Link } from "wouter";
+import { Fragment, useMemo, useState } from "react";
 import { useListProjects } from "@workspace/api-client-react";
 import { DocumentsTab } from "../components/documents-tab";
-import { DocumentTemplatesPanel, TEMPLATE_COUNT } from "../components/document-templates-panel";
-import { FileText, Folder, ChevronRight, FolderArchive } from "lucide-react";
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
+import { FileText, FilePlus2, Files, FolderArchive, ChevronDown, ChevronRight, Upload } from "lucide-react";
 
 type Project = { id: number; name: string; status: string; stage?: string | null };
 
-type View = "project" | "templates";
+// Top-level sub-section of the Document Repository.
+type Section = "new-templates" | "project-documents";
+
+// New Project Templates categories — empty placeholders for now.
+const NEW_TEMPLATE_CATEGORIES = ["Capex", "NPL", "CIP", "IT"] as const;
 
 export default function DocumentsPage() {
   const { data: projects = [] } = useListProjects();
   const projectsArr = projects as Project[];
-  const [selectedId, setSelectedId] = useState<number | null>(null);
-  const [view, setView] = useState<View>("project");
+  const [section, setSection] = useState<Section>("project-documents");
 
   const sorted = useMemo(
     () => [...projectsArr].sort((a, b) => a.name.localeCompare(b.name)),
     [projectsArr]
   );
 
-  const selected = sorted.find(p => p.id === selectedId) ?? sorted[0];
+  const selected = sorted[0];
+
+  // Upload modal is owned here so the page-header button can trigger it inside DocumentsTab.
+  const [uploadOpen, setUploadOpen] = useState(false);
+
+  // New Project Templates category sections are collapsed by default; click to expand.
+  const [expandedCats, setExpandedCats] = useState<Set<string>>(new Set());
+  function toggleCat(k: string) {
+    setExpandedCats(prev => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  }
 
   return (
     <div className="space-y-5">
-      <div className="glass-surface lift-card rounded-2xl p-6 ph-rise">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 border border-primary/20">
-            <FileText size={18} className="text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-foreground">Document Repository</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">All project documents, organised by lifecycle stage — plus the official Granules document templates. Versioning, check-out locking, access controls, and tags.</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-        {/* Left column — Templates option + project list */}
-        <div className="col-span-12 md:col-span-3 ph-rise ph-rise-2">
-          <div className="glass-surface rounded-2xl p-3">
-            <button
-              onClick={() => setView("templates")}
-              className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left transition-colors ${
-                view === "templates"
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-              }`}
-            >
-              <FolderArchive size={14} className="flex-shrink-0" />
-              <span className="text-sm font-semibold truncate flex-1">Templates</span>
-              <span className="text-[10px] tabular-nums opacity-60">{TEMPLATE_COUNT}</span>
-            </button>
-
-            <div className="my-2 h-px bg-border/60" />
-
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide px-2 py-1.5">Projects</p>
-            {sorted.length === 0 ? (
-              <p className="px-2 py-2 text-xs text-muted-foreground/70">No projects yet.</p>
-            ) : (
-              <div className="space-y-1">
-                {sorted.map(p => {
-                  const isSel = view === "project" && selected?.id === p.id;
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => { setSelectedId(p.id); setView("project"); }}
-                      className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left transition-colors ${
-                        isSel
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                      }`}
-                    >
-                      <Folder size={13} className="flex-shrink-0" />
-                      <span className="text-sm font-medium truncate flex-1">{p.name}</span>
-                      <ChevronRight size={12} className="flex-shrink-0 opacity-50" />
-                    </button>
-                  );
-                })}
+      <div className="glass-surface lift-card rounded-2xl ph-rise overflow-hidden">
+        <div className="px-6 pt-6">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 shadow-sm flex-shrink-0">
+              <FileText size={20} className="text-primary" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                <span>Workspace</span>
+                <ChevronRight size={11} />
+                <span className="text-primary">Documents</span>
               </div>
+              <h1 className="text-2xl font-bold text-foreground tracking-tight mt-0.5">Document Repository</h1>
+              <p className="text-sm text-muted-foreground mt-1 max-w-2xl leading-relaxed">
+                All project documents, organised by lifecycle stage. Versioning, check-out locking, access controls, and tags.
+              </p>
+            </div>
+            {section === "project-documents" && selected && (
+              <button
+                onClick={() => setUploadOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-all shadow-sm hover:shadow flex-shrink-0"
+              >
+                <Upload size={15} /> Upload Document
+              </button>
             )}
           </div>
-        </div>
 
-        {/* Right column — templates library OR the selected project's documents */}
-        <div className="col-span-12 md:col-span-9 ph-rise ph-rise-3">
-          {view === "templates" ? (
-            <>
-              <div className="mb-3">
-                <h2 className="text-sm font-semibold text-foreground">Document Templates</h2>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  The {TEMPLATE_COUNT} official Granules mandatory deliverables, organised by lifecycle phase.
-                  Download a blank template, fill it in, then upload the completed copy on the project's stage Documents tab.
-                </p>
-              </div>
-              <DocumentTemplatesPanel />
-            </>
-          ) : selected ? (
-            <>
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-foreground">
-                  Documents in <span className="text-primary">{selected.name}</span>
-                </h2>
-                <Link href={`/projects/${selected.id}`}>
-                  <button className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors">
-                    Open project →
-                  </button>
-                </Link>
-              </div>
-              <DocumentsTab projectId={selected.id} />
-            </>
-          ) : (
-            <div className="glass-surface rounded-2xl p-10 text-center text-sm text-muted-foreground">
-              No projects yet — select <span className="font-semibold text-foreground">Templates</span> to browse the document templates.
-            </div>
-          )}
+          {/* Sub-section tabs — underline style */}
+          <div className="flex items-center gap-1 mt-6">
+            {([
+              { key: "new-templates", label: "New Project Templates", icon: FilePlus2 },
+              { key: "project-documents", label: "Project Documents", icon: Files },
+            ] as const).map(t => {
+              const active = section === t.key;
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setSection(t.key)}
+                  className={`relative flex items-center gap-2 px-4 py-2.5 text-sm font-semibold transition-colors border-b-2 -mb-px ${
+                    active
+                      ? "text-primary border-primary"
+                      : "text-muted-foreground border-transparent hover:text-foreground"
+                  }`}
+                >
+                  <Icon size={14} className="flex-shrink-0" />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
+        <div className="h-px bg-border/60" />
       </div>
+
+      {section === "new-templates" ? (
+        <div className="glass-surface lift-card ph-rise ph-rise-2 rounded-2xl overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="pl-10">Document</TableHead>
+                <TableHead>Access</TableHead>
+                <TableHead>Tags</TableHead>
+                <TableHead>Uploaded By</TableHead>
+                <TableHead>Uploaded</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {NEW_TEMPLATE_CATEGORIES.map(cat => {
+                const open = expandedCats.has(cat);
+                return (
+                  <Fragment key={cat}>
+                    {/* Category section header — click to expand/collapse the templates inside */}
+                    <TableRow className="bg-muted/40 hover:bg-muted/50 cursor-pointer border-t-2 border-border" onClick={() => toggleCat(cat)}>
+                      <TableCell colSpan={6} className="py-2">
+                        <div className="flex items-center gap-2">
+                          {open ? <ChevronDown size={14} className="text-muted-foreground" /> : <ChevronRight size={14} className="text-muted-foreground" />}
+                          <FolderArchive size={14} className="text-muted-foreground" />
+                          <span className="text-sm font-semibold text-foreground">{cat}</span>
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">0 docs</span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    {open && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="pl-10 text-xs text-muted-foreground italic">No templates yet.</TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      ) : (
+        <div className="ph-rise ph-rise-2">
+          {sorted.length === 0 ? (
+            <div className="glass-surface rounded-2xl p-10 text-center text-sm text-muted-foreground">
+              No projects yet.
+            </div>
+          ) : selected ? (
+            <DocumentsTab
+              projectId={selected.id}
+              uploadOpen={uploadOpen}
+              onUploadOpenChange={setUploadOpen}
+              showUploadButton={false}
+              showSearch={false}
+            />
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

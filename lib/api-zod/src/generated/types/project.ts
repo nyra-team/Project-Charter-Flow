@@ -38,6 +38,11 @@ export interface Project {
   function?: string | null;
   /** @nullable */
   projectManagerId?: number | null;
+  /**
+   * Email address of the project's Teams channel (Channel → ⋯ → Get email address); alerts are mirrored there. Null = no mirror.
+   * @nullable
+   */
+  teamsChannelEmail?: string | null;
   /** @nullable */
   startDate?: string | null;
   /** @nullable */

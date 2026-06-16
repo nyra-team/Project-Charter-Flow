@@ -627,6 +627,12 @@ export const ListProjectsResponseItem = zod.object({
   siteRegion: zod.string().nullish(),
   function: zod.string().nullish(),
   projectManagerId: zod.number().nullish(),
+  teamsChannelEmail: zod
+    .string()
+    .nullish()
+    .describe(
+      "Email address of the project's Teams channel (Channel → ⋯ → Get email address); alerts are mirrored there. Null = no mirror.",
+    ),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
   progress: zod.number(),
@@ -690,6 +696,12 @@ export const GetProjectResponse = zod.object({
   siteRegion: zod.string().nullish(),
   function: zod.string().nullish(),
   projectManagerId: zod.number().nullish(),
+  teamsChannelEmail: zod
+    .string()
+    .nullish()
+    .describe(
+      "Email address of the project's Teams channel (Channel → ⋯ → Get email address); alerts are mirrored there. Null = no mirror.",
+    ),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
   progress: zod.number(),
@@ -723,6 +735,7 @@ export const UpdateProjectBody = zod.object({
   siteRegion: zod.string().optional(),
   function: zod.string().optional(),
   projectManagerId: zod.number().optional(),
+  teamsChannelEmail: zod.string().optional(),
   startDate: zod.string().optional(),
   endDate: zod.string().optional(),
   progress: zod.number().optional(),
@@ -754,6 +767,12 @@ export const UpdateProjectResponse = zod.object({
   siteRegion: zod.string().nullish(),
   function: zod.string().nullish(),
   projectManagerId: zod.number().nullish(),
+  teamsChannelEmail: zod
+    .string()
+    .nullish()
+    .describe(
+      "Email address of the project's Teams channel (Channel → ⋯ → Get email address); alerts are mirrored there. Null = no mirror.",
+    ),
   startDate: zod.string().nullish(),
   endDate: zod.string().nullish(),
   progress: zod.number(),
@@ -808,10 +827,7 @@ export const CreateMilestoneBody = zod.object({
   name: zod.string(),
   description: zod.string().optional(),
   dueDate: zod.string().optional(),
-  startDate: zod.string().optional(),
   priority: zod.string().optional(),
-  // Lifecycle stage this milestone gates (work-management layer).
-  stage: zod.string().optional(),
   order: zod.number().optional(),
 });
 
@@ -836,9 +852,6 @@ export const UpdateMilestoneBody = zod.object({
   scheduleVarianceDays: zod.number().optional(),
   readinessChecklist: zod.array(zod.object({}).passthrough()).optional(),
   gateDecision: zod.string().optional(),
-  startDate: zod.string().optional(),
-  // Lifecycle stage this milestone gates (work-management layer).
-  stage: zod.string().optional(),
   order: zod.number().optional(),
 });
 
@@ -959,9 +972,6 @@ export const CreateTaskBody = zod.object({
       }),
     )
     .optional(),
-  // Work-management layer: lifecycle stage + completion %.
-  stage: zod.string().optional(),
-  progressPct: zod.number().optional(),
   order: zod.number().optional(),
 });
 
@@ -1052,9 +1062,6 @@ export const UpdateTaskBody = zod.object({
       }),
     )
     .optional(),
-  // Work-management layer: lifecycle stage + completion %.
-  stage: zod.string().optional(),
-  progressPct: zod.number().optional(),
   order: zod.number().optional(),
 });
 
@@ -2104,6 +2111,157 @@ export const CreateRaciEntryBody = zod.object({
  * @summary Delete a RACI entry
  */
 export const DeleteRaciEntryParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List team members across all projects
+ */
+export const ListAllProjectTeamMembersResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  memberType: zod.string().describe("internal | external"),
+  userId: zod.number().nullish(),
+  externalName: zod.string().nullish(),
+  externalOrg: zod.string().nullish(),
+  externalEmail: zod.string().nullish(),
+  externalKind: zod
+    .string()
+    .nullish()
+    .describe("vendor | partner | consultant | contractor"),
+  role: zod.string().nullish(),
+  responsibilities: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListAllProjectTeamMembersResponse = zod.array(
+  ListAllProjectTeamMembersResponseItem,
+);
+
+/**
+ * @summary List team members for a project
+ */
+export const ListProjectTeamMembersParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListProjectTeamMembersResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  memberType: zod.string().describe("internal | external"),
+  userId: zod.number().nullish(),
+  externalName: zod.string().nullish(),
+  externalOrg: zod.string().nullish(),
+  externalEmail: zod.string().nullish(),
+  externalKind: zod
+    .string()
+    .nullish()
+    .describe("vendor | partner | consultant | contractor"),
+  role: zod.string().nullish(),
+  responsibilities: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+export const ListProjectTeamMembersResponse = zod.array(
+  ListProjectTeamMembersResponseItem,
+);
+
+/**
+ * @summary Add a team member to a project
+ */
+export const CreateProjectTeamMemberParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateProjectTeamMemberBody = zod.object({
+  memberType: zod.string(),
+  userId: zod.number().optional(),
+  externalName: zod.string().optional(),
+  externalOrg: zod.string().optional(),
+  externalEmail: zod.string().optional(),
+  externalKind: zod.string().optional(),
+  role: zod.string().optional(),
+  responsibilities: zod.string().optional(),
+});
+
+/**
+ * @summary Update a team member
+ */
+export const UpdateProjectTeamMemberParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateProjectTeamMemberBody = zod.object({
+  userId: zod.number().optional(),
+  externalName: zod.string().optional(),
+  externalOrg: zod.string().optional(),
+  externalEmail: zod.string().optional(),
+  externalKind: zod.string().optional(),
+  role: zod.string().optional(),
+  responsibilities: zod.string().optional(),
+});
+
+export const UpdateProjectTeamMemberResponse = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  memberType: zod.string().describe("internal | external"),
+  userId: zod.number().nullish(),
+  externalName: zod.string().nullish(),
+  externalOrg: zod.string().nullish(),
+  externalEmail: zod.string().nullish(),
+  externalKind: zod
+    .string()
+    .nullish()
+    .describe("vendor | partner | consultant | contractor"),
+  role: zod.string().nullish(),
+  responsibilities: zod.string().nullish(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Remove a team member (and their RACI cells)
+ */
+export const DeleteProjectTeamMemberParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List project-level RACI cells
+ */
+export const ListProjectTeamRaciParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListProjectTeamRaciResponseItem = zod.object({
+  id: zod.number(),
+  projectId: zod.number(),
+  memberId: zod.number(),
+  deliverable: zod.string(),
+  raciType: zod.string().describe("RACI type: R, A, S, C, I"),
+  createdAt: zod.string(),
+});
+export const ListProjectTeamRaciResponse = zod.array(
+  ListProjectTeamRaciResponseItem,
+);
+
+/**
+ * @summary Create a project-level RACI cell
+ */
+export const CreateProjectTeamRaciParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const CreateProjectTeamRaciBody = zod.object({
+  memberId: zod.number(),
+  deliverable: zod.string(),
+  raciType: zod.string(),
+});
+
+/**
+ * @summary Delete a project-level RACI cell
+ */
+export const DeleteProjectTeamRaciParams = zod.object({
   id: zod.coerce.number(),
 });
 

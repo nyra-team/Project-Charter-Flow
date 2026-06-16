@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sparkles, Inbox, CheckCircle2, XCircle, FileSearch, Clock, AlertCircle } from "lucide-react";
 import { formatDate } from "../lib/format";
+import { Drillable } from "../components/dashboard/primitives";
 
 // ─── Types — mirror routes/pifs.ts ──────────────────────────────────────────
 type Pif = {
@@ -83,10 +84,28 @@ export default function PifsList() {
       {/* ── Status tiles ───────────────────────────────────────────── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3">
         {byBucket.map((b) => (
-          <div key={b.key} className="glass-surface rounded-2xl p-4">
+          <Drillable
+            key={b.key}
+            className="glass-surface rounded-2xl p-4"
+            drill={{
+              title: b.label,
+              subtitle: "Project Initiation Forms in this bucket",
+              columns: [
+                { key: "title", label: "PIF" },
+                { key: "status", label: "Status", render: (v) => String(v ?? "—").replace(/_/g, " ") },
+                { key: "classification", label: "Classification" },
+                { key: "urgency", label: "Urgency" },
+                { key: "created", label: "Created" },
+              ],
+              rows: b.items.map((p) => ({ title: p.title, status: p.status, classification: p.classification ?? "—", urgency: p.urgency ?? "—", created: p.createdAt ? formatDate(p.createdAt) : "—" })),
+              linkHref: "/pifs",
+              linkLabel: "View all PIFs",
+              emptyText: "No PIFs in this bucket.",
+            }}
+          >
             <p className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">{b.label}</p>
             <p className="text-2xl font-mono font-semibold text-card-foreground num-tabular mt-1">{b.items.length}</p>
-          </div>
+          </Drillable>
         ))}
       </div>
 

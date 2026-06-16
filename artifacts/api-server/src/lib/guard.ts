@@ -1,4 +1,4 @@
-import type { Request, Response, NextFunction } from "express";
+import type { Request, Response, NextFunction, RequestHandler } from "express";
 
 /**
  * Authorize a request against the caller's REAL Project Hub role
@@ -18,7 +18,11 @@ import type { Request, Response, NextFunction } from "express";
  *    lists) do NOT include "initiator", so they get genuine role enforcement.
  *  - Otherwise the user's role must be in the allowed list.
  */
-export function requireRole(...allowed: string[]) {
+// Returned as RequestHandler<any> (not the default Request/Response signature):
+// a middleware typed Request<ParamsDictionary> makes Express 5's IRouterMatcher
+// widen the route literal, so req.params.* in the sibling handler degrades to
+// `string | string[]`. RequestHandler<any> keeps path-param inference intact.
+export function requireRole(...allowed: string[]): RequestHandler<any> {
   return (req: Request, res: Response, next: NextFunction) => {
     const user = req.user;
     if (!user) {

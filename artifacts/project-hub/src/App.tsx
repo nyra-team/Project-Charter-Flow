@@ -1,15 +1,15 @@
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Redirect, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "./components/Layout";
 import { AuthConsumer } from "./auth/AuthConsumer";
 import { SessionExpiredModal } from "./components/SessionExpiredModal";
+import { JustificationRequiredModal } from "./components/JustificationRequiredModal";
 import { AskNyra } from "./components/AskNyra";
-import Dashboard from "./pages/dashboard";
-import ChartersList from "./pages/charters";
-import NewCharter from "./pages/charter-new";
+import NewCharterTemplate from "./pages/charter-template-new";
 import NewDemand from "./pages/demand-new";
+import CharterNfaSelect from "./pages/charter-nfa-select";
 import DemandsList from "./pages/demands";
 import PipelinePage from "./pages/pipeline";
 import CharterDetail from "./pages/charter-detail";
@@ -25,6 +25,7 @@ import TasksPage from "./pages/tasks";
 import AdminScoring from "./pages/admin-scoring";
 import AdminStageSlas from "./pages/admin-stage-slas";
 import AdminRoleDirectory from "./pages/admin-role-directory";
+import AdminRoles from "./pages/admin-roles";
 import AdminStageEscalation from "./pages/admin-stage-escalation";
 import AdminDoaMatrix from "./pages/admin-doa-matrix";
 import DocumentsPage from "./pages/documents";
@@ -33,7 +34,6 @@ import TemplatesPage from "./pages/templates";
 import PifsList from "./pages/pifs";
 import PifNew from "./pages/pif-new";
 import PifDetail from "./pages/pif-detail";
-import NfasList from "./pages/nfas";
 import NfaNew from "./pages/nfa-new";
 import NfaDetail from "./pages/nfa-detail";
 import NudgesPage from "./pages/nudges";
@@ -72,9 +72,9 @@ function Router() {
   return (
     <Layout>
       <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/charters" component={ChartersList} />
-        <Route path="/charters/new" component={NewCharter} />
+        <Route path="/"><Redirect to="/portfolio" /></Route>
+        <Route path="/charters/new" component={NewCharterTemplate} />
+        <Route path="/charter-nfa" component={CharterNfaSelect} />
         <Route path="/demands/new" component={NewDemand} />
         <Route path="/demands" component={DemandsList} />
         <Route path="/pipeline" component={PipelinePage} />
@@ -91,6 +91,7 @@ function Router() {
         <Route path="/admin/scoring" component={AdminScoring} />
         <Route path="/admin/stage-slas" component={AdminStageSlas} />
         <Route path="/admin/role-directory" component={AdminRoleDirectory} />
+        <Route path="/admin/roles" component={AdminRoles} />
         <Route path="/admin/stage-escalation" component={AdminStageEscalation} />
         <Route path="/admin/doa-matrix" component={AdminDoaMatrix} />
         <Route path="/admin/integrations" component={AdminIntegrationsPage} />
@@ -102,7 +103,6 @@ function Router() {
         <Route path="/pifs" component={PifsList} />
         <Route path="/nfas/new" component={NfaNew} />
         <Route path="/nfas/:id" component={NfaDetail} />
-        <Route path="/nfas" component={NfasList} />
         <Route path="/nudges" component={NudgesPage} />
         <Route path="/automations" component={AutomationsPage} />
         <Route path="/activity" component={ActivityPage} />
@@ -129,6 +129,7 @@ function App() {
           </WouterRouter>
           <Toaster />
           <SessionExpiredModal />
+          <JustificationRequiredModal />
           <AskNyra />
         </TooltipProvider>
       </AuthConsumer>

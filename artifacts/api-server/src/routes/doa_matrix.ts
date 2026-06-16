@@ -3,6 +3,7 @@ import { z } from "zod/v4";
 import { db, doaMatrixTable } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
 import { matchBand } from "../lib/doa-resolver";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
 
@@ -65,7 +66,7 @@ router.get("/doa-matrix/preview", async (req, res): Promise<void> => {
 });
 
 // ─── Create ──────────────────────────────────────────────────────────────────
-router.post("/doa-matrix", async (req, res): Promise<void> => {
+router.post("/doa-matrix", requireRole("pmo"), async (req, res): Promise<void> => {
   const parsed = BandBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -90,7 +91,7 @@ router.post("/doa-matrix", async (req, res): Promise<void> => {
 });
 
 // ─── Update ──────────────────────────────────────────────────────────────────
-router.patch("/doa-matrix/:id", async (req, res): Promise<void> => {
+router.patch("/doa-matrix/:id", requireRole("pmo"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -116,7 +117,7 @@ router.patch("/doa-matrix/:id", async (req, res): Promise<void> => {
 });
 
 // ─── Delete ──────────────────────────────────────────────────────────────────
-router.delete("/doa-matrix/:id", async (req, res): Promise<void> => {
+router.delete("/doa-matrix/:id", requireRole("pmo"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
     res.status(400).json({ error: "Invalid id" });

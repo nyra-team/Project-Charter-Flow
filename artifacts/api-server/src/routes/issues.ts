@@ -1,8 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db, issuesTable, projectsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
 
 router.get("/projects/:id/issues", async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
@@ -11,7 +14,7 @@ router.get("/projects/:id/issues", async (req, res): Promise<void> => {
   res.json(issues);
 });
 
-router.post("/projects/:id/issues", async (req, res): Promise<void> => {
+router.post("/projects/:id/issues", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [projI] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, projectId));
@@ -36,7 +39,7 @@ router.get("/issues/:id", async (req, res): Promise<void> => {
   res.json(issue);
 });
 
-router.patch("/issues/:id", async (req, res): Promise<void> => {
+router.patch("/issues/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [existingIssue] = await db.select({ projectId: issuesTable.projectId }).from(issuesTable).where(eq(issuesTable.id, id));
@@ -57,7 +60,7 @@ router.patch("/issues/:id", async (req, res): Promise<void> => {
   res.json(issue);
 });
 
-router.delete("/issues/:id", async (req, res): Promise<void> => {
+router.delete("/issues/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(issuesTable).where(eq(issuesTable.id, id));

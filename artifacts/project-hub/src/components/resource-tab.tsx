@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Plus, Trash2, Users, AlertTriangle } from "lucide-react";
+import { chartTooltipProps } from "@/components/ui-kit";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
@@ -286,7 +287,7 @@ export function ResourceTab({
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
                 <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} unit="%" />
-                <Tooltip contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--popover-border))", borderRadius: 8, color: "hsl(var(--popover-foreground))", fontSize: 12 }} />
+                <Tooltip {...chartTooltipProps} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 {allocUsers.map((u, idx) => (
                   <Bar key={u.id} dataKey={u.name} stackId="cap" fill={STACK_COLORS[idx % STACK_COLORS.length]} />

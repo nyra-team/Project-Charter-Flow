@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, approvalsTable, chartersTable, usersTable, projectStagesTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { requireRole } from "../lib/guard";
 
 // Checklist items in pmo_project_stages.notes.__checklist that auto-tick
 // when the Charter+NFA chain reaches "approved". Mapped to both the legacy
@@ -66,6 +67,8 @@ import { logActivity } from "./activity";
 
 const router: IRouter = Router();
 
+const DECIDE_ROLES = ["pmo", "hod", "cfo", "chairman", "executive_director", "scm", "finance"];
+
 async function enrichApprovals(approvals: Array<Record<string, unknown>>) {
   if (!approvals.length) return [];
   const charterIds = [...new Set(approvals.map(a => a.charterId as number))];
@@ -115,7 +118,7 @@ router.get("/approvals/:id", async (req, res): Promise<void> => {
   res.json(enriched);
 });
 
-router.post("/approvals/:id/decide", async (req, res): Promise<void> => {
+router.post("/approvals/:id/decide", requireRole(...DECIDE_ROLES), async (req, res): Promise<void> => {
   const params = DecideApprovalParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = DecideApprovalBody.safeParse(req.body);
@@ -123,6 +126,18 @@ router.post("/approvals/:id/decide", async (req, res): Promise<void> => {
 
   const [approval] = await db.select().from(approvalsTable).where(eq(approvalsTable.id, params.data.id));
   if (!approval) { res.status(404).json({ error: "Approval not found" }); return; }
+
+  // Beyond the role gate: unless the caller is a platform admin, they must be
+  // the approver this row was assigned to (pmo_users.id → email match).
+  if (!(req.user?.isSuperAdmin || req.user?.pmoRole === "admin") && approval.approverId != null) {
+    const [assignedApprover] = await db.select().from(usersTable).where(eq(usersTable.id, approval.approverId));
+    const assignedEmail = assignedApprover?.email?.toLowerCase();
+    const callerEmail = req.user?.email?.toLowerCase();
+    if (!assignedEmail || !callerEmail || assignedEmail !== callerEmail) {
+      res.status(403).json({ error: "Only the assigned approver can decide this approval" });
+      return;
+    }
+  }
 
   const decision = parsed.data.decision;
   const decidedAt = new Date();

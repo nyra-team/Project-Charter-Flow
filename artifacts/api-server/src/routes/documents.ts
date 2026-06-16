@@ -2,8 +2,11 @@ import { Router, type IRouter } from "express";
 import { db, documentsTable, documentVersionsTable, projectsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { backfillFromDocs } from "../lib/docBackfill";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
 
 // Fire-and-forget AI backfill — must never block the upload response. Errors
 // are swallowed (logged) since the upload itself already succeeded.
@@ -22,7 +25,7 @@ router.get("/projects/:id/documents", async (req, res): Promise<void> => {
   res.json(docs);
 });
 
-router.post("/projects/:id/documents", async (req, res): Promise<void> => {
+router.post("/projects/:id/documents", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
 
@@ -101,7 +104,7 @@ router.get("/documents/:id", async (req, res): Promise<void> => {
   res.json(doc);
 });
 
-router.patch("/documents/:id", async (req, res): Promise<void> => {
+router.patch("/documents/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   // Enforce closed-project read-only on document updates
@@ -130,7 +133,7 @@ router.patch("/documents/:id", async (req, res): Promise<void> => {
   res.json(doc);
 });
 
-router.delete("/documents/:id", async (req, res): Promise<void> => {
+router.delete("/documents/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(documentsTable).where(eq(documentsTable.id, id));
@@ -144,7 +147,7 @@ router.get("/documents/:id/versions", async (req, res): Promise<void> => {
   res.json(versions);
 });
 
-router.post("/documents/:id/versions", async (req, res): Promise<void> => {
+router.post("/documents/:id/versions", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const documentId = parseInt(req.params.id);
   if (isNaN(documentId)) { res.status(400).json({ error: "Invalid id" }); return; }
   // Enforce closed-project read-only on new document versions

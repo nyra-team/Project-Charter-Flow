@@ -1,4 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
+import { db, roleOverridesTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 import { getMasterDb } from "../lib/masterDb";
 import { derivePmoRole, type PmoRole } from "../lib/derivePmoRole";
 
@@ -132,9 +134,26 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const isSuperAdmin: boolean = !!authRow?.is_super_admin;
   const isAdmin: boolean = !!authRow?.is_admin;
 
-  // Resolve the functional Project Hub role: explicit pmo_role override wins,
-  // otherwise derive from the master directory. Replaces the old collapse to
-  // ('admin' | null) — every downstream requireRole() now sees a real role.
+  // Resolve the functional Project Hub role: explicit override wins,
+  // otherwise derive from the master directory. Overrides live in TWO
+  // places: pmo_role_overrides (Recruit DB, managed from the super-admin
+  // /admin/roles page — the live master-DB CHECK constraint only accepts
+  // 'admin' so all other values land here) and employee_auth.pmo_role
+  // (master DB, 'admin' only). The roles admin API keeps them mutually
+  // exclusive; when both somehow hold values the Recruit-DB row wins. A
+  // Recruit-DB hiccup must not break auth — fall back to the master value.
+  let overrideRole: string | null = null;
+  if (employee.employee_code) {
+    try {
+      const [row] = await db.select({ pmoRole: roleOverridesTable.pmoRole })
+        .from(roleOverridesTable)
+        .where(eq(roleOverridesTable.employeeCode, employee.employee_code));
+      overrideRole = row?.pmoRole ?? null;
+    } catch (err) {
+      req.log?.error({ err }, "pmo_role_overrides lookup failed; using master pmo_role only");
+    }
+  }
+
   const pmoRole: PmoRole = derivePmoRole(
     {
       designation_text: employee.designation_text ?? null,
@@ -145,7 +164,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     },
     {
       access_pmo: accessPmo,
-      pmo_role: authRow?.pmo_role ?? null,
+      pmo_role: overrideRole ?? authRow?.pmo_role ?? null,
     },
   );
 
@@ -218,4 +237,22 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
     return;
   }
   res.status(403).json({ error: "Project Hub admin role required" });
+}
+
+/**
+ * Stricter companion for the RBAC surface itself (/admin/roles): only
+ * cross-app super-admins (employee_auth.is_super_admin) may view or edit
+ * employee roles/access. pmo_role='admin' or is_admin is deliberately NOT
+ * enough here. Must run AFTER requireAuth.
+ */
+export function requireSuperAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!req.user) {
+    res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
+  if (req.user.isSuperAdmin) {
+    next();
+    return;
+  }
+  res.status(403).json({ error: "Super admin required" });
 }

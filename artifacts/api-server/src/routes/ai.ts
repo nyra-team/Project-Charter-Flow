@@ -392,6 +392,66 @@ router.post("/ai/charters/draft-fields", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/ai/charters/draft-template
+// Drafts the single-page Project Charter template fields (charter-template-new
+// form) from a few basic inputs. Returns the long-form narrative AND structured
+// milestone / KPI tables so the "Draft with AI" button can fill the whole form.
+// ---------------------------------------------------------------------------
+router.post("/ai/charters/draft-template", async (req, res): Promise<void> => {
+  const {
+    title,
+    sponsor,
+    function: fn,
+    category,
+    approvedBudget,
+    hint,
+  } = (req.body || {}) as {
+    title?: string;
+    sponsor?: string;
+    function?: string;
+    category?: string;
+    approvedBudget?: number;
+    hint?: string;
+  };
+  if (!title || title.trim().length < 3) {
+    res.status(400).json({ error: "title is required" });
+    return;
+  }
+  const result = await llm({
+    task: "charter_draft_template",
+    system:
+      "You are an experienced PMO Business Analyst drafting a corporate Project Charter. Given a project title, sponsor, owning function, category and optional budget/hint, produce realistic, executive-grade first-draft content for every section of the charter. Be specific to the project as described — never write generic placeholder text. Where you state numbers, label them as illustrative ('e.g.', 'approx.'). Never invent real stakeholder names, real vendors, or hard calendar dates — for milestone target dates use relative phrasing like 'Q1' / 'Month 3'. For responsible parties use roles (e.g. 'IT Lead', 'Process Owner'), not invented names.",
+    prompt: `Project title: ${title}\nProject sponsor: ${sponsor || "(unspecified)"}\nFunction / Department: ${fn || "(unspecified)"}\nCategory: ${category || "(unspecified)"}\nApproved budget: ${approvedBudget ? `INR ${approvedBudget}` : "(unspecified)"}\nUser hint: ${hint || "(none)"}\n\nDraft each charter field. Narrative fields 60-160 words each (shorter for one-line items). Provide 4-6 milestones and 3-5 KPIs. Use professional, decision-grade language an executive steering committee would expect.`,
+    jsonSchema: z.object({
+      executiveSummary: z.string().min(80),
+      background: z.string().min(60),
+      inScope: z.string().min(40),
+      outOfScope: z.string().min(20),
+      businessOutcome: z.string().min(40),
+      constraints: z.string().optional(),
+      scopeLimitations: z.string().optional(),
+      assumptions: z.string().optional(),
+      risks: z.string().optional(),
+      potentialAdditionalBudget: z.string().optional(),
+      milestones: z.array(z.object({
+        milestone: z.string(),
+        responsible: z.string().optional(),
+        targetDate: z.string().optional(),
+      })).optional(),
+      kpis: z.array(z.object({
+        kpi: z.string(),
+        baseline: z.string().optional(),
+        goal: z.string().optional(),
+      })).optional(),
+    }),
+    jsonSchemaHint: `{ "executiveSummary":"...", "background":"...", "inScope":"...", "outOfScope":"...", "businessOutcome":"...", "constraints":"...", "scopeLimitations":"...", "assumptions":"...", "risks":"...", "potentialAdditionalBudget":"...", "milestones":[{"milestone":"...","responsible":"IT Lead","targetDate":"Q1"}], "kpis":[{"kpi":"...","baseline":"...","goal":"..."}] }`,
+    maxTokens: 4000,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/ai/charters/draft-narrative
 //
 // Stateless. Takes the in-flight wizard form values and returns AI-drafted
@@ -936,6 +996,52 @@ router.post("/ai/nfa/draft-from-brief", async (req, res): Promise<void> => {
       recommendation: z.string().min(30),
     }),
     jsonSchemaHint: `{ "subject":"one-line subject", "background":"why this is needed", "requirementItems":[{"item":"Platform Fee","details":"..."}], "orderFormNote":"attachment/order-form context or ''", "recommendation":"recommended action" }`,
+    maxTokens: 3000,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/nfa/draft-template
+// Drafts the corporate e-NFA template fields (nfa-new single-page form) from a
+// short subject/brief plus optional function & mode. Returns every long-form
+// section the form binds to (background, requirements, justification, vendor
+// details, mode of procurement, financial implication, recommendation).
+// ---------------------------------------------------------------------------
+router.post("/ai/nfa/draft-template", async (req, res): Promise<void> => {
+  const {
+    subject,
+    functionDept,
+    modeOfProcurement,
+    financialAmount,
+    hint,
+  } = (req.body || {}) as {
+    subject?: string;
+    functionDept?: string;
+    modeOfProcurement?: string;
+    financialAmount?: number;
+    hint?: string;
+  };
+  if (!subject || subject.trim().length < 3) {
+    res.status(400).json({ error: "subject is required" });
+    return;
+  }
+  const result = await llm({
+    task: "nfa_draft_template",
+    system:
+      "You are a Finance Business Partner at Granules India drafting an Internal Approval Note (e-NFA) for a procurement / spend approval. Convert the given subject (and optional function, mode of procurement, amount, hint) into a structured, executive e-NFA. Tone: factual, financially literate, concise. Never invent specific amounts the inputs don't support — describe the financial implication qualitatively if no amount is given. Never invent real vendor names — describe vendor selection approach generically (e.g. 'shortlist of 3 OEM-authorised vendors').",
+    prompt: `Subject: ${subject}\nFunction / Department: ${functionDept || "(unspecified)"}\nMode of procurement: ${modeOfProcurement || "(unspecified)"}\nApprox. amount: ${financialAmount ? `INR ${financialAmount}` : "(unspecified)"}\nHint: ${hint || "(none)"}\n\nDraft each e-NFA section. Background 60-150 words; other sections 30-100 words.`,
+    jsonSchema: z.object({
+      background: z.string().min(40),
+      requirements: z.string().min(20),
+      justification: z.string().min(30),
+      vendorDetails: z.string().optional(),
+      modeOfProcurement: z.string().optional(),
+      financialImplication: z.string().min(20),
+      recommendation: z.string().min(20),
+    }),
+    jsonSchemaHint: `{ "background":"why this is needed", "requirements":"procurement details / line items", "justification":"why this spend is justified", "vendorDetails":"vendor selection approach", "modeOfProcurement":"e.g. Limited tender / Single source", "financialImplication":"cost framing", "recommendation":"recommended action" }`,
     maxTokens: 3000,
   });
   if (!result.ok) return aiError(result.reason, result.message, res);

@@ -37,6 +37,8 @@ import type {
   CreateProjectBody,
   CreateProjectScoreBody,
   CreateProjectStageBody,
+  CreateProjectTeamMemberBody,
+  CreateProjectTeamRaciBody,
   CreateRaciEntryBody,
   CreateResourceAllocationBody,
   CreateRiskBody,
@@ -72,6 +74,8 @@ import type {
   Project,
   ProjectScore,
   ProjectStage,
+  ProjectTeamMember,
+  ProjectTeamRaci,
   RaciEntry,
   ResourceAllocation,
   Risk,
@@ -93,6 +97,7 @@ import type {
   UpdateProjectBody,
   UpdateProjectScoreBody,
   UpdateProjectStageBody,
+  UpdateProjectTeamMemberBody,
   UpdateResourceAllocationBody,
   UpdateScoringCriteriaBody,
   UpdateTaskBody,
@@ -7332,6 +7337,689 @@ export const useDeleteRaciEntry = <
   TContext
 > => {
   return useMutation(getDeleteRaciEntryMutationOptions(options));
+};
+
+/**
+ * @summary List team members across all projects
+ */
+export const getListAllProjectTeamMembersUrl = () => {
+  return `/api/team-members`;
+};
+
+export const listAllProjectTeamMembers = async (
+  options?: RequestInit,
+): Promise<ProjectTeamMember[]> => {
+  return customFetch<ProjectTeamMember[]>(getListAllProjectTeamMembersUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListAllProjectTeamMembersQueryKey = () => {
+  return [`/api/team-members`] as const;
+};
+
+export const getListAllProjectTeamMembersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listAllProjectTeamMembers>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAllProjectTeamMembers>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListAllProjectTeamMembersQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listAllProjectTeamMembers>>
+  > = ({ signal }) => listAllProjectTeamMembers({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listAllProjectTeamMembers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListAllProjectTeamMembersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listAllProjectTeamMembers>>
+>;
+export type ListAllProjectTeamMembersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List team members across all projects
+ */
+
+export function useListAllProjectTeamMembers<
+  TData = Awaited<ReturnType<typeof listAllProjectTeamMembers>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listAllProjectTeamMembers>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListAllProjectTeamMembersQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List team members for a project
+ */
+export const getListProjectTeamMembersUrl = (id: number) => {
+  return `/api/projects/${id}/team-members`;
+};
+
+export const listProjectTeamMembers = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ProjectTeamMember[]> => {
+  return customFetch<ProjectTeamMember[]>(getListProjectTeamMembersUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListProjectTeamMembersQueryKey = (id: number) => {
+  return [`/api/projects/${id}/team-members`] as const;
+};
+
+export const getListProjectTeamMembersQueryOptions = <
+  TData = Awaited<ReturnType<typeof listProjectTeamMembers>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listProjectTeamMembers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListProjectTeamMembersQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listProjectTeamMembers>>
+  > = ({ signal }) => listProjectTeamMembers(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listProjectTeamMembers>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListProjectTeamMembersQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listProjectTeamMembers>>
+>;
+export type ListProjectTeamMembersQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List team members for a project
+ */
+
+export function useListProjectTeamMembers<
+  TData = Awaited<ReturnType<typeof listProjectTeamMembers>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listProjectTeamMembers>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListProjectTeamMembersQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add a team member to a project
+ */
+export const getCreateProjectTeamMemberUrl = (id: number) => {
+  return `/api/projects/${id}/team-members`;
+};
+
+export const createProjectTeamMember = async (
+  id: number,
+  createProjectTeamMemberBody: CreateProjectTeamMemberBody,
+  options?: RequestInit,
+): Promise<ProjectTeamMember> => {
+  return customFetch<ProjectTeamMember>(getCreateProjectTeamMemberUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createProjectTeamMemberBody),
+  });
+};
+
+export const getCreateProjectTeamMemberMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createProjectTeamMember>>,
+    TError,
+    { id: number; data: BodyType<CreateProjectTeamMemberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createProjectTeamMember>>,
+  TError,
+  { id: number; data: BodyType<CreateProjectTeamMemberBody> },
+  TContext
+> => {
+  const mutationKey = ["createProjectTeamMember"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createProjectTeamMember>>,
+    { id: number; data: BodyType<CreateProjectTeamMemberBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createProjectTeamMember(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateProjectTeamMemberMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createProjectTeamMember>>
+>;
+export type CreateProjectTeamMemberMutationBody =
+  BodyType<CreateProjectTeamMemberBody>;
+export type CreateProjectTeamMemberMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Add a team member to a project
+ */
+export const useCreateProjectTeamMember = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createProjectTeamMember>>,
+    TError,
+    { id: number; data: BodyType<CreateProjectTeamMemberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createProjectTeamMember>>,
+  TError,
+  { id: number; data: BodyType<CreateProjectTeamMemberBody> },
+  TContext
+> => {
+  return useMutation(getCreateProjectTeamMemberMutationOptions(options));
+};
+
+/**
+ * @summary Update a team member
+ */
+export const getUpdateProjectTeamMemberUrl = (id: number) => {
+  return `/api/team-members/${id}`;
+};
+
+export const updateProjectTeamMember = async (
+  id: number,
+  updateProjectTeamMemberBody: UpdateProjectTeamMemberBody,
+  options?: RequestInit,
+): Promise<ProjectTeamMember> => {
+  return customFetch<ProjectTeamMember>(getUpdateProjectTeamMemberUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateProjectTeamMemberBody),
+  });
+};
+
+export const getUpdateProjectTeamMemberMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProjectTeamMember>>,
+    TError,
+    { id: number; data: BodyType<UpdateProjectTeamMemberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateProjectTeamMember>>,
+  TError,
+  { id: number; data: BodyType<UpdateProjectTeamMemberBody> },
+  TContext
+> => {
+  const mutationKey = ["updateProjectTeamMember"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateProjectTeamMember>>,
+    { id: number; data: BodyType<UpdateProjectTeamMemberBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return updateProjectTeamMember(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateProjectTeamMemberMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateProjectTeamMember>>
+>;
+export type UpdateProjectTeamMemberMutationBody =
+  BodyType<UpdateProjectTeamMemberBody>;
+export type UpdateProjectTeamMemberMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update a team member
+ */
+export const useUpdateProjectTeamMember = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateProjectTeamMember>>,
+    TError,
+    { id: number; data: BodyType<UpdateProjectTeamMemberBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateProjectTeamMember>>,
+  TError,
+  { id: number; data: BodyType<UpdateProjectTeamMemberBody> },
+  TContext
+> => {
+  return useMutation(getUpdateProjectTeamMemberMutationOptions(options));
+};
+
+/**
+ * @summary Remove a team member (and their RACI cells)
+ */
+export const getDeleteProjectTeamMemberUrl = (id: number) => {
+  return `/api/team-members/${id}`;
+};
+
+export const deleteProjectTeamMember = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteProjectTeamMemberUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteProjectTeamMemberMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteProjectTeamMember>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteProjectTeamMember>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteProjectTeamMember"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteProjectTeamMember>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteProjectTeamMember(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteProjectTeamMemberMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteProjectTeamMember>>
+>;
+
+export type DeleteProjectTeamMemberMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Remove a team member (and their RACI cells)
+ */
+export const useDeleteProjectTeamMember = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteProjectTeamMember>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteProjectTeamMember>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteProjectTeamMemberMutationOptions(options));
+};
+
+/**
+ * @summary List project-level RACI cells
+ */
+export const getListProjectTeamRaciUrl = (id: number) => {
+  return `/api/projects/${id}/team-raci`;
+};
+
+export const listProjectTeamRaci = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ProjectTeamRaci[]> => {
+  return customFetch<ProjectTeamRaci[]>(getListProjectTeamRaciUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListProjectTeamRaciQueryKey = (id: number) => {
+  return [`/api/projects/${id}/team-raci`] as const;
+};
+
+export const getListProjectTeamRaciQueryOptions = <
+  TData = Awaited<ReturnType<typeof listProjectTeamRaci>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listProjectTeamRaci>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListProjectTeamRaciQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listProjectTeamRaci>>
+  > = ({ signal }) => listProjectTeamRaci(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listProjectTeamRaci>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListProjectTeamRaciQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listProjectTeamRaci>>
+>;
+export type ListProjectTeamRaciQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List project-level RACI cells
+ */
+
+export function useListProjectTeamRaci<
+  TData = Awaited<ReturnType<typeof listProjectTeamRaci>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listProjectTeamRaci>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListProjectTeamRaciQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a project-level RACI cell
+ */
+export const getCreateProjectTeamRaciUrl = (id: number) => {
+  return `/api/projects/${id}/team-raci`;
+};
+
+export const createProjectTeamRaci = async (
+  id: number,
+  createProjectTeamRaciBody: CreateProjectTeamRaciBody,
+  options?: RequestInit,
+): Promise<ProjectTeamRaci> => {
+  return customFetch<ProjectTeamRaci>(getCreateProjectTeamRaciUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createProjectTeamRaciBody),
+  });
+};
+
+export const getCreateProjectTeamRaciMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createProjectTeamRaci>>,
+    TError,
+    { id: number; data: BodyType<CreateProjectTeamRaciBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createProjectTeamRaci>>,
+  TError,
+  { id: number; data: BodyType<CreateProjectTeamRaciBody> },
+  TContext
+> => {
+  const mutationKey = ["createProjectTeamRaci"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createProjectTeamRaci>>,
+    { id: number; data: BodyType<CreateProjectTeamRaciBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return createProjectTeamRaci(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateProjectTeamRaciMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createProjectTeamRaci>>
+>;
+export type CreateProjectTeamRaciMutationBody =
+  BodyType<CreateProjectTeamRaciBody>;
+export type CreateProjectTeamRaciMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Create a project-level RACI cell
+ */
+export const useCreateProjectTeamRaci = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createProjectTeamRaci>>,
+    TError,
+    { id: number; data: BodyType<CreateProjectTeamRaciBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createProjectTeamRaci>>,
+  TError,
+  { id: number; data: BodyType<CreateProjectTeamRaciBody> },
+  TContext
+> => {
+  return useMutation(getCreateProjectTeamRaciMutationOptions(options));
+};
+
+/**
+ * @summary Delete a project-level RACI cell
+ */
+export const getDeleteProjectTeamRaciUrl = (id: number) => {
+  return `/api/team-raci/${id}`;
+};
+
+export const deleteProjectTeamRaci = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteProjectTeamRaciUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteProjectTeamRaciMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteProjectTeamRaci>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteProjectTeamRaci>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteProjectTeamRaci"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteProjectTeamRaci>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteProjectTeamRaci(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteProjectTeamRaciMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteProjectTeamRaci>>
+>;
+
+export type DeleteProjectTeamRaciMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Delete a project-level RACI cell
+ */
+export const useDeleteProjectTeamRaci = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteProjectTeamRaci>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteProjectTeamRaci>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteProjectTeamRaciMutationOptions(options));
 };
 
 /**

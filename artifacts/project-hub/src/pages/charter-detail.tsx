@@ -184,10 +184,10 @@ export default function CharterDetail() {
   return (
     <div className="space-y-5">
       {/* Back */}
-      <Link href="/charters">
+      <Link href="/approvals">
         <button className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
           <ChevronLeft size={15} />
-          Back to Charters
+          Back to Approvals
         </button>
       </Link>
 
@@ -224,7 +224,7 @@ export default function CharterDetail() {
                 style={{ background: "#CCE7E9", color: "#0E7C86", border: "1px solid #99CFD3" }}
               >
                 <FileDown size={14} />
-                Charter+NFA (.docx)
+                Charter+e-NFA (.docx)
               </a>
             )}
             {canEdit && !isEditing && (
@@ -447,6 +447,13 @@ export default function CharterDetail() {
                         <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{charter.solutionComparison}</p>
                       </SectionBox>
                     )}
+                    {((charter as unknown as { customFields?: { id: string; label: string; value: string }[] }).customFields ?? [])
+                      .filter((f) => f && (f.label?.trim() || f.value?.trim()))
+                      .map((f) => (
+                        <SectionBox key={f.id} title={f.label || "Additional Field"}>
+                          <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{f.value}</p>
+                        </SectionBox>
+                      ))}
                   </>
                 )}
               </div>

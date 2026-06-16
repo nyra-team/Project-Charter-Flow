@@ -12,6 +12,7 @@ import {
 import { eq, desc, asc } from "drizzle-orm";
 import { logActivity } from "./activity";
 import { seedProjectTemplateDocuments } from "../lib/templateDocuments";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
 
@@ -161,7 +162,7 @@ router.get("/templates/:id", async (req, res): Promise<void> => {
   res.json({ ...tpl, tasks, milestones });
 });
 
-router.post("/templates", async (req, res): Promise<void> => {
+router.post("/templates", requireRole("pmo"), async (req, res): Promise<void> => {
   const parsed = CreateTemplateBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -172,7 +173,7 @@ router.post("/templates", async (req, res): Promise<void> => {
   res.status(201).json(tpl);
 });
 
-router.patch("/templates/:id", async (req, res): Promise<void> => {
+router.patch("/templates/:id", requireRole("pmo"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -197,7 +198,7 @@ router.patch("/templates/:id", async (req, res): Promise<void> => {
 
 // Soft-delete only — flipping isActive=false hides the template without
 // orphaning its template_tasks / template_milestones children.
-router.delete("/templates/:id", async (req, res): Promise<void> => {
+router.delete("/templates/:id", requireRole("pmo"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -219,7 +220,7 @@ router.delete("/templates/:id", async (req, res): Promise<void> => {
 // TEMPLATE TASKS — nested CRUD
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.post("/templates/:id/tasks", async (req, res): Promise<void> => {
+router.post("/templates/:id/tasks", requireRole("pmo"), async (req, res): Promise<void> => {
   const templateId = parseInt(req.params.id);
   if (isNaN(templateId)) {
     res.status(400).json({ error: "Invalid template id" });
@@ -242,7 +243,7 @@ router.post("/templates/:id/tasks", async (req, res): Promise<void> => {
   res.status(201).json(row);
 });
 
-router.patch("/template-tasks/:id", async (req, res): Promise<void> => {
+router.patch("/template-tasks/:id", requireRole("pmo"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -264,7 +265,7 @@ router.patch("/template-tasks/:id", async (req, res): Promise<void> => {
   res.json(row);
 });
 
-router.delete("/template-tasks/:id", async (req, res): Promise<void> => {
+router.delete("/template-tasks/:id", requireRole("pmo"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -278,7 +279,7 @@ router.delete("/template-tasks/:id", async (req, res): Promise<void> => {
 // TEMPLATE MILESTONES
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.post("/templates/:id/milestones", async (req, res): Promise<void> => {
+router.post("/templates/:id/milestones", requireRole("pmo"), async (req, res): Promise<void> => {
   const templateId = parseInt(req.params.id);
   if (isNaN(templateId)) {
     res.status(400).json({ error: "Invalid template id" });
@@ -296,7 +297,7 @@ router.post("/templates/:id/milestones", async (req, res): Promise<void> => {
   res.status(201).json(row);
 });
 
-router.patch("/template-milestones/:id", async (req, res): Promise<void> => {
+router.patch("/template-milestones/:id", requireRole("pmo"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -319,7 +320,7 @@ router.patch("/template-milestones/:id", async (req, res): Promise<void> => {
   res.json(row);
 });
 
-router.delete("/template-milestones/:id", async (req, res): Promise<void> => {
+router.delete("/template-milestones/:id", requireRole("pmo"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) {
     res.status(400).json({ error: "Invalid id" });
@@ -339,7 +340,7 @@ router.delete("/template-milestones/:id", async (req, res): Promise<void> => {
 // template carries structure only.
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.post("/templates/from-project/:projectId", async (req, res): Promise<void> => {
+router.post("/templates/from-project/:projectId", requireRole("pmo"), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.projectId);
   if (isNaN(projectId)) {
     res.status(400).json({ error: "Invalid project id" });
@@ -459,7 +460,7 @@ router.post("/templates/from-project/:projectId", async (req, res): Promise<void
 // Creates the template shell + its milestones + tasks in one call. Tasks
 // reference parent/predecessors by NAME; resolved in a second pass (same
 // shape the /from-project clone produces, so export→edit→import round-trips).
-router.post("/templates/import", async (req, res): Promise<void> => {
+router.post("/templates/import", requireRole("pmo"), async (req, res): Promise<void> => {
   const parsed = ImportTemplateBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const { name, description, category, createdById, milestones = [], tasks = [] } = parsed.data;
@@ -548,7 +549,7 @@ router.post("/templates/import", async (req, res): Promise<void> => {
 // to remap parent + predecessor refs so the dependency graph survives.
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.post("/projects/from-template", async (req, res): Promise<void> => {
+router.post("/projects/from-template", requireRole("pmo"), async (req, res): Promise<void> => {
   const parsed = FromTemplateBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });

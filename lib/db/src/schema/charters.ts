@@ -47,6 +47,22 @@ export const chartersTable = pgTable("pmo_charters", {
   entity: text("entity").notNull().default(""),         // GIL | GLS | CZRO | …
   revision: integer("revision").notNull().default(1),   // Revised NFA cycle (v1, v2…)
 
+  // === Project Charter template fields (single-page charter form parity) ===
+  projectSponsor: text("project_sponsor").notNull().default(""),          // CMD | ED | …
+  pmType: text("pm_type").notNull().default(""),                          // IT PM | Business PM
+  pmName: text("pm_name").notNull().default(""),                          // Name of PM
+  projectApprovalDate: text("project_approval_date"),                     // Date of Project Approval
+  lastRevisionDate: text("last_revision_date"),                           // Optional
+  businessOutcome: text("business_outcome").notNull().default(""),
+  scopeLimitations: text("scope_limitations").notNull().default(""),
+  risks: text("risks").notNull().default(""),
+  // Flexible vendor comparison matrix: { columns: string[], rows: string[][] }
+  vendorMatrix: jsonb("vendor_matrix").notNull().default({}),
+
+  // User-defined extra fields added on the charter form (step 2). Array of
+  // { id, label, value }, ordered as the author arranged them (drag-and-drop).
+  customFields: jsonb("custom_fields").notNull().default([]),
+
   // === Investment summary (drives DOA band lookup) ===
   kind: text("kind").notNull().default("capex"),        // capex | opex | mixed
   capexAmount: numeric("capex_amount", { precision: 15, scale: 2 }).notNull().default("0"),

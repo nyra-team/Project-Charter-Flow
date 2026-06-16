@@ -1,12 +1,12 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import { Readable } from "stream";
-import { like } from "drizzle-orm";
+import { like, sql } from "drizzle-orm";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
-import { db, documentsTable } from "@workspace/db";
+import { db, documentsTable, messagesTable } from "@workspace/db";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { localFileExists, openLocalFileStream, readLocalMeta } from "../lib/localStorage";
 
@@ -127,8 +127,19 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
       .where(like(documentsTable.fileUrl, `%${objectPath}`))
       .limit(1);
     if (!linkedDoc) {
-      res.status(403).json({ error: "Access denied: no project document is registered for this path." });
-      return;
+      // Fallback: files attached in the task/milestone comms drawer live in
+      // pmo_messages.attachments (JSONB), not pmo_documents. Allow serving any
+      // path referenced by a message's attachments. The objectPath embeds a
+      // unique uuid, so the text-cast LIKE cannot collide across files.
+      const [linkedMsg] = await db
+        .select({ id: messagesTable.id })
+        .from(messagesTable)
+        .where(sql`${messagesTable.attachments}::text LIKE ${`%${objectPath}%`}`)
+        .limit(1);
+      if (!linkedMsg) {
+        res.status(403).json({ error: "Access denied: no project document is registered for this path." });
+        return;
+      }
     }
 
     // Local-FS path (off-Replit fallback): objectId starts with "local-".

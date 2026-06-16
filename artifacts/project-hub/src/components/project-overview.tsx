@@ -13,9 +13,10 @@ import {
   CheckCircle2, Clock, History, Users2, Scale,
 } from "lucide-react";
 import { StageProgressBar } from "./stage-progress-bar";
-import { DashboardCard, KPITile } from "./dashboard/primitives";
+import { DashboardCard, KPITile, type DrillColumn, type DrillData } from "./dashboard/primitives";
 import { TASK_STATUSES } from "../lib/task-constants";
 import { formatCurrency } from "../lib/format";
+import { chartTooltipProps, HoverHint } from "@/components/ui-kit";
 import {
   classify, HEALTH_META, HEALTH_HEX, healthWhy, type RagTone,
   schedulePace, costEfficiency, milestoneSlippage, agingSummary, scopeVolatility, headlineVerdict,
@@ -165,13 +166,78 @@ export function ProjectOverview({ project, tasks, milestones, stageRecords, user
     { name: "Actual", v: budget.actual, c: budget.burn > 100 ? HEALTH_HEX.red : "#22C55E" },
   ];
 
+  // ── Drill-down data — the actual rows behind each leading indicator / chart ──
+  const isDone = (s: string) => s === "completed" || s === "done" || s === "achieved";
+  const slippedMilestones = useMemo(() => milestones.filter(m => {
+    if (isDone(m.status)) return false;
+    const overdue = m.dueDate ? new Date(m.dueDate).getTime() < now : false;
+    return (m.scheduleVarianceDays ?? 0) > 0 || overdue;
+  }), [milestones, now]);
+  const openIssues = useMemo(() => issues.filter(i => i.status !== "resolved" && i.status !== "closed"), [issues]);
+
+  const expectedPct = pace.gap == null ? null : (project.progress ?? 0) - pace.gap;
+  const paceDrill: DrillData = {
+    subtitle: pace.label,
+    columns: [{ key: "metric", label: "Metric" }, { key: "value", label: "Value", align: "right" }],
+    rows: [
+      { metric: "Actual progress", value: `${project.progress ?? 0}%` },
+      { metric: "Expected by now", value: expectedPct == null ? "—" : `${Math.round(expectedPct)}%` },
+      { metric: "Gap", value: pace.gap == null ? "—" : `${pace.gap > 0 ? "+" : ""}${pace.gap} pts` },
+    ],
+    emptyText: "No schedule baseline.",
+  };
+  const costDrill: DrillData = {
+    subtitle: cost.label,
+    columns: [{ key: "item", label: "Item" }, { key: "amount", label: "Amount", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) }],
+    rows: budget.baseline > 0 ? [
+      { item: "Baseline", amount: budget.baseline },
+      { item: "Forecast", amount: budget.forecast || budget.baseline },
+      { item: "Actual", amount: budget.actual },
+    ] : [],
+    linkLabel: "Open budget", emptyText: "No budget set.",
+  };
+  const milestoneDrillCols: DrillColumn[] = [
+    { key: "name", label: "Milestone" },
+    { key: "due", label: "Due" },
+    { key: "variance", label: "Slip", align: "right" },
+    { key: "status", label: "Status" },
+  ];
+  const slipDrill: DrillData = {
+    subtitle: slip.label,
+    columns: milestoneDrillCols,
+    rows: slippedMilestones.map(m => ({ name: m.name, due: fmtDay(m.dueDate), variance: (m.scheduleVarianceDays ?? 0) > 0 ? `${m.scheduleVarianceDays}d` : "overdue", status: m.status })),
+    emptyText: "No slipped milestones.",
+  };
+  const agingDrill: DrillData = {
+    subtitle: aging.label,
+    columns: [
+      { key: "title", label: "Issue" },
+      { key: "status", label: "Status", render: (v) => String(v ?? "—").replace(/_/g, " ") },
+      { key: "opened", label: "Opened" },
+      { key: "dept", label: "Blocking Dept" },
+    ],
+    rows: openIssues.map(i => ({ title: i.title, status: i.status, opened: fmtDay(i.createdAt), dept: i.blockingDept ?? "—" })),
+    emptyText: "No open blockers.",
+  };
+  const scopeDrill: DrillData = {
+    subtitle: scope.label,
+    columns: [
+      { key: "cr", label: "CR #" },
+      { key: "title", label: "Title" },
+      { key: "status", label: "Status", render: (v) => String(v ?? "—").replace(/_/g, " ") },
+      { key: "created", label: "Raised" },
+    ],
+    rows: crs.map(c => ({ cr: c.crNumber, title: c.title, status: c.status, created: fmtDay(c.createdAt) })),
+    emptyText: "No change requests.",
+  };
+
   // 5 leading-indicator tiles
-  const leadTiles = [
-    { label: "Schedule Pace", value: pace.gap == null ? "—" : `${pace.gap > 0 ? "+" : ""}${pace.gap} pts`, sub: pace.label, tone: pace.tone, icon: Gauge },
-    { label: "Cost Efficiency", value: budget.baseline > 0 ? `${budget.burn}% spent` : "—", sub: cost.label, tone: cost.tone, icon: Wallet },
-    { label: "Milestone Slippage", value: `${slip.slipped}`, sub: slip.label, tone: slip.tone, icon: Flag },
-    { label: "Aging Blockers", value: `${aging.openCount}`, sub: aging.label, tone: aging.tone, icon: ShieldAlert },
-    { label: "Scope Volatility", value: `${scope.recent}`, sub: scope.label, tone: scope.tone, icon: GitBranch },
+  const leadTiles: Array<{ label: string; value: string; sub: string; tone: RagTone; icon: typeof Gauge; drill: DrillData }> = [
+    { label: "Schedule Pace", value: pace.gap == null ? "—" : `${pace.gap > 0 ? "+" : ""}${pace.gap} pts`, sub: pace.label, tone: pace.tone, icon: Gauge, drill: paceDrill },
+    { label: "Cost Efficiency", value: budget.baseline > 0 ? `${budget.burn}% spent` : "—", sub: cost.label, tone: cost.tone, icon: Wallet, drill: costDrill },
+    { label: "Milestone Slippage", value: `${slip.slipped}`, sub: slip.label, tone: slip.tone, icon: Flag, drill: slipDrill },
+    { label: "Aging Blockers", value: `${aging.openCount}`, sub: aging.label, tone: aging.tone, icon: ShieldAlert, drill: agingDrill },
+    { label: "Scope Volatility", value: `${scope.recent}`, sub: scope.label, tone: scope.tone, icon: GitBranch, drill: scopeDrill },
   ];
 
   return (
@@ -225,7 +291,7 @@ export function ProjectOverview({ project, tasks, milestones, stageRecords, user
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground mb-2 ml-1">Leading Indicators · early warning</p>
         <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          {leadTiles.map(t => <KPITile key={t.label} compact label={t.label} value={t.value} icon={t.icon} tone={toKpiTone(t.tone)} sub={t.sub} highlight={t.tone === "red"} />)}
+          {leadTiles.map(t => <KPITile key={t.label} compact label={t.label} value={t.value} icon={t.icon} tone={toKpiTone(t.tone)} sub={t.sub} highlight={t.tone === "red"} drill={t.drill} />)}
         </div>
       </div>
 
@@ -238,7 +304,9 @@ export function ProjectOverview({ project, tasks, milestones, stageRecords, user
 
       {/* ── Context: task status · budget · top risks ────────────────────── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
-        <DashboardCard title="Task Status" subtitle={`${doneTasks}/${totalTasks} complete`} actions={<button onClick={() => onOpenTab("grid")} className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline">Tasks <ArrowRight size={12} /></button>}>
+        <DashboardCard title="Task Status" subtitle={`${doneTasks}/${totalTasks} complete`}
+          drill={{ subtitle: "Top-level tasks by status", columns: [{ key: "status", label: "Status" }, { key: "count", label: "Tasks", align: "right" }], rows: taskDonut.map(d => ({ status: d.name, count: d.value })), emptyText: "No tasks yet." }}
+          actions={<button onClick={() => onOpenTab("grid")} className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline">Tasks <ArrowRight size={12} /></button>}>
           {taskDonut.length > 0 ? (
             <div className="relative">
               <ResponsiveContainer width="100%" height={185}>
@@ -246,7 +314,7 @@ export function ProjectOverview({ project, tasks, milestones, stageRecords, user
                   <Pie data={taskDonut} cx="50%" cy="50%" innerRadius={48} outerRadius={72} paddingAngle={3} dataKey="value" nameKey="name">
                     {taskDonut.map((e, i) => <Cell key={i} fill={e.color} />)}
                   </Pie>
-                  <Tooltip contentStyle={{ background: "#1E293B", border: "none", borderRadius: 8, color: "white", fontSize: 12 }} />
+                  <Tooltip {...chartTooltipProps} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none" style={{ height: 185 }}>
@@ -256,14 +324,16 @@ export function ProjectOverview({ project, tasks, milestones, stageRecords, user
           ) : <div className="text-center py-12 text-sm text-muted-foreground/70">No tasks yet</div>}
         </DashboardCard>
 
-        <DashboardCard title="Budget" subtitle={budget.hasLines ? "Baseline · Forecast · Actual" : "From project budget (no detailed lines yet)"} actions={<button onClick={() => onOpenTab("budget")} className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline">Budget <ArrowRight size={12} /></button>}>
+        <DashboardCard title="Budget" subtitle={budget.hasLines ? "Baseline · Forecast · Actual" : "From project budget (no detailed lines yet)"}
+          drill={{ subtitle: `Burn ${budget.burn}% of baseline`, columns: [{ key: "item", label: "Item" }, { key: "amount", label: "Amount", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) }], rows: budgetBars.map(b => ({ item: b.name, amount: b.v })), emptyText: "No budget set." }}
+          actions={<button onClick={() => onOpenTab("budget")} className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline">Budget <ArrowRight size={12} /></button>}>
           {budget.baseline > 0 ? (
             <ResponsiveContainer width="100%" height={185}>
               <BarChart data={budgetBars} margin={{ top: 18, right: 8, bottom: 4, left: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10 }} tickFormatter={v => `₹${(v / 1e6).toFixed(0)}M`} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ background: "#1E293B", border: "none", borderRadius: 8, color: "white", fontSize: 12 }} formatter={(v: number) => [formatCurrency(v), ""]} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
+                <Tooltip {...chartTooltipProps} formatter={(v: number) => [formatCurrency(v), ""]} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
                 <Bar dataKey="v" radius={[6, 6, 0, 0]} maxBarSize={48}>
                   <LabelList dataKey="v" position="top" formatter={(v: number) => `₹${(v / 1e6).toFixed(1)}M`} style={{ fontSize: 10, fontWeight: 700, fill: "hsl(var(--foreground))" }} />
                   {budgetBars.map((b, i) => <Cell key={i} fill={b.c} />)}
@@ -344,9 +414,11 @@ export function ProjectOverview({ project, tasks, milestones, stageRecords, user
         {team.length > 0 && (
           <div className="flex items-center gap-2 mb-3 pb-3 border-b border-border/60 flex-wrap">
             {team.map(p => (
-              <span key={p.userId} title={`${p.name}${p.role ? ` · ${p.role}` : ""} · ${p.pct}%`} className="inline-flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-muted/70">
-                <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[9px] font-semibold flex items-center justify-center">{initials(p.name)}</span><span className="text-[11px] text-foreground truncate max-w-[90px]">{p.name}</span>
-              </span>
+              <HoverHint key={p.userId} label={`${p.name}${p.role ? ` · ${p.role}` : ""} · ${p.pct}%`}>
+                <span className="inline-flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-muted/70">
+                  <span className="w-5 h-5 rounded-full bg-primary/10 text-primary text-[9px] font-semibold flex items-center justify-center">{initials(p.name)}</span><span className="text-[11px] text-foreground truncate max-w-[90px]">{p.name}</span>
+                </span>
+              </HoverHint>
             ))}
           </div>
         )}

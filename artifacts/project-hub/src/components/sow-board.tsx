@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { HoverHint } from "@/components/ui-kit";
 import { ChevronDown, ChevronRight, Search, User, Plus, Info, Star, Link2, Paperclip, MessageSquare } from "lucide-react";
 
 // ─── Statement of Work board (Monday.com-style WBS) ─────────────────────────
@@ -367,9 +368,11 @@ function SowRow({ task, color, onOpen }: { task: SowTask; color: typeof GROUP_CO
       {/* Leader avatar */}
       <div className="px-3 py-2 flex items-center justify-center">
         {task.assigneeName ? (
-          <span title={task.assigneeName} className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[11px] font-semibold">
-            {initials(task.assigneeName)}
-          </span>
+          <HoverHint label={task.assigneeName}>
+            <span className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[11px] font-semibold">
+              {initials(task.assigneeName)}
+            </span>
+          </HoverHint>
         ) : (
           <span className="w-7 h-7 rounded-full bg-muted flex items-center justify-center"><User size={13} className="text-muted-foreground" /></span>
         )}

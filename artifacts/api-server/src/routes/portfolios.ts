@@ -1,8 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db, portfoliosTable, programsTable, projectsTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
 
 interface PortfolioRollup {
   progress: number;
@@ -67,7 +70,7 @@ router.get("/portfolios", async (_req, res): Promise<void> => {
   res.json(await withPortfolioRollup(portfolios));
 });
 
-router.post("/portfolios", async (req, res): Promise<void> => {
+router.post("/portfolios", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const { name, description, ownerId } = req.body as { name: string; description?: string; ownerId?: number };
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
   const [portfolio] = await db.insert(portfoliosTable).values({ name, description, ownerId }).returning();
@@ -83,7 +86,7 @@ router.get("/portfolios/:id", async (req, res): Promise<void> => {
   res.json(enriched);
 });
 
-router.patch("/portfolios/:id", async (req, res): Promise<void> => {
+router.patch("/portfolios/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { name, description, ownerId } = req.body as { name?: string; description?: string; ownerId?: number };
@@ -92,7 +95,7 @@ router.patch("/portfolios/:id", async (req, res): Promise<void> => {
   res.json(portfolio);
 });
 
-router.delete("/portfolios/:id", async (req, res): Promise<void> => {
+router.delete("/portfolios/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(portfoliosTable).where(eq(portfoliosTable.id, id));
@@ -108,7 +111,7 @@ router.get("/programs", async (req, res): Promise<void> => {
   res.json(programs);
 });
 
-router.post("/programs", async (req, res): Promise<void> => {
+router.post("/programs", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const { name, description, portfolioId, ownerId } = req.body as { name: string; description?: string; portfolioId?: number; ownerId?: number };
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
   const [program] = await db.insert(programsTable).values({ name, description, portfolioId, ownerId }).returning();
@@ -123,7 +126,7 @@ router.get("/programs/:id", async (req, res): Promise<void> => {
   res.json(program);
 });
 
-router.patch("/programs/:id", async (req, res): Promise<void> => {
+router.patch("/programs/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { name, description, portfolioId, ownerId } = req.body as { name?: string; description?: string; portfolioId?: number; ownerId?: number };
@@ -132,7 +135,7 @@ router.patch("/programs/:id", async (req, res): Promise<void> => {
   res.json(program);
 });
 
-router.delete("/programs/:id", async (req, res): Promise<void> => {
+router.delete("/programs/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(programsTable).where(eq(programsTable.id, id));

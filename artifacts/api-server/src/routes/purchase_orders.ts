@@ -11,8 +11,11 @@ import {
 import { eq, desc, and, or } from "drizzle-orm";
 import { logActivity } from "./activity";
 import { getSapAdapter } from "../integrations/sap";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "scm", "initiator"];
 
 // ─── Validation ─────────────────────────────────────────────────────────────
 
@@ -89,7 +92,7 @@ router.get("/prs/:id", async (req, res): Promise<void> => {
   res.json({ ...pr, purchaseOrders: pos });
 });
 
-router.post("/prs", async (req, res): Promise<void> => {
+router.post("/prs", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const parsed = CreatePRBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const { projectId, charterId, vendorId, sapVendorCode, lineItems, currency } = parsed.data;
@@ -156,7 +159,7 @@ router.post("/prs", async (req, res): Promise<void> => {
 
 // ─── Convert PR → PO ────────────────────────────────────────────────────────
 
-router.post("/prs/:id/convert-to-po", async (req, res): Promise<void> => {
+router.post("/prs/:id/convert-to-po", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [pr] = await db.select().from(purchaseRequisitionsTable).where(eq(purchaseRequisitionsTable.id, id));
@@ -213,7 +216,7 @@ router.post("/prs/:id/convert-to-po", async (req, res): Promise<void> => {
   res.status(201).json(poRow);
 });
 
-router.post("/prs/:id/cancel", async (req, res): Promise<void> => {
+router.post("/prs/:id/cancel", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [pr] = await db.select().from(purchaseRequisitionsTable).where(eq(purchaseRequisitionsTable.id, id));
@@ -259,7 +262,7 @@ router.get("/pos/:id", async (req, res): Promise<void> => {
 
 // ─── Manual refresh for a single PR (used by the Refresh button) ────────────
 
-router.post("/prs/:id/refresh", async (req, res): Promise<void> => {
+router.post("/prs/:id/refresh", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [pr] = await db.select().from(purchaseRequisitionsTable).where(eq(purchaseRequisitionsTable.id, id));
@@ -308,7 +311,7 @@ router.post("/prs/:id/refresh", async (req, res): Promise<void> => {
 
 // Delete a purchase requisition. BLOCKED once converted to a PO (delete the PO
 // first) — the PR→PO link is a governance/SAP relationship.
-router.delete("/prs/:id", async (req, res): Promise<void> => {
+router.delete("/prs/:id", requireRole("pmo", "pm", "scm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [pr] = await db.select().from(purchaseRequisitionsTable).where(eq(purchaseRequisitionsTable.id, id));
@@ -325,7 +328,7 @@ router.delete("/prs/:id", async (req, res): Promise<void> => {
 
 // Delete a purchase order. BLOCKED when it exists in SAP (sap_po_number set) —
 // that record must be removed in SAP, not here.
-router.delete("/pos/:id", async (req, res): Promise<void> => {
+router.delete("/pos/:id", requireRole("pmo", "pm", "scm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [po] = await db.select().from(purchaseOrdersTable).where(eq(purchaseOrdersTable.id, id));

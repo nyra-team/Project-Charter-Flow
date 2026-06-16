@@ -17,7 +17,9 @@ function getInitialTheme(): Theme {
   } catch { /* ignore */ }
   const stored = window.localStorage.getItem(STORAGE_KEY);
   if (stored === "light" || stored === "dark") return stored;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  // Default to light (pitch-white background). The OS dark preference is NOT
+  // followed by default — users can still opt into dark via the header toggle.
+  return "light";
 }
 
 function applyTheme(theme: Theme) {

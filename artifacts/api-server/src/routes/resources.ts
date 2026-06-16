@@ -1,8 +1,11 @@
 import { Router, type IRouter } from "express";
 import { db, resourceAllocationsTable, raciMatrixTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
 
 function formatAllocation(a: typeof resourceAllocationsTable.$inferSelect) {
   return { ...a, allocationPct: a.allocationPct != null ? Number(a.allocationPct) : 100 };
@@ -15,7 +18,7 @@ router.get("/projects/:id/resource-allocations", async (req, res): Promise<void>
   res.json(allocations.map(formatAllocation));
 });
 
-router.post("/projects/:id/resource-allocations", async (req, res): Promise<void> => {
+router.post("/projects/:id/resource-allocations", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { userId, workstreamId, role, skill, allocationPct, startDate, endDate } = req.body as {
@@ -31,7 +34,7 @@ router.post("/projects/:id/resource-allocations", async (req, res): Promise<void
   res.status(201).json(formatAllocation(allocation));
 });
 
-router.patch("/resource-allocations/:id", async (req, res): Promise<void> => {
+router.patch("/resource-allocations/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const updateData: Record<string, unknown> = {};
@@ -45,7 +48,7 @@ router.patch("/resource-allocations/:id", async (req, res): Promise<void> => {
   res.json(formatAllocation(allocation));
 });
 
-router.delete("/resource-allocations/:id", async (req, res): Promise<void> => {
+router.delete("/resource-allocations/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(resourceAllocationsTable).where(eq(resourceAllocationsTable.id, id));
@@ -59,7 +62,7 @@ router.get("/projects/:id/raci", async (req, res): Promise<void> => {
   res.json(raci);
 });
 
-router.post("/projects/:id/raci", async (req, res): Promise<void> => {
+router.post("/projects/:id/raci", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { userId, taskId, workstreamId, raciType } = req.body as { userId: number; taskId?: number; workstreamId?: number; raciType: string };
@@ -74,7 +77,7 @@ router.post("/projects/:id/raci", async (req, res): Promise<void> => {
   res.status(201).json(entry);
 });
 
-router.delete("/raci/:id", async (req, res): Promise<void> => {
+router.delete("/raci/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(raciMatrixTable).where(eq(raciMatrixTable.id, id));

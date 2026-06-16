@@ -9,11 +9,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from "recharts";
 import {
-  KPITile, RAGBadge, DashboardCard, useAutoRefresh, exportCSV,
+  KPITile, RAGBadge, DashboardCard, useAutoRefresh, exportCSV, type DrillColumn,
 } from "../../components/dashboard/primitives";
+import { formatCurrency } from "../../lib/format";
 import { useUserStore } from "../../lib/store";
 import { useMemo, useEffect } from "react";
 import { useAuth } from "../../auth/context";
+import { chartTooltipProps } from "@/components/ui-kit";
 
 function useMyTasks(userId: number, refetchInterval: number | false) {
   return useQuery({
@@ -186,6 +188,35 @@ export default function PMDashboard() {
   const taskTotal = taskStatusBreakdown.reduce((s, x) => s + x.value, 0);
   const taskTotalDenom = taskTotal || 1;
 
+  // ── Drill-down data — the actual rows behind each KPI / chart ──────────────
+  const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const fmtDate = (d?: string | null) => (d ? format(new Date(d), "MMM d, yyyy") : "—");
+  const projectCols: DrillColumn[] = [
+    { key: "name", label: "Project" },
+    { key: "rag", label: "RAG", render: (v) => titleCase(String(v ?? "—")) },
+    { key: "progress", label: "Progress", align: "right", render: (v) => `${v ?? 0}%` },
+    { key: "budget", label: "Budget", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) },
+    { key: "due", label: "Due", render: (v) => String(v ?? "—") },
+  ];
+  const activeProjectRows = activeProjects.map((p) => {
+    const pp = p as unknown as { name: string; ragStatus?: string | null; progress?: number | null; capexBudget?: number | null; opexBudget?: number | null; endDate?: string | null };
+    return { name: pp.name, rag: pp.ragStatus ?? "—", progress: pp.progress ?? 0, budget: (pp.capexBudget ?? 0) + (pp.opexBudget ?? 0), due: fmtDate(pp.endDate) };
+  });
+  const taskCols: DrillColumn[] = [
+    { key: "name", label: "Task" },
+    { key: "project", label: "Project" },
+    { key: "due", label: "Due" },
+    { key: "priority", label: "Priority" },
+    { key: "status", label: "Status", render: (v) => titleCase(String(v ?? "—")) },
+  ];
+  const toTaskRow = (t: { name: string; projectName: string; endDate?: string; priority?: string; status: string }) => ({
+    name: t.name, project: t.projectName, due: fmtDate(t.endDate), priority: t.priority ?? "—", status: t.status,
+  });
+  const dueRows = tasksDueThisWeek.map(toTaskRow);
+  const overdueRows = overdueTasks.map(toTaskRow);
+  const healthSeriesRows = healthSeries as unknown as Array<Record<string, unknown>>;
+  const taskSummaryRows = taskStatusBreakdown.map((s) => ({ status: s.label, count: s.value }));
+
   return (
     <div className="space-y-6" data-print-target>
       {/* Hero header — Atelier glass + ambient mesh */}
@@ -211,10 +242,14 @@ export default function PMDashboard() {
 
       {/* KPI Row */}
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        <div className="ph-rise"><KPITile label="Active Projects"   value={activeProjects.length}                tone="primary" icon={FolderKanban} sub="Under your management" trend="up" trendLabel={`${activeProjects.length} owned`} /></div>
-        <div className="ph-rise ph-rise-2"><KPITile label="Due This Week"     value={tasksDueThisWeek.length}                tone="warn"    icon={Clock}        sub={`${tasksDueThisWeek.filter(t => t.priority === "P1").length} critical`} /></div>
-        <div className="ph-rise ph-rise-3"><KPITile label="Overdue Tasks"    value={overdueTasks.length}                    tone={overdueTasks.length > 0 ? "danger" : "success"} icon={AlertTriangle} sub={overdueTasks.length > 0 ? "Action required" : "All clear"} /></div>
-        <div className="ph-rise ph-rise-4"><KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0}         tone="success" icon={CheckSquare}  sub="Awaiting sign-off" /></div>
+        <div className="ph-rise"><KPITile label="Active Projects"   value={activeProjects.length}                tone="primary" icon={FolderKanban} sub="Under your management" trend="up" trendLabel={`${activeProjects.length} owned`}
+          drill={{ subtitle: "Active projects under your management", columns: projectCols, rows: activeProjectRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No active projects assigned." }} /></div>
+        <div className="ph-rise ph-rise-2"><KPITile label="Due This Week"     value={tasksDueThisWeek.length}                tone="warn"    icon={Clock}        sub={`${tasksDueThisWeek.filter(t => t.priority === "P1").length} critical`}
+          drill={{ subtitle: "Your tasks due in the next 7 days", columns: taskCols, rows: dueRows, linkHref: "/my-tasks", linkLabel: "View my tasks", emptyText: "No tasks due this week." }} /></div>
+        <div className="ph-rise ph-rise-3"><KPITile label="Overdue Tasks"    value={overdueTasks.length}                    tone={overdueTasks.length > 0 ? "danger" : "success"} icon={AlertTriangle} sub={overdueTasks.length > 0 ? "Action required" : "All clear"}
+          drill={{ subtitle: "Your tasks past their due date", columns: taskCols, rows: overdueRows, linkHref: "/my-tasks", linkLabel: "View my tasks", emptyText: "No overdue tasks — all clear." }} /></div>
+        <div className="ph-rise ph-rise-4"><KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0}         tone="success" icon={CheckSquare}  sub="Awaiting sign-off"
+          drill={{ subtitle: "Charters and documents awaiting review", rows: [], linkHref: "/approvals", linkLabel: "Open approvals queue", emptyText: "Open the approvals queue to action pending items." }} /></div>
       </div>
 
       {/* Health chart + Task summary */}
@@ -223,6 +258,16 @@ export default function PMDashboard() {
           title="Portfolio Health Index"
           subtitle="Aggregated progress vs baseline · last 6 weeks"
           className="xl:col-span-2"
+          drill={{
+            subtitle: "Weekly progress vs baseline",
+            columns: [
+              { key: "name", label: "Week" },
+              { key: "progress", label: "Progress %", align: "right" },
+              { key: "baseline", label: "Baseline %", align: "right" },
+            ],
+            rows: healthSeriesRows,
+            emptyText: "No projects to chart.",
+          }}
           actions={
             <span className="hidden md:inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-success px-2 py-0.5 rounded border border-success/20 bg-success/10">
               <Activity size={10} /> Trending up
@@ -242,15 +287,7 @@ export default function PMDashboard() {
                 <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
                 <YAxis stroke="hsl(var(--muted-foreground))" fontSize={10} tickLine={false} axisLine={false} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(var(--popover))",
-                    borderColor: "hsl(var(--popover-border))",
-                    borderRadius: 8,
-                    fontSize: 12,
-                    color: "hsl(var(--popover-foreground))",
-                  }}
-                  itemStyle={{ color: "hsl(var(--popover-foreground))" }}
-                  labelStyle={{ color: "hsl(var(--muted-foreground))", fontFamily: "var(--app-font-sans)" }}
+                  {...chartTooltipProps}
                 />
                 <Area type="monotone" dataKey="progress" stroke="hsl(var(--primary))" strokeWidth={2} fill="url(#phProgress)" />
                 <Area type="monotone" dataKey="baseline" stroke="hsl(var(--muted-foreground))" strokeWidth={1.2} strokeDasharray="4 4" fill="none" />
@@ -259,7 +296,8 @@ export default function PMDashboard() {
           </div>
         </DashboardCard>
 
-        <DashboardCard title="My Task Summary" subtitle="All tasks assigned to you">
+        <DashboardCard title="My Task Summary" subtitle="All tasks assigned to you"
+          drill={{ subtitle: "Your tasks by status", columns: [{ key: "status", label: "Status" }, { key: "count", label: "Tasks", align: "right" }], rows: taskSummaryRows, linkHref: "/my-tasks", linkLabel: "View my tasks", emptyText: "No tasks assigned." }}>
           <div className="space-y-4">
             {/* Stacked bar */}
             <div className="flex h-2 w-full rounded-full overflow-hidden bg-muted">

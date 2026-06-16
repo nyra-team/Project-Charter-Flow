@@ -7,10 +7,13 @@ import {
   issuesTable,
   milestonesTable,
   notificationsTable,
+  usersTable,
 } from "@workspace/db";
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { computeStageCriticalPath } from "../lib/critical-path";
+import { notify } from "../lib/notify";
+import { autoEscalationEmailsEnabled } from "../lib/escalation-email";
 
 /**
  * Walks every active row in pmo_escalation_rules, evaluates its trigger
@@ -66,24 +69,32 @@ async function alreadyNotifiedToday(ruleId: number): Promise<boolean> {
 }
 
 async function notifyRule(rule: EscalationRule, project: ProjectRow, reason: string): Promise<number> {
-  const recipients = Array.isArray(rule.notifyUserIds)
+  const userIds = Array.isArray(rule.notifyUserIds)
     ? (rule.notifyUserIds as unknown[]).filter((x): x is number => typeof x === "number")
     : [];
-  if (recipients.length === 0) return 0;
+  if (userIds.length === 0) return 0;
   if (await alreadyNotifiedToday(rule.id)) return 0;
 
-  for (const userId of recipients) {
-    await db.insert(notificationsTable).values({
-      userId,
-      type: `escalation_${rule.triggerType}`,
-      title: `Escalation on "${project.name}"`,
-      body: reason,
-      link: `/projects/${project.id}`,
-      relatedEntityType: "escalation_rule",
-      relatedEntityId: rule.id,
-    } as never);
-  }
-  return recipients.length;
+  const users = await db
+    .select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+    .from(usersTable)
+    .where(inArray(usersTable.id, userIds));
+  // relatedEntityType/Id MUST stay "escalation_rule"/rule.id — alreadyNotifiedToday
+  // keys its 24h dedup on them, which also gates the email/Teams sends below.
+  const { notified } = await notify({
+    projectId: project.id,
+    type: `escalation_${rule.triggerType}`,
+    title: `Escalation on "${project.name}"`,
+    body: reason,
+    relatedEntityType: "escalation_rule",
+    relatedEntityId: rule.id,
+    recipients: users.map((u) => ({ userId: u.id, name: u.name, email: u.email ?? null })),
+    email: {
+      enabled: autoEscalationEmailsEnabled(),
+      banner: { emoji: "🚨", title: "Project escalation", color: "amber" },
+    },
+  });
+  return notified;
 }
 
 async function evaluateForProject(rule: EscalationRule, project: ProjectRow): Promise<boolean> {

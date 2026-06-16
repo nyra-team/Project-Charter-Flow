@@ -14,6 +14,7 @@ export interface UpdateProjectBody {
   status?: string;
   priority?: string;
   stage?: string;
+  category?: string;
   strategicTheme?: string;
   ragStatus?: string;
   ragOverrideJustification?: string;
@@ -24,6 +25,7 @@ export interface UpdateProjectBody {
   siteRegion?: string;
   function?: string;
   projectManagerId?: number;
+  teamsChannelEmail?: string;
   startDate?: string;
   endDate?: string;
   progress?: number;

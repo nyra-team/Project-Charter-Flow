@@ -1,7 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+/* Inter + Plus Jakarta Sans are loaded via the <link> in index.html (same as
+   OHC). JetBrains Mono (PMO-only, for code/ID cells) stays a CSS @import. */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
+
+/* Suite-shared chrome (CollapsibleSidebar, AppHeader, HeaderSearch) lives
+   outside this app's root, so Tailwind's automatic source detection misses it —
+   scan it explicitly or its utility classes never get generated. project-hub's
+   src/ sits 5 levels under the repo root. */
+@source "../../../../../packages/shared/components";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -94,37 +102,39 @@
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .07);
 
-  /* Cool-tinted off-white surface (less sterile), deep ink */
-  --background: 215 32% 96%;
-  --foreground: 224 32% 9%;
+  /* Suite / OHC palette — LIGHT. Blue primary on a soft blue-grey canvas with
+     white surfaces. Values mirror packages/shared/styles/app-base.css — the
+     shared base tokens that portal / pms / ohc / cxo all render from. */
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
 
-  --border: 220 18% 88%;
-  --input: 220 18% 88%;
-  --ring: 190 85% 38%;
+  --border: 214 32% 91%;
+  --input: 214 32% 91%;
+  --ring: 221 83% 53%;
 
   --card: 0 0% 100%;
-  --card-foreground: 224 32% 9%;
-  --card-border: 220 18% 89%;
+  --card-foreground: 222 47% 11%;
+  --card-border: 214 32% 91%;
 
   --popover: 0 0% 100%;
-  --popover-foreground: 224 32% 9%;
-  --popover-border: 220 18% 88%;
+  --popover-foreground: 222 47% 11%;
+  --popover-border: 214 32% 91%;
 
-  /* Sharp cyan (Command Center primary) — vibrant + AA on light */
-  --primary: 190 88% 38%;
-  --primary-foreground: 0 0% 100%;
+  /* Suite blue (shared / OHC primary) */
+  --primary: 221 83% 53%;
+  --primary-foreground: 210 40% 98%;
 
-  --secondary: 220 16% 95%;
-  --secondary-foreground: 224 28% 16%;
+  --secondary: 214 32% 91%;
+  --secondary-foreground: 222 47% 11%;
 
-  --muted: 220 16% 95%;
-  --muted-foreground: 222 10% 42%;
+  --muted: 214 32% 91%;
+  --muted-foreground: 215 16% 47%;
 
-  --accent: 220 16% 94%;
-  --accent-foreground: 224 28% 12%;
+  --accent: 214 32% 91%;
+  --accent-foreground: 222 47% 11%;
 
-  --destructive: 0 75% 50%;
-  --destructive-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
 
   --success: 158 65% 36%;
   --success-foreground: 0 0% 100%;
@@ -139,27 +149,29 @@
   --cta: 24 38% 30%;
   --cta-foreground: 36 60% 96%;
 
-  --chart-1: 190 82% 40%;
+  --chart-1: 221 83% 53%;
   --chart-2: 158 65% 42%;
   --chart-3: 35 92% 52%;
   --chart-4: 0 75% 56%;
   --chart-5: 262 65% 58%;
 
-  /* Sidebar — LIGHT theme: pure white (dark theme stays navy, .dark below) */
+  /* Sidebar — LIGHT theme. Suite blue accents (the suite-shared sidebar reads
+     --card/--primary/--border, but keep these aligned for any legacy usage). */
   --sidebar: 0 0% 100%;
   --sidebar-foreground: 222 26% 27%;
   --sidebar-border: 214 22% 91%;
-  --sidebar-primary: 190 90% 38%;
+  --sidebar-primary: 221 83% 53%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-accent: 192 60% 94%;
-  --sidebar-accent-foreground: 195 82% 24%;
-  --sidebar-ring: 190 88% 42%;
+  --sidebar-accent: 214 32% 91%;
+  --sidebar-accent-foreground: 222 47% 11%;
+  --sidebar-ring: 221 83% 53%;
 
-  /* Match Portal / Recruit / PMS / OHC: Inter for body, Plus Jakarta Sans
-     for headings/display. Both are loaded via the @import at the top of
-     this file and the <link> in index.html. */
-  --app-font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --app-font-display: 'Plus Jakarta Sans', 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  /* Font stacks are the SHARED design-system values verbatim (see
+     packages/shared/styles/tailwind.config.js → fontFamily) so PMO renders the
+     exact same typography as OHC: Inter for body, Plus Jakarta Sans for
+     headings/display. Loaded via the <link> in index.html, same as OHC. */
+  --app-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --app-font-display: 'Plus Jakarta Sans', 'Inter', sans-serif;
   --app-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 
   --radius: 0.375rem; /* 6px — tactical Command Center base */
@@ -208,37 +220,37 @@
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
 
-  /* Atelier deep navy */
-  --background: 230 15% 6%;
-  --foreground: 220 12% 95%;
+  /* Suite / OHC palette — DARK (mirrors app-base.css .dark) */
+  --background: 222 47% 6%;
+  --foreground: 210 40% 96%;
 
-  --border: 230 10% 18%;
-  --input: 230 10% 18%;
-  --ring: 190 95% 55%;
+  --border: 217 28% 20%;
+  --input: 217 28% 26%;
+  --ring: 226 80% 63%;
 
   /* Card uses glass — solid token is fallback; .glass-surface utility overlays blur */
-  --card: 230 14% 10%;
-  --card-foreground: 220 12% 95%;
-  --card-border: 230 10% 18%;
+  --card: 222 40% 11%;
+  --card-foreground: 210 40% 96%;
+  --card-border: 217 28% 20%;
 
-  --popover: 230 14% 11%;
-  --popover-foreground: 220 12% 95%;
-  --popover-border: 230 10% 20%;
+  --popover: 222 42% 10%;
+  --popover-foreground: 210 40% 96%;
+  --popover-border: 217 28% 20%;
 
-  --primary: 190 95% 55%;
-  --primary-foreground: 230 30% 8%;
+  --primary: 226 80% 63%;
+  --primary-foreground: 210 40% 98%;
 
-  --secondary: 230 10% 14%;
-  --secondary-foreground: 220 12% 95%;
+  --secondary: 217 33% 17%;
+  --secondary-foreground: 210 40% 96%;
 
-  --muted: 230 10% 14%;
-  --muted-foreground: 220 8% 60%;
+  --muted: 217 33% 16%;
+  --muted-foreground: 215 20% 65%;
 
-  --accent: 230 10% 16%;
-  --accent-foreground: 220 12% 95%;
+  --accent: 217 33% 17%;
+  --accent-foreground: 210 40% 96%;
 
-  --destructive: 0 78% 60%;
-  --destructive-foreground: 0 0% 100%;
+  --destructive: 0 72% 55%;
+  --destructive-foreground: 210 40% 98%;
 
   --success: 158 65% 50%;
   --success-foreground: 230 30% 8%;
@@ -252,21 +264,21 @@
   --cta: 35 90% 60%;
   --cta-foreground: 230 30% 8%;
 
-  --chart-1: 190 95% 55%;
+  --chart-1: 226 80% 63%;
   --chart-2: 158 68% 50%;
   --chart-3: 35 92% 58%;
   --chart-4: 0 78% 62%;
   --chart-5: 262 75% 70%;
 
-  /* Sidebar — identical to the light-theme side header (synced per request) */
-  --sidebar: 230 18% 6%;
-  --sidebar-foreground: 220 14% 88%;
-  --sidebar-border: 230 14% 14%;
-  --sidebar-primary: 190 95% 55%;
-  --sidebar-primary-foreground: 230 30% 8%;
-  --sidebar-accent: 230 16% 12%;
-  --sidebar-accent-foreground: 220 14% 92%;
-  --sidebar-ring: 190 95% 55%;
+  /* Sidebar — DARK. Suite blue accents (chrome reads --card/--primary/--border). */
+  --sidebar: 222 47% 6%;
+  --sidebar-foreground: 210 40% 88%;
+  --sidebar-border: 217 28% 16%;
+  --sidebar-primary: 226 80% 63%;
+  --sidebar-primary-foreground: 210 40% 98%;
+  --sidebar-accent: 217 33% 14%;
+  --sidebar-accent-foreground: 210 40% 92%;
+  --sidebar-ring: 226 80% 63%;
 
   --shadow-2xs: 0px 1px 2px rgba(0, 0, 0, 0.40);
   --shadow-xs: 0px 1px 3px rgba(0, 0, 0, 0.50);
@@ -289,10 +301,25 @@
 
 @layer base {
   * { @apply border-border; }
+  /* Typography mirrors packages/shared/styles/app-base.css verbatim so PMO
+     matches OHC: plain Inter body (no stylistic-set / letter-spacing overrides
+     that would alter the letterforms), Plus Jakarta Sans on headings + bold /
+     semibold / medium text. */
   html, body {
     @apply font-sans antialiased bg-background text-foreground;
-    font-feature-settings: "cv11", "ss01", "ss03";
-    letter-spacing: -0.01em;
+    /* Mobile safety net: a stray wide element should never make the whole
+       page scroll sideways — inner containers (data tables, the Kanban /
+       Gantt) keep their own overflow-x-auto and scroll independently. */
+    overflow-x: hidden;
+  }
+  h1, h2, h3, h4, h5, h6,
+  label, th, dt,
+  [class*="font-semibold"],
+  [class*="font-bold"],
+  [class*="font-extrabold"],
+  [class*="font-medium"] {
+    font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+    @apply tracking-tight;
   }
 }
 
@@ -304,18 +331,28 @@
     pointer-events: none;
   }
 
-  /* ── Atelier glass surface — translucent in BOTH modes so ambient mesh bleeds through ── */
+  /* ── Atelier glass surface — translucent in BOTH modes so ambient mesh bleeds through ──
+     Resting shadow is a layered "float": a tight contact shadow + a wide soft
+     ambient one, so every card reads as hovering above the page even untouched. */
   .glass-surface {
     background-color: var(--glass-bg);
     backdrop-filter: blur(16px) saturate(120%);
     -webkit-backdrop-filter: blur(16px) saturate(120%);
     border: 1px solid var(--glass-border);
-    box-shadow: 0 1px 0 rgba(255,255,255,0.6) inset, 0 4px 14px -6px rgba(15, 23, 42, 0.08);
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.6) inset,
+      0 2px 4px -2px rgba(15, 23, 42, 0.08),
+      0 10px 24px -8px rgba(15, 23, 42, 0.12),
+      0 24px 48px -20px rgba(15, 23, 42, 0.10);
   }
   .dark .glass-surface {
     backdrop-filter: blur(20px) saturate(140%);
     -webkit-backdrop-filter: blur(20px) saturate(140%);
-    box-shadow: 0 4px 24px -4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.04),
+      0 2px 4px -2px rgba(0,0,0,0.5),
+      0 12px 28px -8px rgba(0,0,0,0.55),
+      0 28px 56px -20px rgba(0,0,0,0.45);
   }
   .glass-surface-hover {
     transition: background-color .2s, border-color .2s, transform .25s, box-shadow .25s;
@@ -458,13 +495,9 @@
       transparent 100%);
   }
 
-  /* ── Ambient radial mesh — sea green (L) + pastel pink (R) + teal (bottom) ── */
+  /* ── Ambient radial mesh — removed: hero headers render with no color wash. ── */
   .ambient-mesh {
-    background-image:
-      radial-gradient(circle at 10% 18%, hsl(var(--mesh-pink) / 0.95) 0px, transparent 40%),
-      radial-gradient(circle at 88% 22%, hsl(var(--mesh-rose) / 0.90) 0px, transparent 42%),
-      radial-gradient(circle at 50% 100%, hsl(var(--mesh-teal) / 0.65) 0px, transparent 45%);
-    filter: blur(40px);
+    background-image: none;
   }
   /* LIGHT: no wash so the white sidebar stays pure (sidebar-only class). */
   .ambient-mesh-soft {
@@ -478,20 +511,10 @@
       radial-gradient(circle at 0% 100%, hsl(var(--mesh-purple) / 0.45) 0px, transparent 55%);
   }
 
-  /* ── Page background ambient mesh (Atelier signature) ── */
+  /* ── Page background ambient mesh — removed: flat background, no color wash. ── */
   .page-ambient {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    background-image:
-      radial-gradient(circle at 12% 14%, hsl(var(--mesh-amber) / 0.45), transparent 38%),
-      radial-gradient(circle at 88% 32%, hsl(var(--mesh-purple) / 0.40), transparent 40%),
-      radial-gradient(circle at 50% 95%, hsl(var(--mesh-teal) / 0.35), transparent 42%);
-    filter: blur(80px);
-    opacity: 0.80;
+    display: none;
   }
-  .dark .page-ambient { opacity: 0.55; filter: blur(60px); }
 
   /* ── Hairline divider ── */
   .hairline {
@@ -547,6 +570,22 @@
   .stagger-children > *:nth-child(7)  { animation-delay: 0.26s; }
   .stagger-children > *:nth-child(8)  { animation-delay: 0.30s; }
   .stagger-children > *:nth-child(n+9){ animation-delay: 0.34s; }
+
+  /* ── Tooltip / hover-card entrance — shared by every hover surface ──
+     tailwindcss-animate is NOT installed, so shadcn's animate-in classes are
+     no-ops; this class is the one real entrance animation for hover content. */
+  @keyframes ph-tooltip-in {
+    from { opacity: 0; transform: translateY(3px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .ph-tooltip-in { animation: ph-tooltip-in 0.16s cubic-bezier(.16,1,.3,1) both; }
+
+  /* ── Arrow float — gentle levitation while the arrow itself is hovered ── */
+  @keyframes ph-arrow-bob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-3px); }
+  }
+  .ph-arrow-float:hover { animation: ph-arrow-bob .8s ease-in-out infinite; }
 
   @keyframes ph-pulse-ring {
     0%, 100% { box-shadow: 0 0 0 0 hsl(var(--primary) / 0.45); }
@@ -626,15 +665,17 @@
   /* Only promote layer during hover/focus to avoid always-on compositor cost */
   .lift-card:hover, .lift-card:focus-within { will-change: transform; }
   .lift-card:hover {
-    transform: translateY(-2px);
+    transform: translateY(-4px) scale(1.005);
     box-shadow:
-      0 16px 40px -16px rgba(15, 23, 42, 0.18),
-      0 6px 14px -6px rgba(15, 23, 42, 0.10);
+      0 4px 8px -4px rgba(15, 23, 42, 0.10),
+      0 20px 44px -14px rgba(15, 23, 42, 0.20),
+      0 36px 72px -24px rgba(15, 23, 42, 0.14);
   }
   .dark .lift-card:hover {
     box-shadow:
-      0 20px 48px -16px rgba(0, 0, 0, 0.7),
-      0 8px 20px -8px rgba(0, 0, 0, 0.5);
+      0 4px 10px -4px rgba(0, 0, 0, 0.55),
+      0 24px 52px -14px rgba(0, 0, 0, 0.7),
+      0 40px 80px -24px rgba(0, 0, 0, 0.5);
   }
 
   /* ── Gradient text — for hero headlines ── */
@@ -779,3 +820,50 @@
     inset: -1px;
   }
 }
+
+/* ───────────────────────────────────────────────────────────────
+   OHC dropdown / control parity. These are UNLAYERED + the highlight
+   uses !important so they win against utility classes — same mechanism
+   the shared design-system.css uses. Ported from
+   packages/shared/styles/design-system.css so PMO's Radix dropdowns
+   (Select, DropdownMenu, Popover) match OHC: a soft slide-in on open and
+   a blue primary-tint highlight on the selected row.
+   ─────────────────────────────────────────────────────────────── */
+@keyframes radix-dropdown-slide-down-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes radix-dropdown-slide-up-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+[data-radix-popper-content-wrapper] [data-side="bottom"][data-state="open"] {
+  animation: radix-dropdown-slide-down-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+[data-radix-popper-content-wrapper] [data-side="top"][data-state="open"] {
+  animation: radix-dropdown-slide-up-in 0.14s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Selected-row highlight — one rule for every dropdown family (Radix Select
+   options carry [data-state="checked"]); matches OHC's blue primary tint. */
+[role="option"][data-state="checked"],
+.dropdown-item-selected,
+.dropdown-item-active {
+  background-color: hsl(var(--primary) / 0.1) !important;
+  color: hsl(var(--primary)) !important;
+}
+
+/* RAG zone bands for status/threshold bars — same hex SSOT as OHC's
+   design-system.css RAG ZONES section. */
+:root {
+  --zone-red:       #FF0000;
+  --zone-red-light: #ff6b6b;
+  --zone-amber:     #d97706;
+  --zone-green:     #16a34a;
+  --zone-neutral:   #94a3b8;
+}
+.zone-band-red       { background-color: var(--zone-red); }
+.zone-band-red-light { background-color: var(--zone-red-light); }
+.zone-band-amber     { background-color: var(--zone-amber); }
+.zone-band-green     { background-color: var(--zone-green); }
+.zone-band-neutral   { background-color: var(--zone-neutral); }

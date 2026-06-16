@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useListEscalationRules, useCreateEscalationRule,
   useUpdateEscalationRule, useDeleteEscalationRule, useListUsers,
+  useGetProject, useUpdateProject,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -36,6 +37,28 @@ export function EscalationRulesTab({ projectId }: { projectId: number }) {
 
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ triggerType: "rag_change", thresholdValue: "0", notifyUserIds: [] as number[] });
+
+  // Teams channel mirror address (projects.teamsChannelEmail).
+  const { data: project, refetch: refetchProject } = useGetProject(projectId);
+  const updateProject = useUpdateProject();
+  const [channelEmail, setChannelEmail] = useState("");
+  const savedChannelEmail = project?.teamsChannelEmail ?? "";
+  useEffect(() => { setChannelEmail(savedChannelEmail); }, [savedChannelEmail]);
+
+  function handleSaveChannelEmail() {
+    const value = channelEmail.trim();
+    if (value && !/.+@.+\..+/.test(value)) {
+      toast({ title: "Enter a valid channel email address", variant: "destructive" });
+      return;
+    }
+    updateProject.mutate(
+      { id: projectId, data: { teamsChannelEmail: value } },
+      {
+        onSuccess: () => { toast({ title: value ? "Teams channel saved" : "Teams channel cleared" }); refetchProject(); },
+        onError: () => toast({ title: "Failed to save Teams channel", variant: "destructive" }),
+      },
+    );
+  }
 
   const rulesArr = rules as Rule[];
   const usersArr = users as Array<{ id: number; name: string; role?: string }>;
@@ -87,6 +110,35 @@ export function EscalationRulesTab({ projectId }: { projectId: number }) {
             <Plus size={14} /> New Rule
           </button>
         )}
+      </div>
+
+      <div className="glass-surface lift-card ph-rise rounded-2xl p-5">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <Bell size={16} className="text-primary" /> Teams Channel Notifications
+        </h3>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Project alerts (new/closed tasks, effort overruns, escalations) are mirrored to this Microsoft Teams
+          channel. In Teams: channel → ⋯ → Get email address. Leave empty to disable.
+        </p>
+        <div className="flex items-center gap-2 mt-3">
+          <Input
+            type="email"
+            placeholder="channel-name.xxxx@apac.teams.ms"
+            value={channelEmail}
+            onChange={e => setChannelEmail(e.target.value)}
+            disabled={!canEdit}
+            className="max-w-md"
+          />
+          {canEdit && (
+            <button
+              onClick={handleSaveChannelEmail}
+              disabled={updateProject.isPending || channelEmail.trim() === savedChannelEmail}
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90 disabled:opacity-50"
+            >
+              Save
+            </button>
+          )}
+        </div>
       </div>
 
       {rulesArr.length === 0 ? (

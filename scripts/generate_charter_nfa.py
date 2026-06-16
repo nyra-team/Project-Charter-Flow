@@ -69,6 +69,28 @@ def set_cell_borders(cell, sz=4, color="94A3B8"):
     tcPr.append(borders)
 
 
+def set_cell_margins(cell, *, top=40, bottom=40, left=110, right=110):
+    """Padding inside a table cell (values in twips, 20 = 1pt). Gives the
+    tables proper breathing room instead of text hugging the borders."""
+    tcPr = cell._tc.get_or_add_tcPr()
+    mar = OxmlElement("w:tcMar")
+    for edge, val in (("top", top), ("bottom", bottom), ("start", left), ("end", right)):
+        e = OxmlElement(f"w:{edge}")
+        e.set(qn("w:w"), str(val))
+        e.set(qn("w:type"), "dxa")
+        mar.append(e)
+    tcPr.append(mar)
+
+
+def set_tracking(r, twips):
+    """Letter-spacing on a run (twips; 20 = 1pt). Used for the airy small-caps
+    section headings."""
+    rPr = r._r.get_or_add_rPr()
+    spc = OxmlElement("w:spacing")
+    spc.set(qn("w:val"), str(twips))
+    rPr.append(spc)
+
+
 def set_run(r, *, size=10, bold=False, color=INK, italic=False):
     r.font.name = "Calibri"
     r.font.size = Pt(size)
@@ -79,36 +101,43 @@ def set_run(r, *, size=10, bold=False, color=INK, italic=False):
 
 def heading(doc, text, level=1):
     p = doc.add_paragraph()
-    p.paragraph_format.space_before = Pt(14 if level == 1 else 10)
-    p.paragraph_format.space_after = Pt(4)
-    r = p.add_run(text)
-    set_run(r, size=(14 if level == 1 else 12 if level == 2 else 11),
+    p.paragraph_format.space_before = Pt(20 if level == 1 else 13)
+    p.paragraph_format.space_after = Pt(7 if level == 1 else 4)
+    p.paragraph_format.line_spacing = 1.0
+    p.paragraph_format.keep_with_next = True  # never strand a heading at a page foot
+    # Level-1 = an airy letter-spaced small-caps section header (corporate look);
+    # deeper levels stay sentence-case.
+    r = p.add_run(text.upper() if level == 1 else text)
+    set_run(r, size=(12.5 if level == 1 else 11.5 if level == 2 else 10.5),
             bold=True, color=BRAND if level <= 2 else INK)
     if level == 1:
+        set_tracking(r, 24)
         pPr = p._p.get_or_add_pPr()
         pBdr = OxmlElement("w:pBdr")
         bot = OxmlElement("w:bottom")
         bot.set(qn("w:val"), "single"); bot.set(qn("w:sz"), "6")
-        bot.set(qn("w:space"), "1"); bot.set(qn("w:color"), "0E7C86")
+        bot.set(qn("w:space"), "4"); bot.set(qn("w:color"), "0E7C86")
         pBdr.append(bot); pPr.append(pBdr)
     return p
 
 
-def para(doc, text="", *, size=10, bold=False, italic=False, color=INK, align=None, space_after=4):
+def para(doc, text="", *, size=10.5, bold=False, italic=False, color=INK, align=None, space_after=7):
     p = doc.add_paragraph()
     if align is not None:
         p.alignment = align
     p.paragraph_format.space_before = Pt(0)
     p.paragraph_format.space_after = Pt(space_after)
+    p.paragraph_format.line_spacing = 1.15  # readable body leading
     if text:
         r = p.add_run(text)
         set_run(r, size=size, bold=bold, italic=italic, color=color)
     return p
 
 
-def bullet(doc, text, *, size=10):
+def bullet(doc, text, *, size=10.5):
     p = doc.add_paragraph(style="List Bullet")
-    p.paragraph_format.space_after = Pt(2)
+    p.paragraph_format.space_after = Pt(3)
+    p.paragraph_format.line_spacing = 1.12
     r = p.add_run(text)
     set_run(r, size=size)
     return p
@@ -130,13 +159,16 @@ def build_table(doc, rows, *, col_widths_cm=None, header_rows=1, first_col_heade
             cell = t.cell(r_idx, c_idx)
             cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
             set_cell_borders(cell)
+            set_cell_margins(cell)
             cell.text = ""
             p = cell.paragraphs[0]
-            p.paragraph_format.space_before = Pt(2)
-            p.paragraph_format.space_after = Pt(2)
+            p.paragraph_format.space_before = Pt(3)
+            p.paragraph_format.space_after = Pt(3)
+            p.paragraph_format.line_spacing = 1.08
             r = p.add_run("" if txt is None else str(txt))
             if is_header:
-                set_run(r, size=10, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF))
+                set_run(r, size=9.5, bold=True, color=RGBColor(0xFF, 0xFF, 0xFF))
+                set_tracking(r, 12)
                 set_cell_bg(cell, HDR_BG)
             elif first_col_header and c_idx == 0:
                 set_run(r, size=10, bold=True, color=INK)
@@ -179,19 +211,23 @@ def build(data, out_path):
         s.top_margin = Cm(1.6); s.bottom_margin = Cm(1.6)
         s.left_margin = Cm(1.8); s.right_margin = Cm(1.8)
 
-    style = doc.styles["Normal"]; style.font.name = "Calibri"; style.font.size = Pt(10)
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(10.5)
+    style.paragraph_format.line_spacing = 1.15
+    style.paragraph_format.space_after = Pt(6)
 
     # ── Cover ──
     p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_after = Pt(2)
-    set_run(p.add_run("GRANULES INDIA LIMITED"), size=11, bold=True, color=MUTED)
+    p.paragraph_format.space_after = Pt(3)
+    r = p.add_run("GRANULES INDIA LIMITED"); set_run(r, size=10.5, bold=True, color=MUTED); set_tracking(r, 60)
 
     p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_after = Pt(0)
-    set_run(p.add_run("Project Charter & Note for Approval (NFA)"), size=18, bold=True, color=BRAND)
+    p.paragraph_format.space_after = Pt(1)
+    r = p.add_run("Project Charter & Note for Approval (NFA)"); set_run(r, size=19, bold=True, color=BRAND); set_tracking(r, 4)
 
     p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_after = Pt(2)
+    p.paragraph_format.space_after = Pt(3)
     set_run(p.add_run(data.get("title") or "[ Project name ]"), size=14, bold=True, color=INK)
 
     pcId = next((t.split(":", 1)[1] for t in (data.get("strategicAlignmentTags") or []) if isinstance(t, str) and t.startswith("PC_ID:")), None)
@@ -201,87 +237,60 @@ def build(data, out_path):
     p.paragraph_format.space_after = Pt(14)
     set_run(p.add_run(sub), size=10, italic=True, color=MUTED)
 
+    # Sections follow the Granules ANNEXURE-I Project Charter / NFA order exactly.
+
     # 1. Project Information
     heading(doc, "1. Project Information", level=2)
+    pm_type = (data.get("pmType") or "").strip()
+    pm_name = (data.get("pmName") or "").strip()
+    pm_disp = (f"{pm_type} — {pm_name}".strip(" —")) if (pm_type or pm_name) else "—"
     info_rows = [
-        ["Note No", data.get("noteNo") or "—", "Entity", data.get("entity") or "—"],
-        ["Category", data.get("category") or "—", "Department", data.get("department") or "—"],
-        ["Location", data.get("location") or "—", "Note Date", fmt_date(data.get("noteDate"))],
-        ["Start Date", fmt_date(data.get("startDate")), "End Date", fmt_date(data.get("endDate"))],
-        ["Kind", (data.get("kind") or "—").upper(), "Status", (data.get("status") or "—").replace("_", " ").title()],
+        ["Project Name", data.get("title") or "—", "Project Sponsor", data.get("projectSponsor") or "—"],
+        ["Function / Department", data.get("department") or "—", "Project Category", data.get("category") or "—"],
+        ["PM", pm_disp, "Note No", data.get("noteNo") or "—"],
+        ["Date of Project Approval", fmt_date(data.get("projectApprovalDate")), "Last Revision Date", fmt_date(data.get("lastRevisionDate"))],
     ]
-    build_table(doc, info_rows, col_widths_cm=[3.6, 5.0, 3.6, 5.4], header_rows=0, first_col_header=True)
+    build_table(doc, info_rows, col_widths_cm=[4.0, 4.6, 4.0, 5.0], header_rows=0, first_col_header=True)
+    heading(doc, "Key Project Members", level=2)
+    members = data.get("keyProjectMembers") or []
+    members_disp = ", ".join(m.get("name", "") for m in members if m.get("name")) or "—"
+    para(doc, members_disp)
 
-    # 2. Executive Summary
-    heading(doc, "2. Executive Summary", level=1)
-    para(doc, data.get("executiveSummary") or "—")
+    # 2. Project Description / Executive Summary
+    heading(doc, "2. Project Description / Executive Summary", level=1)
+    para(doc, data.get("executiveSummary") or data.get("description") or "—")
 
-    # 3. Project Description
-    heading(doc, "3. Project Description", level=1)
-    para(doc, data.get("description") or "—")
+    # 3. Background
+    heading(doc, "3. Background", level=1)
+    para(doc, data.get("background") or "—")
 
-    # 4. Background
-    heading(doc, "4. Background", level=1)
-    if data.get("background"):
-        para(doc, data["background"])
-    heading(doc, "4.1 Current State Assessment", level=2)
-    para(doc, data.get("currentState") or "—")
-    heading(doc, "4.2 Business Drivers", level=2)
-    para(doc, data.get("businessDrivers") or "—")
-
-    # 5. Scope
-    heading(doc, "5. Project Scope & Deliverables", level=1)
-    heading(doc, "5.1 In Scope", level=2)
+    # 4. Scope
+    heading(doc, "4. Scope", level=1)
+    heading(doc, "4.1 In Scope", level=2)
     para(doc, data.get("scope") or "—")
-    heading(doc, "5.2 Out of Scope", level=2)
+    heading(doc, "4.2 Out of Scope", level=2)
     para(doc, data.get("outOfScope") or "—")
-    if data.get("deliverables"):
-        heading(doc, "5.3 Deliverables", level=2)
-        para(doc, data["deliverables"])
 
-    # 6. Benefits & KPIs
-    heading(doc, "6. Benefits & KPIs", level=1)
-    kpis = data.get("kpis") or []
-    if kpis:
-        rows = [["KPI", "Baseline", "Goal"]]
-        for k in kpis:
-            rows.append([k.get("kpi", ""), k.get("baseline", ""), k.get("goal", "")])
-        build_table(doc, rows, col_widths_cm=[8.4, 4.4, 4.8], band=True)
-    else:
-        para(doc, "No KPIs captured.", italic=True, color=MUTED)
+    # 5. Business Outcome
+    heading(doc, "5. Business Outcome", level=1)
+    para(doc, data.get("businessOutcome") or "—")
 
-    qualitative = [
-        ("Topline improvement", data.get("toplineImprovement")),
-        ("Bottom-line optimization", data.get("bottomLineOptimization")),
-        ("Compliance benefits", data.get("complianceBenefits")),
-        ("Productivity improvement", data.get("productivityImprovement")),
-    ]
-    if any(v for _, v in qualitative):
-        heading(doc, "6.1 Qualitative benefits", level=2)
-        for label, val in qualitative:
-            if val:
-                para(doc, f"{label}: ", bold=True, space_after=1)
-                para(doc, val, space_after=4)
+    # 6. Constraints
+    heading(doc, "6. Constraints", level=1)
+    if data.get("constraints"):
+        para(doc, data["constraints"])
+    cons_rows = [["Item", "Detail"]]
+    if data.get("tentativeBudget"):
+        cons_rows.append(["Approved Budget", fmt_inr(data.get("tentativeBudget"))])
+    if data.get("leAmount"):
+        cons_rows.append(["LE Budget", fmt_inr(data.get("leAmount"))])
+    if data.get("scopeLimitations"):
+        cons_rows.append(["Scope Limitations", data.get("scopeLimitations")])
+    if len(cons_rows) > 1:
+        build_table(doc, cons_rows, col_widths_cm=[5.0, 12.6], first_col_header=True)
 
-    # 7. Business Case & ROI / Annum
-    heading(doc, "7. Business Case & ROI / Annum", level=1)
-    roi = data.get("roiPerAnnum")
-    payback = data.get("paybackMonths")
-    if roi or payback:
-        roi_rows = [["Metric", "Value"]]
-        if roi: roi_rows.append(["ROI / Annum", fmt_inr(roi)])
-        if payback: roi_rows.append(["Payback (months)", str(payback)])
-        if data.get("totalUsd"): roi_rows.append(["Total commitment (USD)", data["totalUsd"]])
-        if data.get("totalInr"): roi_rows.append(["Total commitment (INR)", data["totalInr"]])
-        build_table(doc, roi_rows, col_widths_cm=[6.0, 11.6], band=True)
-    else:
-        para(doc, "ROI / payback not quantified.", italic=True, color=MUTED)
-    if data.get("recommendation"):
-        heading(doc, "7.1 Recommendation", level=2)
-        para(doc, data["recommendation"])
-
-    # 8. Implementation Roadmap & Milestones
-    heading(doc, "8. Implementation Roadmap & Milestones", level=1)
+    # 7. Project Deliverables (Key Milestones)
+    heading(doc, "7. Project Deliverables (Key Milestones)", level=1)
     milestones = data.get("milestones") or []
     if milestones:
         rows = [["Key Milestone", "Responsible", "Target Date"]]
@@ -291,89 +300,70 @@ def build(data, out_path):
     else:
         para(doc, "No milestones captured.", italic=True, color=MUTED)
 
-    # 9. Revised Project Investment Summary
-    heading(doc, "9. Revised Project Investment Summary", level=1)
-    invest_rows = [["Metric", "Value", "Remarks"]]
-    if data.get("capexAmount"): invest_rows.append(["One-Time Capex", fmt_inr(data["capexAmount"]), ""])
-    if data.get("opexAmount"):  invest_rows.append(["Recurring (OPEX)", fmt_inr(data["opexAmount"]), ""])
-    fy = data.get("fyRecurring") or []
-    for row in fy:
-        invest_rows.append([f"Recurring — {row.get('fyLabel','')}", fmt_inr(row.get("amountInr")), ""])
-    total_recurring = sum(float(r.get("amountInr", 0) or 0) for r in fy)
-    if total_recurring:
-        invest_rows.append(["Total Recurring", fmt_inr(total_recurring), "Sum of FY-wise rows"])
-    tot = float(data.get("capexAmount") or 0) + total_recurring
-    if tot:
-        invest_rows.append(["5-Year TCO", fmt_inr(tot), "CAPEX + Recurring"])
-    if len(invest_rows) > 1:
-        build_table(doc, invest_rows, col_widths_cm=[5.8, 3.6, 8.2], band=True)
+    # 8. Benefits
+    heading(doc, "8. Benefits", level=1)
+    para(doc, "Topline improvement, bottom-line optimization, compliance benefits & productivity improvement.",
+         italic=True, color=MUTED, space_after=4)
+    kpis = data.get("kpis") or []
+    if kpis:
+        rows = [["KPI", "Baseline", "Goal"]]
+        for k in kpis:
+            rows.append([k.get("kpi", ""), k.get("baseline", ""), k.get("goal", "")])
+        build_table(doc, rows, col_widths_cm=[8.4, 4.4, 4.8], band=True)
     else:
-        para(doc, "No financial breakdown captured.", italic=True, color=MUTED)
+        para(doc, "No KPIs captured.", italic=True, color=MUTED)
 
-    # 10. Earlier vs Revised NFA
-    heading(doc, "10. Earlier vs Revised NFA", level=1)
-    prev = data.get("previousNfaAmount")
-    le = data.get("leAmount")
-    if prev or le:
-        rows = [["Component", "Earlier NFA", "Revised / LE", "Change"]]
-        revised = le if le is not None else tot
-        delta = (revised or 0) - (prev or 0)
-        rows.append(["Total commitment", fmt_inr(prev), fmt_inr(revised), fmt_inr(delta)])
-        build_table(doc, rows, col_widths_cm=[6.4, 3.6, 3.6, 4.0], band=True)
+    # 9. ROI / Annum
+    heading(doc, "9. ROI / Annum", level=1)
+    roi = data.get("roiPerAnnum")
+    if roi:
+        para(doc, fmt_inr(roi))
     else:
-        para(doc, "First-time NFA — no prior commitment to compare.", italic=True, color=MUTED)
+        para(doc, "Not quantified.", italic=True, color=MUTED)
 
-    # 11. Constraints
-    heading(doc, "11. Constraints", level=1)
-    para(doc, data.get("constraints") or "—")
-
-    # 12. Risks
-    heading(doc, "12. Risks", level=1)
-    risks = data.get("risks") or []
+    # 10. Risks
+    heading(doc, "10. Risks", level=1)
+    risks = data.get("structuredRisks") or []
+    risks_text = data.get("risks")
     if risks:
         for r in risks:
             bullet(doc, f"{r.get('title','')}: {r.get('description','') or ''}".strip(": "))
+    elif isinstance(risks_text, str) and risks_text.strip():
+        para(doc, risks_text)
     else:
         para(doc, "—")
 
-    # 13. Assumptions
-    heading(doc, "13. Assumptions", level=1)
+    # 11. Assumptions
+    heading(doc, "11. Assumptions", level=1)
     para(doc, data.get("assumptions") or "—")
 
-    # 14. Potential Additional Budget Areas
-    heading(doc, "14. Potential Additional Budget Areas", level=1)
+    # 12. Potential Additional Budget Areas
+    heading(doc, "12. Potential Additional Budget Areas", level=1)
     para(doc, data.get("potentialAdditionalBudget") or "—")
 
-    # 15. Project Governance
-    heading(doc, "15. Project Governance", level=1)
-    sc = data.get("steeringCommittee") or []
-    if sc:
-        heading(doc, "15.1 Steering Committee", level=2)
-        rows = [["Role", "Member"]]
-        for m in sc:
-            rows.append([m.get("role", ""), f"{m.get('name','')}{' ('+m.get('empCode','')+')' if m.get('empCode') else ''}"])
-        build_table(doc, rows, col_widths_cm=[7.0, 10.6], first_col_header=True)
-    km = data.get("keyProjectMembers") or []
-    if km:
-        heading(doc, "15.2 Key Project Members", level=2)
-        rows = [["Role", "Member"]]
-        for m in km:
-            rows.append([m.get("role", ""), f"{m.get('name','')}{' ('+m.get('empCode','')+')' if m.get('empCode') else ''}"])
-        build_table(doc, rows, col_widths_cm=[7.0, 10.6], first_col_header=True)
-    if not sc and not km:
-        para(doc, "Governance roster not captured.", italic=True, color=MUTED)
-
-    # 16. Attachments
-    heading(doc, "16. Attachments", level=1)
-    atts = data.get("attachments") or []
-    if atts:
-        for a in atts:
-            bullet(doc, f"{a.get('name','')} — {a.get('url','')}".strip(" —"))
+    # 13. Vendor Comparison Matrix
+    heading(doc, "13. Vendor Comparison Matrix", level=1)
+    vm = data.get("vendorMatrix") or {}
+    vcols = vm.get("columns") or []
+    vrows = [r for r in (vm.get("rows") or [])
+             if any((str(c).strip() if c is not None else "") for c in r)]
+    if vcols and vrows:
+        table = [list(vcols)] + [[("" if c is None else str(c)) for c in r] for r in vrows]
+        build_table(doc, table, band=True)
     else:
-        para(doc, "—")
+        para(doc, "No vendor comparison captured.", italic=True, color=MUTED)
 
-    # 17. Approval & Sign-off
-    heading(doc, "17. Approval & Sign-off", level=1)
+    # 14. Additional Information — author-added custom fields (in their order)
+    custom = [f for f in (data.get("customFields") or []) if (f.get("label") or f.get("value"))]
+    if custom:
+        heading(doc, "14. Additional Information", level=1)
+        for f in custom:
+            if f.get("label"):
+                para(doc, f.get("label", ""), bold=True, space_after=1)
+            para(doc, f.get("value", ""), space_after=4)
+
+    # Approval & Sign-off
+    heading(doc, "Approval & Sign-off", level=1)
     para(doc, "Signatories listed below were resolved via the active DOA matrix at the time of submission.",
          italic=True, color=MUTED, space_after=6)
 
@@ -395,7 +385,7 @@ def build(data, out_path):
     # Footer
     para(doc, "", space_after=4)
     p = doc.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    set_run(p.add_run("Consolidated Project Charter + NFA. Source: pmo_charters (Granules Project Hub)."),
+    set_run(p.add_run("Project Charter & Note for Approval (NFA). Source: pmo_charters (Granules Project Hub)."),
             size=8, italic=True, color=MUTED)
 
     doc.save(out_path)

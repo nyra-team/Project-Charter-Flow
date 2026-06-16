@@ -10,6 +10,7 @@ import { logger } from "../lib/logger";
 import { computeStageCriticalPath, type CriticalPathStage } from "../lib/critical-path";
 import { resolveRole } from "../lib/role-resolver";
 import { sendEscalationEmail, autoEscalationEmailsEnabled } from "../lib/escalation-email";
+import { sendPlainEmail } from "../lib/mailer";
 
 /**
  * Global per-stage escalation LADDER (jobs/stage-escalation-ladder.ts).
@@ -101,6 +102,21 @@ async function fireTier(
       const html = `<p>Hi ${r.name},</p><p><strong>${title}</strong></p><p>${body}</p>` +
         `<p><a href="${link}">Open the project</a> to review and act.</p>`;
       if (await sendEscalationEmail({ to: r.email, subject: title, bodyHtml: html, text: `${title}\n\n${body}\n\n${link}` })) emailed++;
+    }
+    // Mirror to the project's Teams channel (email-to-channel). Dedup is inherited
+    // from alreadyFiredToday, so the channel sees each tier at most once per day.
+    const [proj] = await db
+      .select({ teamsChannelEmail: projectsTable.teamsChannelEmail })
+      .from(projectsTable)
+      .where(eq(projectsTable.id, projectId));
+    if (proj?.teamsChannelEmail) {
+      const base = (process.env.PMO_BASE_URL ?? "https://pmo.granulesrecruit.com").replace(/\/$/, "");
+      await sendPlainEmail({
+        to: proj.teamsChannelEmail,
+        subject: title,
+        html: `<p><strong>${title}</strong></p><p>${body}</p><p><a href="${base}${link}">Open in Project Hub</a></p>`,
+        text: `${title}\n\n${body}\n\n${base}${link}`,
+      });
     }
   }
 

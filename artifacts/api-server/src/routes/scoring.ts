@@ -1,21 +1,13 @@
-import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { Router, type IRouter } from "express";
 import { db, scoringCriteriaTable, projectScoresTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
+import { requireRole } from "../lib/guard";
+
+// Pre-sweep behavior preserved: the old local requirePMORole admitted
+// executive_director and chairman alongside pmo — keep that audience.
+const SCORING_ROLES = ["pmo", "executive_director", "chairman"];
 
 const router: IRouter = Router();
-
-const PMO_ROLES = new Set(["pmo", "executive_director", "chairman"]);
-
-function requirePMORole(req: Request, res: Response, next: NextFunction): void {
-  // Real role from the master employee DB (requireAuth → derivePmoRole).
-  const role = req.user?.pmoRole;
-  if (req.user?.isSuperAdmin || role === "admin") { next(); return; }
-  if (!role || !PMO_ROLES.has(role)) {
-    res.status(403).json({ error: "Forbidden: PMO, Executive Director, or Chairman role required" });
-    return;
-  }
-  next();
-}
 
 async function computeWeightedScore(criterionId: number, score: number): Promise<number> {
   const [criterion] = await db.select().from(scoringCriteriaTable).where(eq(scoringCriteriaTable.id, criterionId));
@@ -29,7 +21,7 @@ router.get("/scoring-criteria", async (_req, res): Promise<void> => {
   res.json(criteria.map(c => ({ ...c, weightPct: Number(c.weightPct) })));
 });
 
-router.post("/scoring-criteria", requirePMORole, async (req, res): Promise<void> => {
+router.post("/scoring-criteria", requireRole(...SCORING_ROLES), async (req, res): Promise<void> => {
   const { name, weightPct, description, isActive } = req.body as { name: string; weightPct?: number; description?: string; isActive?: boolean };
   if (!name) { res.status(400).json({ error: "name is required" }); return; }
   const newWeight = weightPct ?? 0;
@@ -57,7 +49,7 @@ router.get("/scoring-criteria/:id", async (req, res): Promise<void> => {
   res.json({ ...criterion, weightPct: Number(criterion.weightPct) });
 });
 
-router.patch("/scoring-criteria/:id", requirePMORole, async (req, res): Promise<void> => {
+router.patch("/scoring-criteria/:id", requireRole(...SCORING_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   if (req.body.weightPct !== undefined) {
@@ -80,7 +72,7 @@ router.patch("/scoring-criteria/:id", requirePMORole, async (req, res): Promise<
   res.json({ ...criterion, weightPct: Number(criterion.weightPct) });
 });
 
-router.delete("/scoring-criteria/:id", requirePMORole, async (req, res): Promise<void> => {
+router.delete("/scoring-criteria/:id", requireRole(...SCORING_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(scoringCriteriaTable).where(eq(scoringCriteriaTable.id, id));
@@ -101,7 +93,7 @@ router.get("/projects/:id/scores", async (req, res): Promise<void> => {
   res.json(enriched);
 });
 
-router.post("/projects/:id/scores", requirePMORole, async (req, res): Promise<void> => {
+router.post("/projects/:id/scores", requireRole(...SCORING_ROLES), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id as string);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { criterionId, score, notes } = req.body as { criterionId: number; score: number; notes?: string };
@@ -113,7 +105,7 @@ router.post("/projects/:id/scores", requirePMORole, async (req, res): Promise<vo
   res.status(201).json({ ...projectScore, weightedScore: Number(projectScore.weightedScore) });
 });
 
-router.patch("/project-scores/:id", requirePMORole, async (req, res): Promise<void> => {
+router.patch("/project-scores/:id", requireRole(...SCORING_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [existing] = await db.select().from(projectScoresTable).where(eq(projectScoresTable.id, id));
@@ -127,7 +119,7 @@ router.patch("/project-scores/:id", requirePMORole, async (req, res): Promise<vo
   res.json({ ...projectScore, weightedScore: Number(projectScore.weightedScore) });
 });
 
-router.delete("/project-scores/:id", requirePMORole, async (req, res): Promise<void> => {
+router.delete("/project-scores/:id", requireRole(...SCORING_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id as string);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(projectScoresTable).where(eq(projectScoresTable.id, id));

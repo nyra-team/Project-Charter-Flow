@@ -2,8 +2,11 @@ import { Router, type IRouter } from "express";
 import { db, budgetLinesTable, projectsTable, approvalsTable, usersTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { logActivity } from "./activity";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
 
 function computeVariance(baselineAmount: number, actualAmount: number) {
   const variance = actualAmount - baselineAmount;
@@ -87,7 +90,7 @@ router.get("/projects/:id/budget-lines", async (req, res): Promise<void> => {
   res.json(lines.map(serializeLine));
 });
 
-router.post("/projects/:id/budget-lines", async (req, res): Promise<void> => {
+router.post("/projects/:id/budget-lines", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const { category, description, baselineAmount, forecastAmount, actualAmount, period } = req.body as {
@@ -112,7 +115,7 @@ router.post("/projects/:id/budget-lines", async (req, res): Promise<void> => {
   res.status(201).json(serializeLine(line));
 });
 
-router.patch("/budget-lines/:id", async (req, res): Promise<void> => {
+router.patch("/budget-lines/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const updateData: Record<string, unknown> = {};
@@ -137,7 +140,7 @@ router.patch("/budget-lines/:id", async (req, res): Promise<void> => {
   res.json(serializeLine(line));
 });
 
-router.delete("/budget-lines/:id", async (req, res): Promise<void> => {
+router.delete("/budget-lines/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(budgetLinesTable).where(eq(budgetLinesTable.id, id));

@@ -43,17 +43,20 @@
  * people who'd actually be approving things.
  */
 
-export type PmoRole =
-  | "admin"               // platform admin — gates /admin/* routes (also via requireAdmin)
-  | "chairman"
-  | "executive_director"
-  | "cfo"
-  | "pmo"
-  | "pm"
-  | "hod"
-  | "scm"
-  | "finance"
-  | "team_member";
+export const PMO_ROLES = [
+  "admin",               // platform admin — gates /admin/* routes (also via requireAdmin)
+  "chairman",
+  "executive_director",
+  "cfo",
+  "pmo",
+  "pm",
+  "hod",
+  "scm",
+  "finance",
+  "team_member",
+] as const;
+
+export type PmoRole = (typeof PMO_ROLES)[number];
 
 /** Subset of the master DB `employees` row needed for derivation. */
 export interface DirectoryRow {
@@ -93,23 +96,13 @@ function norm(s: string | null | undefined): string {
  * @returns one of the 10 PmoRole values; never null.
  */
 export function derivePmoRole(emp: DirectoryRow, auth: AuthRow): PmoRole {
-  // 1. Explicit override wins.
+  // 1. Explicit override wins. (Callers pass either employee_auth.pmo_role
+  //    or a pmo_role_overrides row — see requireAuth.) Only the known role
+  //    values are accepted; anything else is treated as if it weren't set,
+  //    defending against a stale row from an older enum being mis-read.
   const stored = norm(auth.pmo_role);
   if (stored && stored !== "null") {
-    // Only accept values that pass the migration-027 CHECK constraint —
-    // anything else is treated as if it weren't set. (Defends against a
-    // stale row from an older enum being mis-read.)
-    if (
-      stored === "admin" ||
-      stored === "chairman" ||
-      stored === "executive_director" ||
-      stored === "cfo" ||
-      stored === "pmo" ||
-      stored === "pm" ||
-      stored === "hod" ||
-      stored === "scm" ||
-      stored === "finance"
-    ) {
+    if ((PMO_ROLES as readonly string[]).includes(stored)) {
       return stored as PmoRole;
     }
   }

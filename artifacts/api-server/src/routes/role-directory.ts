@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, roleDirectoryTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
 
@@ -25,7 +26,7 @@ router.get("/role-directory", async (_req, res): Promise<void> => {
 });
 
 // Create a new role key (rarely needed — the migration seeds the standard set).
-router.post("/role-directory", async (req, res): Promise<void> => {
+router.post("/role-directory", requireRole("pmo"), async (req, res): Promise<void> => {
   const { role, label, userId, email } = (req.body ?? {}) as { role?: string; label?: string; userId?: number; email?: string };
   if (!role) { res.status(400).json({ error: "role is required" }); return; }
   const [row] = await db.insert(roleDirectoryTable).values({
@@ -38,7 +39,7 @@ router.post("/role-directory", async (req, res): Promise<void> => {
 });
 
 // Assign / clear the person (or group email) for a role.
-router.patch("/role-directory/:role", async (req, res): Promise<void> => {
+router.patch("/role-directory/:role", requireRole("pmo"), async (req, res): Promise<void> => {
   const { role } = req.params;
   const body = (req.body ?? {}) as { userId?: number | null; email?: string | null; label?: string; isActive?: boolean };
   const update: Record<string, unknown> = {};

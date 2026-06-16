@@ -28,6 +28,9 @@ export const projectsTable = pgTable("pmo_projects", {
   siteRegion: text("site_region").default(""),
   function: text("function").default(""),
   projectManagerId: integer("project_manager_id"),
+  // Email address of the project's Microsoft Teams channel (Channel → ⋯ → Get email
+  // address). All project alerts are mirrored there via plain SMTP. Null = no mirror.
+  teamsChannelEmail: text("teams_channel_email"),
   startDate: text("start_date"),
   endDate: text("end_date"),
   progress: integer("progress").notNull().default(0),

@@ -49,7 +49,7 @@ export default function RfxNewPage() {
         </p>
       </div>
       <div className="rounded-2xl border border-border bg-card/40 p-5 space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="space-y-1">
             <Label>Type</Label>
             <select value={form.type} onChange={e => set("type", e.target.value as CreateBody["type"])} className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm">

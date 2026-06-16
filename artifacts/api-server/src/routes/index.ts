@@ -14,6 +14,7 @@ import documentsRouter from "./documents";
 import issuesRouter from "./issues";
 import messagesRouter from "./messages";
 import resourcesRouter from "./resources";
+import projectTeamRouter from "./project_team";
 import budgetRouter from "./budget";
 import escalationRouter from "./escalation";
 import scoringRouter from "./scoring";
@@ -32,6 +33,8 @@ import purchaseOrdersRouter from "./purchase_orders";
 import teamsIntegrationRouter from "./integrations/teams";
 import jiraIntegrationRouter from "./integrations/jira";
 import adminIntegrationsRouter from "./admin/integrations";
+import adminRolesRouter from "./admin/roles";
+import { requireSuperAdmin } from "../middlewares/requireAuth";
 import employeesRouter from "./employees";
 import vendorMasterRouter from "./vendor_master";
 import rfxRouter from "./rfx";
@@ -40,6 +43,7 @@ import roleDirectoryRouter from "./role-directory";
 import stageEscalationPolicyRouter from "./stage-escalation-policy";
 import workRouter from "./work";
 import doaMatrixRouter from "./doa_matrix";
+import projectJustificationsRouter from "./project-justifications";
 
 const router: IRouter = Router();
 
@@ -58,6 +62,7 @@ router.use(documentsRouter);
 router.use(issuesRouter);
 router.use(messagesRouter);
 router.use(resourcesRouter);
+router.use(projectTeamRouter);
 router.use(budgetRouter);
 router.use(escalationRouter);
 router.use(scoringRouter);
@@ -77,6 +82,8 @@ router.use(purchaseOrdersRouter);
 router.use(teamsIntegrationRouter);
 router.use(jiraIntegrationRouter);
 router.use("/admin/integrations", adminIntegrationsRouter);
+// RBAC surface — super-admin ONLY (stricter than requireAdmin by design).
+router.use("/admin/roles", requireSuperAdmin, adminRolesRouter);
 router.use(employeesRouter);
 router.use(vendorMasterRouter);
 router.use(rfxRouter);
@@ -85,5 +92,6 @@ router.use(roleDirectoryRouter);
 router.use(stageEscalationPolicyRouter);
 router.use(workRouter);
 router.use(doaMatrixRouter);
+router.use(projectJustificationsRouter);
 
 export default router;

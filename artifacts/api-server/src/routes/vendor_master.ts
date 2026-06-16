@@ -15,12 +15,15 @@ import {
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import { logActivity } from "./activity";
+import { requireRole } from "../lib/guard";
 
 // Internal-facing vendor master CRUD. All endpoints mounted behind the
 // global `requireAuth` chain in app.ts, so `req.user` is always populated
 // and gated on access_pmo or is_super_admin.
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "scm", "initiator"];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -85,7 +88,7 @@ const CreateVendorBody = z.object({
   profileExtras: z.record(z.unknown()).optional(),
 });
 
-router.post("/vendors", async (req, res) => {
+router.post("/vendors", requireRole(...WRITE_ROLES), async (req, res) => {
   const parsed = CreateVendorBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const data = parsed.data;
@@ -137,7 +140,7 @@ router.get("/vendors/:id", async (req, res) => {
 
 const UpdateVendorBody = CreateVendorBody.partial();
 
-router.patch("/vendors/:id", async (req, res) => {
+router.patch("/vendors/:id", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const parsed = UpdateVendorBody.safeParse(req.body);
@@ -157,7 +160,7 @@ const SegmentChangeBody = z.object({
   reason: z.string().optional(),
 });
 
-router.post("/vendors/:id/segment", async (req, res) => {
+router.post("/vendors/:id/segment", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = SegmentChangeBody.safeParse(req.body);
   if (!Number.isFinite(id) || !parsed.success) {
@@ -184,7 +187,7 @@ const RiskStatusBody = z.object({
   reason: z.string().optional(),
 });
 
-router.post("/vendors/:id/risk-status", async (req, res) => {
+router.post("/vendors/:id/risk-status", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = RiskStatusBody.safeParse(req.body);
   if (!Number.isFinite(id) || !parsed.success) {
@@ -209,7 +212,7 @@ const RegisterDocBody = z.object({
   expiresAt: z.string().datetime().optional(),
 });
 
-router.post("/vendors/:id/documents", async (req, res) => {
+router.post("/vendors/:id/documents", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = RegisterDocBody.safeParse(req.body);
   if (!Number.isFinite(id) || !parsed.success) {
@@ -229,7 +232,7 @@ router.post("/vendors/:id/documents", async (req, res) => {
   res.status(201).json(doc);
 });
 
-router.post("/vendors/:id/documents/:docId/verify", async (req, res) => {
+router.post("/vendors/:id/documents/:docId/verify", requireRole(...WRITE_ROLES), async (req, res) => {
   const docId = Number(req.params.docId);
   const id = Number(req.params.id);
   if (!Number.isFinite(docId) || !Number.isFinite(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -242,7 +245,7 @@ router.post("/vendors/:id/documents/:docId/verify", async (req, res) => {
   res.json(doc);
 });
 
-router.delete("/vendors/:id/documents/:docId", async (req, res) => {
+router.delete("/vendors/:id/documents/:docId", requireRole("pmo", "pm", "scm"), async (req, res) => {
   const docId = Number(req.params.docId);
   const id = Number(req.params.id);
   if (!Number.isFinite(docId) || !Number.isFinite(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -261,7 +264,7 @@ const DecideQualBody = z.object({
   expiresAt: z.string().datetime().optional(),
 });
 
-router.post("/vendors/:id/qualifications", async (req, res) => {
+router.post("/vendors/:id/qualifications", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = DecideQualBody.safeParse(req.body);
   if (!Number.isFinite(id) || !parsed.success) {
@@ -315,7 +318,7 @@ const IngestKpiBody = z.object({
   notes: z.string().optional(),
 });
 
-router.post("/vendors/:id/kpis", async (req, res) => {
+router.post("/vendors/:id/kpis", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = IngestKpiBody.safeParse(req.body);
   if (!Number.isFinite(id) || !parsed.success) {
@@ -349,7 +352,7 @@ const RaiseRiskBody = z.object({
   link: z.string().optional(),
 });
 
-router.post("/vendors/:id/risk-events", async (req, res) => {
+router.post("/vendors/:id/risk-events", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = RaiseRiskBody.safeParse(req.body);
   if (!Number.isFinite(id) || !parsed.success) {
@@ -372,7 +375,7 @@ router.post("/vendors/:id/risk-events", async (req, res) => {
   res.status(201).json(row);
 });
 
-router.post("/vendors/:id/risk-events/:eventId/resolve", async (req, res) => {
+router.post("/vendors/:id/risk-events/:eventId/resolve", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const eventId = Number(req.params.eventId);
   if (!Number.isFinite(id) || !Number.isFinite(eventId)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -414,7 +417,7 @@ const TemplateBody = z.object({
   })),
 });
 
-router.post("/vendor-questionnaire-templates", async (req, res) => {
+router.post("/vendor-questionnaire-templates", requireRole(...WRITE_ROLES), async (req, res) => {
   const parsed = TemplateBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const [row] = await db.insert(vendorQuestionnaireTemplatesTable).values({
@@ -427,7 +430,7 @@ router.post("/vendor-questionnaire-templates", async (req, res) => {
   res.status(201).json(row);
 });
 
-router.patch("/vendor-questionnaire-templates/:id", async (req, res) => {
+router.patch("/vendor-questionnaire-templates/:id", requireRole(...WRITE_ROLES), async (req, res) => {
   const id = Number(req.params.id);
   const parsed = TemplateBody.partial().safeParse(req.body);
   if (!Number.isFinite(id) || !parsed.success) {
@@ -443,7 +446,7 @@ router.patch("/vendor-questionnaire-templates/:id", async (req, res) => {
 // / KPIs / risk events / questionnaire responses). BLOCKED when the vendor is
 // referenced by procurement (PR/PO) or a sourcing invitation — those carry
 // governance + audit weight and must be removed first.
-router.delete("/vendors/:id", async (req, res) => {
+router.delete("/vendors/:id", requireRole("pmo", "pm", "scm"), async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [vendor] = await db.select().from(vendorMasterTable).where(eq(vendorMasterTable.id, id));

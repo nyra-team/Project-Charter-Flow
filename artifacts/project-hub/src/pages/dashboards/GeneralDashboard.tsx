@@ -3,7 +3,7 @@ import { formatCurrency } from "../../lib/format";
 import {
   FileText, CheckSquare, DollarSign, IndianRupee, ArrowUpRight, Clock,
   CheckCircle2, AlertTriangle, XCircle, Trophy, Zap, TrendingUp,
-  FolderKanban, Activity, Sparkles, Inbox,
+  FolderKanban, Activity, Sparkles, Inbox, Info,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,7 +13,8 @@ import { getStageConfig } from "../../lib/lifecycle-config";
 import { LifecycleOverview } from "../../components/lifecycle-overview";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { KPITile, DashboardCard, useAutoRefresh } from "../../components/dashboard/primitives";
+import { KPITile, DashboardCard, useAutoRefresh, type DrillColumn } from "../../components/dashboard/primitives";
+import { HoverHint, chartTooltipProps, type HoverHintRow } from "../../components/ui-kit";
 import { StageDetailDialog } from "../../components/stage-detail-dialog";
 import { useAuth } from "../../auth/context";
 
@@ -62,11 +63,6 @@ function ProjectHealthSection({ health }: { health: DashboardSummary["projectHea
     { label: "Off Track", value: health.offTrack ?? 0, icon: AlertTriangle,  ring: "ring-warn/30",         iconCls: "text-warn",        bg: "bg-warn/10",        accentText: "text-warn" },
     { label: "Delayed",   value: health.delayed  ?? 0, icon: XCircle,        ring: "ring-destructive/30",  iconCls: "text-destructive", bg: "bg-destructive/10", accentText: "text-destructive" },
   ];
-  type ProblemItem = { id: number; name: string; kind: "off-track" | "delayed"; reason?: string; daysOverdue?: number; behindBy?: number };
-  const problems: ProblemItem[] = [
-    ...(health.offTrackProjects ?? []).map(p => ({ ...(p as unknown as ProblemItem), kind: "off-track" as const })),
-    ...(health.delayedProjects  ?? []).map(p => ({ ...(p as unknown as ProblemItem), kind: "delayed"   as const })),
-  ];
   return (
     <DashboardCard
       title="Project Health"
@@ -91,35 +87,7 @@ function ProjectHealthSection({ health }: { health: DashboardSummary["projectHea
           );
         })}
       </div>
-      {problems.length > 0 ? (
-        <div className="space-y-2">
-          <p className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground mb-2">Issues Requiring Attention</p>
-          {problems.map((p, i) => (
-            <Link key={i} href={`/projects/${p.id}`}>
-              <div className={`flex items-start gap-3 p-3 rounded-md cursor-pointer transition-colors border-l-2 ${
-                p.kind === "delayed"
-                  ? "bg-destructive/5 hover:bg-destructive/10 border-destructive/40"
-                  : "bg-warn/5 hover:bg-warn/10 border-warn/40"
-              }`}>
-                {p.kind === "delayed"
-                  ? <XCircle size={14} className="text-destructive mt-0.5 flex-shrink-0" />
-                  : <AlertTriangle size={14} className="text-warn mt-0.5 flex-shrink-0" />}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-card-foreground truncate">{p.name}</p>
-                  <p className="text-[11px] text-muted-foreground truncate">{p.reason}</p>
-                </div>
-                {p.kind === "delayed" && p.daysOverdue != null && <span className="text-[11px] font-bold text-destructive flex-shrink-0">+{p.daysOverdue}d</span>}
-                {p.kind === "off-track" && p.behindBy != null && <span className="text-[11px] font-bold text-warn flex-shrink-0">{p.behindBy}% behind</span>}
-              </div>
-            </Link>
-          ))}
-        </div>
-      ) : health.active > 0 ? (
-        <div className="flex items-center gap-2 p-3 rounded-md bg-success/5 border border-success/20">
-          <CheckCircle2 size={15} className="text-success" />
-          <p className="text-sm font-medium text-success">All projects are on track</p>
-        </div>
-      ) : null}
+      {/* "Issues Requiring Attention" was moved to the Portfolio page. */}
     </DashboardCard>
   );
 }
@@ -128,7 +96,18 @@ function ProjectHealthSection({ health }: { health: DashboardSummary["projectHea
 // stretch), so it never leaves a large empty area.
 function CharterStatusCard({ charterStatusData }: { charterStatusData: Array<{ status: string; count: number; fill: string }> }) {
   return (
-    <DashboardCard title="Charter Status" subtitle="Distribution across workflow">
+    <DashboardCard title="Charter Status" subtitle="Distribution across workflow"
+      drill={{
+        subtitle: "Charter count by workflow status",
+        columns: [
+          { key: "status", label: "Status", render: (v) => String(v).replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) },
+          { key: "count", label: "Charters", align: "right" },
+        ],
+        rows: charterStatusData.map((d) => ({ status: d.status, count: d.count })),
+        linkHref: "/charters/new",
+        linkLabel: "Start Charter + e-NFA",
+        emptyText: "No charter data yet.",
+      }}>
       {charterStatusData.length > 0 ? (
         <>
           <ResponsiveContainer width="100%" height={170}>
@@ -136,11 +115,7 @@ function CharterStatusCard({ charterStatusData }: { charterStatusData: Array<{ s
               <Pie data={charterStatusData} cx="50%" cy="50%" innerRadius={50} outerRadius={76} paddingAngle={2} dataKey="count" nameKey="status">
                 {charterStatusData.map((entry, i) => <Cell key={i} fill={entry.fill} strokeWidth={0} />)}
               </Pie>
-              <Tooltip
-                contentStyle={{ backgroundColor: "hsl(var(--popover))", borderColor: "hsl(var(--popover-border))", borderRadius: 8, fontSize: 12, color: "hsl(var(--popover-foreground))" }}
-                itemStyle={{ color: "hsl(var(--popover-foreground))" }}
-                labelStyle={{ color: "hsl(var(--muted-foreground))" }}
-              />
+              <Tooltip {...chartTooltipProps} />
             </PieChart>
           </ResponsiveContainer>
           <div className="grid grid-cols-2 gap-1.5 mt-2">
@@ -251,6 +226,48 @@ export default function GeneralDashboard() {
     ...item, fill: STATUS_TOKEN[item.status] ?? FALLBACK[i % FALLBACK.length],
   })) ?? [];
 
+  // ── Drill-down data — the actual rows behind each KPI / chart ──────────────
+  const stageLbl = (s?: string | null) => getStageConfig((s ?? "initiation") as string)?.label ?? (s ?? "—");
+  const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const activeProjectList = (projects ?? []).filter((p) => p.status === "active");
+
+  const projectCols: DrillColumn[] = [
+    { key: "name", label: "Project" },
+    { key: "stage", label: "Stage" },
+    { key: "progress", label: "Progress", align: "right", render: (v) => `${v ?? 0}%` },
+    { key: "rag", label: "RAG", render: (v) => titleCase(String(v ?? "—")) },
+    { key: "priority", label: "Priority" },
+  ];
+  const toProjectRow = (p: { name: string; stage?: string | null; progress?: number | null; ragStatus?: string | null; priority?: string | null }) => ({
+    name: p.name, stage: stageLbl(p.stage), progress: p.progress ?? 0, rag: p.ragStatus ?? "—", priority: p.priority ?? "—",
+  });
+
+  const demandRows = demands.map((d) => toProjectRow(d as never));
+  const activeProjectRows = activeProjectList.map((p) => toProjectRow(p as never));
+
+  const charterStatusRows = (summary?.chartersByStatus ?? []).map((c) => ({ status: titleCase(c.status), count: c.count }));
+  const REVIEW_STAGES = ["parallel_review", "scm_review", "chairman_review", "finance_review", "pmo_review", "submitted"];
+  const pendingApprovalRows = (summary?.chartersByStatus ?? [])
+    .filter((c) => REVIEW_STAGES.includes(c.status))
+    .map((c) => ({ stage: titleCase(c.status), count: c.count }));
+  const statusCountCols: DrillColumn[] = [
+    { key: "status", label: "Status" },
+    { key: "count", label: "Charters", align: "right" },
+  ];
+
+  const budgetProjectRows = activeProjectList.map((p) => ({
+    name: p.name,
+    capex: (p as { capexBudget?: number | null }).capexBudget ?? 0,
+    opex: (p as { opexBudget?: number | null }).opexBudget ?? 0,
+    total: ((p as { capexBudget?: number | null }).capexBudget ?? 0) + ((p as { opexBudget?: number | null }).opexBudget ?? 0),
+  }));
+  const budgetCols: DrillColumn[] = [
+    { key: "name", label: "Project" },
+    { key: "capex", label: "CapEx", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) },
+    { key: "opex", label: "OpEx", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) },
+    { key: "total", label: "Total", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Hero header — Atelier glass + ambient mesh, Command Center mono caption */}
@@ -282,22 +299,27 @@ export default function GeneralDashboard() {
         </div>
       </div>
 
-      {/* KPI Row */}
+      {/* KPI Row — click any tile to see the underlying records */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
         <div className="ph-rise">
-          <Link href="/demands"><div><KPITile label="Active Demands" value={demands.length} tone="default" icon={Inbox} sub="Pre-charter pipeline" /></div></Link>
+          <KPITile label="Active Demands" value={demands.length} tone="default" icon={Inbox} sub="Pre-charter pipeline"
+            drill={{ subtitle: "Demands in the first lifecycle stages", columns: projectCols, rows: demandRows, linkHref: "/demands", linkLabel: "View all demands", emptyText: "No active demands." }} />
         </div>
         <div className="ph-rise ph-rise-2">
-          <Link href="/charters"><div><KPITile label="Total Charters" value={summary?.totalCharters ?? 0} tone="default" icon={FileText} sub="All time" /></div></Link>
+          <KPITile label="Total Charters" value={summary?.totalCharters ?? 0} tone="default" icon={FileText} sub="All time"
+            drill={{ subtitle: "Charters by workflow status", columns: statusCountCols, rows: charterStatusRows, linkHref: "/charters/new", linkLabel: "Start Charter + e-NFA", emptyText: "No charters yet." }} />
         </div>
         <div className="ph-rise ph-rise-3">
-          <Link href="/approvals"><div><KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0} tone="warn" icon={CheckSquare} sub="Awaiting action" /></div></Link>
+          <KPITile label="Pending Approvals" value={summary?.pendingApprovals ?? 0} tone="warn" icon={CheckSquare} sub="Awaiting action"
+            drill={{ subtitle: "Charters currently in review stages", columns: [{ key: "stage", label: "Review Stage" }, { key: "count", label: "Charters", align: "right" }], rows: pendingApprovalRows, linkHref: "/approvals", linkLabel: "Open approvals queue", emptyText: "No charters awaiting review." }} />
         </div>
         <div className="ph-rise ph-rise-4">
-          <Link href="/projects"><div><KPITile label="Active Projects" value={summary?.activeProjects ?? 0} tone="primary" icon={TrendingUp} sub="In execution" /></div></Link>
+          <KPITile label="Active Projects" value={summary?.activeProjects ?? 0} tone="primary" icon={TrendingUp} sub="In execution"
+            drill={{ subtitle: "Projects currently in execution", columns: projectCols, rows: activeProjectRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No active projects." }} />
         </div>
         <div className="ph-rise ph-rise-4">
-          <KPITile label="Approved Budget" value={formatCurrency(summary?.totalBudgetApproved ?? 0)} tone="success" icon={IndianRupee} sub="Total approved" />
+          <KPITile label="Approved Budget" value={formatCurrency(summary?.totalBudgetApproved ?? 0)} tone="success" icon={IndianRupee} sub="Total approved"
+            drill={{ subtitle: "Budget allocated across active projects (CapEx + OpEx)", columns: budgetCols, rows: budgetProjectRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No project budgets recorded." }} />
         </div>
       </div>
 

@@ -8,8 +8,12 @@ import path from "node:path";
 import { db, nfasTable, projectsTable, notificationsTable } from "@workspace/db";
 import { eq, desc, and } from "drizzle-orm";
 import { logActivity } from "./activity";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
+const DECIDE_ROLES = ["pmo", "hod", "cfo", "chairman", "executive_director", "scm", "finance"];
 
 // ─── Validation ──────────────────────────────────────────────────────────────
 
@@ -41,7 +45,18 @@ const CreateNfaBody = z.object({
   totalUsd: z.string().optional(),
   totalInr: z.string().optional(),
   recommendation: z.string().optional(),
+  // Corporate e-NFA template fields
+  functionDept: z.string().optional(),
+  requirements: z.string().optional(),
+  justification: z.string().optional(),
+  vendorDetails: z.string().optional(),
+  modeOfProcurement: z.string().optional(),
+  financialImplication: z.string().optional(),
+  financialAmount: z.coerce.number().optional(),
+  cmdRequired: z.boolean().optional(),
   signatories: z.array(Signatory).optional(),
+  // User-defined extra fields (step-2 form), in author-arranged order.
+  customFields: z.array(z.object({ id: z.string(), label: z.string(), value: z.string() })).optional(),
   createdById: z.number().int().optional(),
   createdByName: z.string().optional(),
   createdByCode: z.string().optional(),
@@ -112,7 +127,7 @@ router.get("/nfas/:id", async (req, res): Promise<void> => {
   res.json(nfa);
 });
 
-router.post("/nfas", async (req, res): Promise<void> => {
+router.post("/nfas", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const parsed = CreateNfaBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const data = parsed.data;
@@ -124,15 +139,18 @@ router.post("/nfas", async (req, res): Promise<void> => {
   }
 
   const noteNo = data.noteNo?.trim() || (await nextNoteNo());
+  // drizzle's pg numeric column expects a string
+  const insertData: Record<string, unknown> = { ...data, noteNo };
+  if (data.financialAmount != null) insertData.financialAmount = String(data.financialAmount);
   const [nfa] = await db
     .insert(nfasTable)
-    .values({ ...data, noteNo } as never)
+    .values(insertData as never)
     .returning();
   await logActivity("nfa_created", `NFA "${nfa.subject || nfa.noteNo}" created`, nfa.id, "nfa");
   res.status(201).json(nfa);
 });
 
-router.patch("/nfas/:id", async (req, res): Promise<void> => {
+router.patch("/nfas/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const parsed = UpdateNfaBody.safeParse(req.body);
@@ -151,7 +169,7 @@ router.patch("/nfas/:id", async (req, res): Promise<void> => {
   res.json(nfa);
 });
 
-router.delete("/nfas/:id", async (req, res): Promise<void> => {
+router.delete("/nfas/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [current] = await db.select({ status: nfasTable.status }).from(nfasTable).where(eq(nfasTable.id, id));
@@ -168,7 +186,7 @@ router.delete("/nfas/:id", async (req, res): Promise<void> => {
 // SUBMIT — draft → pending_approval
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.post("/nfas/:id/submit", async (req, res): Promise<void> => {
+router.post("/nfas/:id/submit", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [nfa] = await db.select().from(nfasTable).where(eq(nfasTable.id, id));
@@ -196,7 +214,7 @@ router.post("/nfas/:id/submit", async (req, res): Promise<void> => {
 // DECIDE — a signatory approves / rejects their row in the grid
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.post("/nfas/:id/decide", async (req, res): Promise<void> => {
+router.post("/nfas/:id/decide", requireRole(...DECIDE_ROLES), async (req, res): Promise<void> => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const parsed = DecideBody.safeParse(req.body);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import {
   useListDocuments, useCreateDocument, useUpdateDocument, useDeleteDocument,
   useListDocumentVersions, useAddDocumentVersion, useListUsers,
@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FileDropzone } from "@/components/ui/file-dropzone";
-import { Plus, FileText, Trash2, Lock, Unlock, History, Tag, Folder, Search, Upload, ChevronDown, ChevronRight, Download, FileCheck2, Eye, Loader2, ExternalLink, Sparkles } from "lucide-react";
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
+import { Plus, FileText, Trash2, Lock, Unlock, History, Tag, Folder, Search, Upload, Download, FileCheck2, Eye, Loader2, ExternalLink, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
 import { formatDate } from "../lib/format";
 import { LIFECYCLE_STAGES } from "../lib/lifecycle-config";
 
@@ -38,7 +39,22 @@ const ACCESS_PILL: Record<string, { pill: string; icon: typeof Lock }> = {
   confidential: { pill: "bg-destructive/10 text-destructive border-destructive/20", icon: Lock },
 };
 
-export function DocumentsTab({ projectId }: { projectId: number }) {
+export function DocumentsTab({
+  projectId,
+  uploadOpen,
+  onUploadOpenChange,
+  showUploadButton = true,
+  showSearch = true,
+}: {
+  projectId: number;
+  /** Controlled "upload modal open" state — lets a parent (e.g. the page header) trigger uploads. */
+  uploadOpen?: boolean;
+  onUploadOpenChange?: (open: boolean) => void;
+  /** Set false to hide the toolbar's own Upload button (when the parent renders one). */
+  showUploadButton?: boolean;
+  /** Set false to hide the toolbar search box. */
+  showSearch?: boolean;
+}) {
   const { toast } = useToast();
   const { userId } = useUserStore();
   const queryClient = useQueryClient();
@@ -72,9 +88,9 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
   }, [backfillingUntil, projectId, queryClient, refetch]);
 
   const [search, setSearch] = useState("");
-  const [showAdd, setShowAdd] = useState(false);
-  const [view, setView] = useState<"folder" | "list">("folder");
-  const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set(["__unstaged__"]));
+  const [internalShowAdd, setInternalShowAdd] = useState(false);
+  const showAdd = uploadOpen ?? internalShowAdd;
+  const setShowAdd = (v: boolean) => { if (onUploadOpenChange) onUploadOpenChange(v); else setInternalShowAdd(v); };
   const [versionDocId, setVersionDocId] = useState<number | null>(null);
   const [previewDoc, setPreviewDoc] = useState<Doc | null>(null);
   const [tagFilter, setTagFilter] = useState<string>("");
@@ -100,16 +116,26 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
     });
   }, [allDocs, search, tagFilter, accessFilter]);
 
-  const docsByStage = useMemo(() => {
-    const g: Record<string, Doc[]> = {};
+  // Group the filtered docs by lifecycle stage, ordered by the canonical stage
+  // sequence, with anything unstaged appended last.
+  const stageGroups = useMemo(() => {
+    const byStage: Record<string, Doc[]> = {};
     for (const d of filtered) {
       const k = d.stage || "__unstaged__";
-      if (!g[k]) g[k] = [];
-      g[k].push(d);
+      (byStage[k] ??= []).push(d);
     }
-    return g;
+    type StageGroup = { key: string; label: string; color: string | undefined; docs: Doc[] };
+    const groups: StageGroup[] = LIFECYCLE_STAGES
+      .filter(s => (byStage[s.key] ?? []).length > 0)
+      .map(s => ({ key: s.key, label: s.label, color: s.color as string | undefined, docs: byStage[s.key]! }));
+    if ((byStage["__unstaged__"] ?? []).length > 0) {
+      groups.push({ key: "__unstaged__", label: "Unassigned to a stage", color: undefined, docs: byStage["__unstaged__"] });
+    }
+    return groups;
   }, [filtered]);
 
+  // Stage sections are collapsed by default; clicking a header expands that section.
+  const [expandedStages, setExpandedStages] = useState<Set<string>>(new Set());
   function toggleStage(k: string) {
     setExpandedStages(prev => {
       const next = new Set(prev);
@@ -165,75 +191,79 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
     deleteDoc.mutate({ id }, { onSuccess: () => { refetch(); toast({ title: "Document deleted" }); } });
   }
 
-  function DocCard({ d }: { d: Doc }) {
-    const meta = ACCESS_PILL[d.accessLevel] ?? ACCESS_PILL.team;
-    const Icon = meta.icon;
+  function DocRow({ d }: { d: Doc }) {
     const isLocked = d.approvalStatus === "checked_out";
     const isTemplate = (d.tags ?? []).includes("template");
+    const visibleTags = (d.tags ?? []).filter(t => t !== "template");
     return (
-      <div className="glass-surface lift-card ph-rise rounded-2xl p-3 group">
-        <div className="flex items-start gap-3">
-          <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 border ${isTemplate ? "bg-amber-accent/10 border-amber-accent/30" : "bg-primary/10 border-primary/20"}`}>
-            {isTemplate ? <FileCheck2 size={16} className="text-amber-accent" /> : <FileText size={16} className="text-primary" />}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">{d.name}</p>
-              <span className="text-[11px] font-mono font-semibold text-primary">v{d.version}</span>
-              {isTemplate && (
-                <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-amber-accent/10 text-amber-accent border-amber-accent/30">
-                  Template
-                </span>
-              )}
-              {isLocked && (
-                <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-destructive/10 text-destructive border-destructive/20 inline-flex items-center gap-1">
-                  <Lock size={9} /> Locked
-                </span>
-              )}
+      <TableRow className="group">
+        {/* Document */}
+        <TableCell className="align-top pl-10">
+          <div className="flex items-start gap-2.5">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border ${isTemplate ? "bg-amber-accent/10 border-amber-accent/30" : "bg-primary/10 border-primary/20"}`}>
+              {isTemplate ? <FileCheck2 size={15} className="text-amber-accent" /> : <FileText size={15} className="text-primary" />}
             </div>
-            {d.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{d.description}</p>}
-            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-              <span className={`text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border inline-flex items-center gap-1 ${meta.pill}`}>
-                <Icon size={9} /> {d.accessLevel}
-              </span>
-              {(d.tags ?? []).filter(t => t !== "template").map(t => (
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{d.name}</span>
+                <span className="text-[11px] font-mono font-semibold text-primary">v{d.version}</span>
+                {isLocked && (
+                  <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-destructive/10 text-destructive border-destructive/20 inline-flex items-center gap-1">
+                    <Lock size={9} /> Locked
+                  </span>
+                )}
+              </div>
+              {d.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1 max-w-md">{d.description}</p>}
+            </div>
+          </div>
+        </TableCell>
+
+        {/* Access */}
+        <TableCell className="align-top">
+          <select
+            value={d.accessLevel}
+            onChange={e => changeAccess(d, e.target.value)}
+            className="text-xs border border-input bg-background rounded-md px-1.5 py-1 text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
+            title="Access level"
+          >
+            {ACCESS_LEVELS.map(a => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </TableCell>
+
+        {/* Tags */}
+        <TableCell className="align-top">
+          {visibleTags.length === 0 ? (
+            <span className="text-xs text-muted-foreground/50">—</span>
+          ) : (
+            <div className="flex flex-wrap gap-1">
+              {visibleTags.map(t => (
                 <span key={t} className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm border bg-muted text-muted-foreground border-border inline-flex items-center gap-1">
                   <Tag size={8} /> {t}
                 </span>
               ))}
-              <span className="text-[10px] text-muted-foreground/80 font-mono">
-                {userName(d.uploadedBy)} · {d.uploadedAt ? formatDate(d.uploadedAt) : "—"}
-              </span>
             </div>
-          </div>
-          <div className="flex items-center gap-1 flex-shrink-0">
+          )}
+        </TableCell>
+
+        {/* Uploaded By */}
+        <TableCell className="align-top text-xs text-muted-foreground whitespace-nowrap">{userName(d.uploadedBy)}</TableCell>
+
+        {/* Uploaded date */}
+        <TableCell className="align-top text-xs text-muted-foreground font-mono whitespace-nowrap">{d.uploadedAt ? formatDate(d.uploadedAt) : "—"}</TableCell>
+
+        {/* Actions */}
+        <TableCell className="align-top">
+          <div className="flex items-center justify-end gap-0.5">
             {d.fileUrl && (
-              <button
-                onClick={() => setPreviewDoc(d)}
-                className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-primary transition-colors"
-                title="Quick view"
-              >
+              <button onClick={() => setPreviewDoc(d)} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-primary transition-colors" title="Quick view">
                 <Eye size={13} />
               </button>
             )}
             {d.fileUrl && (
-              <a
-                href={d.fileUrl}
-                download
-                className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-primary transition-colors"
-                title={isTemplate ? "Download template" : "Download"}
-              >
+              <a href={d.fileUrl} download className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-primary transition-colors" title={isTemplate ? "Download template" : "Download"}>
                 <Download size={13} />
               </a>
             )}
-            <select
-              value={d.accessLevel}
-              onChange={e => changeAccess(d, e.target.value)}
-              className="text-xs border border-input bg-background rounded-md px-1.5 py-1 text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring/40"
-              title="Access level"
-            >
-              {ACCESS_LEVELS.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
             <button onClick={() => toggleLock(d)} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-primary transition-colors" title={isLocked ? "Check in" : "Check out (lock)"}>
               {isLocked ? <Unlock size={13} /> : <Lock size={13} />}
             </button>
@@ -244,8 +274,8 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
               <Trash2 size={13} />
             </button>
           </div>
-        </div>
-      </div>
+        </TableCell>
+      </TableRow>
     );
   }
 
@@ -258,95 +288,90 @@ export function DocumentsTab({ projectId }: { projectId: number }) {
         </div>
       )}
       {/* Toolbar */}
-      <div className="glass-surface lift-card ph-rise rounded-2xl p-4 flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
-          <Search size={14} className="text-muted-foreground" />
-          <Input
-            placeholder="Search documents by name, description, tag…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="border-0 shadow-none focus-visible:ring-0 px-0 bg-transparent"
-          />
-        </div>
-        <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} className="text-sm border border-input bg-background rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-ring/40">
-          <option value="">All tags</option>
-          {CATEGORY_TAGS.map(t => <option key={t} value={t}>{t}</option>)}
-        </select>
-        <select value={accessFilter} onChange={e => setAccessFilter(e.target.value)} className="text-sm border border-input bg-background rounded-md px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-ring/40">
-          <option value="">All access</option>
-          {ACCESS_LEVELS.map(a => <option key={a} value={a}>{a}</option>)}
-        </select>
-        <div className="flex gap-1 p-1 rounded-md bg-muted">
-          {(["folder", "list"] as const).map(v => (
+      {(showSearch || showUploadButton) && (
+        <div className="glass-surface lift-card ph-rise rounded-2xl p-4 flex flex-wrap items-center gap-3">
+          {showSearch && (
+            <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+              <Search size={14} className="text-muted-foreground" />
+              <Input
+                placeholder="Search documents by name, description, tag…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="border-0 shadow-none focus-visible:ring-0 px-0 bg-transparent"
+              />
+            </div>
+          )}
+          {showUploadButton && (
             <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`px-3 py-1 rounded text-xs font-semibold capitalize transition-all ${
-                view === v
-                  ? "bg-card text-primary shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              onClick={() => setShowAdd(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm ml-auto"
             >
-              {v}
+              <Upload size={14} /> Upload Document
             </button>
-          ))}
+          )}
         </div>
-        <button
-          onClick={() => setShowAdd(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
-        >
-          <Upload size={14} /> Upload Document
-        </button>
-      </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="glass-surface lift-card ph-rise rounded-2xl p-10 text-center text-sm text-muted-foreground">
           {allDocs.length === 0 ? "No documents yet. Click 'Upload Document' to add one." : "No documents match your filters."}
         </div>
-      ) : view === "folder" ? (
-        <div className="space-y-3 stagger-children">
-          {LIFECYCLE_STAGES.map(s => {
-            const stageDocs = docsByStage[s.key] ?? [];
-            if (stageDocs.length === 0) return null;
-            const expanded = expandedStages.has(s.key);
-            return (
-              <div key={s.key} className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
-                <button
-                  onClick={() => toggleStage(s.key)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors"
-                >
-                  {expanded ? <ChevronDown size={14} className="text-muted-foreground" /> : <ChevronRight size={14} className="text-muted-foreground" />}
-                  <Folder size={14} style={{ color: s.color }} />
-                  <span className="text-sm font-semibold text-foreground">{s.label}</span>
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground ml-auto">{stageDocs.length} doc{stageDocs.length !== 1 ? "s" : ""}</span>
-                </button>
-                {expanded && (
-                  <div className="px-4 pb-4 space-y-2 border-t border-border/60 pt-3">
-                    {stageDocs.map(d => <DocCard key={d.id} d={d} />)}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {(docsByStage["__unstaged__"] ?? []).length > 0 && (
-            <div className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
-              <button onClick={() => toggleStage("__unstaged__")} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-accent/40 transition-colors">
-                {expandedStages.has("__unstaged__") ? <ChevronDown size={14} className="text-muted-foreground" /> : <ChevronRight size={14} className="text-muted-foreground" />}
-                <Folder size={14} className="text-muted-foreground" />
-                <span className="text-sm font-semibold text-foreground">Unassigned to a stage</span>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground ml-auto">{docsByStage["__unstaged__"].length} doc{docsByStage["__unstaged__"].length !== 1 ? "s" : ""}</span>
-              </button>
-              {expandedStages.has("__unstaged__") && (
-                <div className="px-4 pb-4 space-y-2 border-t border-border/60 pt-3">
-                  {docsByStage["__unstaged__"].map(d => <DocCard key={d.id} d={d} />)}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
       ) : (
-        <div className="space-y-2 stagger-children">
-          {filtered.map(d => <DocCard key={d.id} d={d} />)}
+        <div className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="pl-10">Document</TableHead>
+                <TableHead>
+                  <select
+                    value={accessFilter}
+                    onChange={e => setAccessFilter(e.target.value)}
+                    className="text-xs font-medium border border-input bg-background rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-ring/40"
+                    title="Filter by access level"
+                  >
+                    <option value="">All access</option>
+                    {ACCESS_LEVELS.map(a => <option key={a} value={a}>{a}</option>)}
+                  </select>
+                </TableHead>
+                <TableHead>
+                  <select
+                    value={tagFilter}
+                    onChange={e => setTagFilter(e.target.value)}
+                    className="text-xs font-medium border border-input bg-background rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-ring/40"
+                    title="Filter by tag"
+                  >
+                    <option value="">All tags</option>
+                    {CATEGORY_TAGS.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </TableHead>
+                <TableHead>Uploaded By</TableHead>
+                <TableHead>Uploaded</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {stageGroups.map(g => {
+                const open = expandedStages.has(g.key);
+                const countLabel = `${g.docs.length} doc${g.docs.length !== 1 ? "s" : ""}`;
+                return (
+                  <Fragment key={g.key}>
+                    {/* Stage section header — click to expand/collapse the documents inside */}
+                    <TableRow className="bg-muted/40 hover:bg-muted/50 cursor-pointer border-t-2 border-border" onClick={() => toggleStage(g.key)}>
+                      <TableCell colSpan={6} className="py-2">
+                        <div className="flex items-center gap-2">
+                          {open ? <ChevronDown size={14} className="text-muted-foreground" /> : <ChevronRight size={14} className="text-muted-foreground" />}
+                          <Folder size={14} style={g.color ? { color: g.color } : undefined} className={g.color ? "" : "text-muted-foreground"} />
+                          <span className="text-sm font-semibold text-foreground">{g.label}</span>
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{countLabel}</span>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                    {open && g.docs.map(d => <DocRow key={d.id} d={d} />)}
+                  </Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
         </div>
       )}
 

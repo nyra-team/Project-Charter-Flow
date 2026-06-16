@@ -50,6 +50,10 @@ export default defineConfig({
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
       "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
+      // Monorepo shared package — resolved to SOURCE (like cxo/portal/pms) so the
+      // suite-shared chrome (CollapsibleSidebar, AppHeader) bundles under this
+      // app's single React copy (dedupe below). project-hub sits 4 levels deep.
+      "@granules/shared": path.resolve(import.meta.dirname, "..", "..", "..", "..", "packages", "shared"),
     },
     dedupe: ["react", "react-dom"],
   },

@@ -15,8 +15,11 @@ import { eq, ne, inArray, desc } from "drizzle-orm";
 import { computeStageCriticalPath, type CriticalPath } from "../lib/critical-path";
 import { generateGateMilestones } from "../lib/gate-milestones";
 import { logActivity } from "./activity";
+import { requireRole } from "../lib/guard";
 
 const router: IRouter = Router();
+
+const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
 
 const STAGE_PHASE: Record<string, string> = {
   initiation: "initiate",
@@ -204,7 +207,7 @@ router.get("/milestones", async (req, res): Promise<void> => {
 });
 
 // POST /api/projects/:id/milestones/generate-gates — create the 7 standard gates.
-router.post("/projects/:id/milestones/generate-gates", async (req, res): Promise<void> => {
+router.post("/projects/:id/milestones/generate-gates", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const projectId = Number(req.params.id);
   if (!Number.isFinite(projectId)) { res.status(400).json({ error: "Invalid project id" }); return; }
   const [proj] = await db.select({ id: projectsTable.id, name: projectsTable.name, status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, projectId));
@@ -227,7 +230,7 @@ router.get("/tasks/:id/comments", async (req, res): Promise<void> => {
 });
 
 // POST /api/tasks/:id/comments — add a task comment (optionally with attachments).
-router.post("/tasks/:id/comments", async (req, res): Promise<void> => {
+router.post("/tasks/:id/comments", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const taskId = Number(req.params.id);
   if (!Number.isFinite(taskId)) { res.status(400).json({ error: "Invalid task id" }); return; }
   const body = (req.body?.body as string | undefined)?.trim();

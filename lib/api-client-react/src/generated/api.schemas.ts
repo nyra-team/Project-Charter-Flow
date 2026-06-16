@@ -255,6 +255,11 @@ export interface Project {
   function?: string | null;
   /** @nullable */
   projectManagerId?: number | null;
+  /**
+   * Email address of the project's Teams channel (Channel → ⋯ → Get email address); alerts are mirrored there. Null = no mirror.
+   * @nullable
+   */
+  teamsChannelEmail?: string | null;
   /** @nullable */
   startDate?: string | null;
   /** @nullable */
@@ -291,6 +296,7 @@ export interface UpdateProjectBody {
   status?: string;
   priority?: string;
   stage?: string;
+  category?: string;
   strategicTheme?: string;
   ragStatus?: string;
   ragOverrideJustification?: string;
@@ -301,6 +307,7 @@ export interface UpdateProjectBody {
   siteRegion?: string;
   function?: string;
   projectManagerId?: number;
+  teamsChannelEmail?: string;
   startDate?: string;
   endDate?: string;
   progress?: number;
@@ -876,6 +883,69 @@ export interface CreateRaciEntryBody {
   userId: number;
   taskId?: number;
   workstreamId?: number;
+  raciType: string;
+}
+
+export interface ProjectTeamMember {
+  id: number;
+  projectId: number;
+  /** internal | external */
+  memberType: string;
+  /** @nullable */
+  userId?: number | null;
+  /** @nullable */
+  externalName?: string | null;
+  /** @nullable */
+  externalOrg?: string | null;
+  /** @nullable */
+  externalEmail?: string | null;
+  /**
+   * vendor | partner | consultant | contractor
+   * @nullable
+   */
+  externalKind?: string | null;
+  /** @nullable */
+  role?: string | null;
+  /** @nullable */
+  responsibilities?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProjectTeamMemberBody {
+  memberType: string;
+  userId?: number;
+  externalName?: string;
+  externalOrg?: string;
+  externalEmail?: string;
+  externalKind?: string;
+  role?: string;
+  responsibilities?: string;
+}
+
+export interface UpdateProjectTeamMemberBody {
+  userId?: number;
+  externalName?: string;
+  externalOrg?: string;
+  externalEmail?: string;
+  externalKind?: string;
+  role?: string;
+  responsibilities?: string;
+}
+
+export interface ProjectTeamRaci {
+  id: number;
+  projectId: number;
+  memberId: number;
+  deliverable: string;
+  /** RACI type: R, A, S, C, I */
+  raciType: string;
+  createdAt: string;
+}
+
+export interface CreateProjectTeamRaciBody {
+  memberId: number;
+  deliverable: string;
   raciType: string;
 }
 

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { db, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { getMasterDb } from "../lib/masterDb";
 
 const router: IRouter = Router();
 
@@ -39,6 +40,9 @@ router.get("/users/me", async (req, res): Promise<void> => {
     isAdmin: me.isAdmin,
     isSuperAdmin: me.isSuperAdmin,
     accessPmo: me.accessPmo,
+    // Master-DB department/function — lets the frontend default the Projects
+    // view to the signed-in user's own department.
+    function: (me as { function?: string | null }).function ?? null,
   };
 
   const email = me.email.toLowerCase();
@@ -68,7 +72,26 @@ router.get("/users/me", async (req, res): Promise<void> => {
 
 router.get("/users", async (_req, res): Promise<void> => {
   const users = await db.select().from(usersTable).orderBy(usersTable.name);
-  res.json(users.map(serializeUser));
+  // Enrich each user with their master-DB profile photo (matched by email).
+  // Best-effort: if the master DB is unavailable, return users without photos.
+  const photoByEmail = new Map<string, string>();
+  const emails = users.map((u) => u.email?.toLowerCase()).filter((e): e is string => !!e);
+  if (emails.length) {
+    try {
+      const masterDb = getMasterDb();
+      // Case-insensitive match (pmo_users emails are lowercased; the master
+      // directory may store original case). ilike with no wildcards = exact CI.
+      const orFilter = emails.map((e) => `office_email.ilike.${e}`).join(",");
+      const { data } = await masterDb
+        .from("employees")
+        .select("office_email, photo_url")
+        .or(orFilter);
+      for (const row of (data ?? []) as Array<{ office_email: string | null; photo_url: string | null }>) {
+        if (row.office_email && row.photo_url) photoByEmail.set(row.office_email.toLowerCase(), row.photo_url);
+      }
+    } catch { /* master DB unavailable — fall back to no photos */ }
+  }
+  res.json(users.map((u) => ({ ...serializeUser(u), photoUrl: (u.email && photoByEmail.get(u.email.toLowerCase())) ?? null })));
 });
 
 router.post("/users", async (req, res): Promise<void> => {
