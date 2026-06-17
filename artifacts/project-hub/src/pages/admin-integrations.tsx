@@ -3,7 +3,17 @@ import { useAuth } from "../auth/context";
 import { useToast } from "@/hooks/use-toast";
 import {
   Plug, CheckCircle2, XCircle, Loader2, Edit2, Trash2, Plus, Database, Cable, Server,
+  ArrowDownToLine, Activity, Bot,
 } from "lucide-react";
+
+type McpStatus = {
+  enabled: boolean;
+  actorAllowlist: string | string[];
+  bootAt: string;
+  total: number;
+  lastActivity: { actor: string; name: string; method: string; path: string; at: string } | null;
+  actors: Array<{ code: string; name: string; count: number; last: string }>;
+};
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -252,6 +262,78 @@ function summarizeTestResult(kind: string, details: unknown): string {
   return "Credentials accepted";
 }
 
+// ─── Inbound MCP status card ──────────────────────────────────────────────────
+
+function fmtTime(iso?: string | null): string {
+  if (!iso) return "—";
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+}
+
+function InboundMcpCard() {
+  const [status, setStatus] = useState<McpStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  function load() {
+    setLoading(true);
+    jsonFetch<McpStatus>("/api/admin/integrations/mcp-status")
+      .then(setStatus).catch(() => setStatus(null)).finally(() => setLoading(false));
+  }
+  useEffect(() => { load(); }, []);
+
+  const allow = status?.actorAllowlist;
+  const allowText = Array.isArray(allow) ? (allow.length ? allow.join(", ") : "none") : (allow ?? "—");
+
+  return (
+    <section className="border border-border rounded-xl bg-card p-4">
+      <div className="flex items-start gap-3">
+        <div className="w-9 h-9 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
+          <ArrowDownToLine size={18} className="text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-sm font-heading font-semibold flex items-center gap-1.5"><Bot size={14} className="text-primary" /> PMO MCP — Inbound</h2>
+            {loading ? (
+              <span className="text-[10px] inline-flex items-center gap-1 text-muted-foreground"><Loader2 size={11} className="animate-spin" /> checking…</span>
+            ) : status?.enabled ? (
+              <span className="text-[10px] inline-flex items-center gap-1 text-success"><CheckCircle2 size={12} /> Enabled</span>
+            ) : (
+              <span className="text-[10px] inline-flex items-center gap-1 text-muted-foreground"><XCircle size={12} /> Disabled</span>
+            )}
+            <button onClick={load} className="ml-auto text-[11px] text-primary hover:underline inline-flex items-center gap-1"><Activity size={11} /> refresh</button>
+          </div>
+          <p className="text-[12px] text-muted-foreground mt-0.5">
+            Claude &amp; automation push tasks, comments and status into PMO via the Model Context Protocol — each write attributed to a real employee.
+          </p>
+
+          {status && (
+            <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div><div className="text-muted-foreground">Writes (since restart)</div><div className="font-semibold text-foreground">{status.total}</div></div>
+              <div className="col-span-2 min-w-0"><div className="text-muted-foreground">Last update</div><div className="font-semibold text-foreground truncate">{status.lastActivity ? `${status.lastActivity.name} · ${status.lastActivity.method} ${status.lastActivity.path}` : "—"}</div><div className="text-[11px] text-muted-foreground">{fmtTime(status.lastActivity?.at)}</div></div>
+              <div className="min-w-0"><div className="text-muted-foreground">Can post as</div><div className="font-semibold text-foreground truncate" title={allowText}>{allowText}</div></div>
+            </div>
+          )}
+
+          {status && status.actors.length > 0 && (
+            <div className="mt-3 border-t border-border/60 pt-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Recent posters</div>
+              <div className="flex flex-wrap gap-1.5">
+                {status.actors.map((a) => (
+                  <span key={a.code} className="text-[11px] px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground" title={`last ${fmtTime(a.last)}`}>
+                    {a.name} · {a.count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {status && !status.enabled && (
+            <p className="mt-2 text-[11px] text-warn">PMO_MCP_TOKEN is not set — the MCP cannot write. Set it in apps/pmo/.env and restart.</p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function AdminIntegrationsPage() {
@@ -352,6 +434,8 @@ export default function AdminIntegrationsPage() {
           <Plus size={16} /> Add connector
         </button>
       </header>
+
+      <InboundMcpCard />
 
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">

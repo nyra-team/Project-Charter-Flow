@@ -3,6 +3,8 @@ import { db, documentsTable, documentVersionsTable, projectsTable } from "@works
 import { eq, desc } from "drizzle-orm";
 import { backfillFromDocs } from "../lib/docBackfill";
 import { requireRole } from "../lib/guard";
+import { docShareToken } from "../lib/docShare";
+import { scheduleLiveCharterRefresh } from "./ai";
 
 const router: IRouter = Router();
 
@@ -17,6 +19,25 @@ function triggerBackfill(projectId: number) {
     });
   });
 }
+
+// GET /api/documents — every project's documents, newest first, joined with the
+// project name. Powers the central Document Repository's cross-project view
+// ("per project → PMO" reflection on the whiteboard).
+router.get("/documents", async (_req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      id: documentsTable.id, projectId: documentsTable.projectId,
+      projectName: projectsTable.name, name: documentsTable.name,
+      stage: documentsTable.stage, fileUrl: documentsTable.fileUrl,
+      fileType: documentsTable.fileType, version: documentsTable.version,
+      uploadedBy: documentsTable.uploadedBy, uploadedAt: documentsTable.uploadedAt,
+      accessLevel: documentsTable.accessLevel, tags: documentsTable.tags,
+    })
+    .from(documentsTable)
+    .leftJoin(projectsTable, eq(documentsTable.projectId, projectsTable.id))
+    .orderBy(desc(documentsTable.createdAt));
+  res.json(rows);
+});
 
 router.get("/projects/:id/documents", async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
@@ -93,6 +114,7 @@ router.post("/projects/:id/documents", requireRole(...WRITE_ROLES), async (req, 
     description,
   }).returning();
   triggerBackfill(projectId);
+  scheduleLiveCharterRefresh(projectId);
   res.status(201).json(doc);
 });
 
@@ -102,6 +124,15 @@ router.get("/documents/:id", async (req, res): Promise<void> => {
   const [doc] = await db.select().from(documentsTable).where(eq(documentsTable.id, id));
   if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
   res.json(doc);
+});
+
+// GET /api/documents/:id/share — mint the Drive-style share links for a doc.
+// Authed (only PMO users can create an editor link). The viewer link is public;
+// the editor link carries the per-doc token that authorizes PUT writes.
+router.get("/documents/:id/share", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  res.json({ editToken: docShareToken(id) });
 });
 
 router.patch("/documents/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
@@ -164,7 +195,7 @@ router.post("/documents/:id/versions", requireRole(...WRITE_ROLES), async (req, 
   const nextVersion = existing.length > 0 ? existing[0].version + 1 : 1;
   const [version] = await db.insert(documentVersionsTable).values({ documentId, version: nextVersion, fileUrl, uploadedBy, notes }).returning();
   await db.update(documentsTable).set({ version: nextVersion, fileUrl }).where(eq(documentsTable.id, documentId));
-  if (existingDocV) triggerBackfill(existingDocV.projectId);
+  if (existingDocV) { triggerBackfill(existingDocV.projectId); scheduleLiveCharterRefresh(existingDocV.projectId); }
   res.status(201).json(version);
 });
 

@@ -3,6 +3,7 @@ import { db, roleOverridesTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { getMasterDb } from "../lib/masterDb";
 import { derivePmoRole, type PmoRole } from "../lib/derivePmoRole";
+import { recordMcpWrite } from "../lib/mcpActivity";
 
 export interface PmoUser {
   authUserId: string;
@@ -24,6 +25,10 @@ export interface PmoUser {
    *  Transformation team / platform admin). False ⇒ scoped to own projects.
    *  Resolved from the master employee DB (designation + function). */
   seeAllProjects: boolean;
+  /** True when resolved via the PMO_MCP service token (act-as path) rather
+   *  than a real JWT login. Routes can treat it as a normal user; this flag
+   *  exists for auditing / future restrictions. */
+  viaServiceToken?: boolean;
 }
 
 declare global {
@@ -34,6 +39,8 @@ declare global {
     }
   }
 }
+
+type LogLike = { error: (obj: unknown, msg?: string) => void } | undefined;
 
 /**
  * Paths that bypass auth entirely. Mirrors the public-routes pattern from
@@ -59,15 +66,114 @@ function isPublic(path: string): boolean {
 }
 
 /**
+ * Master-DB `employees.function` values whose holders see EVERY project (the
+ * Transformation Division / PMO team). Lowercased. Extend here if HR adds
+ * sibling function labels (e.g. a "Transformation Office").
+ */
+const SEE_ALL_FUNCTIONS = new Set<string>(["transformation"]);
+
+/**
+ * Resolve a master-DB employee (by office email OR employee code) into a fully
+ * populated PmoUser — the per-app access gate, functional pmoRole (override →
+ * derived), and portfolio visibility. Shared by the JWT-bearer path and the
+ * PMO_MCP service-token "act-as" path so both produce identical identities.
+ */
+async function resolvePmoUser(
+  masterDb: ReturnType<typeof getMasterDb>,
+  filter: { email: string } | { code: string },
+  authUserId: string,
+  log: LogLike,
+  viaServiceToken: boolean,
+): Promise<{ user: PmoUser } | { error: { status: number; message: string } }> {
+  const base = masterDb
+    .from("employees")
+    .select("id, employee_code, first_name, middle_name, last_name, office_email, designation_text, business_designation, function, sub_function, grade_code, employee_auth!inner(access_pmo, pmo_role, is_admin, is_super_admin)");
+  const { data: employee, error: empError } = await (
+    "code" in filter ? base.eq("employee_code", filter.code) : base.ilike("office_email", filter.email)
+  ).maybeSingle();
+
+  if (empError) {
+    log?.error({ err: empError }, "Employee lookup failed");
+    return { error: { status: 500, message: "Profile lookup failed" } };
+  }
+  if (!employee) {
+    return { error: { status: 403, message: "No employee record for this account" } };
+  }
+
+  const authRow = Array.isArray(employee.employee_auth) ? employee.employee_auth[0] : employee.employee_auth;
+  const accessPmo: boolean = !!authRow?.access_pmo;
+  const isSuperAdmin: boolean = !!authRow?.is_super_admin;
+  const isAdmin: boolean = !!authRow?.is_admin;
+
+  // Functional role override (Recruit DB pmo_role_overrides wins; falls back to
+  // master employee_auth.pmo_role). A Recruit-DB hiccup must not break auth.
+  let overrideRole: string | null = null;
+  if (employee.employee_code) {
+    try {
+      const [row] = await db.select({ pmoRole: roleOverridesTable.pmoRole })
+        .from(roleOverridesTable)
+        .where(eq(roleOverridesTable.employeeCode, employee.employee_code));
+      overrideRole = row?.pmoRole ?? null;
+    } catch (err) {
+      log?.error({ err }, "pmo_role_overrides lookup failed; using master pmo_role only");
+    }
+  }
+
+  const pmoRole: PmoRole = derivePmoRole(
+    {
+      designation_text: employee.designation_text ?? null,
+      business_designation: employee.business_designation ?? null,
+      function: employee.function ?? null,
+      sub_function: employee.sub_function ?? null,
+      grade_code: employee.grade_code ?? null,
+    },
+    {
+      access_pmo: accessPmo,
+      pmo_role: overrideRole ?? authRow?.pmo_role ?? null,
+    },
+  );
+
+  if (!accessPmo && !isSuperAdmin) {
+    return { error: { status: 403, message: "Project Hub access not granted" } };
+  }
+
+  const fn = (employee.function ?? "").trim().toLowerCase();
+  const seeAllProjects =
+    isSuperAdmin ||
+    pmoRole === "admin" ||
+    pmoRole === "chairman" ||
+    pmoRole === "executive_director" ||
+    SEE_ALL_FUNCTIONS.has(fn);
+
+  const composedFullName = [employee.first_name, employee.middle_name, employee.last_name]
+    .filter((p): p is string => !!p && p.trim().length > 0)
+    .join(" ")
+    .trim() || null;
+
+  return {
+    user: {
+      authUserId,
+      email: employee.office_email ?? ("email" in filter ? filter.email : ""),
+      employeeId: employee.id ?? null,
+      employeeCode: employee.employee_code ?? null,
+      fullName: composedFullName,
+      isAdmin,
+      isSuperAdmin,
+      accessPmo,
+      pmoRole,
+      seeAllProjects,
+      viaServiceToken,
+    },
+  };
+}
+
+/**
  * JWT-bearer auth middleware against the Master Employee DB.
  *
- * Mirrors the pattern used by backend/recruit + backend/pms + backend/ohc:
- *   1. Read Bearer token from Authorization header.
- *   2. masterDb.auth.getUser(token) → validates signature/expiry, returns user.
- *   3. Join employees + employee_auth by email (case-insensitive) to resolve
- *      the employee profile + per-app access flags.
- *   4. Gate on access_pmo OR is_super_admin. Anything else → 403.
- *   5. Populate req.user with the resolved profile.
+ *   1. PMO_MCP service-token "act-as" path (X-PMO-Service-Token + X-PMO-Actor) —
+ *      a trusted server (the PMO MCP) writes as a real employee; attribution stays
+ *      truthful. Gated by the shared secret + optional PMO_MCP_ACTORS allowlist.
+ *   2. Otherwise read Bearer token → masterDb.auth.getUser → resolve employee.
  *
  * Returns 401 on missing/invalid token so the frontend fetch interceptor
  * can fire the 'granules:session-expired' event.
@@ -75,6 +181,49 @@ function isPublic(path: string): boolean {
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   if (isPublic(req.path)) { next(); return; }
 
+  // ── (1) Service-token "act-as" path (PMO MCP / automation) ────────────────
+  const serviceToken = req.header("x-pmo-service-token");
+  const expectedServiceToken = process.env["PMO_MCP_TOKEN"];
+  if (serviceToken && expectedServiceToken && serviceToken === expectedServiceToken) {
+    const actor = (req.header("x-pmo-actor") || "").trim();
+    if (!actor) { res.status(401).json({ error: "X-PMO-Actor (employee code or office email) required with service token" }); return; }
+    // Fail CLOSED: the service token may only act as employees listed in
+    // PMO_MCP_ACTORS (comma-separated employee codes, or "*" for any). Empty/unset
+    // ⇒ refuse. Even with "*", resolvePmoUser still enforces access_pmo below, so a
+    // non-PMO employee can never be impersonated.
+    const allow = (process.env["PMO_MCP_ACTORS"] || "").split(",").map((s) => s.trim()).filter(Boolean);
+    if (!allow.length) {
+      res.status(503).json({ error: "PMO service token is configured but PMO_MCP_ACTORS allowlist is empty — refusing to act as any employee." });
+      return;
+    }
+    const wildcardActors = allow.includes("*");
+    let masterDb;
+    try { masterDb = getMasterDb(); } catch (err) {
+      req.log?.error({ err }, "Master DB client misconfigured");
+      res.status(500).json({ error: "Auth backend not configured" });
+      return;
+    }
+    const resolved = await resolvePmoUser(
+      masterDb,
+      actor.includes("@") ? { email: actor.toLowerCase() } : { code: actor },
+      `service:${actor}`,
+      req.log,
+      true,
+    );
+    if ("error" in resolved) { res.status(resolved.error.status).json({ error: resolved.error.message }); return; }
+    if (!wildcardActors && !(resolved.user.employeeCode && allow.includes(resolved.user.employeeCode))) {
+      res.status(403).json({ error: "Actor not in PMO_MCP_ACTORS allowlist" });
+      return;
+    }
+    req.user = resolved.user;
+    if (req.method === "POST" || req.method === "PUT" || req.method === "PATCH" || req.method === "DELETE") {
+      recordMcpWrite(resolved.user.employeeCode, resolved.user.fullName, req.method, req.path);
+    }
+    next();
+    return;
+  }
+
+  // ── (2) Standard JWT-bearer path ──────────────────────────────────────────
   const authHeader = req.header("authorization") ?? req.header("Authorization");
   const token = authHeader?.toLowerCase().startsWith("bearer ")
     ? authHeader.slice(7).trim()
@@ -102,118 +251,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   const authUser = authData.user;
   const emailLower = authUser.email!.toLowerCase();
 
-  // Master DB `employees` table has split name columns (first_name /
-  // middle_name / last_name), not a single full_name. Pull all three and
-  // compose at use-time. The previous "full_name" select threw 42703 and
-  // 500'd every auth-gated request.
-  //
-  // The directory columns (designation_text / business_designation /
-  // function / sub_function / grade_code) feed derivePmoRole() below — they
-  // are how a user's functional Project Hub role is resolved when there's no
-  // explicit employee_auth.pmo_role override.
-  const { data: employee, error: empError } = await masterDb
-    .from("employees")
-    .select("id, employee_code, first_name, middle_name, last_name, office_email, designation_text, business_designation, function, sub_function, grade_code, employee_auth!inner(access_pmo, pmo_role, is_admin, is_super_admin)")
-    .ilike("office_email", emailLower)
-    .maybeSingle();
-
-  if (empError) {
-    req.log?.error({ err: empError }, "Employee lookup failed");
-    res.status(500).json({ error: "Profile lookup failed" });
-    return;
-  }
-  if (!employee) {
-    res.status(403).json({ error: "No employee record for this account" });
-    return;
-  }
-
-  const authRow = Array.isArray(employee.employee_auth)
-    ? employee.employee_auth[0]
-    : employee.employee_auth;
-  const accessPmo: boolean = !!authRow?.access_pmo;
-  const isSuperAdmin: boolean = !!authRow?.is_super_admin;
-  const isAdmin: boolean = !!authRow?.is_admin;
-
-  // Resolve the functional Project Hub role: explicit override wins,
-  // otherwise derive from the master directory. Overrides live in TWO
-  // places: pmo_role_overrides (Recruit DB, managed from the super-admin
-  // /admin/roles page — the live master-DB CHECK constraint only accepts
-  // 'admin' so all other values land here) and employee_auth.pmo_role
-  // (master DB, 'admin' only). The roles admin API keeps them mutually
-  // exclusive; when both somehow hold values the Recruit-DB row wins. A
-  // Recruit-DB hiccup must not break auth — fall back to the master value.
-  let overrideRole: string | null = null;
-  if (employee.employee_code) {
-    try {
-      const [row] = await db.select({ pmoRole: roleOverridesTable.pmoRole })
-        .from(roleOverridesTable)
-        .where(eq(roleOverridesTable.employeeCode, employee.employee_code));
-      overrideRole = row?.pmoRole ?? null;
-    } catch (err) {
-      req.log?.error({ err }, "pmo_role_overrides lookup failed; using master pmo_role only");
-    }
-  }
-
-  const pmoRole: PmoRole = derivePmoRole(
-    {
-      designation_text: employee.designation_text ?? null,
-      business_designation: employee.business_designation ?? null,
-      function: employee.function ?? null,
-      sub_function: employee.sub_function ?? null,
-      grade_code: employee.grade_code ?? null,
-    },
-    {
-      access_pmo: accessPmo,
-      pmo_role: overrideRole ?? authRow?.pmo_role ?? null,
-    },
-  );
-
-  if (!accessPmo && !isSuperAdmin) {
-    res.status(403).json({ error: "Project Hub access not granted" });
-    return;
-  }
-
-  // Portfolio-wide visibility. Driven entirely from the master employee DB:
-  // the oversight roles (Chairman, Executive Director — derived from
-  // designation) and the Transformation team (employees.function ===
-  // 'Transformation' — the PMO/Transformation Division) see EVERY project.
-  // Platform super/admins also see all. Everyone else is scoped to their own
-  // projects (enforced in GET /projects). See SEE_ALL_FUNCTIONS to extend.
-  const fn = (employee.function ?? "").trim().toLowerCase();
-  const seeAllProjects =
-    isSuperAdmin ||
-    pmoRole === "admin" ||
-    pmoRole === "chairman" ||
-    pmoRole === "executive_director" ||
-    SEE_ALL_FUNCTIONS.has(fn);
-
-  // Compose fullName from the split columns. Empty middle drops cleanly.
-  const composedFullName = [employee.first_name, employee.middle_name, employee.last_name]
-    .filter((p): p is string => !!p && p.trim().length > 0)
-    .join(" ")
-    .trim() || null;
-
-  req.user = {
-    authUserId: authUser.id,
-    email: authUser.email!,
-    employeeId: employee.id ?? null,
-    employeeCode: employee.employee_code ?? null,
-    fullName: composedFullName,
-    isAdmin,
-    isSuperAdmin,
-    accessPmo,
-    pmoRole,
-    seeAllProjects,
-  };
+  const resolved = await resolvePmoUser(masterDb, { email: emailLower }, authUser.id, req.log, false);
+  if ("error" in resolved) { res.status(resolved.error.status).json({ error: resolved.error.message }); return; }
+  req.user = resolved.user;
   next();
 }
-
-/**
- * Master-DB `employees.function` values whose holders see EVERY project (the
- * Transformation Division / PMO team). Lowercased. Extend here if HR adds
- * sibling function labels (e.g. a "Transformation Office").
- */
-const SEE_ALL_FUNCTIONS = new Set<string>(["transformation"]);
 
 /**
  * Companion middleware for admin-only routes. Mirrors the ADMIN_ROUTES
@@ -222,10 +264,6 @@ const SEE_ALL_FUNCTIONS = new Set<string>(["transformation"]);
  *
  * Allows the request through if the user is either a super-admin
  * (cross-app) or has pmo_role === 'admin'. Otherwise 403.
- *
- * Usage:
- *   router.use("/admin", requireAdmin);
- *   router.post("/admin/scoring", handler);
  */
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   if (!req.user) {

@@ -25,6 +25,15 @@ interface RollupTask {
   parentTaskId: number | null;
   milestoneId: number | null;
   progressPct: number;
+  status: string;
+}
+
+// A leaf task's effective completion: a 'completed' status is 100% regardless of
+// the stored progress_pct (status changes don't write progress_pct — e.g. the
+// status popup, or Jira-imported issues that arrive completed with pct 0). This
+// mirrors project-detail.tsx's on-screen `status === "completed" ? 100 : pct`.
+function leafProgress(t: RollupTask): number {
+  return t.status === "completed" ? 100 : (t.progressPct ?? 0);
 }
 
 /**
@@ -45,6 +54,7 @@ export async function recomputeRollups(projectId: number): Promise<void> {
       parentTaskId: tasksTable.parentTaskId,
       milestoneId: tasksTable.milestoneId,
       progressPct: tasksTable.progressPct,
+      status: tasksTable.status,
     })
     .from(tasksTable)
     .where(eq(tasksTable.projectId, projectId));
@@ -73,7 +83,7 @@ export async function recomputeRollups(projectId: number): Promise<void> {
     const kids = childrenByParent.get(t.id) ?? [];
     const val = kids.length
       ? Math.round(kids.reduce((s, k) => s + effective(k), 0) / kids.length)
-      : t.progressPct ?? 0;
+      : leafProgress(t);
     memo.set(t.id, val);
     return val;
   };

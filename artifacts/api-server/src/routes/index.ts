@@ -44,6 +44,7 @@ import stageEscalationPolicyRouter from "./stage-escalation-policy";
 import workRouter from "./work";
 import doaMatrixRouter from "./doa_matrix";
 import projectJustificationsRouter from "./project-justifications";
+import leadershipRouter from "./leadership";
 
 const router: IRouter = Router();
 
@@ -93,5 +94,6 @@ router.use(stageEscalationPolicyRouter);
 router.use(workRouter);
 router.use(doaMatrixRouter);
 router.use(projectJustificationsRouter);
+router.use(leadershipRouter);
 
 export default router;

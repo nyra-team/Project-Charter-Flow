@@ -12,8 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FileDropzone } from "@/components/ui/file-dropzone";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
-import { Plus, FileText, Trash2, Lock, Unlock, History, Tag, Folder, Search, Upload, Download, FileCheck2, Eye, Loader2, ExternalLink, Sparkles, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, FileText, Trash2, Lock, Unlock, History, Tag, Folder, Search, Upload, Download, FileCheck2, Eye, Loader2, ExternalLink, Sparkles, ChevronDown, ChevronRight, Share2 } from "lucide-react";
 import { formatDate } from "../lib/format";
+import { ShareDialog } from "./ShareDialog";
 import { LIFECYCLE_STAGES } from "../lib/lifecycle-config";
 
 type Doc = {
@@ -93,6 +94,7 @@ export function DocumentsTab({
   const setShowAdd = (v: boolean) => { if (onUploadOpenChange) onUploadOpenChange(v); else setInternalShowAdd(v); };
   const [versionDocId, setVersionDocId] = useState<number | null>(null);
   const [previewDoc, setPreviewDoc] = useState<Doc | null>(null);
+  const [shareDoc, setShareDoc] = useState<Doc | null>(null);
   const [tagFilter, setTagFilter] = useState<string>("");
   const [accessFilter, setAccessFilter] = useState<string>("");
   const [form, setForm] = useState({
@@ -248,6 +250,17 @@ export function DocumentsTab({
         {/* Uploaded By */}
         <TableCell className="align-top text-xs text-muted-foreground whitespace-nowrap">{userName(d.uploadedBy)}</TableCell>
 
+        {/* Public Link — opens the Drive-style Share dialog (copyable link + upload-new-version) */}
+        <TableCell className="align-top">
+          <button
+            onClick={() => setShareDoc(d)}
+            className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold border border-border text-muted-foreground hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
+            title="Share — get public link & upload new version"
+          >
+            <Share2 size={12} /> Share
+          </button>
+        </TableCell>
+
         {/* Uploaded date */}
         <TableCell className="align-top text-xs text-muted-foreground font-mono whitespace-nowrap">{d.uploadedAt ? formatDate(d.uploadedAt) : "—"}</TableCell>
 
@@ -345,6 +358,7 @@ export function DocumentsTab({
                   </select>
                 </TableHead>
                 <TableHead>Uploaded By</TableHead>
+                <TableHead>Public Link</TableHead>
                 <TableHead>Uploaded</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -357,7 +371,7 @@ export function DocumentsTab({
                   <Fragment key={g.key}>
                     {/* Stage section header — click to expand/collapse the documents inside */}
                     <TableRow className="bg-muted/40 hover:bg-muted/50 cursor-pointer border-t-2 border-border" onClick={() => toggleStage(g.key)}>
-                      <TableCell colSpan={6} className="py-2">
+                      <TableCell colSpan={7} className="py-2">
                         <div className="flex items-center gap-2">
                           {open ? <ChevronDown size={14} className="text-muted-foreground" /> : <ChevronRight size={14} className="text-muted-foreground" />}
                           <Folder size={14} style={g.color ? { color: g.color } : undefined} className={g.color ? "" : "text-muted-foreground"} />
@@ -463,6 +477,15 @@ export function DocumentsTab({
       {previewDoc && (
         <DocumentPreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
       )}
+
+      {/* Drive-style share dialog — copyable public link + upload new version */}
+      {shareDoc && (
+        <ShareDialog
+          docId={shareDoc.id}
+          docName={shareDoc.name}
+          onClose={() => setShareDoc(null)}
+        />
+      )}
     </div>
   );
 }
@@ -480,7 +503,15 @@ function kindOf(doc: Doc): "docx" | "pdf" | "image" | "text" | "other" {
 }
 
 function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void }) {
-  const kind = kindOf(doc);
+  // All versions of this document, so the viewer can switch between them.
+  // "current" = the live doc.fileUrl (latest); otherwise a specific version row.
+  const { data: versions = [] } = useListDocumentVersions(doc.id);
+  const vs = (versions as DocVersion[]).slice().sort((a, b) => b.version - a.version);
+  const [activeVerId, setActiveVerId] = useState<number | "current">("current");
+  const activeUrl = activeVerId === "current"
+    ? doc.fileUrl
+    : (vs.find(v => v.id === activeVerId)?.fileUrl ?? doc.fileUrl);
+  const kind = kindOf({ ...doc, fileUrl: activeUrl ?? doc.fileUrl });
   const docxRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errMsg, setErrMsg] = useState<string>("");
@@ -492,10 +523,11 @@ function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void 
     let objectUrl = "";
 
     async function load() {
-      if (!doc.fileUrl) { setStatus("error"); setErrMsg("This document has no file attached."); return; }
+      if (!activeUrl) { setStatus("error"); setErrMsg("This document has no file attached."); return; }
       if (kind === "other") { setStatus("error"); setErrMsg("In-browser preview isn't supported for this file type."); return; }
+      setStatus("loading");
       try {
-        const res = await fetch(doc.fileUrl);
+        const res = await fetch(activeUrl);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const blob = await res.blob();
         if (cancelled) return;
@@ -540,7 +572,7 @@ function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void 
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [doc.id]);
+  }, [activeUrl]);
 
   return (
     <Dialog open={true} onOpenChange={v => { if (!v) onClose(); }}>
@@ -549,17 +581,45 @@ function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void 
           <DialogTitle className="flex items-center gap-2 tracking-tight text-base">
             <FileText size={16} className="text-primary" />
             <span className="truncate">{doc.name}</span>
-            <span className="text-[11px] font-mono font-semibold text-primary">v{doc.version}</span>
+            <span className="text-[11px] font-mono font-semibold text-primary">
+              v{activeVerId === "current" ? doc.version : (vs.find(v => v.id === activeVerId)?.version ?? doc.version)}
+              {activeVerId !== "current" && <span className="text-muted-foreground font-normal"> (older)</span>}
+            </span>
             <a
-              href={doc.fileUrl ?? "#"}
+              href={activeUrl ?? "#"}
               download
               className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-accent transition-colors"
-              title="Download"
+              title="Download this version"
             >
               <Download size={13} /> Download
             </a>
           </DialogTitle>
         </DialogHeader>
+
+        {/* Version switcher — view any version of this document inline */}
+        {vs.length > 0 && (
+          <div className="px-5 py-2 border-b border-border/60 flex items-center gap-1.5 flex-wrap bg-muted/30 flex-shrink-0">
+            <History size={13} className="text-muted-foreground" />
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mr-1">Versions</span>
+            <button
+              onClick={() => setActiveVerId("current")}
+              className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold border transition-colors ${activeVerId === "current" ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border hover:border-primary/40"}`}
+              title="Latest version"
+            >
+              Latest v{doc.version}
+            </button>
+            {vs.map(v => (
+              <button
+                key={v.id}
+                onClick={() => setActiveVerId(v.id)}
+                className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold border transition-colors ${activeVerId === v.id ? "bg-primary text-primary-foreground border-primary" : "bg-background text-muted-foreground border-border hover:border-primary/40"}`}
+                title={`${v.uploadedAt ? formatDate(v.uploadedAt) : ""}${v.notes ? ` — ${v.notes}` : ""}`}
+              >
+                v{v.version}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="flex-1 min-h-0 overflow-auto scrollbar-thin bg-muted/40">
           {status === "loading" && (

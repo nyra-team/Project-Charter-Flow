@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FUNCTIONS_LIST } from "../lib/lifecycle-config";
 import { useAiStatus } from "../components/ai-button";
 import { RephraseField } from "@/components/ui-kit";
+import { ReferenceDocUpload } from "../components/ReferenceDocUpload";
 import { CustomFieldsEditor, type CustomField } from "../components/CustomFieldsEditor";
 import {
   ChevronLeft, Loader2, FileText, Sparkles, ShieldCheck, Search, X, Check, AlertTriangle, ListPlus,
@@ -160,6 +161,8 @@ export default function NfaNew() {
   // Note fields
   const [functionDept, setFunctionDept] = useState("");
   const [subject, setSubject] = useState("");
+  // Optional reference-document text, fed to the AI draft as `sourceText`.
+  const [refText, setRefText] = useState("");
   const [background, setBackground] = useState("");
   const [requirements, setRequirements] = useState("");
   const [justification, setJustification] = useState("");
@@ -217,6 +220,7 @@ export default function NfaNew() {
           functionDept: functionDept || undefined,
           modeOfProcurement: modeOfProcurement || undefined,
           financialAmount: Number(financialAmount) || undefined,
+          sourceText: refText || undefined,
         }),
       });
       if (!res.ok) {
@@ -247,6 +251,7 @@ export default function NfaNew() {
           functionDept: functionDept || undefined,
           modeOfProcurement: modeOfProcurement || undefined,
           financialAmount: Number(financialAmount) || undefined,
+          sourceText: refText || undefined,
         }),
       });
       if (!res.ok) {
@@ -400,6 +405,7 @@ export default function NfaNew() {
               context="the 'Background / Description' of an internal approval note (e-NFA)"
               placeholder="What is being approved, the context, and why it's needed… or use “Draft with AI”."
             />
+            <ReferenceDocUpload onText={setRefText} />
           </Section>
 
           {/* ── Approval workflow ────────────────────────────────────────── */}

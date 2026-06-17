@@ -6,6 +6,7 @@ import { jiraTestConnection, type JiraConfig } from "../../lib/integrations/jira
 import { mcpHttpTestConnection, type McpHttpConfig } from "../../lib/integrations/mcp_http";
 import { supabaseTestConnection, type SupabaseConfig } from "../../lib/integrations/supabase";
 import { httpApiTestConnection, type HttpApiConfig } from "../../lib/integrations/http_api";
+import { getMcpActivity } from "../../lib/mcpActivity";
 
 const router: IRouter = Router();
 
@@ -63,6 +64,19 @@ function serialize(row: McpIntegration) {
 router.get("/", async (_req, res): Promise<void> => {
   const rows = await db.select().from(mcpIntegrationsTable).orderBy(asc(mcpIntegrationsTable.id));
   res.json(rows.map(serialize));
+});
+
+// GET /api/admin/integrations/mcp-status — inbound PMO MCP (service-token act-as)
+// status + live write activity. No secret is ever returned.
+router.get("/mcp-status", (_req, res): void => {
+  const enabled = !!process.env["PMO_MCP_TOKEN"];
+  const allow = (process.env["PMO_MCP_ACTORS"] || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const wildcard = allow.includes("*");
+  res.json({
+    enabled,
+    actorAllowlist: wildcard ? "any PMO-enabled employee" : allow,
+    ...getMcpActivity(),
+  });
 });
 
 router.post("/", async (req, res): Promise<void> => {

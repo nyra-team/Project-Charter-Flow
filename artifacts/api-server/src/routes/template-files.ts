@@ -4,6 +4,7 @@ import { createReadStream, existsSync } from "node:fs";
 import {
   TEMPLATE_PHASES,
   TEMPLATE_FILE_ALLOWLIST,
+  UNIVERSAL_TEMPLATES,
   resolveTemplateDir,
   mimeForFile,
 } from "../lib/templateDocuments";
@@ -19,6 +20,22 @@ import {
 // ---------------------------------------------------------------------------
 
 const router: IRouter = Router();
+
+// List the universal blank templates (the "Universal Templates" sitting atop the
+// Central Doc Repo). Public — same non-sensitive blanks as the per-file route.
+// New types (RFP/VE/NFA): add to UNIVERSAL_TEMPLATES + drop the file on disk.
+router.get("/storage/templates", (_req: Request, res: Response): void => {
+  res.json(
+    UNIVERSAL_TEMPLATES.map((t) => ({
+      phase: t.phase,
+      name: t.name,
+      file: t.file,
+      stage: t.stage,
+      fileType: mimeForFile(t.file),
+      url: `/api/storage/templates/${encodeURIComponent(t.phase)}/${encodeURIComponent(t.file)}`,
+    })),
+  );
+});
 
 router.get("/storage/templates/:phase/:file", (req: Request, res: Response): void => {
   const phase = String(req.params.phase);

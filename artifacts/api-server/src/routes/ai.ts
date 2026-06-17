@@ -22,6 +22,7 @@ import { llm, isLLMConfigured, llmWithTools, type AnthropicTool } from "@workspa
 import { runNyraSql, getNyraSchemaDocs } from "../lib/nyraSql";
 import { extractDocText, buildStageMatrix, MAX_DOC_TEXT_CHARS } from "../lib/liveCharter";
 import { backfillFromDocs } from "../lib/docBackfill";
+import type { Document } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -392,6 +393,26 @@ router.post("/ai/charters/draft-fields", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/ai/extract-doc-text
+// Pulls plain text from an already-uploaded reference document (by its storage
+// fileUrl) so the Charter/e-NFA wizard can feed real source content into the AI
+// draft. Reuses extractDocText (PDF/DOCX/XLSX/txt). Returns capped plaintext;
+// `extracted:false` when the file is unsupported/empty (caller degrades silently).
+// ---------------------------------------------------------------------------
+router.post("/ai/extract-doc-text", async (req, res): Promise<void> => {
+  const { fileUrl, fileName, fileType, fileSize } = (req.body || {}) as {
+    fileUrl?: string; fileName?: string; fileType?: string; fileSize?: number;
+  };
+  if (!fileUrl) { res.status(400).json({ error: "fileUrl is required" }); return; }
+  const text = await extractDocText({
+    fileUrl, name: fileName || "upload",
+    fileType: fileType ?? null, fileSize: fileSize ?? null,
+  } as unknown as Document);
+  if (!text) { res.json({ text: "", extracted: false }); return; }
+  res.json({ text: text.slice(0, MAX_DOC_TEXT_CHARS), extracted: true });
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/ai/charters/draft-template
 // Drafts the single-page Project Charter template fields (charter-template-new
 // form) from a few basic inputs. Returns the long-form narrative AND structured
@@ -405,6 +426,7 @@ router.post("/ai/charters/draft-template", async (req, res): Promise<void> => {
     category,
     approvedBudget,
     hint,
+    sourceText,
   } = (req.body || {}) as {
     title?: string;
     sponsor?: string;
@@ -412,6 +434,7 @@ router.post("/ai/charters/draft-template", async (req, res): Promise<void> => {
     category?: string;
     approvedBudget?: number;
     hint?: string;
+    sourceText?: string;
   };
   if (!title || title.trim().length < 3) {
     res.status(400).json({ error: "title is required" });
@@ -421,7 +444,7 @@ router.post("/ai/charters/draft-template", async (req, res): Promise<void> => {
     task: "charter_draft_template",
     system:
       "You are an experienced PMO Business Analyst drafting a corporate Project Charter. Given a project title, sponsor, owning function, category and optional budget/hint, produce realistic, executive-grade first-draft content for every section of the charter. Be specific to the project as described — never write generic placeholder text. Where you state numbers, label them as illustrative ('e.g.', 'approx.'). Never invent real stakeholder names, real vendors, or hard calendar dates — for milestone target dates use relative phrasing like 'Q1' / 'Month 3'. For responsible parties use roles (e.g. 'IT Lead', 'Process Owner'), not invented names.",
-    prompt: `Project title: ${title}\nProject sponsor: ${sponsor || "(unspecified)"}\nFunction / Department: ${fn || "(unspecified)"}\nCategory: ${category || "(unspecified)"}\nApproved budget: ${approvedBudget ? `INR ${approvedBudget}` : "(unspecified)"}\nUser hint: ${hint || "(none)"}\n\nDraft each charter field. Narrative fields 60-160 words each (shorter for one-line items). Provide 4-6 milestones and 3-5 KPIs. Use professional, decision-grade language an executive steering committee would expect.`,
+    prompt: `Project title: ${title}\nProject sponsor: ${sponsor || "(unspecified)"}\nFunction / Department: ${fn || "(unspecified)"}\nCategory: ${category || "(unspecified)"}\nApproved budget: ${approvedBudget ? `INR ${approvedBudget}` : "(unspecified)"}\nUser hint: ${hint || "(none)"}${sourceText ? `\n\nReference document (extracted from an uploaded source — treat as ground truth; incorporate the relevant facts, do not copy verbatim):\n${sourceText.slice(0, MAX_DOC_TEXT_CHARS)}` : ""}\n\nDraft each charter field. Narrative fields 60-160 words each (shorter for one-line items). Provide 4-6 milestones and 3-5 KPIs. Use professional, decision-grade language an executive steering committee would expect.`,
     jsonSchema: z.object({
       executiveSummary: z.string().min(80),
       background: z.string().min(60),
@@ -1016,12 +1039,14 @@ router.post("/ai/nfa/draft-template", async (req, res): Promise<void> => {
     modeOfProcurement,
     financialAmount,
     hint,
+    sourceText,
   } = (req.body || {}) as {
     subject?: string;
     functionDept?: string;
     modeOfProcurement?: string;
     financialAmount?: number;
     hint?: string;
+    sourceText?: string;
   };
   if (!subject || subject.trim().length < 3) {
     res.status(400).json({ error: "subject is required" });
@@ -1031,7 +1056,7 @@ router.post("/ai/nfa/draft-template", async (req, res): Promise<void> => {
     task: "nfa_draft_template",
     system:
       "You are a Finance Business Partner at Granules India drafting an Internal Approval Note (e-NFA) for a procurement / spend approval. Convert the given subject (and optional function, mode of procurement, amount, hint) into a structured, executive e-NFA. Tone: factual, financially literate, concise. Never invent specific amounts the inputs don't support — describe the financial implication qualitatively if no amount is given. Never invent real vendor names — describe vendor selection approach generically (e.g. 'shortlist of 3 OEM-authorised vendors').",
-    prompt: `Subject: ${subject}\nFunction / Department: ${functionDept || "(unspecified)"}\nMode of procurement: ${modeOfProcurement || "(unspecified)"}\nApprox. amount: ${financialAmount ? `INR ${financialAmount}` : "(unspecified)"}\nHint: ${hint || "(none)"}\n\nDraft each e-NFA section. Background 60-150 words; other sections 30-100 words.`,
+    prompt: `Subject: ${subject}\nFunction / Department: ${functionDept || "(unspecified)"}\nMode of procurement: ${modeOfProcurement || "(unspecified)"}\nApprox. amount: ${financialAmount ? `INR ${financialAmount}` : "(unspecified)"}\nHint: ${hint || "(none)"}${sourceText ? `\n\nReference document (extracted from an uploaded source — treat as ground truth; incorporate the relevant facts, do not copy verbatim):\n${sourceText.slice(0, MAX_DOC_TEXT_CHARS)}` : ""}\n\nDraft each e-NFA section. Background 60-150 words; other sections 30-100 words.`,
     jsonSchema: z.object({
       background: z.string().min(40),
       requirements: z.string().min(20),
@@ -1428,12 +1453,15 @@ router.get("/ai/projects/:id/live-charter", async (req, res): Promise<void> => {
   res.json({ exists: true, ...row });
 });
 
-router.post("/ai/projects/:id/live-charter/refresh", async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+// Rebuild a project's Live Charter snapshot from its current documents. Per-doc
+// summaries are cached by version, so this is cheap to re-run after a single doc
+// changes. Exported so document mutations can trigger it (see scheduleLiveCharterRefresh).
+export async function refreshLiveCharter(
+  id: number,
+  generatedBy: number | null = null,
+): Promise<typeof liveChartersTable.$inferSelect | null> {
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, id));
-  if (!project) { res.status(404).json({ error: "Project not found" }); return; }
-  const generatedBy = typeof req.body?.generatedBy === "number" ? req.body.generatedBy : null;
+  if (!project) return null;
 
   // 1. Per-document summaries (cached by version — only re-summarize changed files).
   const docs = await db.select().from(documentsTable).where(eq(documentsTable.projectId, id));
@@ -1515,6 +1543,31 @@ router.post("/ai/projects/:id/live-charter/refresh", async (req, res): Promise<v
     })
     .returning();
 
+  return row;
+}
+
+// Debounced auto-refresh: coalesce a burst of document updates for one project
+// into a single Live Charter rebuild ~10s after the last change, so a multi-file
+// upload doesn't fire N refreshes. Fire-and-forget; errors are logged only.
+const liveCharterTimers = new Map<number, ReturnType<typeof setTimeout>>();
+export function scheduleLiveCharterRefresh(projectId: number): void {
+  const existing = liveCharterTimers.get(projectId);
+  if (existing) clearTimeout(existing);
+  const t = setTimeout(() => {
+    liveCharterTimers.delete(projectId);
+    refreshLiveCharter(projectId).catch((err) =>
+      console.error(`[live-charter] auto-refresh project=${projectId} failed:`, err));
+  }, 10_000);
+  if (typeof t.unref === "function") t.unref();
+  liveCharterTimers.set(projectId, t);
+}
+
+router.post("/ai/projects/:id/live-charter/refresh", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const generatedBy = typeof req.body?.generatedBy === "number" ? req.body.generatedBy : null;
+  const row = await refreshLiveCharter(id, generatedBy);
+  if (!row) { res.status(404).json({ error: "Project not found" }); return; }
   res.json({ exists: true, ...row });
 });
 

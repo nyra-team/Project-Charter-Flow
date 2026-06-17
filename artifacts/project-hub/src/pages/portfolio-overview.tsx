@@ -1,7 +1,7 @@
-import { useMemo, useState, useRef, useEffect, type ReactNode } from "react";
+import { Fragment, useMemo, useState, useRef, useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useListProjects, useListUsers, useGetDashboardSummary, useListCharters } from "@workspace/api-client-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -12,7 +12,9 @@ import {
   ListChecks, Flag, IndianRupee, Calendar, Clock, FileText,
   Trophy, AlertCircle, ChevronDown, ChevronRight, LayoutGrid, BarChart3,
   Search, ArrowUp, ArrowDown, ArrowUpDown, ArrowRight, Users, X,
+  BellRing, Check, Loader2, Crown,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { KPITile, DashboardCard, FilterBar, RAGBadge, Drillable, type DrillColumn } from "../components/dashboard/primitives";
 import { formatCurrency } from "../lib/format";
@@ -84,6 +86,29 @@ function Avatar({ name, photoUrl }: { name?: string | null; photoUrl?: string | 
       </span>
     </HoverHint>
   );
+}
+
+// ── Leadership roster ───────────────────────────────────────────────────────
+type Leader = { code: string; name: string; role: string; designation: string | null; officeEmail: string | null; photoUrl: string | null };
+
+// Map a project's `function` (department) to the employee_code of the CXO who
+// heads that function. Keys are matched case-insensitively against the function
+// text (substring), so "Health & Safety" and "EHS" both resolve to the EHS head.
+const FUNCTION_LEADER_RULES: Array<{ match: RegExp; code: string }> = [
+  { match: /\b(it|information|digital)\b/i,        code: "14450" }, // Chief Information & Digital Officer
+  { match: /\b(ehs|health|safety|sustainab)/i,    code: "14019" }, // Head of EHS & Sustainability
+  { match: /\b(scm|supply\s*chain|logistic)/i,    code: "14994" }, // Head of Supply Chain Management
+  { match: /\b(r\s*&?\s*d|research|formulation)/i, code: "4720"  }, // Head of Formulations R&D
+  { match: /\b(sales|marketing|commercial)/i,     code: "1103"  }, // Head of Commercials – Sales & Marketing
+  { match: /\b(finance|fin|treasury|account)/i,   code: "10693" }, // Chief Financial Officer
+  { match: /\b(hr|human|people)\b/i,              code: "14915" }, // Chief Human Resources Officer
+  { match: /\bapi\b/i,                            code: "13944" }, // President – API Operations
+  { match: /\b(fd|formulation\s*operations)\b/i,  code: "13188" }, // President – FD Operations
+];
+function leaderCodeForFunction(fn?: string | null): string | null {
+  if (!fn) return null;
+  const hit = FUNCTION_LEADER_RULES.find(r => r.match.test(fn));
+  return hit ? hit.code : null;
 }
 
 // Per-project task aggregate — drives the Delivery bar's completion % and the
@@ -310,6 +335,72 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
   const { data: summary } = useGetDashboardSummary();
   const [, setLocation] = useLocation();
 
+  // Latest delay/off-track justification per project — drives the Justification
+  // column in the Portfolio Summary (same source + request flow as the Projects
+  // board's column).
+  const { data: justifications = [] } = useQuery({
+    queryKey: ["/api/project-justifications/latest"],
+    queryFn: async () => {
+      const r = await fetch("/api/project-justifications/latest");
+      if (!r.ok) return [] as Array<{ projectId: number; kind: string; justification: string; by: string | null }>;
+      return r.json() as Promise<Array<{ projectId: number; kind: string; justification: string; by: string | null }>>;
+    },
+  });
+  const justByProject = useMemo(() => {
+    const m = new Map<number, { kind: string; justification: string; by: string | null }>();
+    for (const j of justifications) m.set(j.projectId, { kind: j.kind, justification: j.justification, by: j.by });
+    return m;
+  }, [justifications]);
+
+  // Leadership roster — the CMD and the 13 CXOs / function heads reporting to
+  // them, enriched from the master DB (designation / email / photo).
+  const { data: leadership } = useQuery({
+    queryKey: ["/api/leadership/cmd-reports"],
+    queryFn: async () => {
+      const r = await fetch("/api/leadership/cmd-reports");
+      if (!r.ok) return { cmd: null, reports: [] } as { cmd: Leader | null; reports: Leader[] };
+      return r.json() as Promise<{ cmd: Leader | null; reports: Leader[] }>;
+    },
+  });
+
+  // "Request justification" — for a delayed/off-track project with no recorded
+  // justification, ping the owner via in-app notification + branded email.
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [requesting, setRequesting] = useState<Set<number>>(new Set());
+  const [requested, setRequested] = useState<Set<number>>(new Set());
+  const requestJustification = async (projectId: number) => {
+    if (requesting.has(projectId) || requested.has(projectId)) return;
+    setRequesting((s) => new Set(s).add(projectId));
+    try {
+      const r = await fetch("/api/project-justifications/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ projectId }),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        toast({ title: (data as { error?: string })?.error || "Could not send the request", variant: "destructive" });
+        return;
+      }
+      const owner = (data as { owner?: string | null })?.owner;
+      const emailed = (data as { emailed?: number })?.emailed ?? 0;
+      setRequested((s) => new Set(s).add(projectId));
+      toast({
+        title: "Justification requested",
+        description: owner
+          ? `${owner} was notified${emailed ? " by app & email" : " in-app"}.`
+          : `The owner was notified${emailed ? " by app & email" : " in-app"}.`,
+      });
+      void qc.invalidateQueries({ queryKey: ["/api/notifications"] });
+    } catch {
+      toast({ title: "Network error — please try again", variant: "destructive" });
+    } finally {
+      setRequesting((s) => { const n = new Set(s); n.delete(projectId); return n; });
+    }
+  };
+
   // All tasks across projects — drives the Delivery bar's completion % and the
   // hover-card breakdown (same source the 5191 portfolio board uses).
   const { data: allTasks = [] } = useQuery({
@@ -344,6 +435,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
   // Collapsible top bands — collapse to bring the Portfolio Summary into view.
   const [metricsOpen, setMetricsOpen] = useState(true);
   const [chartsOpen, setChartsOpen] = useState(true);
+  const [cxoOpen, setCxoOpen] = useState(false);
 
   // Portfolio Summary toolbar — free-text search + sortable columns.
   type SummarySortKey = "name" | "health" | "progress" | "budgetVar" | "schedVar";
@@ -407,6 +499,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
     return {
       id: p.id,
       name: p.name,
+      ownerId,
       owner: ownerId ? (userById.get(ownerId) ?? "—") : "—",
       ownerPhoto: ownerId ? (photoById.get(ownerId) ?? null) : null,
       start: p.startDate, end: p.endDate,
@@ -465,6 +558,40 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
     for (const r of summaryRows) c[r.dKey]++;
     return c;
   }, [summaryRows]);
+
+  // Projects attributed to each leader. Two signals, unioned:
+  //   1. Project owner — charter.projectOwnerId → pmo_users, matched to the
+  //      leader by office email (authoritative when set).
+  //   2. Project function — the project's department mapped to the CXO who
+  //      heads that function (most projects today carry only this signal).
+  const userIdByEmail = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const u of users) {
+      const email = (u as unknown as { email?: string | null }).email;
+      if (email) m.set(email.toLowerCase(), u.id);
+    }
+    return m;
+  }, [users]);
+  const projectsByLeaderCode = useMemo(() => {
+    const reports = leadership?.reports ?? [];
+    const ownerToCode = new Map<number, string>();
+    for (const l of reports) {
+      const uid = l.officeEmail ? userIdByEmail.get(l.officeEmail.toLowerCase()) : undefined;
+      if (uid != null) ownerToCode.set(uid, l.code);
+    }
+    const m = new Map<string, typeof summaryRows>();
+    for (const l of reports) m.set(l.code, []);
+    for (const r of summaryRows) {
+      const code = (r.ownerId != null && ownerToCode.get(r.ownerId)) || leaderCodeForFunction(r.dept);
+      if (code && m.has(code)) m.get(code)!.push(r);
+    }
+    return m;
+  }, [summaryRows, leadership, userIdByEmail]);
+
+  // Which leaders are expanded to reveal their project table.
+  const [expandedLeaders, setExpandedLeaders] = useState<Set<string>>(new Set());
+  const toggleLeader = (code: string) =>
+    setExpandedLeaders(prev => { const n = new Set(prev); n.has(code) ? n.delete(code) : n.add(code); return n; });
 
   // Top Strategic Projects — top 10 active projects by progress, rendered in the
   // drill popup exactly like the chairman/executive dashboard's section.
@@ -827,6 +954,125 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
       </div>
       </CollapsibleSection>
 
+      {/* ── Leadership ─────────────────────────────────────────────────────
+          Accordion above the Portfolio Summary — a grouped table (same language
+          as the project / task views): one collapsible group per CXO, expanding
+          to the projects attributed to them (by owner email, else by function). */}
+      <CollapsibleSection
+        title="Leadership"
+        icon={Crown}
+        open={cxoOpen}
+        onToggle={() => setCxoOpen(o => !o)}
+      >
+        <section className="rounded-xl border border-border bg-card shadow-sm overflow-hidden ph-rise">
+          <div className="overflow-x-auto">
+            <Table className="min-w-[760px]">
+              <colgroup>
+                <col style={{ width: "40%" }} />
+                <col style={{ width: "18%" }} />
+                <col style={{ width: "22%" }} />
+                <col style={{ width: "20%" }} />
+              </colgroup>
+              <TableHeader>
+                <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border">
+                  {["CXO / Project", "Status", "Progress", "Timeline"].map((h, hi) => (
+                    <TableHead key={h} className={`h-9 text-[10px] font-mono uppercase tracking-wider font-semibold text-muted-foreground/70 ${hi === 0 ? "pl-5" : "px-3"} ${hi === 3 ? "pr-5" : ""}`}>{h}</TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(leadership?.reports ?? []).map((l) => {
+                  const open = expandedLeaders.has(l.code);
+                  const projs = projectsByLeaderCode.get(l.code) ?? [];
+                  const dShort = (d?: string | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" }) : "—");
+                  return (
+                    <Fragment key={l.code}>
+                      {/* CXO group header — click to expand their projects */}
+                      <TableRow className="bg-muted/30 hover:bg-muted/40 cursor-pointer border-t-2 border-border" onClick={() => toggleLeader(l.code)}>
+                        <TableCell colSpan={4} className="py-2.5 pl-5 pr-5">
+                          <div className="flex items-center gap-2.5">
+                            {open ? <ChevronDown size={14} className="text-muted-foreground shrink-0" /> : <ChevronRight size={14} className="text-muted-foreground shrink-0" />}
+                            <span className="text-[13px] font-semibold text-card-foreground truncate">{l.name}</span>
+                            <span className="text-[11.5px] text-muted-foreground truncate">· {l.role}</span>
+                            <span className="ml-auto shrink-0 inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground num-tabular">
+                              <FolderKanban size={11} /> {projs.length} project{projs.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+
+                      {open && projs.length === 0 && (
+                        <TableRow className="hover:bg-transparent">
+                          <TableCell colSpan={4} className="py-3 pl-12 text-[12px] text-muted-foreground/70 italic">No projects attributed to this CXO.</TableCell>
+                        </TableRow>
+                      )}
+
+                      {open && projs.map((p, pi) => {
+                        const dColor = DELIVERY_HEALTH_COLORS[p.dKey];
+                        const prog = Math.round(p.progress);
+                        const endDate = p.end ? new Date(p.end) : null;
+                        const daysLeft = endDate ? Math.ceil((endDate.getTime() - Date.now()) / 86_400_000) : null;
+                        const completed = p.status === "completed";
+                        const overdue = !completed && daysLeft != null && daysLeft < 0;
+                        return (
+                          <TableRow
+                            key={p.id}
+                            onClick={() => setLocation(`/projects/${p.id}`)}
+                            className={`group cursor-pointer border-b border-border/40 transition-colors hover:bg-primary/[0.06] ${pi % 2 === 1 ? "bg-muted/10" : ""}`}
+                          >
+                            <TableCell className="py-2.5 pl-12 pr-3 align-middle">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[12.5px] font-medium text-card-foreground truncate group-hover:text-primary transition-colors">{p.name}</span>
+                                <ArrowRight size={11} className="shrink-0 text-primary opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
+                              </div>
+                              <div className="text-[10px] text-muted-foreground truncate">{p.dept}</div>
+                            </TableCell>
+                            <TableCell className="py-2.5 px-3 align-middle">
+                              <HoverHint label={DELIVERY_DESC[p.dKey]}>
+                                <span className="inline-flex items-center gap-1.5 text-[11.5px] font-medium text-card-foreground whitespace-nowrap">
+                                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: dColor }} />
+                                  {DELIVERY_STATUS_LABEL[p.dKey]}
+                                </span>
+                              </HoverHint>
+                            </TableCell>
+                            <TableCell className="py-2.5 px-3 align-middle">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden min-w-[48px]">
+                                  <div className="h-full rounded-full" style={{ width: `${prog}%`, background: dColor }} />
+                                </div>
+                                <span className="text-[11px] font-semibold num-tabular w-8 text-right shrink-0 text-card-foreground">{prog}%</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="py-2.5 px-3 pr-5 align-middle whitespace-nowrap">
+                              {(p.start || p.end) ? (
+                                <>
+                                  <div className="text-[11px] text-card-foreground tabular-nums">{dShort(p.start)} – {dShort(p.end)}</div>
+                                  <div className="text-[10px] font-medium">
+                                    {completed ? <span style={{ color: C.green }}>Completed</span>
+                                      : overdue ? <span style={{ color: C.red }}>{Math.abs(daysLeft!)}d overdue</span>
+                                      : daysLeft != null ? <span className="text-muted-foreground">{daysLeft}d left</span>
+                                      : null}
+                                  </div>
+                                </>
+                              ) : <span className="text-[11px] text-muted-foreground/40">—</span>}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </Fragment>
+                  );
+                })}
+                {(leadership?.reports ?? []).length === 0 && (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={4} className="px-5 py-8 text-center text-sm text-muted-foreground">Leadership roster unavailable.</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+      </CollapsibleSection>
+
       {/* ── Portfolio Summary ──────────────────────────────────────────────
           A calm enterprise data grid — solid surface (no glass / gradient), a
           full-width segmented health bar, search, then a zebra-striped table
@@ -903,12 +1149,13 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
 
         {/* Table */}
         <div className="overflow-x-auto">
-          <Table className="min-w-[860px] table-fixed">
+          <Table className="min-w-[1000px] table-fixed">
             <colgroup>
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "19%" }} />
               <col style={{ width: "12%" }} />
-              <col style={{ width: "23%" }} />
-              <col style={{ width: "15%" }} />
-              <col style={{ width: "18%" }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "12%" }} />
               <col style={{ width: "16%" }} />
               <col style={{ width: "8%" }} />
               <col style={{ width: "8%" }} />
@@ -921,6 +1168,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                   { key: null, label: "Owner", align: "left", sortable: false },
                   { key: "progress", label: "Progress", align: "left", sortable: true },
                   { key: null, label: "Timeline", align: "left", sortable: false },
+                  { key: null, label: "Justification", align: "left", sortable: false },
                   { key: "budgetVar", label: "Budget", align: "right", sortable: true },
                   { key: "schedVar", label: "Schedule", align: "right", sortable: true },
                 ] as { key: SummarySortKey | null; label: string; align: "left" | "right" | "center"; sortable: boolean }[]).map((c, i) => {
@@ -929,7 +1177,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                   return (
                     <TableHead
                       key={c.label}
-                      className={`h-10 text-[10px] font-mono uppercase tracking-wider font-semibold text-muted-foreground/70 ${i === 0 ? "pl-5" : "px-3"} ${i === 6 ? "pr-5" : ""}`}
+                      className={`h-10 text-[10px] font-mono uppercase tracking-wider font-semibold text-muted-foreground/70 ${i === 0 ? "pl-5" : "px-3"} ${i === 7 ? "pr-5" : ""}`}
                     >
                       {c.sortable ? (
                         <button
@@ -1021,6 +1269,53 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                       ) : <span className="text-[11px] text-muted-foreground/40">—</span>}
                     </TableCell>
 
+                    {/* Justification — why the project is delayed / on hold. Shows
+                        the recorded reason (hover for full text); for a delayed /
+                        off-track project with none yet, a one-click request pings
+                        the owner. */}
+                    <TableCell className="py-3.5 px-3 align-middle" onClick={(e) => e.stopPropagation()}>
+                      {(() => {
+                        const j = justByProject.get(r.id);
+                        if (j) {
+                          return (
+                            <HoverHint label={`${j.kind === "delayed" ? "Delay" : "Off-track"} justification${j.by ? ` · by ${j.by}` : ""}: ${j.justification}`}>
+                              <span className="block truncate text-[11.5px] text-card-foreground cursor-help">{j.justification}</span>
+                            </HoverHint>
+                          );
+                        }
+                        if (r.dKey === "delayed" || r.dKey === "off_track") {
+                          const pendingOwner = r.owner && r.owner !== "—" ? r.owner : null;
+                          const isRequesting = requesting.has(r.id);
+                          const isRequested = requested.has(r.id);
+                          return (
+                            <div className="flex items-center gap-1.5">
+                              <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600 ring-1 ring-red-200 whitespace-nowrap">
+                                Pending from {pendingOwner ?? "Owner"}
+                              </span>
+                              <HoverHint label={isRequested ? "Reminder sent to the owner" : `Request justification from ${pendingOwner ?? "the owner"} (email + notification)`}>
+                                <button
+                                  type="button"
+                                  aria-label="Request justification from the owner"
+                                  disabled={isRequesting || isRequested}
+                                  onClick={(e) => { e.stopPropagation(); void requestJustification(r.id); }}
+                                  className={`inline-flex items-center justify-center w-5 h-5 rounded-full ring-1 transition-colors shrink-0 ${
+                                    isRequested
+                                      ? "bg-green-50 text-green-600 ring-green-200 cursor-default"
+                                      : "bg-amber-50 text-amber-600 ring-amber-200 hover:bg-amber-100 disabled:opacity-60"
+                                  }`}
+                                >
+                                  {isRequesting ? <Loader2 size={11} className="animate-spin" />
+                                    : isRequested ? <Check size={11} />
+                                    : <BellRing size={11} />}
+                                </button>
+                              </HoverHint>
+                            </div>
+                          );
+                        }
+                        return <span className="text-[11px] text-muted-foreground/40">—</span>;
+                      })()}
+                    </TableCell>
+
                     {/* Budget variance */}
                     <TableCell className="py-3.5 px-3 text-right tabular-nums whitespace-nowrap font-semibold text-[12px] align-middle">
                       {r.budgetVarPct == null ? <span className="text-muted-foreground/40 font-medium">—</span> : (
@@ -1045,7 +1340,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
               })}
               {summaryRows.length === 0 && (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={7} className="py-12 text-center">
+                  <TableCell colSpan={8} className="py-12 text-center">
                     <div className="flex flex-col items-center gap-2 text-muted-foreground/70">
                       <Search size={22} className="text-muted-foreground/40" />
                       <p className="text-sm">
@@ -1071,7 +1366,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                       {summaryRows.length !== rows.length && <> of <span className="font-semibold text-card-foreground num-tabular">{rows.length}</span></>} projects
                     </span>
                   </TableCell>
-                  <TableCell colSpan={3} className="py-3 pr-5 align-middle">
+                  <TableCell colSpan={4} className="py-3 pr-5 align-middle">
                     <div className="flex flex-wrap items-center justify-end gap-x-5 gap-y-1 text-[11px] font-normal">
                       <span className="inline-flex items-center gap-1.5 text-muted-foreground">
                         Total Budget

@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { FUNCTIONS_LIST } from "../lib/lifecycle-config";
 import { useAiStatus } from "../components/ai-button";
 import { RephraseField } from "@/components/ui-kit";
+import { ReferenceDocUpload } from "../components/ReferenceDocUpload";
 import { CustomFieldsEditor, type CustomField } from "../components/CustomFieldsEditor";
 import {
   ChevronLeft, Loader2, Plus, Trash2, FileText, Users, Target, TrendingUp,
@@ -192,6 +193,10 @@ export default function NewCharterTemplate() {
   const [projectDescription, setProjectDescription] = useState("");
   const [descDrafting, setDescDrafting] = useState(false);
 
+  // Optional reference document text — extracted from an uploaded source doc and
+  // fed to the AI draft as `sourceText` so it can ground the narrative in real content.
+  const [refText, setRefText] = useState("");
+
   // Narrative
   const [executiveSummary, setExecutiveSummary] = useState("");
   const [background, setBackground] = useState("");
@@ -254,6 +259,7 @@ export default function NewCharterTemplate() {
           function: department || undefined,
           category: category || undefined,
           approvedBudget: Number(approvedBudget) || undefined,
+          sourceText: refText || undefined,
         }),
       });
       if (!res.ok) {
@@ -286,6 +292,7 @@ export default function NewCharterTemplate() {
           function: department || undefined,
           category: category || undefined,
           approvedBudget: Number(approvedBudget) || undefined,
+          sourceText: refText || undefined,
         }),
       });
       if (!res.ok) {
@@ -516,6 +523,7 @@ export default function NewCharterTemplate() {
               context="the 'Project Description' of a Project Charter"
               placeholder="What the project is, the problem it solves, and the value it delivers… or use “Draft with AI”."
             />
+            <ReferenceDocUpload onText={setRefText} />
           </Section>
 
           {/* ── Key Project Members + Budget (side by side) ───────────────── */}

@@ -7,6 +7,7 @@ import vendorAuthRouter from "./routes/vendor_auth";
 import vendorPortalRouter from "./routes/vendor_portal";
 import templateFilesRouter from "./routes/template-files";
 import localUploadsRouter from "./routes/local-uploads";
+import documentsPublicRouter from "./routes/documents-public";
 import { logger } from "./lib/logger";
 import { requireAuth } from "./middlewares/requireAuth";
 
@@ -85,6 +86,11 @@ app.use("/api", templateFilesRouter);
 // /storage/uploads/request-url handler and only flows back to the browser
 // over that authed channel. Dev/non-Replit deploys only.
 app.use("/api", localUploadsRouter);
+
+// Public per-document RAW read (wget) + tech-team push (curl, shared-secret
+// guarded). Mounted BEFORE requireAuth so plain wget/curl need no Bearer.
+// Only /documents/:id/raw lives here; /documents/:id stays behind requireAuth.
+app.use("/api", documentsPublicRouter);
 
 app.use("/api", requireAuth, router);
 
