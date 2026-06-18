@@ -22,6 +22,7 @@ import {
   ShieldCheck,
   LayoutGrid,
   Wrench,
+  FlaskConical,
 } from "lucide-react";
 
 const SIDEBAR_COLLAPSED_KEY = "ph:sidebar:collapsed";
@@ -69,7 +70,10 @@ const ADMIN_ITEMS: Item[] = [
   { icon: BellRing, label: "Escalation Ladders", href: "/admin/stage-escalation" },
   { icon: ShieldCheck, label: "DOA Matrix", href: "/admin/doa-matrix" },
 ];
-const ROLES_ITEMS: Item[] = [{ icon: ShieldCheck, label: "Roles & Access", href: "/admin/roles" }];
+const ROLES_ITEMS: Item[] = [
+  { icon: ShieldCheck, label: "Roles & Access", href: "/admin/roles" },
+  { icon: FlaskConical, label: "CIP", href: "/admin/cip" },
+];
 
 /**
  * Project Hub sidebar — the suite-shared CollapsibleSidebar (same component as
@@ -143,7 +147,10 @@ export default function PmoSidebar({
       { icon: LayoutGrid, label: "Workspace", href: WORKSPACE_ITEMS[0]!.href },
     ] });
     if (isAdmin) sections.push({ items: [{ icon: Wrench, label: "Admin", href: "/admin/scoring" }] });
-    if (isSuperAdmin) sections.push({ items: [{ icon: ShieldCheck, label: "Roles & Access", href: "/admin/roles" }] });
+    if (isSuperAdmin) sections.push({ items: [
+      { icon: ShieldCheck, label: "Roles & Access", href: "/admin/roles" },
+      { icon: FlaskConical, label: "CIP", href: "/admin/cip" },
+    ] });
   } else {
     sections = [
       { items: [PORTFOLIO, PROJECTS, CHARTER, MY_TASKS] },
