@@ -12,14 +12,13 @@ import {
   ListChecks, Flag, IndianRupee, Calendar, Clock, FileText,
   Trophy, AlertCircle, ChevronDown, ChevronRight, LayoutGrid, BarChart3,
   Search, ArrowUp, ArrowDown, ArrowUpDown, ArrowRight, Users, X,
-  BellRing, Check, Loader2, Crown,
+  BellRing, Check, Loader2, Crown, Info,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { KPITile, DashboardCard, FilterBar, RAGBadge, Drillable, type DrillColumn } from "../components/dashboard/primitives";
+import { KPITile, DashboardCard, RAGBadge, Drillable, type DrillColumn } from "../components/dashboard/primitives";
 import { formatCurrency } from "../lib/format";
-import { classify, HEALTH_META, type Health } from "../lib/health";
-import { TASK_PRIORITIES } from "../lib/task-constants";
+import { HEALTH_META, type Health } from "../lib/health";
 import { chartTooltipProps, HoverHint } from "@/components/ui-kit";
 import { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell } from "@/components/ui/table";
 
@@ -36,21 +35,16 @@ const C = {
   grey: "#94A3B8",
 };
 const PRIORITY_COLORS: Record<string, string> = { P0: C.red, P1: "#F97316", P2: C.amber, P3: C.green };
-// Readable priority labels for the summary chips (values stay P0–P3 in the data).
-const PRIORITY_LABEL: Record<string, string> = { P0: "Critical", P1: "High", P2: "Medium", P3: "Low" };
 
 // ── Local data hooks (same endpoints the role dashboards use) ─────────────────
 
-const STATUS_OPTS = [
-  { value: "new", label: "New" },
-  { value: "active", label: "Active" },
+// Health filter — the computed delivery health (same buckets as the tiles).
+const HEALTH_OPTS = [
+  { value: "on_track", label: "On Track" },
+  { value: "at_risk", label: "Off Track" },
+  { value: "delayed", label: "Delayed" },
   { value: "completed", label: "Completed" },
-  { value: "cancelled", label: "Cancelled" },
-  { value: "postponed", label: "Postponed" },
 ];
-// Priority dropdown shows the readable labels (Critical/High/Medium/Low);
-// values stay P0–P3 to match how priority is stored on a project.
-const PRIORITY_OPTS = TASK_PRIORITIES.map(p => ({ value: p.value, label: p.label }));
 
 // Portfolio Summary table columns + their default share of the table width (%).
 // The single "Delivery" bar (ported from the 5191 portfolio board) merges the
@@ -128,6 +122,13 @@ type DeliveryKey = keyof typeof DELIVERY_HEALTH_COLORS;
 // Delivery bar). Short label for the badge; longer description on hover.
 const DELIVERY_STATUS_LABEL: Record<DeliveryKey, string> = { on_track: "On Track", off_track: "Off Track", delayed: "Delayed", na: "N/A" };
 const DELIVERY_DESC: Record<DeliveryKey, string> = { on_track: "On track", off_track: "Off track — behind schedule", delayed: "Delayed — past due", na: "Not applicable" };
+// Short one-liners shown on the legend "i" hover.
+const DELIVERY_LEGEND_DESC: Record<DeliveryKey, string> = {
+  on_track: "On schedule — task completion keeps pace with the elapsed timeline.",
+  off_track: "Behind schedule — completion trails the elapsed timeline by more than 15%.",
+  delayed: "Past the planned end date and not yet complete.",
+  na: "Cancelled or postponed — not actively tracked.",
+};
 
 function deliveryHealthKey(
   p: { status?: string | null; start?: string | null; end?: string | null; progress?: number | null },
@@ -153,6 +154,23 @@ function deliveryHealthKey(
     expectedPct = Math.min(100, Math.max(0, ((now - start) / (end - start)) * 100));
   if (expectedPct - actualPct > 15) return "off_track";
 
+  return "on_track";
+}
+
+// Schedule-computed health for the headline tiles. Same rule as the Delivery
+// bar — past the planned end date → Delayed, task completion >15 pts behind the
+// elapsed timeline → At Risk — so the tiles reflect actual schedule rather than
+// the manually-set RAG flag. (cancelled/postponed "na" folds into on_track, as
+// the old RAG-based classify already did.)
+function scheduleHealth(
+  p: { status?: string | null; startDate?: string | null; endDate?: string | null; progress?: number | null },
+  agg?: TaskAgg,
+): Health {
+  const status = (p.status ?? "").toLowerCase();
+  if (status === "completed" || status === "closed") return "completed";
+  const k = deliveryHealthKey({ status: p.status, start: p.startDate, end: p.endDate, progress: p.progress }, agg);
+  if (k === "delayed") return "delayed";
+  if (k === "off_track") return "at_risk";
   return "on_track";
 }
 function deliveryFill(
@@ -431,6 +449,9 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
 
   const [filters, setFilters] = useState<Record<string, string>>({});
   const handleFilter = (k: string, v: string) => setFilters(f => ({ ...f, [k]: v }));
+  // The filter controls render in the app top bar (Layout's #ph-topbar-slot).
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => { setHeaderSlot(document.getElementById("ph-topbar-slot")); }, []);
 
   // Collapsible top bands — collapse to bring the Portfolio Summary into view.
   const [metricsOpen, setMetricsOpen] = useState(true);
@@ -483,10 +504,13 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
   const filtered = useMemo(() => {
     let list = projects;
     if (filters.dept) list = list.filter(p => p.function === filters.dept);
-    if (filters.status) list = list.filter(p => p.status === filters.status);
-    if (filters.priority) list = list.filter(p => p.priority === filters.priority);
+    if (filters.health) list = list.filter(p => scheduleHealth(p, taskAgg.get(p.id)) === filters.health);
+    if (filters.q) {
+      const q = filters.q.trim().toLowerCase();
+      list = list.filter(p => (p.name ?? "").toLowerCase().includes(q) || (p.function ?? "").toLowerCase().includes(q));
+    }
     return list;
-  }, [projects, filters]);
+  }, [projects, filters, taskAgg]);
 
   // ── Derived aggregates ──────────────────────────────────────────────────────
   const rows = useMemo(() => filtered.map(p => {
@@ -505,7 +529,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
       start: p.startDate, end: p.endDate,
       progress: p.progress ?? 0,
       status: p.status,
-      health: classify(p),
+      health: scheduleHealth(p, taskAgg.get(p.id)),
       priority: p.priority,
       dept: p.function ?? "—",
       budget, spend,
@@ -513,7 +537,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
       budgetVarPct: (p as unknown as Record<string, unknown>).budgetVariancePct as number | null,
       schedVarDays: (p as unknown as Record<string, unknown>).scheduleVarianceDays as number | null,
     };
-  }), [filtered, userById, photoById, ownerIdByCharter]);
+  }), [filtered, userById, photoById, ownerIdByCharter, taskAgg]);
 
   const counts = useMemo(() => {
     const c = { on_track: 0, at_risk: 0, delayed: 0, completed: 0 };
@@ -628,7 +652,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
     ) : <span className="text-xs text-muted-foreground/60">—</span> },
   ];
   const topDrillRows = topProjects.map((p) => ({
-    name: p.name, rag: p.ragStatus, progress: p.progress, sponsor: p.sponsor,
+    id: p.id, name: p.name, rag: p.ragStatus, progress: p.progress, sponsor: p.sponsor,
     due: p.end ? new Date(p.end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "",
   }));
 
@@ -648,6 +672,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
     { key: "detail", label: "Detail", render: (v) => <span className="text-xs text-muted-foreground">{v as string}</span> },
   ];
   const issuesDrillRows = issues.map((p) => ({
+    id: p.id,
     name: p.name,
     type: p.kind === "delayed" ? "Delayed" : "Off Track",
     detail: p.reason ?? (p.kind === "delayed" ? `${p.daysOverdue ?? 0}d overdue` : `${p.behindBy ?? 0}% behind`),
@@ -679,14 +704,29 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
     { key: "dept", label: "Department" },
     { key: "owner", label: "Owner" },
     { key: "status", label: "Status" },
-    { key: "progress", label: "Progress", align: "right", render: (v) => `${v}%` },
-    { key: "budget", label: "Budget", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) },
+    { key: "progress", label: "Progress", align: "right", render: (v, _r, expanded) => {
+      const pct = Math.max(0, Math.min(100, Number(v) || 0));
+      return expanded ? (
+        <div className="flex items-center gap-2 justify-end">
+          <div className="h-1.5 w-24 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${pct}%` }} /></div>
+          <span className="num-tabular w-9 text-right shrink-0">{pct}%</span>
+        </div>
+      ) : `${pct}%`;
+    } },
+  ];
+  // Off Track / Delayed drill — Budget swapped for the latest delay justification.
+  const projectDrillColsJustified: DrillColumn[] = [
+    ...projectDrillCols,
+    { key: "justification", label: "Justification", render: (v) => String(v || "—") },
   ];
   const toProjectDrillRow = (r: typeof rows[number]) => ({
-    name: r.name, dept: r.dept, owner: r.owner, status: HEALTH_META[r.health].label, progress: r.progress, budget: r.budget,
+    id: r.id, name: r.name, dept: r.dept, owner: r.owner, status: HEALTH_META[r.health].label, progress: r.progress,
+    justification: justByProject.get(r.id)?.justification ?? "",
   });
   const allProjectDrillRows = rows.map(toProjectDrillRow);
   const projectRowsByHealth = (h: Health) => rows.filter((r) => r.health === h).map(toProjectDrillRow);
+  // Clicking a project row in a drill popup opens that project.
+  const projectRowHref = (row: Record<string, unknown>) => (row.id != null ? `/projects/${row.id}` : null);
 
   const budgetDrillCols: DrillColumn[] = [
     { key: "name", label: "Project" },
@@ -748,20 +788,53 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
   }
 
   return (
-    <div className="space-y-5 min-w-0 overflow-x-clip">
+    /* Negative top margin pulls the page up against the Layout's top padding —
+       the old Filters card that used to fill this space now lives in the top bar. */
+    <div className="space-y-5 min-w-0 overflow-x-clip -mt-2 sm:-mt-4 lg:-mt-6">
 
-      {/* Filters */}
-      <div className="glass-surface rounded-2xl p-4 ph-rise ph-rise-2">
-        <FilterBar
-          filters={[
+      {/* Filters — rendered in the app top bar (Layout's #ph-topbar-slot),
+          left corner: a rounded search + OHC-style pill dropdowns. */}
+      {headerSlot && createPortal(
+        <div className="flex items-center gap-2">
+          {/* Rounded search */}
+          <div className="relative w-52">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 pointer-events-none" />
+            <input
+              value={filters.q ?? ""}
+              onChange={e => handleFilter("q", e.target.value)}
+              placeholder="Search projects…"
+              className="w-full text-xs rounded-full pl-8 pr-7 py-2 bg-card text-card-foreground border border-border focus:outline-none focus:ring-2 focus:ring-ring/40"
+            />
+            {filters.q && (
+              <button
+                onClick={() => handleFilter("q", "")}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
+          {/* OHC-style pill dropdowns */}
+          {[
             { key: "dept", label: "Department", options: deptOptions },
-            { key: "status", label: "Status", options: STATUS_OPTS },
-            { key: "priority", label: "Priority", options: PRIORITY_OPTS },
-          ]}
-          values={filters}
-          onChange={handleFilter}
-        />
-      </div>
+            { key: "health", label: "Health", options: HEALTH_OPTS },
+          ].map(f => (
+            <div key={f.key} className="relative">
+              <select
+                value={filters[f.key] ?? ""}
+                onChange={e => handleFilter(f.key, e.target.value)}
+                className="appearance-none text-xs rounded-full border border-border bg-card text-card-foreground pl-3.5 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-ring/40 cursor-pointer"
+              >
+                <option value="">{f.label}: All</option>
+                {f.options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60 pointer-events-none" />
+            </div>
+          ))}
+        </div>,
+        headerSlot,
+      )}
 
       <CollapsibleSection
         title="Key Metrics"
@@ -775,26 +848,32 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
           you the health of the portfolio at a glance, so they get the hero
           treatment — larger tiles, a tone wash and a staggered entrance — and
           sit on their own row above the supporting metrics. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="ph-rise">
-          <KPITile featured label="Total Projects" value={rows.length} icon={FolderKanban} tone="primary" sub="Matching filters"
-            hint={{ footer: "Count of projects matching the current Department / Status / Priority filters. Click for the list." }}
-            drill={{ subtitle: "Projects matching the current filters", columns: projectDrillCols, rows: allProjectDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No projects match the filters." }} />
+          <KPITile featured label="Total Projects" value={rows.length} icon={FolderKanban} tone="primary"
+            sub={`${counts.on_track + counts.at_risk + counts.delayed} in flight · ${counts.completed} completed`}
+            hint={{ rows: [{ label: "In flight", value: counts.on_track + counts.at_risk + counts.delayed }, { label: "Completed", value: counts.completed }], footer: "All projects matching the current filters. On Track + Off Track + Delayed cover the in-flight ones; completed projects are the Completed tile." }}
+            drill={{ subtitle: "Projects matching the current filters", columns: projectDrillCols, rows: allProjectDrillRows, rowHref: projectRowHref, emptyText: "No projects match the filters." }} />
         </div>
         <div className="ph-rise ph-rise-2">
           <KPITile featured label="On Track" value={counts.on_track} icon={CheckCircle2} tone="success" valueClassName="text-success" sub={`${Math.round(counts.on_track / n * 100)}% of portfolio`}
-            hint={{ rows: [{ label: "Share of portfolio", value: `${Math.round(counts.on_track / n * 100)}%` }], footer: "Projects whose RAG status is Green (not completed). RAG is set on each project." }}
-            drill={{ subtitle: "Projects rated on-track (green)", columns: projectDrillCols, rows: projectRowsByHealth("on_track"), linkHref: "/projects", linkLabel: "View all projects", emptyText: "No on-track projects." }} />
+            hint={{ rows: [{ label: "Share of portfolio", value: `${Math.round(counts.on_track / n * 100)}%` }], footer: "On schedule." }}
+            drill={{ subtitle: "Projects on schedule", columns: projectDrillCols, rows: projectRowsByHealth("on_track"), rowHref: projectRowHref, emptyText: "No on-track projects." }} />
         </div>
         <div className="ph-rise ph-rise-3">
-          <KPITile featured label="At Risk" value={counts.at_risk} icon={AlertTriangle} tone="warn" valueClassName="text-warn" sub={`${Math.round(counts.at_risk / n * 100)}% of portfolio`}
-            hint={{ rows: [{ label: "Share of portfolio", value: `${Math.round(counts.at_risk / n * 100)}%` }], footer: "Projects whose RAG status is Amber — slipping or at over-spend risk." }}
-            drill={{ subtitle: "Projects rated at-risk (amber)", columns: projectDrillCols, rows: projectRowsByHealth("at_risk"), linkHref: "/projects", linkLabel: "View all projects", emptyText: "No at-risk projects." }} />
+          <KPITile featured label="Off Track" value={counts.at_risk} icon={AlertTriangle} tone="warn" valueClassName="text-warn" sub={`${Math.round(counts.at_risk / n * 100)}% of portfolio`}
+            hint={{ rows: [{ label: "Share of portfolio", value: `${Math.round(counts.at_risk / n * 100)}%` }], footer: "Behind schedule." }}
+            drill={{ subtitle: "Projects behind schedule (>15% off the timeline)", columns: projectDrillColsJustified, rows: projectRowsByHealth("at_risk"), rowHref: projectRowHref, emptyText: "No off-track projects." }} />
         </div>
         <div className="ph-rise ph-rise-4">
           <KPITile featured label="Delayed" value={counts.delayed} icon={AlertOctagon} tone="danger" valueClassName="text-destructive" sub={`${Math.round(counts.delayed / n * 100)}% of portfolio`}
-            hint={{ rows: [{ label: "Share of portfolio", value: `${Math.round(counts.delayed / n * 100)}%` }], footer: "Projects whose RAG status is Red — behind schedule or over budget." }}
-            drill={{ subtitle: "Projects rated delayed (red)", columns: projectDrillCols, rows: projectRowsByHealth("delayed"), linkHref: "/projects", linkLabel: "View all projects", emptyText: "No delayed projects." }} />
+            hint={{ rows: [{ label: "Share of portfolio", value: `${Math.round(counts.delayed / n * 100)}%` }], footer: "Past its due date." }}
+            drill={{ subtitle: "Projects past their planned end date", columns: projectDrillColsJustified, rows: projectRowsByHealth("delayed"), rowHref: projectRowHref, emptyText: "No delayed projects." }} />
+        </div>
+        <div className="ph-rise ph-rise-4">
+          <KPITile featured label="Completed" value={counts.completed} icon={Check} tone="primary" sub={`${Math.round(counts.completed / n * 100)}% of portfolio`}
+            hint={{ rows: [{ label: "Share of portfolio", value: `${Math.round(counts.completed / n * 100)}%` }], footer: "Delivered and closed — status is completed." }}
+            drill={{ subtitle: "Completed projects", columns: projectDrillCols, rows: projectRowsByHealth("completed"), rowHref: projectRowHref, emptyText: "No completed projects." }} />
         </div>
       </div>
 
@@ -811,36 +890,36 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
               { label: "Est. spend", value: formatCurrency(Math.round(estimatedSpend)) },
               { label: "Avg progress", value: `${Math.round(avgProgress)}%` },
             ],
-            footer: "(Est. Spend − 50% of Planned) ÷ Planned × 100 · Est. Spend = Planned × Avg Progress%",
+            footer: "How much over or under budget the portfolio is.",
           }}
-          drill={{ subtitle: "Budget per active project (CapEx + OpEx) feeding the variance", columns: budgetDrillCols, rows: budgetDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No project budgets." }} />
+          drill={{ subtitle: "Budget per active project (CapEx + OpEx) feeding the variance", columns: budgetDrillCols, rows: budgetDrillRows, rowHref: projectRowHref, emptyText: "No project budgets." }} />
         <KPITile compact label="Schedule Variance" value={`${schedVarianceDays >= 0 ? "+" : ""}${schedVarianceDays}d`} icon={Calendar}
           tone={schedVarianceDays < -5 ? "danger" : schedVarianceDays < 0 ? "warn" : "success"}
           trend={schedVarianceDays >= 0 ? "up" : "down"}
           trendLabel={schedVarianceDays >= 0 ? "Ahead of plan" : "Behind plan"}
           hint={{
             rows: [{ label: "Projects with dates", value: datedActive.length }],
-            footer: "Avg of (Actual Progress% − Expected Progress%) × Duration · Expected% = Elapsed ÷ Total Days",
+            footer: "How many days ahead of or behind schedule the portfolio is.",
           }}
-          drill={{ subtitle: "Schedule variance per active project (progress vs elapsed time)", columns: [{ key: "name", label: "Project" }, { key: "progress", label: "Progress", align: "right" }, { key: "expected", label: "Expected", align: "right" }, { key: "variance", label: "Variance", align: "right" }], rows: schedDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No projects with start/end dates." }} />
+          drill={{ subtitle: "Schedule variance per active project (progress vs elapsed time)", columns: [{ key: "name", label: "Project" }, { key: "progress", label: "Progress", align: "right" }, { key: "expected", label: "Expected", align: "right" }, { key: "variance", label: "Variance", align: "right" }], rows: schedDrillRows, rowHref: projectRowHref, emptyText: "No projects with start/end dates." }} />
         <KPITile compact label="Due in 30 Days" value={upcomingIn30.length} icon={Clock} tone="amber" sub="Upcoming deadlines"
           hint={{ footer: "Active projects whose planned end date falls within the next 30 days." }}
-          drill={{ subtitle: "Active projects due within 30 days", columns: [{ key: "name", label: "Project" }, { key: "due", label: "Due Date" }], rows: dueDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No deadlines in the next 30 days." }} />
+          drill={{ subtitle: "Active projects due within 30 days", columns: [{ key: "name", label: "Project" }, { key: "due", label: "Due Date" }], rows: dueDrillRows, rowHref: projectRowHref, emptyText: "No deadlines in the next 30 days." }} />
         <KPITile compact label="Pending Approvals" value={summary?.pendingApprovals ?? 0} icon={FileText} tone="primary" sub="Awaiting action"
           hint={{ footer: "Charters currently sitting in a review stage (submitted → PMO review), awaiting an approver decision." }}
           drill={{ subtitle: "Charters in review stages", columns: [{ key: "stage", label: "Review Stage" }, { key: "count", label: "Charters", align: "right" }], rows: approvalDrillRows, linkHref: "/approvals", linkLabel: "Open approvals queue", emptyText: "No charters awaiting review." }} />
         <KPITile compact label="Top Strategic Projects" value={topProjects.length} icon={Trophy} tone="primary" sub="By progress"
           hint={{ footer: "Top 10 active projects ranked by % progress — same as the Project Hub executive dashboard." }}
-          drill={{ title: "Top Strategic Projects", subtitle: "Active projects by progress — with sponsor and next milestone", columns: topDrillCols, rows: topDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No active projects." }} />
+          drill={{ title: "Top Strategic Projects", subtitle: "Active projects by progress — with sponsor and next milestone", columns: topDrillCols, rows: topDrillRows, rowHref: projectRowHref, emptyText: "No active projects." }} />
         <KPITile compact label="Issues Requiring Attention" value={issues.length} icon={AlertCircle} tone={issues.length > 0 ? "danger" : "success"} sub={issues.length > 0 ? "Delayed / off-track" : "All on track"}
           hint={{ footer: "Active projects flagged Delayed (end date passed) or Off Track (progress gap > 15%). Click to see the data." }}
-          drill={{ title: "Issues Requiring Attention", subtitle: "Delayed & off-track projects — click a row to open", columns: issuesDrillCols, rows: issuesDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No issues — all projects on track." }} />
+          drill={{ title: "Issues Requiring Attention", subtitle: "Delayed & off-track projects — click a row to open", columns: issuesDrillCols, rows: issuesDrillRows, rowHref: projectRowHref, emptyText: "No issues — all projects on track." }} />
       </div>
 
       {/* Budget — a single slim utilization strip, placed below all the KPI
           cards so it spans the full width without crowding the metric tiles. */}
       <Drillable
-        drill={{ title: "Budget", subtitle: "Budget vs estimated spend per project", columns: budgetDrillCols, rows: budgetDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No project budgets." }}
+        drill={{ title: "Budget", subtitle: "Budget vs estimated spend per project", columns: budgetDrillCols, rows: budgetDrillRows, rowHref: projectRowHref, emptyText: "No project budgets." }}
         className="rounded-xl border border-card-border glass-surface lift-card"
       >
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-2.5">
@@ -910,7 +989,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
         </DashboardCard>
 
         <DashboardCard title="Budget vs Spend" subtitle="Spend estimated as Σ(budget × % complete)"
-          drill={{ subtitle: "Budget vs estimated spend, per project", columns: budgetDrillCols, rows: budgetDrillRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No project budgets." }}>
+          drill={{ subtitle: "Budget vs estimated spend, per project", columns: budgetDrillCols, rows: budgetDrillRows, rowHref: projectRowHref, emptyText: "No project budgets." }}>
           <ResponsiveContainer width="100%" height={120}>
             <BarChart data={[{ name: "Budget", v: totalBudget, c: C.indigo }, { name: "Est. Spend", v: totalSpend, c: C.violet }]} layout="vertical" margin={{ top: 8, right: 48, bottom: 4, left: 8 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
@@ -1137,6 +1216,9 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                     <span key={s.k} className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
                       <span className="w-2 h-2 rounded-sm" style={{ background: DELIVERY_HEALTH_COLORS[s.k] }} />
                       {s.label}
+                      <HoverHint label={DELIVERY_LEGEND_DESC[s.k]}>
+                        <Info size={11} className="text-muted-foreground/50 hover:text-muted-foreground cursor-help" />
+                      </HoverHint>
                       <span className="font-semibold num-tabular text-card-foreground">{summaryHealthCounts[s.k]}</span>
                       <span className="text-muted-foreground/60">· {Math.round((summaryHealthCounts[s.k] / summaryRows.length) * 100)}%</span>
                     </span>
@@ -1149,14 +1231,15 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
 
         {/* Table */}
         <div className="overflow-x-auto">
-          <Table className="min-w-[1000px] table-fixed">
+          <Table className="min-w-[1000px] table-fixed [&_th]:border-r [&_th]:border-border/50 [&_td]:border-r [&_td]:border-border/40 [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0">
             <colgroup>
               <col style={{ width: "11%" }} />
-              <col style={{ width: "19%" }} />
-              <col style={{ width: "12%" }} />
               <col style={{ width: "14%" }} />
               <col style={{ width: "12%" }} />
-              <col style={{ width: "16%" }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "9%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "12%" }} />
               <col style={{ width: "8%" }} />
               <col style={{ width: "8%" }} />
             </colgroup>
@@ -1167,6 +1250,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                   { key: "name", label: "Project", align: "left", sortable: true },
                   { key: null, label: "Owner", align: "left", sortable: false },
                   { key: "progress", label: "Progress", align: "left", sortable: true },
+                  { key: null, label: "Due", align: "left", sortable: false },
                   { key: null, label: "Timeline", align: "left", sortable: false },
                   { key: null, label: "Justification", align: "left", sortable: false },
                   { key: "budgetVar", label: "Budget", align: "right", sortable: true },
@@ -1177,7 +1261,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                   return (
                     <TableHead
                       key={c.label}
-                      className={`h-10 text-[10px] font-mono uppercase tracking-wider font-semibold text-muted-foreground/70 ${i === 0 ? "pl-5" : "px-3"} ${i === 7 ? "pr-5" : ""}`}
+                      className={`h-10 text-[10px] font-mono uppercase tracking-wider font-semibold text-muted-foreground/70 ${i === 0 ? "pl-5" : "px-3"} ${i === 8 ? "pr-5" : ""}`}
                     >
                       {c.sortable ? (
                         <button
@@ -1221,7 +1305,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                       </HoverHint>
                     </TableCell>
 
-                    {/* Project — name + dept · priority (calm inline text, no pill) */}
+                    {/* Project — name + dept (priority label removed) */}
                     <TableCell className="py-3.5 px-3 align-middle">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[13px] font-medium text-card-foreground truncate group-hover:text-primary transition-colors">{r.name}</span>
@@ -1229,7 +1313,6 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                       </div>
                       <div className="flex items-center gap-1.5 mt-0.5 text-[10.5px] text-muted-foreground truncate">
                         <span className="truncate">{r.dept}</span>
-                        {r.priority && <><span className="text-muted-foreground/40">·</span><span className="font-medium" style={{ color: PRIORITY_COLORS[r.priority] ?? C.grey }}>{PRIORITY_LABEL[r.priority] ?? r.priority}</span></>}
                       </div>
                     </TableCell>
 
@@ -1254,17 +1337,32 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                       )}
                     </TableCell>
 
-                    {/* Timeline — date range + relative status */}
+                    {/* Due — planned end date, coloured by overdue/completed */}
+                    <TableCell className="py-3.5 px-3 align-middle">
+                      {endDate ? (
+                        <span
+                          className="text-[11.5px] font-medium tabular-nums whitespace-nowrap"
+                          style={{ color: completed ? C.green : overdue ? C.red : undefined }}
+                        >
+                          {dShort(r.end)}
+                        </span>
+                      ) : <span className="text-[11px] text-muted-foreground/40">—</span>}
+                    </TableCell>
+
+                    {/* Timeline — date range in a pill; relative status below it */}
                     <TableCell className="py-3.5 px-3 align-middle">
                       {(r.start || r.end) ? (
-                        <div className="whitespace-nowrap">
-                          <div className="text-[11.5px] text-card-foreground tabular-nums">{dShort(r.start)} – {dShort(r.end)}</div>
-                          <div className="mt-0.5 text-[10px] font-medium">
-                            {completed ? <span style={{ color: C.green }}>Completed</span>
-                              : overdue ? <span style={{ color: C.red }}>{Math.abs(daysLeft!)}d overdue</span>
-                              : daysLeft != null ? <span className="text-muted-foreground">{daysLeft}d left</span>
-                              : null}
-                          </div>
+                        <div className="flex flex-col items-start gap-1">
+                          <span className="inline-flex rounded-full bg-muted/70 ring-1 ring-border/60 px-2.5 py-1 whitespace-nowrap">
+                            <span className="text-[11.5px] text-card-foreground tabular-nums leading-tight">{dShort(r.start)} – {dShort(r.end)}</span>
+                          </span>
+                          {(completed || overdue || daysLeft != null) && (
+                            <span className="text-[10px] font-medium leading-tight pl-0.5">
+                              {completed ? <span style={{ color: C.green }}>Completed</span>
+                                : overdue ? <span style={{ color: C.red }}>{Math.abs(daysLeft!)}d overdue</span>
+                                : <span className="text-muted-foreground">{daysLeft}d left</span>}
+                            </span>
+                          )}
                         </div>
                       ) : <span className="text-[11px] text-muted-foreground/40">—</span>}
                     </TableCell>
@@ -1273,7 +1371,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                         the recorded reason (hover for full text); for a delayed /
                         off-track project with none yet, a one-click request pings
                         the owner. */}
-                    <TableCell className="py-3.5 px-3 align-middle" onClick={(e) => e.stopPropagation()}>
+                    <TableCell className="py-3.5 px-3 align-middle overflow-hidden" onClick={(e) => e.stopPropagation()}>
                       {(() => {
                         const j = justByProject.get(r.id);
                         if (j) {
@@ -1288,10 +1386,12 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                           const isRequesting = requesting.has(r.id);
                           const isRequested = requested.has(r.id);
                           return (
-                            <div className="flex items-center gap-1.5">
-                              <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600 ring-1 ring-red-200 whitespace-nowrap">
-                                Pending from {pendingOwner ?? "Owner"}
-                              </span>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <HoverHint label={pendingOwner ? `Justification pending from ${pendingOwner}` : "Justification pending"}>
+                                <span className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-600 ring-1 ring-red-200 whitespace-nowrap shrink-0 cursor-help">
+                                  Pending
+                                </span>
+                              </HoverHint>
                               <HoverHint label={isRequested ? "Reminder sent to the owner" : `Request justification from ${pendingOwner ?? "the owner"} (email + notification)`}>
                                 <button
                                   type="button"

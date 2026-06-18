@@ -120,6 +120,18 @@ export default function ExecutiveDashboard() {
   const activeProjects = projects?.filter(p => p.status === "active") ?? [];
   const { data: allIssues = [] } = useAllProjectIssues(activeProjects.map(p => p.id), refetchInterval);
 
+  // Latest delay / on-hold justification per project — fills the drill-down
+  // "Justification" column. Same endpoint the Projects page uses.
+  const { data: justifications = [] } = useQuery({
+    queryKey: ["/api/project-justifications/latest"],
+    queryFn: async () => {
+      const r = await fetch("/api/project-justifications/latest");
+      if (!r.ok) return [] as Array<{ projectId: number; justification: string }>;
+      return r.json() as Promise<Array<{ projectId: number; justification: string }>>;
+    },
+  });
+  const justificationByProject = new Map(justifications.map(j => [j.projectId, j.justification]));
+
   const health = summary?.projectHealth as {
     active?: number; onTrack?: number; offTrack?: number; delayed?: number;
   } | undefined;
@@ -168,12 +180,12 @@ export default function ExecutiveDashboard() {
     { key: "name", label: "Project" },
     { key: "rag", label: "RAG", render: (v) => titleCase(String(v ?? "—")) },
     { key: "progress", label: "Progress", align: "right", render: (v) => `${v ?? 0}%` },
-    { key: "budget", label: "Budget", align: "right", render: (v) => formatCurrency(Number(v ?? 0)) },
+    { key: "justification", label: "Justification", render: (v) => String(v || "—") },
     { key: "due", label: "Due", render: (v) => String(v ?? "—") },
   ];
   const toProjectRow = (p: typeof activeProjects[number]) => ({
     name: p.name, rag: p.ragStatus ?? "—", progress: p.progress ?? 0,
-    budget: (p.capexBudget ?? 0) + (p.opexBudget ?? 0), due: fmtDate(p.endDate),
+    justification: justificationByProject.get(p.id) ?? "", due: fmtDate(p.endDate),
   });
   const activeRows = activeProjects.map(toProjectRow);
   const greenRows = activeProjects.filter((p) => (p.ragStatus ?? "green") === "green").map(toProjectRow);
@@ -350,7 +362,7 @@ export default function ExecutiveDashboard() {
                     sub={`Portfolio: ${formatCurrency(totalPlanned)}`}
                     trend={budgetVariancePct > 5 ? "down" : budgetVariancePct < -5 ? "up" : "flat"}
                     trendLabel={budgetVariancePct > 0 ? "Over baseline" : "Under baseline"}
-                    caption="(Est. Spend − 50% of Planned) ÷ Planned × 100 · Est. Spend = Planned × Avg Progress%"
+                    caption="How much over or under budget the project is."
                     drill={{ subtitle: "Budget per active project (CapEx + OpEx) feeding the variance", columns: budgetCols, rows: budgetRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No project budgets." }}
                   />
                 )}
@@ -363,7 +375,7 @@ export default function ExecutiveDashboard() {
                     sub="Avg across active projects"
                     trend={schedVarianceDays >= 0 ? "up" : "down"}
                     trendLabel={schedVarianceDays >= 0 ? "Ahead of plan" : "Behind plan"}
-                    caption="Avg of (Actual Progress% − Expected Progress%) × Duration · Expected% = Elapsed ÷ Total Days"
+                    caption="How many days ahead of or behind schedule the project is."
                     drill={{ subtitle: "Schedule variance per active project (progress vs elapsed time)", columns: schedCols, rows: schedRows, linkHref: "/projects", linkLabel: "View all projects", emptyText: "No projects with start/end dates." }}
                   />
                 )}

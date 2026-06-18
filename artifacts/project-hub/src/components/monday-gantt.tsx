@@ -61,8 +61,10 @@ export function MondayGantt({
   showDeps = false,
   labelWidth = 320,
   labelHeader = "Name",
+  labelHeaderExpanded,
   extraControls,
   autoFitOnLoad = false,
+  defaultCollapsed = false,
 }: {
   groups: GanttGroup[];
   onOpen?: (id: number) => void;
@@ -74,14 +76,27 @@ export function MondayGantt({
   showDeps?: boolean;
   labelWidth?: number;
   labelHeader?: string;
+  /** When a group (milestone) is expanded, the label-column header switches to
+   *  this — e.g. "Milestones" collapsed → "Tasks" once a milestone is opened. */
+  labelHeaderExpanded?: string;
   extraControls?: ReactNode;
   /** When true, the chart sizes itself to show the whole timeline without
    *  horizontal scrolling on first load (and once more when async data first
    *  arrives). Subsequent manual zoom / "Auto fit" clicks are never overridden. */
   autoFitOnLoad?: boolean;
+  /** Collapse every group on first load (groups often arrive async, so this
+   *  fires once when the first non-empty group set lands). User toggles after
+   *  are preserved. */
+  defaultCollapsed?: boolean;
 }) {
   const [pxPerDay, setPxPerDay] = useState(22);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const didInitCollapse = useRef(false);
+  useEffect(() => {
+    if (!defaultCollapsed || didInitCollapse.current || groups.length === 0) return;
+    didInitCollapse.current = true;
+    setCollapsed(Object.fromEntries(groups.map((g) => [g.key, true])));
+  }, [defaultCollapsed, groups]);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const pxRef = useRef(pxPerDay);
@@ -185,12 +200,20 @@ export function MondayGantt({
   const times: number[] = [];
   for (const it of allItems) { const s = msTime(it.start), e = msTime(it.end); if (s != null) times.push(s); if (e != null) times.push(e); }
 
-  if (times.length === 0) {
+  if (allItems.length === 0) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white text-sm text-muted-foreground text-center py-10">
         No start / end dates to chart.
       </div>
     );
+  }
+
+  // Items exist but none are dated (e.g. a search that matches only undated
+  // projects) — anchor a default ±2-week window on today so their rows still
+  // render with the "No dates" chip instead of the whole chart blanking out.
+  if (times.length === 0) {
+    const anchor = dayFloor(Date.now());
+    times.push(anchor - DAY_MS * 14, anchor + DAY_MS * 14);
   }
 
   // Real data range (un-padded) — month labels only render for months that
@@ -296,7 +319,6 @@ export function MondayGantt({
     <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
       {/* Toolbar — zoom presets + caller controls */}
       <div className="flex items-center gap-1 px-3 py-2 border-b border-gray-200 bg-white">
-        <span className="text-[10px] uppercase tracking-wider text-gray-400 mr-1">Zoom</span>
         <div className="relative" ref={zoomMenuRef}>
           <button
             type="button"
@@ -344,7 +366,7 @@ export function MondayGantt({
               style={{ width: labelWidth }}
               className="shrink-0 sticky left-0 z-40 bg-white border-r border-b border-gray-200 flex items-end px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400"
             >
-              {labelHeader}
+              {groups.some((g) => !collapsed[g.key]) && labelHeaderExpanded ? labelHeaderExpanded : labelHeader}
             </div>
             <div className="relative bg-white border-b border-gray-200" style={{ width: trackW, height: 40 }}>
               {/* divider between the year/month names (top) and the day/week
@@ -546,20 +568,32 @@ export function MondayGantt({
                 <Fragment key={g.key}>
                   {/* group header band */}
                   <div className="absolute left-0 right-0 bg-white border-b border-gray-200" style={{ top: headerY, height: GROUP_H }} />
-                  {span && (
-                    <div
-                      className="absolute rounded-[3px] shadow-sm"
-                      style={{
-                        top: headerY + GROUP_H / 2 - 3,
-                        left: xOf(span.lo),
-                        width: Math.max(xOf(span.hi) - xOf(span.lo) + pxPerDay, 6),
-                        height: 6,
-                        background: g.color,
-                        opacity: 0.85,
-                      }}
-                      title={`${g.label} · ${g.items.length} item(s)`}
-                    />
-                  )}
+                  {span && (() => {
+                    // Group progress = average of its (non-milestone) item bars,
+                    // surfaced as a very subtle lighter shade over the done portion.
+                    const prog = g.items.filter((it) => !it.isMilestone);
+                    const gp = prog.length
+                      ? Math.round(prog.reduce((a, it) => a + Math.max(0, Math.min(100, it.progress ?? 0)), 0) / prog.length)
+                      : 0;
+                    return (
+                      <div
+                        className="absolute rounded-[3px] shadow-sm overflow-hidden"
+                        style={{
+                          top: headerY + GROUP_H / 2 - 3,
+                          left: xOf(span.lo),
+                          width: Math.max(xOf(span.hi) - xOf(span.lo) + pxPerDay, 6),
+                          height: 6,
+                          background: g.color,
+                        }}
+                        title={`${g.label} · ${g.items.length} item(s) · ${gp}% complete`}
+                      >
+                        {/* done = rich solid colour; remaining lightened very subtly */}
+                        {gp < 100 && (
+                          <div className="absolute top-0 bottom-0 right-0" style={{ left: `${gp}%`, background: "rgba(255,255,255,0.45)" }} />
+                        )}
+                      </div>
+                    );
+                  })()}
                   {/* item bars */}
                   {open && g.items.map((it) => {
                     const cy = centerY.get(it.id)!;
@@ -590,6 +624,23 @@ export function MondayGantt({
                               className="absolute top-1/2 -right-2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white border-2 border-[#0073ea] shadow cursor-crosshair opacity-0 group-hover:opacity-100 hover:scale-125 transition-all z-30"
                             />
                           )}
+                        </div>
+                      );
+                    }
+
+                    // Undated project/task: no bar to plot. Show a muted "No dates"
+                    // chip pinned to the track start so the row is still visible and
+                    // honestly distinct from a real one-day bar at the chart edge.
+                    if (msTime(it.start) == null && msTime(it.end) == null) {
+                      return (
+                        <div
+                          key={it.id}
+                          onClick={() => onOpen?.(it.id)}
+                          title={`${it.name}\nNo start/end dates set`}
+                          className={`absolute ${onOpen ? "cursor-pointer" : ""} ${it.dim ? "opacity-40" : ""}`}
+                          style={{ top: cy - BAR_H / 2, left: 4, height: BAR_H }}
+                        >
+                          <span className="inline-flex items-center h-full px-2 rounded-[4px] border border-dashed border-gray-300 bg-gray-50 text-[10px] font-medium text-gray-400 whitespace-nowrap">No dates</span>
                         </div>
                       );
                     }

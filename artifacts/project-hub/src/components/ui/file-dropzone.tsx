@@ -18,6 +18,8 @@ interface FileDropzoneProps {
   maxSizeMB?: number;
   /** When set, shows the attached-file pill in place of the dropzone. */
   currentFileName?: string | null;
+  /** Slim single-line variant — smaller padding/icon, for tight layouts. */
+  compact?: boolean;
 }
 
 export function FileDropzone({
@@ -26,6 +28,7 @@ export function FileDropzone({
   accept,
   maxSizeMB = 25,
   currentFileName,
+  compact = false,
 }: FileDropzoneProps) {
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -133,7 +136,7 @@ export function FileDropzone({
           const file = e.dataTransfer.files[0];
           if (file) handleFile(file);
         }}
-        className={`rounded-md border-2 border-dashed p-5 text-center transition-colors ${
+        className={`rounded-md border-2 border-dashed text-center transition-colors ${compact ? "p-2" : "p-5"} ${
           uploading
             ? "border-muted bg-muted/40 cursor-default"
             : dragOver
@@ -151,6 +154,13 @@ export function FileDropzone({
                 style={{ width: `${progress}%` }}
               />
             </div>
+          </div>
+        ) : compact ? (
+          <div className="flex items-center justify-center gap-1.5">
+            <Upload size={14} className={dragOver ? "text-primary" : "text-muted-foreground"} />
+            <p className="text-[11px] font-medium text-foreground">
+              <span className="text-primary">Click to choose</span> or drag &amp; drop · up to {maxSizeMB}MB
+            </p>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-1.5">

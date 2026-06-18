@@ -1248,7 +1248,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
           >
             <option value="status">Status</option>
             <option value="priority">Priority</option>
-            <option value="assigneeId">Owner</option>
+            <option value="assigneeId">Assignee</option>
             <option value="none">None</option>
           </select>
         </div>
@@ -1299,7 +1299,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
               <th style={{ minWidth: 190, position: "sticky", left: 28, zIndex: 11, background: "hsl(var(--muted))", borderRight: "1px solid hsl(var(--border))" }} className={thCls}>Task Name <SortBtn col="name" /></th>
               {!isHidden("parent") && <th style={{ minWidth: 105 }} className={thCls}>Parent Task ID <SortBtn col="parentTaskId" /></th>}
               <th style={{ minWidth: 130 }} className={thCls}>Status <SortBtn col="status" /></th>
-              <th style={{ minWidth: 60, width: 60 }} className={thCls}>Owner <SortBtn col="assigneeId" /></th>
+              <th style={{ minWidth: 60, width: 60 }} className={thCls}>Assignee <SortBtn col="assigneeId" /></th>
               <th style={{ minWidth: 95 }} className={thCls}>Priority <SortBtn col="priority" /></th>
               {!isHidden("rag") && <th style={{ width: 55 }} className={thCls}>RAG <SortBtn col="rag" /></th>}
               {!isHidden("manager") && <th style={{ minWidth: 95 }} className={thCls}>Manager <SortBtn col="managerId" /></th>}

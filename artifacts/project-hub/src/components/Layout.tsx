@@ -2,42 +2,15 @@ import { Link, useLocation } from "wouter";
 import { useUserStore } from "../lib/store";
 import { useTheme } from "../lib/use-theme";
 import { useAuth } from "../auth/context";
-import { Sparkles, Settings, Plug, Moon, Sun } from "lucide-react";
+import { Settings, Plug, Moon, Sun, LogOut } from "lucide-react";
 import { useState, useEffect } from "react";
 import { AppHeader } from "@granules/shared/components/AppHeader";
 import PmoSidebar from "./PmoSidebar";
 import { NotificationBell } from "./notification-bell";
-import { RoleSimulator } from "./role-simulator";
-import { openAskNyra } from "./AskNyra";
-import { useAiStatus } from "./ai-button";
 import { ConnectorsPopup } from "./ConnectorsPopup";
 import { CharterNfaPopup } from "./CharterNfaPopup";
 
 const ADMIN_ROLES = ["pmo", "executive_director", "chairman"];
-
-// "Ask NYRA" launcher for the top header — opens the floating analyst panel
-// (AskNyra listens for ask-nyra:open). Hidden when AI isn't configured.
-function AskNyraButton() {
-  const status = useAiStatus();
-  if (status && !status.configured) return null;
-  return (
-    <button
-      type="button"
-      onClick={openAskNyra}
-      aria-label="Ask NYRA"
-      title="Ask NYRA — your portfolio analyst"
-      className="group relative flex items-center justify-center gap-2 h-9 w-9 sm:w-auto sm:px-3.5 rounded-full text-white
-        bg-[linear-gradient(110deg,#0E7FBE,#1090D0_55%,#34ABE6)] bg-[length:200%_100%] bg-[position:0%]
-        shadow-[0_2px_12px_-2px_rgba(16,144,208,0.55)] ring-1 ring-white/10
-        hover:bg-[position:100%] hover:shadow-[0_4px_18px_-2px_rgba(16,144,208,0.7)]
-        transition-[background-position,box-shadow] duration-500 ease-out"
-    >
-      <Sparkles size={15} className="shrink-0 drop-shadow-sm transition-transform duration-500 group-hover:rotate-[18deg] group-hover:scale-110" />
-      <span className="hidden sm:inline text-[13px] font-semibold tracking-tight">Ask NYRA</span>
-      <span aria-hidden className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-t from-transparent to-white/15" />
-    </button>
-  );
-}
 
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
@@ -84,6 +57,28 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const isAdmin = ADMIN_ROLES.includes(role);
   const isSuperAdmin = !!profile?.is_super_admin;
 
+  // Signed-in identity — moved out of the top bar to the sidebar foot.
+  const initials = displayName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase()).join("") || "U";
+  const profileFooter = (
+    <div className="flex items-center gap-2.5 px-3 py-3">
+      <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-xs font-bold border border-border">
+        {initials}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium leading-tight text-foreground">{displayName}</p>
+        {roleLabel && <p className="truncate text-xs capitalize text-muted-foreground">{roleLabel}</p>}
+      </div>
+      <button
+        onClick={() => { void signOut(); }}
+        title="Sign out"
+        aria-label="Sign out"
+        className="shrink-0 w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+      >
+        <LogOut size={16} />
+      </button>
+    </div>
+  );
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
       {/* Suite-shared sidebar (same component as portal / recruit / pms / cxo) */}
@@ -93,6 +88,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         onCharterNfa={openCharterNfa}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
+        footer={profileFooter}
       />
 
       {/* Main Content */}
@@ -107,9 +103,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
             searchPlaceholder="Search portfolios, projects…"
             profile={{ full_name: displayName, email: profile?.email, role: roleLabel }}
             onSignOut={() => { void signOut(); }}
+            hideProfileChip
+            hideSearch
+            leftSlot={
+              /* Page-owned controls portal into here (e.g. the portfolio
+                 Search + Department + Health filters), left corner. */
+              <div id="ph-topbar-slot" className="hidden lg:flex items-center gap-2" />
+            }
             actions={
               <>
-                <RoleSimulator />
                 <ThemeToggle />
                 <NotificationBell />
                 {isAdmin && (
@@ -127,7 +129,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     <Settings size={16} />
                   </button>
                 </Link>
-                <AskNyraButton />
               </>
             }
           />

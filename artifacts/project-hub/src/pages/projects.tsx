@@ -997,7 +997,9 @@ function GanttView({ rows, ownerName, managerName, ownerPhoto, managerPhoto, tas
   // (Critical-path highlighting lives only in the milestone/task-view Gantt.)
   const groups: GanttGroup[] = DISPLAY_STATUSES.map((d) => {
     const items: GanttItem[] = rows
-      .filter((p) => displayStatusOf(p.status).key === d.key && (p.startDate || p.endDate))
+      // Undated projects are kept (rendered as a "No dates" row, not dropped) so
+      // the Gantt project count matches the Kanban/Table/Portfolio views.
+      .filter((p) => displayStatusOf(p.status).key === d.key)
       .map((p) => {
         const progress = Math.max(0, Math.min(100, p.progress ?? 0));
         const item: GanttItem = {
@@ -1017,7 +1019,7 @@ function GanttView({ rows, ownerName, managerName, ownerPhoto, managerPhoto, tas
     return <div className="glass-surface rounded-2xl text-sm text-muted-foreground text-center py-10">No start / end dates to chart.</div>;
   }
 
-  return <MondayGantt groups={groups} onOpen={onOpen} labelWidth={340} labelHeader="Project" autoFitOnLoad />;
+  return <MondayGantt groups={groups} onOpen={onOpen} labelWidth={340} labelHeader="Project" autoFitOnLoad defaultCollapsed />;
 }
 
 // ── Calendar view — projects marked on a monthly grid on their START and END

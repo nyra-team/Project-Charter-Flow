@@ -4,7 +4,7 @@
 // but the rows are this project's top-level tasks, each expandable to show
 // its subtasks indented beneath it.
 // The previous full detail page is preserved at ./project-detail.legacy.tsx.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/extra-api";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +32,8 @@ import { TaskCommsDrawer, type TaskCommsTarget } from "../components/TaskCommsDr
 import { ProjectCommsDrawer, type ProjectCommsTab } from "../components/ProjectCommsDrawer";
 import { TeamTab } from "../components/team-tab";
 import { DocumentsTab } from "../components/documents-tab";
+import { TaskDetailModal } from "../components/task-detail-modal";
+import type { AggTask } from "../lib/work-types";
 
 // Structural subset of what useListTasks returns — the fields this table reads.
 type TaskRow = {
@@ -71,68 +73,11 @@ function taskRagColor(status: string): string {
   }
 }
 
-// Compact quick-view popup opened by clicking a Gantt bar — just the important
-// fields, no horizontal scroll. (The full editor lives in the table rows.)
-function TaskQuickPopup({ task, allTasks, milestoneName, assigneeName, onClose }: {
-  task: TaskRow;
-  allTasks: TaskRow[];
-  milestoneName: string | null;
-  assigneeName: (t: TaskRow) => string | null;
-  onClose: () => void;
-}) {
-  const st = taskStatusOf(task.status);
-  const pr = PRIORITY_BY_VALUE.get(task.priority as never);
-  const parseIds = (raw: unknown): number[] =>
-    typeof raw === "string" ? (raw.match(/\d+/g)?.map(Number) ?? [])
-      : Array.isArray(raw) ? (raw as unknown[]).map(Number) : [];
-  const deps = parseIds((task as Record<string, unknown>).predecessorIds)
-    .map((id) => allTasks.find((t) => t.id === id)?.name)
-    .filter(Boolean) as string[];
-  const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
-  const pp = (task as Record<string, unknown>).progressPct as number | undefined;
-  const progress = task.status === "completed" ? 100 : Math.max(0, Math.min(100, pp ?? 0));
-
-  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div className="flex items-start justify-between gap-3 py-2 border-b border-border/40 last:border-0">
-      <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide shrink-0 pt-0.5">{label}</span>
-      <span className="text-xs text-foreground text-right min-w-0 break-words">{children}</span>
-    </div>
-  );
-
-  return (
-    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-sm tracking-tight pr-6 min-w-0">
-            <span className="font-mono text-[10px] text-muted-foreground shrink-0">{taskCode(task)}</span>
-            <span className="truncate">{task.name}</span>
-          </DialogTitle>
-        </DialogHeader>
-        <div>
-          <Row label="Status">
-            <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: st.bg, color: st.color }}>{st.label}</span>
-          </Row>
-          {pr && (
-            <Row label="Priority">
-              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ background: pr.bg, color: pr.color }}>{pr.label}</span>
-            </Row>
-          )}
-          <Row label="Owner">{assigneeName(task) ?? "—"}</Row>
-          {milestoneName && <Row label="Milestone">{milestoneName}</Row>}
-          <Row label="Timeline">{fmt(task.startDate)} → {fmt(task.endDate)}</Row>
-          <Row label="Progress">{progress}%</Row>
-          {deps.length > 0 && <Row label="Dependent on">{deps.join(", ")}</Row>}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // Fixed column widths (px) — same resizable-weights scheme as the Projects table.
 const COLS: { key: string; header: string; width: number; align?: "left" | "center" }[] = [
   { key: "code", header: "Task Code", width: 110 },
   { key: "name", header: "Task Name", width: 300 },
-  { key: "owner", header: "Owner", width: 70, align: "center" },
+  { key: "owner", header: "Assignee", width: 70, align: "center" },
   { key: "status", header: "Status", width: 120, align: "center" },
   { key: "priority", header: "Priority", width: 110, align: "center" },
   { key: "progress", header: "Progress", width: 100, align: "center" },
@@ -376,7 +321,7 @@ function TaskGanttView({ groups, onOpen, onLink, showCritical, setShowCritical, 
     return <div className="glass-surface rounded-2xl text-sm text-muted-foreground text-center py-10">No task start / end dates to chart.</div>;
   }
 
-  return <MondayGantt groups={groups} onOpen={onOpen} onLink={onLink} showDeps labelWidth={300} labelHeader="Task" extraControls={critToggle} autoFitOnLoad />;
+  return <MondayGantt groups={groups} onOpen={onOpen} onLink={onLink} showDeps labelWidth={300} labelHeader="Milestones" labelHeaderExpanded="Tasks" extraControls={critToggle} autoFitOnLoad defaultCollapsed />;
 }
 
 export default function ProjectDetail() {
@@ -407,9 +352,41 @@ export default function ProjectDetail() {
 
   const tasks = (rawTasks ?? []) as TaskRow[];
 
-  // Clicking a Gantt bar opens the shared Monday-style task detail popup.
+  // Clicking a task (row name or Gantt bar) opens the shared Jira-style detail modal.
   const [openTaskId, setOpenTaskId] = useState<number | null>(null);
   const openTask = openTaskId != null ? tasks.find((t) => t.id === openTaskId) ?? null : null;
+
+  // Map a raw task → the AggTask shape TaskDetailModal consumes. Runtime fields
+  // (progressPct, description, predecessorIds, hours, stage) live on the object
+  // even though TaskRow doesn't type them, so read them off a cast.
+  const msNameById = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const ms of (rawMilestones ?? []) as Array<{ id: number; name: string }>) m.set(ms.id, ms.name);
+    return m;
+  }, [rawMilestones]);
+  const toAgg = useCallback((t: TaskRow): AggTask => {
+    const r = t as unknown as Record<string, unknown>;
+    let preds: number[] = [];
+    const rp = r.predecessorIds;
+    if (Array.isArray(rp)) preds = rp as number[];
+    else if (typeof rp === "string") { try { const p = JSON.parse(rp); if (Array.isArray(p)) preds = p; } catch { /* keep [] */ } }
+    return {
+      id: t.id, projectId, projectName: project?.name ?? "Project",
+      milestoneId: t.milestoneId ?? null,
+      milestoneName: t.milestoneId != null ? (msNameById.get(t.milestoneId) ?? null) : null,
+      parentTaskId: t.parentTaskId ?? null, name: t.name,
+      description: (r.description as string | null) ?? null,
+      status: t.status, priority: t.priority, rag: (r.rag as string | null) ?? null,
+      stage: (r.stage as string | null) ?? null, phase: null,
+      assigneeId: t.assigneeId ?? null, assigneeName: t.assigneeName ?? null,
+      startDate: t.startDate ?? null, endDate: t.endDate ?? null,
+      progressPct: (r.progressPct as number) ?? 0,
+      predecessorIds: preds,
+      estimatedHours: (r.estimatedHours as number | null) ?? null,
+      actualHours: (r.actualHours as number | null) ?? null,
+      isCritical: (r.isCritical as boolean) ?? false, gate: null,
+    };
+  }, [projectId, project, msNameById]);
 
   const usersById = useMemo(() => {
     const m = new Map<number, string>();
@@ -911,19 +888,6 @@ export default function ProjectDetail() {
             <td key="code" className="border border-gray-200 px-2 py-0.5 font-mono text-[11px] font-semibold text-gray-800 whitespace-nowrap">
               <span className="flex items-center gap-1.5" style={{ paddingLeft: depth * 14 }}>
                 <span className={depth > 0 ? "text-gray-500" : ""}>{taskCode(t)}</span>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); setCommsTask({ id: t.id, code: taskCode(t), name: t.name, milestoneId: t.milestoneId }); }}
-                  title="Comments & attachments"
-                  className="relative inline-flex items-center justify-center w-5 h-5 rounded text-gray-400 hover:text-primary hover:bg-primary/10 transition-colors"
-                >
-                  <MessageSquare size={12} />
-                  {(commsCount.get(t.id) ?? 0) > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[13px] h-[13px] px-0.5 rounded-full bg-primary text-[8px] font-bold text-primary-foreground flex items-center justify-center">
-                      {commsCount.get(t.id)}
-                    </span>
-                  )}
-                </button>
               </span>
             </td>
           );
@@ -938,7 +902,12 @@ export default function ProjectDetail() {
                 ) : (
                   <span className="w-3 shrink-0" />
                 )}
-                <span className={`truncate ${depth > 0 ? "font-normal text-gray-700" : ""}`} title={t.name}>{t.name}</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setOpenTaskId(t.id); }}
+                  className={`truncate text-left hover:text-primary hover:underline ${depth > 0 ? "font-normal text-gray-700" : ""}`}
+                  title={t.name}
+                >{t.name}</button>
               </span>
             </td>
           );
@@ -1009,30 +978,14 @@ export default function ProjectDetail() {
             <div className="font-mono text-[11px] text-muted-foreground">{project ? projectCode(project as { id: number; jiraKey?: string | null }) : ""}</div>
             <h2 className="text-xl font-bold text-foreground truncate">{project?.name ?? (loadingProject ? "…" : "Project")}</h2>
             <p className="text-sm text-muted-foreground mt-0.5">
-              {section === "team" ? "Team & RACI" : "Tasks and subtasks"}
-              {section === "tasks" && !isLoading && <> · {filtered.length} task{filtered.length === 1 ? "" : "s"}{subtaskCount > 0 && <> · {subtaskCount} subtask{subtaskCount === 1 ? "" : "s"}</>}</>}
+              {section === "team" ? "Team & RACI" : "Milestones, tasks & subtasks"}
+              {section === "tasks" && !isLoading && <> · {ganttGroups.length} milestone{ganttGroups.length === 1 ? "" : "s"} · {filtered.length} task{filtered.length === 1 ? "" : "s"}{subtaskCount > 0 && <> · {subtaskCount} subtask{subtaskCount === 1 ? "" : "s"}</>}</>}
             </p>
           </div>
         </div>
 
         {/* Section switcher — Tasks · Team */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Communication — icon-only; opens the project-level right drawer.
-              Hover reveals the "Attachments & Communication" label. */}
-          <div className="flex items-center gap-0.5 rounded-xl border border-border bg-card/70 p-1">
-            <button
-              type="button"
-              onClick={() => setCommsDrawerTab("communication")}
-              title="Attachments & Communication"
-              className="relative h-7 w-8 rounded-lg flex items-center justify-center text-foreground hover:bg-accent transition-colors"
-            >
-              <MessageSquare size={15} />
-              {projectMsgCount > 0 && (
-                <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-0.5 rounded-full bg-primary text-[9px] font-bold text-primary-foreground flex items-center justify-center">{projectMsgCount}</span>
-              )}
-            </button>
-          </div>
-
           {/* Project Documents — opens this project's document repository
               (versioning, stages, access controls) in a modal. */}
           <button
@@ -1263,16 +1216,11 @@ export default function ProjectDetail() {
       />
 
       {openTask && (
-        <TaskQuickPopup
-          task={openTask}
-          allTasks={tasks}
-          milestoneName={
-            openTask.milestoneId != null
-              ? ((rawMilestones ?? []) as Array<{ id: number; name: string }>).find((m) => m.id === openTask.milestoneId)?.name ?? null
-              : null
-          }
-          assigneeName={assigneeName}
+        <TaskDetailModal
+          task={toAgg(openTask)}
+          allTasks={tasks.map(toAgg)}
           onClose={() => setOpenTaskId(null)}
+          onRefresh={() => { void refetchTasks(); }}
         />
       )}
 

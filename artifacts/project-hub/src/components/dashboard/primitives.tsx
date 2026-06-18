@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Download, RefreshCw, TrendingUp, TrendingDown, Minus, Maximize2, ArrowUpRight, Table2, Inbox } from "lucide-react";
+import { Download, RefreshCw, TrendingUp, TrendingDown, Minus, Maximize2, Minimize2, Table2, Inbox } from "lucide-react";
+import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from "wouter";
 import * as XLSX from "xlsx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { HoverHint, type HoverHintRow } from "../ui-kit/HoverHint";
@@ -14,8 +14,9 @@ export type DrillColumn = {
   key: string;
   label: string;
   align?: "left" | "right" | "center";
-  /** Custom cell renderer. Receives the raw cell value and the whole row. */
-  render?: (value: unknown, row: Record<string, unknown>) => React.ReactNode;
+  /** Custom cell renderer. Receives the raw cell value, the whole row, and
+   *  whether the drill table is in its expanded (larger) view. */
+  render?: (value: unknown, row: Record<string, unknown>, expanded?: boolean) => React.ReactNode;
   className?: string;
 };
 
@@ -33,6 +34,9 @@ export type DrillData = {
   linkLabel?: string;
   /** Message when there are no rows. */
   emptyText?: string;
+  /** Per-row navigation target. When set, each row is clickable and routes here
+   *  on click (e.g. a project row → `/projects/:id`). Return null for no link. */
+  rowHref?: (row: Record<string, unknown>) => string | null;
 };
 
 function drillCell(value: unknown): React.ReactNode {
@@ -42,8 +46,9 @@ function drillCell(value: unknown): React.ReactNode {
 }
 
 export function MetricDrillModal({
-  open, onClose, title, subtitle, description, columns, rows, linkHref, linkLabel, emptyText,
-}: { open: boolean; onClose: () => void } & DrillData) {
+  open, onClose, title, subtitle, description, columns, rows, emptyText, accentBar, rowHref,
+}: { open: boolean; onClose: () => void; accentBar?: string } & DrillData) {
+  const [, navigate] = useLocation();
   const cols: DrillColumn[] = columns && columns.length
     ? columns
     : rows.length
@@ -61,15 +66,17 @@ export function MetricDrillModal({
   // The column header only shows when the body is scrolled to the very top;
   // any scroll (up or down) hides it. Position-based → no flicker.
   const [hideHeader, setHideHeader] = useState(false);
+  // Expand to a larger table so many rows fit without scrolling.
+  const [expanded, setExpanded] = useState(false);
   const onBodyScroll = (e: React.UIEvent<HTMLDivElement>) => {
     setHideHeader(e.currentTarget.scrollTop > 0);
   };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="w-[90vw] max-w-lg h-[48vh] p-0 gap-0 overflow-hidden rounded-2xl border border-border/60 bg-card shadow-2xl flex flex-col">
-        {/* Brand gradient accent strip — OHC-style */}
-        <div className="h-1 shrink-0 bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500" />
+      <DialogContent className={`p-0 gap-0 overflow-hidden rounded-2xl border border-border/60 bg-card shadow-2xl flex flex-col transition-all duration-200 ${expanded ? "w-[95vw] max-w-5xl h-[88vh]" : "w-[90vw] max-w-lg h-[48vh]"}`}>
+        {/* Accent strip — across the top edge, matches the source card's tone. */}
+        <div className={`absolute left-0 right-0 top-0 h-1 z-10 ${accentBar ?? "bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500"}`} />
 
         <DialogHeader className="px-4 pt-3.5 pb-2.5 border-b border-border/60 space-y-0.5 text-left">
           <div className="flex items-center gap-2">
@@ -98,7 +105,7 @@ export function MetricDrillModal({
                   {cols.map((c, ci) => (
                     <th
                       key={c.key}
-                      className={`bg-muted px-2 font-semibold border-border overflow-hidden transition-all duration-200 ${hideHeader ? "h-0 py-0 leading-[0] text-[0px] opacity-0 border-y-0" : "py-1.5 border-y"} ${ci === 0 ? "rounded-l-md border-l" : ""} ${ci === cols.length - 1 ? "rounded-r-md border-r" : ""} ${c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : "text-left"}`}
+                      className={`bg-muted px-2 font-semibold border-border overflow-hidden transition-all duration-200 ${hideHeader ? "h-0 py-0 leading-[0] text-[0px] opacity-0 border-y-0" : "py-1.5 border-y"} ${ci === 0 ? "rounded-l-md border-l" : ""} ${ci === cols.length - 1 ? "rounded-r-md border-r" : "border-r"} ${c.align === "right" ? "text-right" : c.align === "center" ? "text-center" : "text-left"}`}
                     >
                       {c.label}
                     </th>
@@ -106,30 +113,41 @@ export function MetricDrillModal({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => (
-                  <tr key={i} className="group">
-                    {cols.map((c) => (
+                {rows.map((row, i) => {
+                  const href = rowHref?.(row) ?? null;
+                  return (
+                  <tr
+                    key={i}
+                    className={`group transition-colors ${href ? "cursor-pointer hover:bg-primary/[0.07]" : "hover:bg-accent/40"}`}
+                    onClick={href ? () => { onClose(); navigate(href); } : undefined}
+                  >
+                    {cols.map((c, ci) => (
                       <td
                         key={c.key}
-                        className={`px-2 py-1.5 border-b border-border/40 group-hover:bg-accent/40 transition-colors truncate ${c.align === "right" ? "text-right num-tabular" : c.align === "center" ? "text-center" : "text-left"} ${c.className ?? "text-card-foreground"}`}
+                        className={`px-2 py-1.5 border-b border-border/40 ${ci === cols.length - 1 ? "" : "border-r border-border/40"} transition-all truncate ${c.align === "right" ? "text-right num-tabular" : c.align === "center" ? "text-center" : "text-left"} ${c.className ?? "text-card-foreground"} ${href && ci === 0 ? "relative font-medium group-hover:pl-3 group-hover:text-primary" : ""}`}
                       >
-                        {c.render ? c.render(row[c.key], row) : drillCell(row[c.key])}
+                        {href && ci === 0 && (
+                          <span aria-hidden className="absolute left-0 top-1/2 -translate-y-1/2 h-0 w-0.5 rounded-full bg-primary transition-all duration-200 group-hover:h-3/5" />
+                        )}
+                        {c.render ? c.render(row[c.key], row, expanded) : drillCell(row[c.key])}
                       </td>
                     ))}
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           )}
         </div>
 
         <div className="flex items-center justify-between gap-3 px-4 py-2 border-t border-border/60 bg-muted/20 rounded-b-2xl">
-          {linkHref ? (
-            <Link href={linkHref} onClick={onClose}>
-              <button className="text-[11px] text-primary font-semibold inline-flex items-center gap-1 hover:gap-1.5 transition-all">
-                {linkLabel ?? "Open full view"} <ArrowUpRight size={12} />
-              </button>
-            </Link>
+          {rows.length > 0 ? (
+            <button
+              onClick={() => setExpanded((e) => !e)}
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-primary hover:gap-2 transition-all"
+            >
+              {expanded ? <><Minimize2 size={12} /> Collapse</> : <><Maximize2 size={12} /> Expand table</>}
+            </button>
           ) : <span />}
           {rows.length > 0 && (
             <button
@@ -319,6 +337,7 @@ export function KPITile({
           onClose={() => setDrillOpen(false)}
           {...drill}
           title={drill.title ?? label}
+          accentBar={t.bar}
         />
       )}
     </>

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
-import { db, messagesTable } from "@workspace/db";
-import { eq, desc } from "drizzle-orm";
+import { db, messagesTable, usersTable } from "@workspace/db";
+import { eq, desc, inArray } from "drizzle-orm";
+import { notifyDetached } from "../lib/notify";
 
 const router: IRouter = Router();
 
@@ -19,13 +20,36 @@ router.post("/projects/:id/messages", async (req, res): Promise<void> => {
     attachments?: unknown[]; taggedUserIds?: unknown[]; threadParentId?: number;
   };
   if (!senderId || !body) { res.status(400).json({ error: "senderId and body are required" }); return; }
+  const tagged = (taggedUserIds ?? []).map(Number).filter((n) => Number.isFinite(n) && n !== senderId);
   const [message] = await db.insert(messagesTable).values({
     projectId, senderId, body, taskId, milestoneId,
     attachments: attachments ?? [],
-    taggedUserIds: taggedUserIds ?? [],
+    taggedUserIds: tagged,
     threadParentId,
   }).returning();
   res.status(201).json(message);
+
+  // Notify mentioned people — in-app bell + branded email (best-effort, after response).
+  if (tagged.length) {
+    void (async () => {
+      const [sender] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, senderId));
+      const recipients = await db
+        .select({ userId: usersTable.id, name: usersTable.name, email: usersTable.email })
+        .from(usersTable).where(inArray(usersTable.id, tagged));
+      const who = sender?.name ?? "Someone";
+      const snippet = body.length > 140 ? `${body.slice(0, 140)}…` : body;
+      notifyDetached({
+        projectId,
+        type: "mention",
+        title: `${who} mentioned you in a comment`,
+        body: snippet,
+        link: `/projects/${projectId}`,
+        relatedEntityType: taskId ? "task" : "project",
+        relatedEntityId: taskId ?? projectId,
+        recipients,
+      });
+    })().catch(() => {});
+  }
 });
 
 router.patch("/messages/:id", async (req, res): Promise<void> => {

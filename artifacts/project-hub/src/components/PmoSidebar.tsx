@@ -40,6 +40,7 @@ const CHARTER_NFA_HREF = "#charter-nfa";
 // below (same workaround cxo uses).
 type LucideIcon = typeof FolderOpen;
 type SidebarSections = ComponentProps<typeof CollapsibleSidebar>["sections"];
+type SidebarFooter = ComponentProps<typeof CollapsibleSidebar>["footer"];
 type Item = { icon: LucideIcon; label: string; href: string; external?: boolean; badgeCount?: number };
 type Section = { title?: string; icon?: LucideIcon; items: Item[]; collapsible?: boolean };
 
@@ -90,6 +91,7 @@ export default function PmoSidebar({
   onCharterNfa,
   mobileOpen,
   onClose,
+  footer,
 }: {
   isAdmin: boolean;
   isSuperAdmin: boolean;
@@ -97,6 +99,8 @@ export default function PmoSidebar({
   onCharterNfa: () => void;
   mobileOpen?: boolean;
   onClose?: () => void;
+  /** Rendered at the bottom of the rail (e.g. the signed-in profile block). */
+  footer?: React.ReactNode;
 }) {
   const [location, setLocation] = useLocation();
   const [collapsed, setCollapsed] = useState<boolean>(
@@ -173,6 +177,7 @@ export default function PmoSidebar({
       onClose={onClose}
       defaultCollapsed={collapsed}
       onCollapsedChange={onCollapsedChange}
+      footer={footer as unknown as SidebarFooter}
     />
   );
 }

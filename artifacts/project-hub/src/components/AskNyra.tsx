@@ -94,9 +94,23 @@ export function AskNyra() {
     }
   }
 
-  // Nothing to render until opened from the nav; also stays inert when AI
-  // isn't configured (the nav item hides itself in that case too).
-  if (!open || (status && !status.configured)) return null;
+  // Inert when AI isn't configured. Otherwise a floating launcher sits in the
+  // bottom-right corner (same as the Action Centre app); tapping it opens the
+  // panel. Also opens via the `ask-nyra:open` event.
+  if (status && !status.configured) return null;
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label="Ask NYRA"
+        title="Ask NYRA"
+        className="print:hidden fixed z-40 inline-flex items-center justify-center h-11 w-11 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-lg shadow-indigo-400/40 transition-colors bottom-6 right-6"
+      >
+        <Sparkles className="w-[18px] h-[18px] text-indigo-50" />
+      </button>
+    );
+  }
 
   const resetChat = () => setMessages([GREETING]);
   const showSuggestions = messages.length <= 1 && !busy;

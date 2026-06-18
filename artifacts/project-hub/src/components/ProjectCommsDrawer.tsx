@@ -28,6 +28,22 @@ const fmtSize = (n?: number) => {
 const fmtTime = (s: string) =>
   new Date(s).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Render a message body with each tagged person's "@<full name>" in blue.
+// Names come from the message's taggedUserIds (resolved), so multi-word names
+// match in full — longest first so a full name wins over a shorter one.
+const renderBody = (text: string, taggedUserIds: number[], resolveName: (id: number) => string) => {
+  const names = taggedUserIds.map(resolveName).filter(Boolean).sort((a, b) => b.length - a.length);
+  if (!names.length) return text;
+  const re = new RegExp(`(@(?:${names.map(escapeRe).join("|")}))`, "g");
+  return text.split(re).map((p, i) =>
+    p.startsWith("@") && names.includes(p.slice(1))
+      ? <span key={i} className="font-semibold text-blue-600">{p}</span>
+      : p,
+  );
+};
+
 // Detect an in-progress "@mention" immediately before the caret. Returns the
 // query text typed after "@" and the index of the "@" so it can be replaced.
 function detectMention(text: string, caret: number): { query: string; start: number } | null {
@@ -329,16 +345,7 @@ export function ProjectCommsDrawer({
                       <span className="text-[11px] font-semibold text-foreground truncate">{resolveName(m.senderId)}</span>
                       <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{fmtTime(m.createdAt)}</span>
                     </div>
-                    {m.body && <p className="text-[12px] text-foreground/90 whitespace-pre-wrap break-words">{m.body}</p>}
-                    {(m.taggedUserIds ?? []).length > 0 && (
-                      <div className="mt-1.5 flex flex-wrap gap-1">
-                        {(m.taggedUserIds ?? []).map((uid) => (
-                          <span key={uid} className="inline-flex items-center gap-0.5 rounded-full bg-primary/10 text-primary px-1.5 h-[18px] text-[10px] font-medium">
-                            <AtSign size={9} />{resolveName(uid)}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    {m.body && <p className="text-[12px] text-foreground/90 whitespace-pre-wrap break-words">{renderBody(m.body, m.taggedUserIds ?? [], resolveName)}</p>}
                     {(m.attachments ?? []).length > 0 && (
                       <div className="mt-2 flex flex-col gap-1">
                         {(m.attachments ?? []).map((att, i) => (
