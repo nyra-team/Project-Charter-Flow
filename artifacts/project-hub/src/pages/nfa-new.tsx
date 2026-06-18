@@ -101,13 +101,12 @@ function EmployeeSelect({ value, onChange, placeholder }: {
   );
 }
 
-function Section({ title, subtitle, icon, children }: {
+function Section({ title, subtitle, children }: {
   title: string; subtitle?: string; icon?: React.ReactNode; children: React.ReactNode;
 }) {
   return (
-    <div className="glass-surface lift-card ph-rise rounded-xl p-3">
+    <div className="py-2">
       <div className="mb-2 flex items-start gap-2.5">
-        {icon && <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">{icon}</div>}
         <div>
           <h3 className="text-sm font-semibold text-foreground tracking-tight">{title}</h3>
           {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
@@ -343,8 +342,8 @@ export default function NfaNew() {
   }
 
   return (
-    <div className="w-full pb-6">
-      <div className="mb-2">
+    <div className="w-full pb-4 -mt-1 sm:-mt-3 lg:-mt-6 [&_input]:shadow-none [&_input]:rounded-md [&_input]:border-slate-200 [&_textarea]:shadow-none [&_textarea]:rounded-md [&_textarea]:border-slate-200 [&_[role=combobox]]:rounded-md [&_[role=combobox]]:bg-white [&_[role=combobox]]:border-slate-200 [&_[role=combobox]]:font-normal [&_[role=combobox]]:shadow-none [&_[role=combobox]:focus]:ring-0">
+      <div className="mb-1">
         <Link href="/">
           <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ChevronLeft size={15} /> Back to Dashboard
@@ -352,28 +351,28 @@ export default function NfaNew() {
         </Link>
       </div>
 
-      {/* Title — plain headings (no box) to save vertical space */}
-      <div className="mb-2">
-        <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground">e-NFA · Note for Approval</p>
-        <h2 className="text-lg font-bold text-foreground tracking-tight">New e-NFA <span className="text-sm font-normal text-muted-foreground">— for non-project spend / procurement approvals</span></h2>
-      </div>
-
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-2 text-xs font-semibold">
-        <span className={`inline-flex items-center gap-1.5 px-3 h-7 rounded-full ${step === 1 ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}>
-          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/25 text-[10px]">1</span> Basics &amp; approvers
-        </span>
-        <span className="h-px w-6 bg-border" />
-        <span className={`inline-flex items-center gap-1.5 px-3 h-7 rounded-full ${step === 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/25 text-[10px]">2</span> Note narrative
-        </span>
+      {/* Title + step indicator on one row */}
+      <div className="flex items-start justify-between gap-4 mb-1.5">
+        <div>
+          <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground">e-NFA · Note for Approval</p>
+          <h2 className="text-lg font-bold text-foreground tracking-tight">New e-NFA <span className="text-sm font-normal text-muted-foreground">— for non-project spend / procurement approvals</span></h2>
+        </div>
+        <div className="flex items-center gap-2 text-xs font-semibold flex-shrink-0">
+          <span className={`inline-flex items-center gap-1.5 px-3 h-7 rounded-full ${step === 1 ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}>
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/25 text-[10px]">1</span> Basics &amp; approvers
+          </span>
+          <span className="h-px w-6 bg-border" />
+          <span className={`inline-flex items-center gap-1.5 px-3 h-7 rounded-full ${step === 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/25 text-[10px]">2</span> Note narrative
+          </span>
+        </div>
       </div>
 
       {step === 1 ? (
         <div className="space-y-2.5">
           {/* ── Note details (structured) ────────────────────────────────── */}
           <Section title="Note Details" icon={<FileText size={18} />}>
-            <div className="grid gap-2 grid-cols-1 md:grid-cols-3">
+            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
               <Field label="Function / Department">
                 <Select value={functionDept} onValueChange={setFunctionDept}>
                   <SelectTrigger className="h-8"><SelectValue placeholder="Select function" /></SelectTrigger>
@@ -386,13 +385,13 @@ export default function NfaNew() {
                   <SelectContent>{MODES.map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
-              <Field label="Financial Amount" hint="₹ · drives DOA routing">
+              <Field label="Financial Amount" hint="₹ · DOA routing">
                 <Input type="number" value={financialAmount} onChange={e => setFinancialAmount(e.target.value)} placeholder="0" className="h-8" />
               </Field>
+              <Field label="Subject" required>
+                <Input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject of this note" className="h-8" />
+              </Field>
             </div>
-            <Field label="Subject" required>
-              <Input value={subject} onChange={e => setSubject(e.target.value)} placeholder="One-line subject of this approval note" className="h-8" />
-            </Field>
             <RephraseField
               label="Description"
               required
@@ -410,15 +409,15 @@ export default function NfaNew() {
 
           {/* ── Approval workflow ────────────────────────────────────────── */}
           <Section title="Steering Committee — Approval Workflow" subtitle="Select the employee for each approval step" icon={<ShieldCheck size={18} />}>
-            <div className="grid gap-2 grid-cols-1 md:grid-cols-2">
+            <div className={`grid gap-2 grid-cols-1 sm:grid-cols-2 ${cmdRequired ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
               {WORKFLOW.map(w => (
-                <Field key={w.key} label={w.label} hint={`Approval workflow ${w.wf}`} required={w.key === "requestor"}>
-                  <EmployeeSelect value={approvers[w.key]} onChange={v => setApprover(w.key, v)} placeholder={`Search ${w.label} by name…`} />
+                <Field key={w.key} label={w.label} hint={`WF ${w.wf}`} required={w.key === "requestor"}>
+                  <EmployeeSelect value={approvers[w.key]} onChange={v => setApprover(w.key, v)} placeholder="Search by name…" />
                 </Field>
               ))}
               {cmdRequired && (
-                <Field label="CMD" hint="Approval workflow 5" required>
-                  <EmployeeSelect value={approvers.cmd} onChange={v => setApprover("cmd", v)} placeholder="Search CMD by name…" />
+                <Field label="CMD" hint="WF 5" required>
+                  <EmployeeSelect value={approvers.cmd} onChange={v => setApprover("cmd", v)} placeholder="Search by name…" />
                 </Field>
               )}
             </div>

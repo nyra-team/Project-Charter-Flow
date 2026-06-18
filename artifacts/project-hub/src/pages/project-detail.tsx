@@ -16,7 +16,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import {
-  Check, ChevronDown, ChevronLeft, ChevronRight, Flag, GanttChartSquare,
+  Check, ChevronDown, ChevronLeft, Flag, GanttChartSquare,
   ListTree, Search, Table2, Zap, Milestone, MessageSquare, Users,
   GitBranch, X, Plus, LayoutDashboard, FileDown, Loader2, FolderOpen, Upload,
 } from "lucide-react";
@@ -864,7 +864,8 @@ export default function ProjectDetail() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggleGroup = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
 
-  // Per-task subtask expansion — default: expanded (subtasks visible).
+  // Per-task subtask expansion — default: collapsed (subtasks hidden until clicked).
+  // Map now tracks *opened* tasks; absence = collapsed.
   const [closedTasks, setClosedTasks] = useState<Record<number, boolean>>({});
   const toggleTask = (id: number) => setClosedTasks((c) => ({ ...c, [id]: !c[id] }));
 
@@ -879,7 +880,7 @@ export default function ProjectDetail() {
     const subs = subtasksByParent.get(t.id) ?? [];
     const st = taskStatusOf(t.status);
     const pr = PRIORITY_BY_VALUE.get(t.priority as never);
-    const open = !closedTasks[t.id];
+    const open = !!closedTasks[t.id];
     // One <td> per column key — rendered in the current (drag-reorderable) order.
     const cell = (key: string) => {
       switch (key) {
@@ -897,17 +898,19 @@ export default function ProjectDetail() {
               <span className="flex items-center gap-1 min-w-0" style={{ paddingLeft: depth * 14 }}>
                 {subs.length > 0 ? (
                   <ChevronDown size={12} className={`shrink-0 text-gray-400 transition-transform ${open ? "" : "-rotate-90"}`} />
-                ) : depth > 0 ? (
-                  <ChevronRight size={12} className="shrink-0 text-gray-300" />
                 ) : (
                   <span className="w-3 shrink-0" />
                 )}
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); setOpenTaskId(t.id); }}
-                  className={`truncate text-left hover:text-primary hover:underline ${depth > 0 ? "font-normal text-gray-700" : ""}`}
-                  title={t.name}
-                >{t.name}</button>
+                {depth > 0 ? (
+                  <span className="truncate text-left font-normal text-gray-700" title={t.name}>{t.name}</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setOpenTaskId(t.id); }}
+                    className="truncate text-left hover:text-primary hover:underline"
+                    title={t.name}
+                  >{t.name}</button>
+                )}
               </span>
             </td>
           );
@@ -1229,13 +1232,13 @@ export default function ProjectDetail() {
       <Dialog open={docsOpen} onOpenChange={(v) => { if (!v) { setDocsOpen(false); setDocsUploadOpen(false); } }}>
         <DialogContent className="max-w-5xl w-[92vw] h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
           <DialogHeader className="px-5 py-3 border-b border-border/60 flex-shrink-0">
-            <DialogTitle className="flex items-center gap-2 tracking-tight text-base">
+            <DialogTitle className="flex items-center gap-2 tracking-tight text-base pr-10">
               <FolderOpen size={16} className="text-primary" />
               <span className="truncate">Documents · {project?.name ?? "Project"}</span>
               <button
                 type="button"
                 onClick={() => setDocsUploadOpen(true)}
-                className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+                className="ml-auto mr-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
               >
                 <Upload size={14} /> Upload Document
               </button>

@@ -31,21 +31,21 @@ type Kpi = { kpi: string; baseline: string; goal: string };
 type Member = { name: string };
 type VendorMatrix = { columns: string[]; rows: string[][] };
 
-function Section({ title, subtitle, icon, required, children }: {
-  title: string; subtitle?: string; icon?: React.ReactNode; required?: boolean; children: React.ReactNode;
+function Section({ title, subtitle, required, dense, children }: {
+  title: string; subtitle?: string; icon?: React.ReactNode; required?: boolean; dense?: boolean; children: React.ReactNode;
 }) {
   return (
-    <div className="glass-surface lift-card ph-rise rounded-xl p-3">
-      <div className="mb-2 flex items-start gap-2.5">
-        {icon && <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">{icon}</div>}
+    <div className={dense ? "py-1.5" : "py-2"}>
+      <div className={`flex items-start gap-2 ${dense ? "mb-1.5" : "mb-2 gap-2.5"}`}>
         <div>
-          <h3 className="text-sm font-semibold text-foreground tracking-tight">
+          <h3 className="text-sm font-semibold text-foreground tracking-tight leading-tight">
             {title}{required && <span className="text-destructive ml-0.5">*</span>}
+            {dense && subtitle && <span className="text-muted-foreground font-normal ml-2 text-[11px]">{subtitle}</span>}
           </h3>
-          {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+          {!dense && subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
         </div>
       </div>
-      <div className="space-y-2">{children}</div>
+      <div className={dense ? "space-y-1.5" : "space-y-2"}>{children}</div>
     </div>
   );
 }
@@ -65,7 +65,9 @@ function Field({ label, required, hint, children }: {
 }
 
 function Grid({ children, cols = 2 }: { children: React.ReactNode; cols?: number }) {
-  return <div className={`grid gap-2 grid-cols-1 ${cols === 3 ? "md:grid-cols-3" : "md:grid-cols-2"}`}>{children}</div>;
+  const colClass = cols === 6 ? "sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6"
+    : cols === 3 ? "md:grid-cols-3" : "md:grid-cols-2";
+  return <div className={`grid gap-2 grid-cols-1 ${colClass}`}>{children}</div>;
 }
 
 // Charter + e-NFA preview shown right after "Create Project Charter". Renders the
@@ -441,8 +443,8 @@ export default function NewCharterTemplate() {
   }
 
   return (
-    <div className="w-full pb-8">
-      <div className="mb-2">
+    <div className="w-full pb-4 -mt-1 sm:-mt-3 lg:-mt-6 [&_input]:shadow-none [&_input]:rounded-md [&_input]:border-slate-200 [&_textarea]:shadow-none [&_textarea]:rounded-md [&_textarea]:border-slate-200 [&_[role=combobox]]:rounded-md [&_[role=combobox]]:bg-white [&_[role=combobox]]:border-slate-200 [&_[role=combobox]]:font-normal [&_[role=combobox]]:shadow-none [&_[role=combobox]:focus]:ring-0">
+      <div className="mb-1">
         <Link href="/">
           <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ChevronLeft size={15} /> Back to Dashboard
@@ -450,14 +452,13 @@ export default function NewCharterTemplate() {
         </Link>
       </div>
 
-      {/* Title — plain headings (no box) to save vertical space */}
-      <div className="mb-2">
-        <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground">Project Charter · e-NFA</p>
-        <h2 className="text-lg font-bold text-foreground tracking-tight">New Project Charter <span className="text-sm font-normal text-muted-foreground">— complete the charter to initiate the approval workflow</span></h2>
-      </div>
-
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-2 text-xs font-semibold">
+      {/* Title + step indicator on one row */}
+      <div className="flex items-start justify-between gap-4 mb-1.5">
+        <div>
+          <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground">Project Charter · e-NFA</p>
+          <h2 className="text-lg font-bold text-foreground tracking-tight">New Project Charter <span className="text-sm font-normal text-muted-foreground">— complete the charter to initiate the approval workflow</span></h2>
+        </div>
+        <div className="flex items-center gap-2 text-xs font-semibold flex-shrink-0">
         <span className={`inline-flex items-center gap-1.5 px-3 h-7 rounded-full ${step === 1 ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}>
           <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/25 text-[10px]">1</span> Basics
         </span>
@@ -465,6 +466,7 @@ export default function NewCharterTemplate() {
         <span className={`inline-flex items-center gap-1.5 px-3 h-7 rounded-full ${step === 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
           <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/25 text-[10px]">2</span> AI Charter Narrative
         </span>
+        </div>
       </div>
 
       {step === 1 ? (
@@ -474,41 +476,43 @@ export default function NewCharterTemplate() {
             <Field label="Project Name" required>
               <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. ERP System Upgrade 2026" className="h-8" />
             </Field>
-            <Grid cols={3}>
-              <Field label="Project Sponsor" required hint="CMD / ED">
+            <Grid cols={6}>
+              <Field label="Project Sponsor" required>
                 <Select value={projectSponsor} onValueChange={setProjectSponsor}>
-                  <SelectTrigger className="h-8"><SelectValue placeholder="Select sponsor" /></SelectTrigger>
+                  <SelectTrigger className="h-8"><SelectValue placeholder="Sponsor" /></SelectTrigger>
                   <SelectContent>{SPONSORS.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
-              <Field label="Function / Department">
+              <Field label="Function / Dept">
                 <Select value={department} onValueChange={setDepartment}>
-                  <SelectTrigger className="h-8"><SelectValue placeholder="Select function" /></SelectTrigger>
+                  <SelectTrigger className="h-8"><SelectValue placeholder="Function" /></SelectTrigger>
                   <SelectContent>{FUNCTIONS_LIST.map(f => <SelectItem key={f} value={f}>{f}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
-              <Field label="Project Category" required hint="Compliance / ROI">
+              <Field label="Category" required>
                 <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger className="h-8"><SelectValue placeholder="Select category" /></SelectTrigger>
+                  <SelectTrigger className="h-8"><SelectValue placeholder="Category" /></SelectTrigger>
                   <SelectContent>{CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
-            </Grid>
-            <Grid cols={3}>
-              <Field label="Project Manager (PM)" hint="type + name">
-                <div className="flex gap-2">
+              <div className="flex gap-1 items-end">
+                <div className="shrink-0 space-y-0.5">
+                  <label className="text-xs font-medium text-foreground">Type</label>
                   <Select value={pmType} onValueChange={setPmType}>
-                    <SelectTrigger className="h-8 w-28 shrink-0"><SelectValue placeholder="PM type" /></SelectTrigger>
+                    <SelectTrigger className="h-8 w-16 px-2"><SelectValue placeholder="Type" /></SelectTrigger>
                     <SelectContent>{PM_TYPES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
                   </Select>
-                  <Input value={pmName} onChange={e => setPmName(e.target.value)} placeholder="Name of PM" className="h-8 flex-1 min-w-0" />
                 </div>
+                <div className="flex-1 min-w-0 space-y-0.5">
+                  <label className="text-xs font-medium text-foreground">Project Manager</label>
+                  <Input value={pmName} onChange={e => setPmName(e.target.value)} placeholder="Name" className="h-8 w-full min-w-0" />
+                </div>
+              </div>
+              <Field label="Approval Date" required>
+                <Input type="date" value={projectApprovalDate} onChange={e => setProjectApprovalDate(e.target.value)} className="h-8 px-2" />
               </Field>
-              <Field label="Date of Project Approval" required>
-                <Input type="date" value={projectApprovalDate} onChange={e => setProjectApprovalDate(e.target.value)} className="h-8" />
-              </Field>
-              <Field label="Last Revision Date" hint="Optional">
-                <Input type="date" value={lastRevisionDate} onChange={e => setLastRevisionDate(e.target.value)} className="h-8" />
+              <Field label="Last Revision">
+                <Input type="date" value={lastRevisionDate} onChange={e => setLastRevisionDate(e.target.value)} className="h-8 px-2" />
               </Field>
             </Grid>
             <RephraseField
@@ -516,7 +520,8 @@ export default function NewCharterTemplate() {
               required
               value={projectDescription}
               onChange={setProjectDescription}
-              rows={3}
+              rows={1}
+              textareaClassName="min-h-[34px] py-1.5"
               aiEnabled={aiEnabled}
               onDraft={draftDescription}
               drafting={descDrafting}
@@ -528,13 +533,13 @@ export default function NewCharterTemplate() {
 
           {/* ── Key Project Members + Budget (side by side) ───────────────── */}
           <div className="grid gap-2.5 grid-cols-1 md:grid-cols-2 items-start">
-            <Section title="Key Project Members" subtitle="Names of the core project team" icon={<Users size={18} />}>
-              <div className="space-y-2">
+            <Section dense title="Key Project Members" subtitle="Core project team" icon={<Users size={16} />}>
+              <div className="space-y-1.5">
                 {members.map((m, i) => (
                   <div key={i} className="flex gap-2">
-                    <Input value={m.name} onChange={e => setMembers(arr => arr.map((x, j) => j === i ? { name: e.target.value } : x))} placeholder="Member name" className="h-8 flex-1" />
+                    <Input value={m.name} onChange={e => setMembers(arr => arr.map((x, j) => j === i ? { name: e.target.value } : x))} placeholder="Member name" className="h-7 flex-1" />
                     {members.length > 1 && (
-                      <button type="button" onClick={() => setMembers(arr => arr.filter((_, j) => j !== i))} className="w-10 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={15} /></button>
+                      <button type="button" onClick={() => setMembers(arr => arr.filter((_, j) => j !== i))} className="w-9 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={14} /></button>
                     )}
                   </div>
                 ))}
@@ -543,13 +548,13 @@ export default function NewCharterTemplate() {
             </Section>
 
             {/* ── Budget envelope (drives the AI draft + DOA routing) ───────── */}
-            <Section title="Budget" subtitle="Approved envelope and latest estimate" icon={<Coins size={18} />}>
+            <Section dense title="Budget" subtitle="Envelope & latest estimate" icon={<Coins size={16} />}>
               <Grid>
                 <Field label="Approved Budget" hint="₹">
-                  <Input type="number" value={approvedBudget} onChange={e => setApprovedBudget(e.target.value)} placeholder="0" className="h-8" />
+                  <Input type="number" value={approvedBudget} onChange={e => setApprovedBudget(e.target.value)} placeholder="0" className="h-7" />
                 </Field>
                 <Field label="LE Budget" hint="Latest Estimate, ₹">
-                  <Input type="number" value={leBudget} onChange={e => setLeBudget(e.target.value)} placeholder="0" className="h-8" />
+                  <Input type="number" value={leBudget} onChange={e => setLeBudget(e.target.value)} placeholder="0" className="h-7" />
                 </Field>
               </Grid>
             </Section>

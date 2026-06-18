@@ -491,14 +491,34 @@ export function DocumentsTab({
 }
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-function kindOf(doc: Doc): "docx" | "pdf" | "image" | "text" | "other" {
+type PreviewKind = "docx" | "xlsx" | "pdf" | "image" | "text" | "other";
+
+function kindOf(doc: Doc): PreviewKind {
   const url = (doc.fileUrl ?? "").toLowerCase().split("?")[0];
   const type = (doc.fileType ?? "").toLowerCase();
   if (type === DOCX_MIME || url.endsWith(".docx")) return "docx";
+  if (type === XLSX_MIME || url.endsWith(".xlsx")) return "xlsx";
   if (type === "application/pdf" || url.endsWith(".pdf")) return "pdf";
   if (type.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|bmp)$/.test(url)) return "image";
   if (type.startsWith("text/") || /\.(txt|md|csv|json|log)$/.test(url)) return "text";
+  return "other";
+}
+
+// Detect OOXML kind from raw bytes when fileType/extension are missing
+// (e.g. documents stored as /api/storage/objects/local-<uuid> with no
+// extension and a null fileType). docx/xlsx/pptx are all ZIP containers —
+// distinguish by the OOXML part names present in the archive.
+async function sniffKind(blob: Blob): Promise<PreviewKind> {
+  try {
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    if (buf[0] !== 0x50 || buf[1] !== 0x4b) return "other"; // not a ZIP ("PK")
+    let s = "";
+    for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]);
+    if (s.includes("word/document.xml") || s.includes("word/")) return "docx";
+    if (s.includes("xl/workbook.xml") || s.includes("xl/")) return "xlsx";
+  } catch { /* fall through */ }
   return "other";
 }
 
@@ -513,10 +533,12 @@ function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void 
     : (vs.find(v => v.id === activeVerId)?.fileUrl ?? doc.fileUrl);
   const kind = kindOf({ ...doc, fileUrl: activeUrl ?? doc.fileUrl });
   const docxRef = useRef<HTMLDivElement>(null);
+  const [resolvedKind, setResolvedKind] = useState<PreviewKind>(kind);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errMsg, setErrMsg] = useState<string>("");
   const [blobUrl, setBlobUrl] = useState<string>("");
   const [textContent, setTextContent] = useState<string>("");
+  const [sheetHtml, setSheetHtml] = useState<string>("");
 
   useEffect(() => {
     let cancelled = false;
@@ -524,15 +546,24 @@ function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void 
 
     async function load() {
       if (!activeUrl) { setStatus("error"); setErrMsg("This document has no file attached."); return; }
-      if (kind === "other") { setStatus("error"); setErrMsg("In-browser preview isn't supported for this file type."); return; }
       setStatus("loading");
+      setResolvedKind(kind);
       try {
         const res = await fetch(activeUrl);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const blob = await res.blob();
         if (cancelled) return;
 
-        if (kind === "docx") {
+        // Resolve the real kind: when fileType/extension are absent the
+        // initial kind is "other" — sniff the bytes to recover docx/xlsx.
+        let k: PreviewKind = kind;
+        if (k === "other") {
+          k = await sniffKind(blob);
+          if (cancelled) return;
+        }
+        setResolvedKind(k);
+
+        if (k === "docx") {
           // Wait a tick so the modal's container ref is mounted.
           const container = docxRef.current;
           if (!container) throw new Error("Preview container unavailable");
@@ -547,14 +578,30 @@ function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void 
             breakPages: true,
             useBase64URL: true,
           });
-        } else if (kind === "text") {
+        } else if (k === "xlsx") {
+          const XLSX = await import("xlsx");
+          const wb = XLSX.read(await blob.arrayBuffer(), { type: "array" });
+          if (cancelled) return;
+          let html = "";
+          for (const name of wb.SheetNames) {
+            const ws = wb.Sheets[name];
+            if (!ws) continue;
+            html += `<div class="xlsx-sheet-title">${name}</div>` +
+              XLSX.utils.sheet_to_html(ws, { editable: false });
+          }
+          setSheetHtml(html || "<p>This workbook has no sheets.</p>");
+        } else if (k === "text") {
           const txt = await blob.text();
           if (cancelled) return;
           setTextContent(txt);
-        } else {
+        } else if (k === "pdf" || k === "image") {
           objectUrl = URL.createObjectURL(blob);
           if (cancelled) { URL.revokeObjectURL(objectUrl); return; }
           setBlobUrl(objectUrl);
+        } else {
+          setStatus("error");
+          setErrMsg("In-browser preview isn't supported for this file type.");
+          return;
         }
         if (!cancelled) setStatus("ready");
       } catch (e) {
@@ -578,7 +625,7 @@ function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void 
     <Dialog open={true} onOpenChange={v => { if (!v) onClose(); }}>
       <DialogContent className="max-w-5xl w-[90vw] h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
         <DialogHeader className="px-5 py-3 border-b border-border/60 flex-shrink-0">
-          <DialogTitle className="flex items-center gap-2 tracking-tight text-base">
+          <DialogTitle className="flex items-center gap-2 tracking-tight text-base pr-10">
             <FileText size={16} className="text-primary" />
             <span className="truncate">{doc.name}</span>
             <span className="text-[11px] font-mono font-semibold text-primary">
@@ -588,7 +635,7 @@ function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void 
             <a
               href={activeUrl ?? "#"}
               download
-              className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-accent transition-colors"
+              className="ml-auto mr-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-accent transition-colors"
               title="Download this version"
             >
               <Download size={13} /> Download
@@ -646,21 +693,32 @@ function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void 
           )}
 
           {/* DOCX always-mounted target (rendered into even while "loading") */}
-          <div className={kind === "docx" && status !== "error" ? "flex justify-center py-4" : "hidden"}>
+          <div className={resolvedKind === "docx" && status !== "error" ? "flex justify-center py-4" : "hidden"}>
             <div ref={docxRef} className="docx-preview-host" />
           </div>
 
-          {kind === "pdf" && status === "ready" && blobUrl && (
+          {resolvedKind === "xlsx" && status === "ready" && (
+            <div className="p-4 overflow-auto">
+              <style>{`
+                .xlsx-preview table { border-collapse: collapse; margin-bottom: 1.5rem; font-size: 12px; background: #fff; }
+                .xlsx-preview td, .xlsx-preview th { border: 1px solid #d0d7de; padding: 3px 8px; white-space: nowrap; color: #1f2328; }
+                .xlsx-preview .xlsx-sheet-title { font-weight: 700; color: #1E40AF; margin: 0.25rem 0 0.5rem; font-size: 13px; }
+              `}</style>
+              <div className="xlsx-preview" dangerouslySetInnerHTML={{ __html: sheetHtml }} />
+            </div>
+          )}
+
+          {resolvedKind === "pdf" && status === "ready" && blobUrl && (
             <iframe src={blobUrl} title={doc.name} className="w-full h-full border-0" />
           )}
 
-          {kind === "image" && status === "ready" && blobUrl && (
+          {resolvedKind === "image" && status === "ready" && blobUrl && (
             <div className="h-full flex items-center justify-center p-4">
               <img src={blobUrl} alt={doc.name} className="max-w-full max-h-full object-contain rounded-md shadow-sm" />
             </div>
           )}
 
-          {kind === "text" && status === "ready" && (
+          {resolvedKind === "text" && status === "ready" && (
             <pre className="text-xs font-mono whitespace-pre-wrap p-5 text-foreground">{textContent}</pre>
           )}
         </div>

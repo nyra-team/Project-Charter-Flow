@@ -22,11 +22,13 @@ export function RephraseField({
   aiEnabled = true,
   onDraft,
   drafting = false,
+  textareaClassName,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   rows?: number;
+  textareaClassName?: string;
   placeholder?: string;
   /** What this field is, woven into the rephrase instruction — e.g.
    *  "the 'In Scope' section of a Project Charter". */
@@ -108,7 +110,7 @@ export function RephraseField({
           </div>
         )}
       </div>
-      <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={rows} placeholder={placeholder} />
+      <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={rows} placeholder={placeholder} className={textareaClassName} />
     </div>
   );
 }

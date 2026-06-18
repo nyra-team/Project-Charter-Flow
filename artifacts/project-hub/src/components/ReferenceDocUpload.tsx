@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { FileDropzone, type UploadedFileMeta } from "@/components/ui/file-dropzone";
-import { Sparkles, Loader2, FileSearch } from "lucide-react";
+import { Sparkles, Loader2 } from "lucide-react";
 
 // Optional reference-document upload for the Charter / e-NFA wizards. The file
 // is uploaded via the normal presigned flow, its text pulled out server-side
@@ -38,13 +38,14 @@ export function ReferenceDocUpload({ onText }: { onText: (text: string) => void 
   return (
     <div>
       <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-        <FileSearch size={13} className="text-primary" /> Reference document
+        Reference document
         <span className="font-normal normal-case tracking-normal text-muted-foreground/70">— optional, helps the AI</span>
       </label>
-      <p className="text-xs text-muted-foreground mt-0.5 mb-1.5">
-        Drop an RFP, quotation, prior NFA or any source document — the AI reads it and uses its content to draft the fields below.
+      <p className="text-[11px] text-muted-foreground mt-0.5 mb-1">
+        RFP, quotation or prior NFA — the AI reads it to draft the fields below.
       </p>
       <FileDropzone
+        compact
         accept=".pdf,.docx,.doc,.xlsx,.xls,.txt,.csv"
         maxSizeMB={15}
         currentFileName={fileName}

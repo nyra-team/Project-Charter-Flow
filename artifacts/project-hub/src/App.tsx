@@ -26,6 +26,7 @@ import AdminScoring from "./pages/admin-scoring";
 import AdminStageSlas from "./pages/admin-stage-slas";
 import AdminRoleDirectory from "./pages/admin-role-directory";
 import AdminRoles from "./pages/admin-roles";
+import AdminCip from "./pages/admin-cip";
 import AdminStageEscalation from "./pages/admin-stage-escalation";
 import AdminDoaMatrix from "./pages/admin-doa-matrix";
 import DocumentsPage from "./pages/documents";
@@ -92,6 +93,7 @@ function Router() {
         <Route path="/admin/stage-slas" component={AdminStageSlas} />
         <Route path="/admin/role-directory" component={AdminRoleDirectory} />
         <Route path="/admin/roles" component={AdminRoles} />
+        <Route path="/admin/cip" component={AdminCip} />
         <Route path="/admin/stage-escalation" component={AdminStageEscalation} />
         <Route path="/admin/doa-matrix" component={AdminDoaMatrix} />
         <Route path="/admin/integrations" component={AdminIntegrationsPage} />

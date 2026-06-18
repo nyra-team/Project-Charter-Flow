@@ -1,52 +1,62 @@
-// Task detail modal — a faithful clone of Jira's issue view. Two columns:
-//  • Left (main): breadcrumb, title, action row (Attach / Add child / Link / Create),
-//    Start+Due dates, Description, Child issues (progress bar + per-row status), comments.
-//  • Right (sidebar): Status + Actions, then a "Details" panel — Assignee, Labels,
-//    Parent, Team, Priority, Time tracking, Original estimate, Development, Reporter.
-// Wired to our data (pmo_tasks + pmo_messages); Jira-structural-only fields
-// (Labels / Team / Original estimate / Development / Reporter) render as display rows
-// to keep the structure identical.
-import { useState } from "react";
+// Task detail modal — an exact clone of Jira's issue view (Kevin-Stratvert layout).
+// Left column: breadcrumb header, title, +/settings actions, Description (click to
+// edit a draggable text field), Subtasks (with an "Add subtask" dropdown), Linked
+// work items, and an Activity block with All / Comments / History / Work log tabs.
+// Right sidebar: status + lightning + Improve Task, a dismissable "Pinned fields"
+// panel, and the "Details" panel (Assignee, Priority, Parent, Due date, Labels,
+// Team, Start date, Development, Reporter). Wired to pmo_tasks + pmo_messages.
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useListUsers } from "@workspace/api-client-react";
+import { useListUsers, useCreateTask } from "@workspace/api-client-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Link } from "wouter";
 import {
-  Paperclip, GitBranch, X, ChevronUp, Settings, Plus,
-  CheckSquare, Sparkles, Send, MoreHorizontal, Lock, Eye, ThumbsUp, Share2,
+  Paperclip, X, ChevronUp, ChevronDown, Plus, Pencil,
+  CheckSquare, MoreHorizontal, Eye, Share2, ListFilter,
+  Bold, Italic, List, ListOrdered, ListChecks, Table,
+  AtSign, Smile,
 } from "lucide-react";
 import { api } from "@/lib/extra-api";
 import { useToast } from "@/hooks/use-toast";
+import { useUserStore } from "@/lib/store";
 import { PersonAvatar } from "./person-avatar";
 import { StatusSelect, PrioritySelect } from "./task-status-chip";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileDropzone, type UploadedFileMeta } from "@/components/ui/file-dropzone";
+import { FileDropzone } from "@/components/ui/file-dropzone";
 import type { AggTask, TaskComment } from "@/lib/work-types";
+
+// Broad emoji set for the editor picker.
+const EMOJIS = "😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😗 😙 😚 😋 😛 😝 😜 🤪 🤨 🧐 🤓 😎 🥳 🤩 😏 😒 😞 😔 😟 😕 🙁 ☹️ 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🤗 🤔 🤭 🤫 🤥 😬 🙄 😯 😦 😧 😮 😲 🥱 😴 🤤 😪 😵 🤐 🥴 🤢 🤮 🤧 😷 🤒 🤕 🤑 🤠 👍 👎 👌 ✌️ 🤞 🤟 🤘 👏 🙌 👐 🤝 🙏 💪 👀 🎉 🎊 ✅ ❌ ⭐ 🌟 🔥 💯 ✨ ⚡ 💡 📌 📎 📝 ✏️ 📅 ⏰ ✔️ ❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🚀 🎯 🏆 ⚠️ ℹ️".split(" ");
 
 type AttView = { fileName?: string; name?: string; fileUrl?: string; url?: string } & Record<string, unknown>;
 const attName = (a: AttView) => a.fileName ?? a.name ?? "file";
 const codeOf = (id: number) => `TSK-${String(id).padStart(4, "0")}`;
 
-// One label/value row in the right-hand Details panel (Jira's grid).
-function SidebarRow({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-[110px_1fr] items-start gap-3 py-2.5">
-      <span className="text-[13px] text-[#626f86] pt-0.5">{label}</span>
-      <div className="min-w-0 text-[13px] text-[#172b4d]">{children}</div>
-    </div>
-  );
-}
-
-// Top action button (Attach / Add a child issue / Link issue / Create).
-function ActionBtn({ icon, children, onClick }: { icon: React.ReactNode; children: React.ReactNode; onClick?: () => void }) {
+// Editor toolbar bits. onMouseDown+preventDefault keeps the contentEditable
+// selection so execCommand applies to the highlighted text.
+function ToolBtn({ children, onClick, title }: { children: React.ReactNode; onClick?: () => void; title?: string }) {
   return (
     <button
       type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded text-[13px] font-medium text-[#44546f] bg-[#f1f2f4] hover:bg-[#dcdfe4] transition-colors"
+      title={title}
+      onMouseDown={(e) => { e.preventDefault(); onClick?.(); }}
+      className="inline-flex items-center h-7 px-1.5 rounded text-[#44546f] hover:bg-[#f1f2f4]"
     >
-      {icon}{children}
+      {children}
     </button>
+  );
+}
+function Divider() {
+  return <span className="w-px h-5 bg-[#dfe1e6] mx-1" />;
+}
+
+// One label/value row in the right-hand Details panel (Jira's grid).
+function SidebarRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[110px_1fr] items-start gap-3 py-1.5">
+      <span className="text-[12px] text-[#626f86] pt-0.5">{label}</span>
+      <div className="min-w-0 text-[12px] text-[#172b4d]">{children}</div>
+    </div>
   );
 }
 
@@ -60,10 +70,43 @@ export function TaskDetailModal({
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { userId } = useUserStore();
   const [draft, setDraft] = useState("");
-  const [pendingAtts, setPendingAtts] = useState<UploadedFileMeta[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(true);
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [descMenu, setDescMenu] = useState<"" | "style" | "color" | "mention" | "emoji" | "attach" | "more">("");
+  const [mentionQ, setMentionQ] = useState("");
+  const descRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const savedRange = useRef<Range | null>(null);
+  // Close any open toolbar dropdown when clicking outside the toolbar.
+  useEffect(() => {
+    if (!descMenu) return;
+    const onDown = (e: MouseEvent) => { if (!toolbarRef.current?.contains(e.target as Node)) setDescMenu(""); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [descMenu]);
+  // Wire toolbar → contentEditable via execCommand (no extra dependency).
+  const exec = (cmd: string, val?: string) => { document.execCommand(cmd, false, val); descRef.current?.focus(); };
+  const appendToEditor = (html: string) => { const el = descRef.current; if (!el) return; el.focus(); el.innerHTML += html; };
+  const saveRange = () => { const s = window.getSelection(); if (s && s.rangeCount && descRef.current?.contains(s.anchorNode)) savedRange.current = s.getRangeAt(0).cloneRange(); };
+  // Insert an @mention at the saved caret position (the people dropdown stole focus).
+  const insertMention = (name: string) => {
+    const el = descRef.current; if (!el) return;
+    el.focus();
+    const s = window.getSelection();
+    if (savedRange.current && s) { s.removeAllRanges(); s.addRange(savedRange.current); }
+    document.execCommand("insertText", false, `@${name} `);
+    setDescMenu(""); setMentionQ("");
+  };
+  // Seed the editor with the saved HTML each time it opens.
+  useEffect(() => { if (editingDesc && descRef.current) descRef.current.innerHTML = task.description ?? ""; }, [editingDesc, task.description]);
+  const [actTab, setActTab] = useState<"all" | "comments" | "history" | "worklog">("comments");
+  const [subName, setSubName] = useState("");
+  const [subOpen, setSubOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const { data: people = [] } = useListUsers();
+  const createTask = useCreateTask();
 
   const subtasks = allTasks.filter((t) => t.parentTaskId === task.id);
   const subDone = subtasks.filter((s) => s.status === "completed").length;
@@ -85,47 +128,61 @@ export function TaskDetailModal({
   });
 
   const addComment = useMutation({
-    mutationFn: (vars: { body: string; attachments: UploadedFileMeta[] }) =>
-      api.post(`/api/tasks/${task.id}/comments`, {
-        body: vars.body,
-        attachments: vars.attachments.map((a) => ({ fileUrl: a.fileUrl, fileName: a.fileName, fileType: a.fileType, fileSize: a.fileSize })),
-      }),
-    onSuccess: () => { setDraft(""); setPendingAtts([]); qc.invalidateQueries({ queryKey: [`/api/tasks/${task.id}/comments`] }); },
+    mutationFn: (body: string) => api.post(`/api/tasks/${task.id}/comments`, { body, attachments: [] }),
+    onSuccess: () => { setDraft(""); qc.invalidateQueries({ queryKey: [`/api/tasks/${task.id}/comments`] }); },
     onError: () => toast({ title: "Couldn't post comment", variant: "destructive" }),
   });
   const submitComment = () => {
     const body = draft.trim();
-    if (!body && pendingAtts.length === 0) return;
-    addComment.mutate({ body, attachments: pendingAtts });
+    if (!body) return;
+    addComment.mutate(body);
   };
 
-  // Dependencies = Jira's "Link issue". POST/DELETE /api/tasks/:id/dependencies.
+  // Dependencies = Jira's "Linked work items". POST/DELETE /api/tasks/:id/dependencies.
   const [depPick, setDepPick] = useState("");
   const addDep = useMutation({
     mutationFn: (predecessorId: number) => api.post(`/api/tasks/${task.id}/dependencies`, { predecessorId }),
-    onSuccess: () => { setDepPick(""); onRefresh(); toast({ title: "Dependency added" }); },
-    onError: (e) => toast({ title: (e as Error)?.message || "Couldn't add dependency", variant: "destructive" }),
+    onSuccess: () => { setDepPick(""); onRefresh(); toast({ title: "Linked work item added" }); },
+    onError: (e) => toast({ title: (e as Error)?.message || "Couldn't link item", variant: "destructive" }),
   });
   const removeDep = useMutation({
     mutationFn: (predId: number) => api.del(`/api/tasks/${task.id}/dependencies/${predId}`),
     onSuccess: () => onRefresh(),
-    onError: (e) => toast({ title: (e as Error)?.message || "Couldn't remove dependency", variant: "destructive" }),
+    onError: (e) => toast({ title: (e as Error)?.message || "Couldn't remove link", variant: "destructive" }),
   });
+
+  // Add subtask (Jira's inline "Add subtask" → a dropdown composer here).
+  function addSubtask() {
+    const name = subName.trim();
+    if (!name) return;
+    createTask.mutate(
+      {
+        id: task.projectId,
+        data: {
+          name, parentTaskId: task.id,
+          milestoneId: task.milestoneId ?? undefined,
+          priority: task.priority ?? "P2",
+          status: "not_started", rag: "green",
+        },
+      } as never,
+      { onSuccess: () => { setSubName(""); onRefresh(); } },
+    );
+  }
 
   const logged = task.actualHours ?? 0;
   const est = task.estimatedHours ?? 0;
   const timePct = est > 0 ? Math.min(100, Math.round((logged / est) * 100)) : (logged > 0 ? 100 : 0);
+  const linkable = allTasks.filter((t) => t.projectId === task.projectId && t.id !== task.id && t.parentTaskId !== task.id && !deps.includes(t.id));
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="w-[92vw] max-w-[860px] max-h-[92vh] p-0 gap-0 overflow-hidden flex flex-col bg-white">
-        {/* Top bar — breadcrumb + right-side icon cluster (clone of Jira's header) */}
-        <div className="flex items-center justify-between pl-5 pr-12 py-2.5 border-b border-[#dfe1e6] shrink-0">
-          <div className="flex items-center gap-2 text-[13px] text-[#626f86] min-w-0">
+      <DialogContent className="w-[94vw] max-w-[1040px] max-h-[92vh] p-0 gap-0 overflow-hidden flex flex-col bg-white">
+        {/* Top bar — Add epic / code  +  right-side icon cluster */}
+        <div className="flex items-center justify-between pl-5 pr-12 py-1.5 border-b border-[#dfe1e6] shrink-0">
+          <div className="flex items-center gap-2 text-[12px] text-[#626f86] min-w-0">
             <Link href={`/projects/${task.projectId}?tab=grid`}>
               <span className="inline-flex items-center gap-1 hover:underline cursor-pointer truncate">
-                <span className="w-4 h-4 rounded-sm bg-[#8270db] inline-flex items-center justify-center text-white text-[9px]">E</span>
-                {task.projectName}
+                <Pencil size={13} /> {task.projectName ? task.projectName : "Add epic"}
               </span>
             </Link>
             <span>/</span>
@@ -133,127 +190,289 @@ export function TaskDetailModal({
               <CheckSquare size={14} className="text-[#1868db]" /> {code}
             </span>
           </div>
-          <div className="flex items-center gap-3 text-[#626f86] shrink-0">
-            <Lock size={16} /> <span className="inline-flex items-center gap-1"><Eye size={16} />1</span>
-            <ThumbsUp size={16} /> <Share2 size={16} /> <MoreHorizontal size={16} />
+          <div className="flex items-center gap-2.5 text-[#626f86] shrink-0">
+            <span className="inline-flex items-center gap-1 px-1.5 h-7 rounded border border-[#1868db] text-[#1868db]"><Eye size={15} />1</span>
+            <Share2 size={16} />
           </div>
         </div>
 
         {/* Two-column body */}
-        <div className="flex-1 min-h-0 flex overflow-hidden">
+        <div className="flex-1 min-h-0 flex">
           {/* ── LEFT (main) ── */}
-          <div className="flex-1 min-w-0 px-5 pt-4 pb-6">
-            <input
-              defaultValue={task.name}
-              onBlur={(e) => { if (e.target.value.trim() && e.target.value !== task.name) patch.mutate({ name: e.target.value.trim() }); }}
-              className="w-full text-[19px] font-semibold text-[#172b4d] leading-tight mb-3 bg-transparent outline-none focus:bg-[#f7f8f9] rounded px-1 -ml-1"
-            />
+          <div className="flex-1 min-w-0 px-5 pt-3 pb-4 overflow-y-auto">
+            <h1 className="w-full text-[17px] font-semibold text-[#172b4d] leading-tight mb-3 px-1 -ml-1">{task.name}</h1>
 
-            {/* Action row */}
-            <div className="flex flex-wrap items-center gap-2 mb-4">
-              <ActionBtn icon={<Paperclip size={15} />}>Attach</ActionBtn>
-              <ActionBtn icon={<GitBranch size={15} />}>Add a child issue</ActionBtn>
+            {/* Description — click to reveal the Atlassian-style rich-text editor */}
+            <div className="mb-3">
+              <p className="text-[12px] font-semibold text-[#172b4d] mb-2">Description</p>
+              {editingDesc ? (
+                <div>
+                  <div className="border border-[#dfe1e6] rounded-t-lg bg-white">
+                    {/* Toolbar — wired to the contentEditable via execCommand */}
+                    <div ref={toolbarRef} className="flex items-center gap-0.5 px-2 py-1.5 text-[#44546f] flex-wrap">
+                      <div className="relative">
+                        <ToolBtn title="Text styles" onClick={() => setDescMenu((m) => m === "style" ? "" : "style")}><span className="inline-flex items-center text-[12px] font-medium">Tt</span><ChevronDown size={12} /></ToolBtn>
+                        {descMenu === "style" && (
+                          <div className="absolute z-30 mt-1 w-40 rounded-lg border border-[#dfe1e6] bg-white shadow-lg py-1">
+                            {([["p", "Normal text"], ["h1", "Heading 1"], ["h2", "Heading 2"], ["h3", "Heading 3"], ["blockquote", "Quote"]] as const).map(([tag, lbl]) => (
+                              <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); exec("formatBlock", tag); setDescMenu(""); }} className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#f1f2f4]">{lbl}</button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <Divider />
+                      <ToolBtn title="Bold" onClick={() => exec("bold")}><Bold size={16} /></ToolBtn>
+                      <ToolBtn title="Italic" onClick={() => exec("italic")}><Italic size={16} /></ToolBtn>
+                      <div className="relative">
+                        <ToolBtn title="More formatting" onClick={() => setDescMenu((m) => m === "more" ? "" : "more")}><MoreHorizontal size={16} /></ToolBtn>
+                        {descMenu === "more" && (
+                          <div className="absolute z-30 mt-1 w-44 rounded-lg border border-[#dfe1e6] bg-white shadow-lg py-1">
+                            {([["underline", "Underline"], ["strikeThrough", "Strikethrough"], ["subscript", "Subscript"], ["superscript", "Superscript"], ["removeFormat", "Clear formatting"]] as const).map(([cmd, lbl]) => (
+                              <button key={cmd} type="button" onMouseDown={(e) => { e.preventDefault(); exec(cmd); setDescMenu(""); }} className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#f1f2f4]">{lbl}</button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <Divider />
+                      <div className="relative">
+                        <ToolBtn title="Text color" onClick={() => setDescMenu((m) => m === "color" ? "" : "color")}><span className="text-[12px] font-medium underline decoration-[#ae2e24] decoration-2">A</span><ChevronDown size={12} /></ToolBtn>
+                        {descMenu === "color" && (
+                          <div className="absolute z-30 mt-1 p-2 rounded-lg border border-[#dfe1e6] bg-white shadow-lg grid grid-cols-5 gap-1.5">
+                            {["#172b4d", "#ae2e24", "#216e4e", "#0055cc", "#a54800", "#5e4db2", "#206a83", "#943d73", "#626f86", "#e56910"].map((c) => (
+                              <button key={c} type="button" onMouseDown={(e) => { e.preventDefault(); exec("foreColor", c); setDescMenu(""); }} className="w-5 h-5 rounded-full border border-black/10" style={{ background: c }} />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <Divider />
+                      <ToolBtn title="Bulleted list" onClick={() => exec("insertUnorderedList")}><List size={16} /></ToolBtn>
+                      <ToolBtn title="Numbered list" onClick={() => exec("insertOrderedList")}><ListOrdered size={16} /></ToolBtn>
+                      <Divider />
+                      <ToolBtn title="Action item" onClick={() => exec("insertHTML", '<label style="display:flex;align-items:flex-start;gap:6px"><input type="checkbox" style="margin-top:3px"/><span>&nbsp;</span></label>')}><ListChecks size={16} /></ToolBtn>
+                      <div className="relative">
+                        <ToolBtn title="Mention" onClick={() => { saveRange(); setMentionQ(""); setDescMenu((m) => m === "mention" ? "" : "mention"); }}><AtSign size={16} /></ToolBtn>
+                        {descMenu === "mention" && (
+                          <div className="absolute z-30 mt-1 w-56 rounded-lg border border-[#dfe1e6] bg-white shadow-lg p-1">
+                            <input
+                              autoFocus
+                              value={mentionQ}
+                              onChange={(e) => setMentionQ(e.target.value)}
+                              placeholder="Search people…"
+                              className="w-full text-[12px] border border-[#dfe1e6] rounded px-2 py-1 outline-none focus:border-[#1868db] mb-1"
+                            />
+                            <div className="max-h-48 overflow-y-auto">
+                              {people.filter((u) => u.name?.toLowerCase().includes(mentionQ.toLowerCase())).slice(0, 30).map((u) => (
+                                <button key={u.id} type="button" onMouseDown={(e) => { e.preventDefault(); insertMention(u.name); }} className="w-full flex items-center gap-2 text-left px-2 py-1.5 text-[12px] rounded hover:bg-[#f1f2f4]">
+                                  <PersonAvatar id={u.id} name={u.name} size={20} /> <span className="truncate">{u.name}</span>
+                                </button>
+                              ))}
+                              {people.filter((u) => u.name?.toLowerCase().includes(mentionQ.toLowerCase())).length === 0 && (
+                                <p className="px-2 py-1.5 text-[12px] text-[#626f86]">No matches</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <ToolBtn title="Emoji" onClick={() => setDescMenu((m) => m === "emoji" ? "" : "emoji")}><Smile size={16} /></ToolBtn>
+                        {descMenu === "emoji" && (
+                          <div className="absolute z-30 mt-1 w-[268px] max-h-52 overflow-y-auto p-2 rounded-lg border border-[#dfe1e6] bg-white shadow-lg grid grid-cols-8 gap-0.5">
+                            {EMOJIS.map((e, i) => (
+                              <button key={i} type="button" onMouseDown={(ev) => { ev.preventDefault(); exec("insertText", e); }} className="h-7 w-7 flex items-center justify-center text-[16px] rounded hover:bg-[#f1f2f4]">{e}</button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <ToolBtn title="Attach" onClick={() => setDescMenu((m) => m === "attach" ? "" : "attach")}><Paperclip size={16} /></ToolBtn>
+                        {descMenu === "attach" && (
+                          <div className="absolute z-30 mt-1 w-64 p-2 rounded-lg border border-[#dfe1e6] bg-white shadow-lg">
+                            <FileDropzone compact onUploaded={(m) => {
+                              const isImg = (m.fileType || "").startsWith("image/");
+                              appendToEditor(isImg
+                                ? `<div><img src="${m.fileUrl}" alt="${m.fileName}" style="max-width:100%"/></div>`
+                                : `<div>📎 <a href="${m.fileUrl}" target="_blank" rel="noreferrer">${m.fileName}</a></div>`);
+                              setDescMenu("");
+                            }} />
+                          </div>
+                        )}
+                      </div>
+                      <ToolBtn title="Insert table" onClick={() => { const cell = "<td style='border:1px solid #c1c7d0;padding:6px;min-width:60px'>&nbsp;</td>"; const row = `<tr>${cell}${cell}${cell}</tr>`; exec("insertHTML", `<table style='border-collapse:collapse;width:100%;border:1px solid #c1c7d0'><tbody>${row}${row}</tbody></table><p><br/></p>`); }}><Table size={16} /></ToolBtn>
+                      <ToolBtn title="Divider" onClick={() => exec("insertHorizontalRule")}><Plus size={16} /></ToolBtn>
+                    </div>
+                  </div>
+                  <div
+                    ref={descRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    data-ph="Type /ai for Atlassian Intelligence or @ to mention and notify someone."
+                    className="w-full text-[12px] text-[#172b4d] border border-t-0 border-[#dfe1e6] bg-white rounded-b-lg px-3 py-1.5 outline-none resize-y overflow-auto min-h-[64px] empty:before:content-[attr(data-ph)] empty:before:text-[#626f86] [&_h1]:text-[17px] [&_h1]:font-semibold [&_h2]:text-[17px] [&_h2]:font-semibold [&_h3]:text-[15px] [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-[#dfe1e6] [&_blockquote]:pl-3 [&_blockquote]:text-[#626f86] [&_pre]:bg-[#f1f2f4] [&_pre]:rounded [&_pre]:p-2 [&_a]:text-[#1868db] [&_a]:underline [&_table]:border-collapse [&_td]:border [&_td]:border-[#c1c7d0] [&_td]:p-1.5"
+                    style={{ resize: "vertical" }}
+                  />
+                  <div className="flex items-center gap-2 mt-3">
+                    <button type="button" onClick={() => { const html = descRef.current?.innerHTML ?? ""; if (html !== (task.description ?? "")) patch.mutate({ description: html }); setEditingDesc(false); setDescMenu(""); }} className="text-[12px] font-medium px-4 py-1.5 rounded bg-[#1868db] text-white hover:bg-[#1558bc]">Save</button>
+                    <button type="button" onClick={() => { setEditingDesc(false); setDescMenu(""); }} className="text-[12px] px-3 py-1.5 rounded text-[#44546f] hover:bg-[#f1f2f4]">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => setEditingDesc(true)}
+                  className="text-[12px] rounded px-2 py-1.5 -mx-2 cursor-text hover:bg-[#f1f2f4] min-h-[34px] [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-[#1868db] [&_a]:underline [&_table]:border-collapse [&_td]:border [&_td]:border-[#c1c7d0] [&_td]:p-1.5"
+                >
+                  {task.description
+                    ? <div className="text-[#172b4d]" dangerouslySetInnerHTML={{ __html: task.description }} />
+                    : <span className="text-[#626f86]">Add a description…</span>}
+                </div>
+              )}
             </div>
 
-            {/* Linked issues (dependencies) — shown when any exist */}
-            {depTasks.length > 0 && (
-              <div className="mb-4">
-                <div className="flex flex-wrap items-center gap-1.5">
+            {/* Subtasks — in-flow collapsible dropdown (not a floating popup) */}
+            <div className="mb-3">
+              <button type="button" onClick={() => setSubOpen((v) => !v)} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#172b4d] mb-2">
+                Subtasks {subtasks.length > 0 && <span className="text-[12px] font-normal text-[#626f86]">({subDone}/{subtasks.length})</span>}
+                <ChevronDown size={14} className={`text-[#626f86] transition-transform ${subOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {subOpen && <>
+              {subtasks.length > 0 && (
+                <>
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex-1 h-2 rounded-full bg-[#dfe1e6] overflow-hidden">
+                      <div className="h-full rounded-full bg-[#22a06b] transition-[width] duration-500" style={{ width: `${subPct}%` }} />
+                    </div>
+                    <span className="text-[12px] text-[#626f86] num-tabular shrink-0">{subPct}% Done</span>
+                  </div>
+                  <div className="mb-2">
+                    {subtasks.map((s) => (
+                      <div key={s.id} className="flex items-center gap-2 text-[12px] py-2 px-1 border-t border-[#f1f2f4] first:border-t-0">
+                        <CheckSquare size={15} className="text-[#1868db] shrink-0" />
+                        <span className="font-medium text-[#1868db] shrink-0 hover:underline cursor-default">{codeOf(s.id)}</span>
+                        <span className="flex-1 truncate text-[#172b4d]">{s.name}</span>
+                        <PersonAvatar id={s.assigneeId} name={s.assigneeName ?? "Unassigned"} size={22} />
+                        <div className="h-7 w-24 shrink-0 rounded overflow-hidden border border-[#dfe1e6]">
+                          <StatusSelect value={s.status} onChange={(v) => api.patch(`/api/tasks/${s.id}`, { status: v }).then(onRefresh)} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Inline add row */}
+              <div className="flex items-center gap-2">
+                <input
+                  value={subName}
+                  onChange={(e) => setSubName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") addSubtask(); }}
+                  placeholder="What needs to be done?"
+                  className="flex-1 text-[12px] border border-[#c1c7d0] rounded px-2.5 py-1.5 outline-none focus:border-[#1868db]"
+                />
+                <button type="button" onClick={addSubtask} disabled={!subName.trim() || createTask.isPending} className="text-[12px] px-3 py-1.5 rounded bg-[#1868db] text-white hover:bg-[#1558bc] disabled:opacity-50">Add</button>
+              </div>
+              </>}
+            </div>
+
+            {/* Linked work items */}
+            <div className="mb-3">
+              <p className="text-[12px] font-semibold text-[#172b4d] mb-2">Linked work items</p>
+              {depTasks.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 mb-2">
                   {depTasks.map((d) => (
                     <span key={d.id} className="inline-flex items-center gap-1 text-[12px] pl-2 pr-1 py-0.5 rounded-full bg-[#f1f2f4] border border-[#dfe1e6] max-w-full">
                       <span className="truncate">{codeOf(d.id)} · {d.name}</span>
                       <button onClick={() => removeDep.mutate(d.id)} disabled={removeDep.isPending} className="text-[#626f86] hover:text-[#ae2e24] shrink-0"><X size={12} /></button>
                     </span>
                   ))}
-                  <select
-                    value={depPick}
-                    onChange={(e) => { const id = Number(e.target.value); if (id) addDep.mutate(id); }}
-                    disabled={addDep.isPending}
-                    className="text-[12px] border border-dashed border-[#c1c7d0] rounded-full px-2 py-0.5 bg-white text-[#626f86] hover:border-[#1868db] outline-none"
-                  >
-                    <option value="">+ Link an issue…</option>
-                    {allTasks
-                      .filter((t) => t.projectId === task.projectId && t.id !== task.id && t.parentTaskId !== task.id && !deps.includes(t.id))
-                      .map((t) => <option key={t.id} value={t.id}>{codeOf(t.id)} · {t.name}</option>)}
-                  </select>
                 </div>
-              </div>
-            )}
-
-            {/* Start / Due dates */}
-            <div className="space-y-1 mb-4">
-              <div className="grid grid-cols-[120px_1fr] items-center">
-                <span className="text-[13px] text-[#626f86]">Start date</span>
-                <input type="date" defaultValue={task.startDate ?? ""}
-                  onBlur={(e) => { if (e.target.value !== (task.startDate ?? "")) patch.mutate({ startDate: e.target.value || null }); }}
-                  className="text-[13px] text-[#172b4d] bg-transparent rounded px-1 py-0.5 outline-none hover:bg-[#f1f2f4] focus:bg-[#f1f2f4] w-fit" />
-              </div>
-              <div className="grid grid-cols-[120px_1fr] items-center">
-                <span className="text-[13px] text-[#626f86]">Due date</span>
-                <input type="date" defaultValue={task.endDate ?? ""}
-                  onBlur={(e) => { if (e.target.value !== (task.endDate ?? "")) patch.mutate({ endDate: e.target.value || null }); }}
-                  className="text-[13px] text-[#172b4d] bg-transparent rounded px-1 py-0.5 outline-none hover:bg-[#f1f2f4] focus:bg-[#f1f2f4] w-fit" />
-              </div>
+              )}
+              <select
+                value={depPick}
+                onChange={(e) => { const id = Number(e.target.value); if (id) addDep.mutate(id); }}
+                disabled={addDep.isPending || linkable.length === 0}
+                className="text-[12px] text-[#44546f] bg-transparent outline-none cursor-pointer hover:underline"
+              >
+                <option value="">+ Add linked work item</option>
+                {linkable.map((t) => <option key={t.id} value={t.id}>{codeOf(t.id)} · {t.name}</option>)}
+              </select>
             </div>
 
-            {/* Description */}
-            <div className="mb-4">
-              <p className="text-[15px] font-semibold text-[#172b4d] mb-2">Description</p>
-              <textarea
-                defaultValue={task.description ?? ""}
-                placeholder="Add a description…"
-                rows={3}
-                onBlur={(e) => { if (e.target.value !== (task.description ?? "")) patch.mutate({ description: e.target.value }); }}
-                className="w-full text-[14px] text-[#172b4d] border border-transparent hover:border-[#dfe1e6] focus:border-[#1868db] bg-transparent rounded px-2 py-1.5 outline-none resize-y"
-              />
-            </div>
-
-            {/* Child issues */}
-            {subtasks.length > 0 && (
-              <div className="mb-4 border border-[#dfe1e6] rounded-lg p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[15px] font-semibold text-[#172b4d]">Child issues</p>
-                  <div className="flex items-center gap-2 text-[13px] text-[#44546f]">
-                    <span className="inline-flex items-center gap-1 cursor-default">Order by</span>
-                    <MoreHorizontal size={16} />
-                    <Plus size={16} />
-                    <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-[#f1f2f4]"><Sparkles size={14} className="text-[#1868db]" /> Suggest subtasks</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 mb-3">
-                  <div className="flex-1 h-2 rounded-full bg-[#dfe1e6] overflow-hidden">
-                    <div className="h-full rounded-full bg-[#22a06b] transition-[width] duration-500" style={{ width: `${subPct}%` }} />
-                  </div>
-                  <span className="text-[12px] text-[#626f86] num-tabular shrink-0">{subPct}% Done</span>
-                </div>
-                <div>
-                  {subtasks.map((s) => (
-                    <div key={s.id} className="flex items-center gap-2 text-[13px] py-2 px-1 border-t border-[#f1f2f4] first:border-t-0">
-                      <CheckSquare size={15} className="text-[#1868db] shrink-0" />
-                      <span className="font-medium text-[#1868db] shrink-0 line-through-none hover:underline cursor-default">{codeOf(s.id)}</span>
-                      <span className="flex-1 truncate text-[#172b4d]">{s.name}</span>
-                      <PersonAvatar id={s.assigneeId} name={s.assigneeName ?? "Unassigned"} size={22} />
-                      <div className="h-7 w-24 shrink-0 rounded overflow-hidden border border-[#dfe1e6]">
-                        <StatusSelect value={s.status} onChange={(v) => api.patch(`/api/tasks/${s.id}`, { status: v }).then(onRefresh)} />
-                      </div>
-                    </div>
+            {/* Activity */}
+            <div>
+              <p className="text-[12px] font-semibold text-[#172b4d] mb-2">Activity</p>
+              <div className="flex items-center justify-between mb-3">
+                <div className="inline-flex items-center gap-1 p-0.5 rounded bg-[#f1f2f4]">
+                  {([["all", "All"], ["comments", "Comments"], ["history", "History"], ["worklog", "Work log"]] as const).map(([k, lbl]) => (
+                    <button key={k} type="button" onClick={() => setActTab(k)}
+                      className={`text-[12px] px-3 py-1 rounded font-medium transition-colors ${actTab === k ? "bg-white text-[#1868db] shadow-sm" : "text-[#44546f] hover:bg-white/60"}`}>
+                      {lbl}
+                    </button>
                   ))}
                 </div>
+                <button type="button" className="text-[#626f86] hover:text-[#172b4d]"><ListFilter size={18} /></button>
               </div>
-            )}
 
-            {/* Comments */}
-            <div className="mb-2">
-              {comments.isLoading ? (
-                <Skeleton className="h-16 rounded-lg" />
-              ) : (comments.data ?? []).length > 0 && (
-                <div className="space-y-3 mb-3">
+              {(actTab === "all" || actTab === "comments") ? (
+                <>
+                  {/* Comment composer */}
+                  <div className="flex items-start gap-2 mb-4">
+                    <PersonAvatar id={task.assigneeId} name={task.assigneeName ?? "?"} size={32} />
+                    <div className="flex-1 min-w-0 rounded-lg border border-[#c1c7d0] focus-within:border-[#1868db] p-2.5">
+                      <input
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") submitComment(); }}
+                        placeholder="Add a comment…"
+                        className="w-full text-[12px] outline-none bg-transparent mb-2"
+                      />
+                      <div className="flex flex-wrap items-center gap-2">
+                        {["Who is working on this...?", "Can I get more info...?", "Status update..."].map((q) => (
+                          <button key={q} type="button" onClick={() => setDraft(q)}
+                            className="text-[12px] px-3 py-1 rounded border border-[#dfe1e6] text-[#44546f] hover:bg-[#f1f2f4]">{q}</button>
+                        ))}
+                        <button
+                          onClick={submitComment}
+                          disabled={!draft.trim() || addComment.isPending}
+                          className="ml-auto text-[12px] font-medium px-3 py-1 rounded bg-[#1868db] text-white hover:bg-[#1558bc] disabled:opacity-50"
+                        >Save</button>
+                      </div>
+                    </div>
+                  </div>
+
+                </>
+              ) : (
+                <p className="text-[12px] text-[#626f86] py-4">No {actTab === "history" ? "history" : "work log"} entries yet.</p>
+              )}
+            </div>
+          </div>
+
+          {/* ── RIGHT (sidebar) ── */}
+          <div className="w-[300px] shrink-0 border-l border-[#dfe1e6] px-4 pt-3 pb-4 bg-white overflow-y-auto">
+            {/* Status + Priority */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="relative h-8 w-[140px] rounded border border-[#dfe1e6] overflow-hidden [&_select]:!text-left [&_select]:!pr-6">
+                <StatusSelect value={task.status} onChange={(v) => patch.mutate({ status: v })} />
+                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-70" />
+              </div>
+              <div className="relative h-8 w-[120px] rounded border border-[#dfe1e6] overflow-hidden [&_select]:!text-left [&_select]:!pr-6">
+                <PrioritySelect value={task.priority} onChange={(v) => patch.mutate({ priority: v })} />
+                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-70" />
+              </div>
+            </div>
+
+            {/* Past comments — collapsible dropdown */}
+            {(comments.data ?? []).length > 0 && (
+              <div className="border border-[#dfe1e6] rounded-lg p-3 mb-4">
+                <button type="button" onClick={() => setCommentsOpen((v) => !v)} className="w-full flex items-center justify-between text-[12px] font-semibold text-[#172b4d] mb-2">
+                  Comments <span className="text-[#626f86] font-normal">({comments.data!.length})</span>
+                  <ChevronDown size={14} className={`ml-auto text-[#626f86] transition-transform ${commentsOpen ? "" : "-rotate-90"}`} />
+                </button>
+                {commentsOpen && <div className="space-y-3 max-h-56 overflow-y-auto">
                   {comments.data!.map((c) => (
                     <div key={c.id} className="flex items-start gap-2">
-                      <PersonAvatar id={c.senderId} name={c.senderName ?? "?"} size={28} />
+                      <PersonAvatar id={c.senderId} name={c.senderName ?? "?"} size={24} />
                       <div className="min-w-0 flex-1">
-                        <p className="text-[13px]"><span className="font-medium text-[#172b4d]">{c.senderName ?? "User"}</span> <span className="text-[#626f86]">· {new Date(c.createdAt).toLocaleString()}</span></p>
-                        {c.body && <p className="text-[13px] text-[#172b4d] whitespace-pre-wrap">{c.body}</p>}
+                        <p className="text-[11px]"><span className="font-medium text-[#172b4d]">{c.senderName ?? "User"}</span> <span className="text-[#626f86]">· {new Date(c.createdAt).toLocaleString()}</span></p>
+                        {c.body && <p className="text-[12px] text-[#172b4d] whitespace-pre-wrap">{c.body}</p>}
                         {c.attachments?.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1">
                             {c.attachments.map((a, i) => (
@@ -264,63 +483,18 @@ export function TaskDetailModal({
                       </div>
                     </div>
                   ))}
-                </div>
-              )}
-
-              {pendingAtts.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {pendingAtts.map((a, i) => (
-                    <span key={i} className="inline-flex items-center gap-1 text-[12px] pl-2 pr-1 py-0.5 rounded-full bg-[#e9f2ff] text-[#1868db] border border-[#cce0ff]">
-                      <Paperclip size={10} /> <span className="truncate max-w-[160px]">{a.fileName}</span>
-                      <button onClick={() => setPendingAtts((p) => p.filter((_, j) => j !== i))} className="hover:text-[#ae2e24] shrink-0"><X size={11} /></button>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex items-start gap-2">
-                <PersonAvatar id={task.assigneeId} name={task.assigneeName ?? "?"} size={28} />
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === "Enter") submitComment(); }}
-                      placeholder="Add a comment…"
-                      className="flex-1 text-[13px] border border-[#c1c7d0] bg-white rounded px-3 py-2 outline-none focus:border-[#1868db]"
-                    />
-                    <button
-                      onClick={submitComment}
-                      disabled={(!draft.trim() && pendingAtts.length === 0) || addComment.isPending}
-                      className="inline-flex items-center gap-1.5 text-[13px] font-medium px-3 py-2 rounded bg-[#1868db] text-white hover:bg-[#1558bc] disabled:opacity-50"
-                    >
-                      <Send size={13} /> Post
-                    </button>
-                  </div>
-                  <div className="mt-2"><FileDropzone compact onUploaded={(meta) => { setPendingAtts((p) => [...p, meta]); }} /></div>
-                </div>
+                </div>}
               </div>
-            </div>
-          </div>
-
-          {/* ── RIGHT (sidebar) ── */}
-          <div className="w-[290px] shrink-0 border-l border-[#dfe1e6] px-4 pt-4 pb-10 bg-white">
-            {/* Status + Actions */}
-            <div className="flex items-center gap-2 mb-5">
-              <div className="h-8 min-w-[120px] rounded overflow-hidden border border-[#dfe1e6]">
-                <StatusSelect value={task.status} onChange={(v) => patch.mutate({ status: v })} />
-              </div>
-            </div>
+            )}
 
             {/* Details panel */}
             <div className="border border-[#dfe1e6] rounded-lg">
               <button
                 onClick={() => setDetailsOpen((v) => !v)}
-                className="w-full flex items-center justify-between px-4 py-2.5 text-[14px] font-semibold text-[#172b4d]"
+                className="w-full flex items-center justify-between px-4 py-1.5 text-[12px] font-semibold text-[#172b4d]"
               >
                 Details
                 <span className="flex items-center gap-2 text-[#626f86]">
-                  <Settings size={15} />
                   <ChevronUp size={16} className={detailsOpen ? "" : "rotate-180"} />
                 </span>
               </button>
@@ -332,33 +506,28 @@ export function TaskDetailModal({
                       <select
                         value={task.assigneeId ?? ""}
                         onChange={(e) => { const v = e.target.value; patch.mutate({ assigneeId: v ? Number(v) : null }); }}
-                        className="flex-1 min-w-0 truncate text-[13px] bg-transparent border border-transparent hover:bg-[#f1f2f4] rounded pl-1 pr-5 py-0.5 outline-none cursor-pointer"
+                        className="flex-1 min-w-0 truncate text-[12px] bg-transparent border border-transparent hover:bg-[#f1f2f4] rounded pl-1 pr-5 py-0.5 outline-none cursor-pointer"
                       >
                         <option value="">Unassigned</option>
                         {people.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
                       </select>
                     </div>
+                    {task.assigneeId == null && (
+                      <button type="button" onClick={() => patch.mutate({ assigneeId: userId })} className="text-[12px] text-[#1868db] hover:underline mt-1 ml-8">Assign to me</button>
+                    )}
                   </SidebarRow>
-                  <SidebarRow label="Labels"><span className="text-[#626f86]">None</span></SidebarRow>
                   <SidebarRow label="Parent">
                     {parent ? <span className="truncate text-[#1868db]">{codeOf(parent.id)} · {parent.name}</span> : <span className="text-[#626f86]">None</span>}
                   </SidebarRow>
-                  <SidebarRow label="Team"><span className="text-[#626f86]">None</span></SidebarRow>
-                  <SidebarRow label="Priority">
-                    <div className="h-7 -ml-1 w-fit rounded overflow-hidden"><PrioritySelect value={task.priority} onChange={(v) => patch.mutate({ priority: v })} /></div>
+                  <SidebarRow label="Due date">
+                    <input type="date" defaultValue={task.endDate ?? ""}
+                      onBlur={(e) => { if (e.target.value !== (task.endDate ?? "")) patch.mutate({ endDate: e.target.value || null }); }}
+                      className="text-[12px] text-[#172b4d] bg-transparent rounded px-1 py-0.5 outline-none hover:bg-[#f1f2f4] focus:bg-[#f1f2f4] w-fit" />
                   </SidebarRow>
-                  <SidebarRow label="Time tracking">
-                    <div>
-                      <div className="h-1.5 rounded-full bg-[#dfe1e6] overflow-hidden mb-1"><div className="h-full bg-[#1868db]" style={{ width: `${timePct}%` }} /></div>
-                      <span className="text-[12px] text-[#626f86] num-tabular">{logged}h logged{est > 0 ? ` / ${est}h est` : ""}</span>
-                    </div>
-                  </SidebarRow>
-                  <SidebarRow label="Original estimate"><span className="num-tabular">{est > 0 ? `${est}h` : "0m"}</span></SidebarRow>
-                  <SidebarRow label="Development">
-                    <div className="space-y-1 text-[13px] text-[#1868db]">
-                      <span className="flex items-center gap-1.5"><GitBranch size={14} /> Create branch</span>
-                      <span className="flex items-center gap-1.5"><Plus size={14} /> Create commit</span>
-                    </div>
+                  <SidebarRow label="Start date">
+                    <input type="date" defaultValue={task.startDate ?? ""}
+                      onBlur={(e) => { if (e.target.value !== (task.startDate ?? "")) patch.mutate({ startDate: e.target.value || null }); }}
+                      className="text-[12px] text-[#172b4d] bg-transparent rounded px-1 py-0.5 outline-none hover:bg-[#f1f2f4] focus:bg-[#f1f2f4] w-fit" />
                   </SidebarRow>
                   <SidebarRow label="Reporter">
                     {task.assigneeName
