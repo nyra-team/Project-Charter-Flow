@@ -32,19 +32,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
-      ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, ".."),
-            }),
-          ),
-          await import("@replit/vite-plugin-dev-banner").then((m) =>
-            m.devBanner(),
-          ),
-        ]
-      : []),
+    // ponytail: dropped the Replit-only cartographer/dev-banner plugins. They
+    // only ever loaded under REPL_ID (never on our infra), and their top-level
+    // `await import()` broke the prod vite config loader
+    // (ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING). Re-add statically if ever needed.
   ],
   resolve: {
     alias: {
