@@ -42,13 +42,25 @@ const CHARTER_NFA_HREF = "#charter-nfa";
 type LucideIcon = typeof FolderOpen;
 type SidebarSections = ComponentProps<typeof CollapsibleSidebar>["sections"];
 type SidebarFooter = ComponentProps<typeof CollapsibleSidebar>["footer"];
-type Item = { icon: LucideIcon; label: string; href: string; external?: boolean; badgeCount?: number };
+type Item = { icon: LucideIcon; label: string; href: string; external?: boolean; badgeCount?: number; className?: string };
 type Section = { title?: string; icon?: LucideIcon; items: Item[]; collapsible?: boolean };
 
 // Primary leaf destinations — always shown as icons, expanded or collapsed.
 const PORTFOLIO: Item = { icon: FolderOpen, label: "Portfolio", href: "/portfolio" };
 const PROJECTS: Item = { icon: BarChart3, label: "Projects", href: "/projects" };
 const CHARTER: Item = { icon: FileText, label: "Charter + e-NFA", href: CHARTER_NFA_HREF };
+// Same sentinel as Charter + e-NFA — opens the workflow chooser popup.
+// Exact replica of the existing "Business Case" CTA (pipeline / dashboard):
+// btn-glossy-cta + Sparkles, centered. `!` overrides the shared item's
+// rounded-xl/px-3/py-2.5 layout (cn is a plain join, no tailwind-merge).
+const BUSINESS_CASE: Item = {
+  icon: Sparkles,
+  label: "Business Case",
+  href: CHARTER_NFA_HREF,
+  className:
+    "btn-glossy-cta !w-fit !mx-auto !mb-3 !gap-2 !px-4 !py-0 !h-9 !rounded-full " +
+    "!text-[13px] !font-semibold [&_svg]:!w-3.5 [&_svg]:!h-3.5",
+};
 const MY_TASKS: Item = { icon: UserCheck, label: "My Tasks", href: "/my-tasks" };
 const APPROVALS: Item = { icon: CheckSquare, label: "Approvals", href: "/approvals" };
 const VENDOR_ITEMS: Item[] = [
@@ -153,7 +165,7 @@ export default function PmoSidebar({
     ] });
   } else {
     sections = [
-      { items: [PORTFOLIO, PROJECTS, CHARTER, MY_TASKS] },
+      { items: [BUSINESS_CASE, PORTFOLIO, PROJECTS, CHARTER, MY_TASKS] },
       { title: "Vendor Evaluation", icon: ShoppingCart, collapsible: true, items: VENDOR_ITEMS },
       { items: [APPROVALS] },
       { title: "Workspace", icon: LayoutGrid, collapsible: true, items: WORKSPACE_ITEMS },

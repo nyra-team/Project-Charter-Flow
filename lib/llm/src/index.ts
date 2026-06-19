@@ -170,14 +170,30 @@ export async function llm<T = string>(opts: LLMCallOptions<T>): Promise<LLMResul
   }
 
   try {
-    const res = await fetch(auth.url, {
-      method: "POST",
-      headers: headersFor(auth.key, auth.oauth),
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
+    // 429 (rate limit) / 529 (overloaded) are transient — back off and retry.
+    // Bigger requests (e.g. a draft grounded in an uploaded reference doc) are
+    // the most likely to trip the per-minute token limit, so a plain one-shot
+    // call would fail exactly when a source document is attached.
+    const MAX_RETRIES = 4;
+    const payload = JSON.stringify(body);
+    let res!: Response;
+    for (let attempt = 0; ; attempt++) {
+      res = await fetch(auth.url, {
+        method: "POST",
+        headers: headersFor(auth.key, auth.oauth),
+        body: payload,
+      });
+      if (res.ok) break;
       const errText = await res.text();
-      return { ok: false, reason: "llm_error", message: `${res.status} ${errText.slice(0, 400)}` };
+      const retryable = res.status === 429 || res.status === 529 || errText.includes("overloaded");
+      if (!retryable || attempt >= MAX_RETRIES) {
+        return { ok: false, reason: "llm_error", message: `${res.status} ${errText.slice(0, 400)}` };
+      }
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const waitMs = Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : Math.min(2 ** attempt * 1000, 8000);
+      await new Promise((r) => setTimeout(r, waitMs));
     }
     const data = (await res.json()) as StdMessagesResponse;
 

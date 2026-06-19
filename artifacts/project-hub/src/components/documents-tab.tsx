@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FileDropzone } from "@/components/ui/file-dropzone";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
-import { Plus, FileText, Trash2, Lock, Unlock, History, Tag, Folder, Search, Upload, Download, FileCheck2, Eye, Loader2, ExternalLink, Sparkles, ChevronDown, ChevronRight, Share2 } from "lucide-react";
+import { Plus, FileText, Trash2, Lock, Unlock, History, Tag, Folder, Search, Upload, Download, FileCheck2, Eye, Loader2, ExternalLink, Sparkles, ChevronDown, ChevronRight, Share2, SlidersHorizontal, X } from "lucide-react";
 import { formatDate } from "../lib/format";
 import { ShareDialog } from "./ShareDialog";
 import { LIFECYCLE_STAGES } from "../lib/lifecycle-config";
@@ -300,8 +300,10 @@ export function DocumentsTab({
           <p className="text-xs font-semibold">AI is reading your documents — classifying to stages, ticking checklist items, and advancing the lifecycle where gates clear…</p>
         </div>
       )}
-      {/* Toolbar */}
-      {(showSearch || showUploadButton) && (
+      {/* Toolbar — search + always-visible Access/Tags filters + upload.
+          The filters live here (not in the table header) so they stay visible
+          and adjustable even when the current filter matches no documents. */}
+      {(showSearch || showUploadButton || allDocs.length > 0) && (
         <div className="glass-surface lift-card ph-rise rounded-2xl p-4 flex flex-wrap items-center gap-3">
           {showSearch && (
             <div className="flex items-center gap-2 flex-1 min-w-[200px]">
@@ -312,6 +314,41 @@ export function DocumentsTab({
                 onChange={e => setSearch(e.target.value)}
                 className="border-0 shadow-none focus-visible:ring-0 px-0 bg-transparent"
               />
+            </div>
+          )}
+          {allDocs.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <SlidersHorizontal size={13} /> Filter
+              </span>
+              <select
+                value={accessFilter}
+                onChange={e => setAccessFilter(e.target.value)}
+                title="Filter by access level"
+                className={`text-xs font-medium border rounded-md px-2 py-1 h-8 focus:outline-none focus:ring-2 focus:ring-ring/40 ${accessFilter ? "border-primary bg-primary/10 text-primary" : "border-input bg-background"}`}
+              >
+                <option value="">All access</option>
+                {ACCESS_LEVELS.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+              <select
+                value={tagFilter}
+                onChange={e => setTagFilter(e.target.value)}
+                title="Filter by tag"
+                className={`text-xs font-medium border rounded-md px-2 py-1 h-8 focus:outline-none focus:ring-2 focus:ring-ring/40 ${tagFilter ? "border-primary bg-primary/10 text-primary" : "border-input bg-background"}`}
+              >
+                <option value="">All tags</option>
+                {CATEGORY_TAGS.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              {(accessFilter || tagFilter || search) && (
+                <button
+                  type="button"
+                  onClick={() => { setAccessFilter(""); setTagFilter(""); setSearch(""); }}
+                  title="Clear all filters"
+                  className="inline-flex items-center gap-1 px-2 py-1 h-8 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                >
+                  <X size={13} /> Clear
+                </button>
+              )}
             </div>
           )}
           {showUploadButton && (
@@ -335,28 +372,8 @@ export function DocumentsTab({
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="pl-10">Document</TableHead>
-                <TableHead>
-                  <select
-                    value={accessFilter}
-                    onChange={e => setAccessFilter(e.target.value)}
-                    className="text-xs font-medium border border-input bg-background rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-ring/40"
-                    title="Filter by access level"
-                  >
-                    <option value="">All access</option>
-                    {ACCESS_LEVELS.map(a => <option key={a} value={a}>{a}</option>)}
-                  </select>
-                </TableHead>
-                <TableHead>
-                  <select
-                    value={tagFilter}
-                    onChange={e => setTagFilter(e.target.value)}
-                    className="text-xs font-medium border border-input bg-background rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-ring/40"
-                    title="Filter by tag"
-                  >
-                    <option value="">All tags</option>
-                    {CATEGORY_TAGS.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </TableHead>
+                <TableHead>Access</TableHead>
+                <TableHead>Tags</TableHead>
                 <TableHead>Uploaded By</TableHead>
                 <TableHead>Public Link</TableHead>
                 <TableHead>Uploaded</TableHead>

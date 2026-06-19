@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useListProjects } from "@workspace/api-client-react";
-import { Kanban, Table2, BarChart2, CheckSquare, ChevronDown, ListTree } from "lucide-react";
+import { Kanban, Table2, BarChart2, CheckSquare, ChevronDown, ListTree, LayoutGrid, CalendarDays, Info } from "lucide-react";
 import { api } from "@/lib/extra-api";
 import { PageHeader } from "@/components/ui-kit";
 import { TaskFilterBar, applyTaskFilters, type TaskFilters } from "@/components/task-filter-bar";
@@ -9,12 +9,27 @@ import { ConnectBoard, type BoardTask } from "@/components/connect-board";
 import { TaskDetailModal } from "@/components/task-detail-modal";
 import { WbsTree, type WbsTask, type WbsMilestone } from "@/components/wbs-tree";
 import { TaskStatusChip, PriorityChip } from "@/components/task-status-chip";
+import { HoverHint } from "@/components/ui-kit";
+import { KanbanView } from "@/components/monday/KanbanView";
+import { CalendarView, type CalendarItem } from "@/components/monday/CalendarView";
+import { PriorityCell, OwnerCell, DateCell, type BoardColumn, type BoardGroup } from "@/components/monday";
 import { PersonAvatar } from "@/components/person-avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LIFECYCLE_STAGES } from "@/lib/lifecycle-config";
+import { TASK_STATUSES } from "@/lib/task-constants";
 import type { AggTask, AggMilestone } from "@/lib/work-types";
 
-type View = "tree" | "board" | "table" | "timeline";
+// Task code shown in the table — TSK- + the task's zero-padded DB id.
+const taskCode = (id: number) => `TSK-${String(id).padStart(4, "0")}`;
+
+// Card cells for the Tasks Kanban (mirrors the Projects board's compact stack).
+const TASK_BOARD_COLUMNS: BoardColumn<AggTask>[] = [
+  { key: "priority", header: "Priority", render: (t) => <PriorityCell priority={t.priority} /> },
+  { key: "owner", header: "Owner", render: (t) => <OwnerCell id={t.assigneeId} name={t.assigneeName} /> },
+  { key: "due", header: "Due", render: (t) => <DateCell value={t.endDate} /> },
+];
+
+type View = "tree" | "board" | "kanban" | "table" | "timeline" | "calendar";
 type GroupBy = "none" | "status" | "owner" | "project" | "milestone" | "stage";
 
 const STAGE_LABEL = Object.fromEntries(LIFECYCLE_STAGES.map((s) => [s.key, s.label]));
@@ -48,6 +63,22 @@ export default function TasksPage() {
   }, [tasks, filters, ownerFilter, projectFilter, stageFilter]);
 
   const groups = useMemo(() => groupTasks(filtered, groupBy), [filtered, groupBy]);
+
+  // Kanban — one column per task status, same board as the Projects view.
+  const kanbanGroups = useMemo<BoardGroup<AggTask>[]>(
+    () => TASK_STATUSES.map((s) => ({ key: s.value, label: s.label, color: s.solid, rows: filtered.filter((t) => t.status === s.value) })),
+    [filtered],
+  );
+  const moveTaskToStatus = (rowId: string, status: string) => {
+    const id = Number(rowId.replace("task:", ""));
+    if (!Number.isFinite(id)) return;
+    void api.patch(`/api/tasks/${id}`, { status }).then(refresh);
+  };
+  // Calendar — place each task on its due (else start) date.
+  const calendarItems = useMemo<CalendarItem[]>(
+    () => filtered.map((t) => ({ id: t.id, date: t.endDate ?? t.startDate, title: t.name, status: t.status })),
+    [filtered],
+  );
 
   return (
     <div className="space-y-5">
@@ -97,6 +128,20 @@ export default function TasksPage() {
           projectId={0}
           onRefresh={refresh}
           onTaskClick={(id) => setOpenTask(filtered.find((t) => t.id === id) ?? null)}
+        />
+      ) : view === "kanban" ? (
+        <KanbanView<AggTask>
+          groups={kanbanGroups}
+          columns={TASK_BOARD_COLUMNS}
+          getRowId={(t) => `task:${t.id}`}
+          getName={(t) => <span className="font-medium">{t.name}</span>}
+          onOpenRow={(t) => setOpenTask(t)}
+          onMoveToGroup={moveTaskToStatus}
+        />
+      ) : view === "calendar" ? (
+        <CalendarView<CalendarItem>
+          items={calendarItems}
+          onOpenItem={(it) => setOpenTask(filtered.find((t) => t.id === it.id) ?? null)}
         />
       ) : view === "timeline" ? (
         <TimelineView tasks={filtered} onOpen={setOpenTask} />
@@ -161,6 +206,19 @@ function TaskTableGroup({ label, tasks, onOpen }: { label: string; tasks: AggTas
           <table className="w-full text-sm">
             <thead>
               <tr className="text-[10px] text-muted-foreground uppercase tracking-wider border-y border-border/60 bg-muted/30">
+                <th className="text-left font-semibold px-3 py-2 whitespace-nowrap">
+                  <span className="inline-flex items-center gap-1">
+                    Code
+                    <HoverHint
+                      title="How task codes are formed"
+                      footer={<>“TSK-” + the task's zero-padded database ID (e.g. <b className="text-popover-foreground">TSK-0042</b>) — generated automatically and stable for the life of the task.</>}
+                    >
+                      <span className="inline-flex cursor-help" aria-label="How task codes are formed">
+                        <Info size={11} className="opacity-60" />
+                      </span>
+                    </HoverHint>
+                  </span>
+                </th>
                 <th className="text-left font-semibold px-4 py-2">Task</th>
                 <th className="text-left font-semibold px-3 py-2 hidden md:table-cell">Project</th>
                 <th className="text-left font-semibold px-3 py-2 hidden lg:table-cell">Milestone</th>
@@ -174,6 +232,7 @@ function TaskTableGroup({ label, tasks, onOpen }: { label: string; tasks: AggTas
             <tbody className="divide-y divide-border/40">
               {tasks.map((t) => (
                 <tr key={t.id} onClick={() => onOpen(t)} className="hover:bg-accent/30 cursor-pointer transition-colors">
+                  <td className="px-3 py-2.5 font-mono text-[11px] font-semibold text-muted-foreground whitespace-nowrap">{taskCode(t.id)}</td>
                   <td className="px-4 py-2.5 font-medium text-foreground">
                     <span className="flex items-center gap-1.5">{t.parentTaskId && <span className="text-muted-foreground/50">↳</span>}{t.name}</span>
                   </td>
@@ -293,8 +352,10 @@ function ViewSwitch({ view, setView }: { view: View; setView: (v: View) => void 
   const opts: Array<{ v: View; icon: typeof Kanban; label: string }> = [
     { v: "tree", icon: ListTree, label: "Tree" },
     { v: "board", icon: Kanban, label: "Board" },
+    { v: "kanban", icon: LayoutGrid, label: "Kanban" },
     { v: "table", icon: Table2, label: "Table" },
     { v: "timeline", icon: BarChart2, label: "Timeline" },
+    { v: "calendar", icon: CalendarDays, label: "Calendar" },
   ];
   return (
     <div className="flex gap-1 p-1 rounded-xl bg-muted/60 border border-border">

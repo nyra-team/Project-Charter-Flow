@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { Loader2, Sparkles } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { ExpandingTextarea } from "@/components/ExpandingTextarea";
 import { useToast } from "@/hooks/use-toast";
 
 export function RephraseField({
@@ -23,6 +24,7 @@ export function RephraseField({
   onDraft,
   drafting = false,
   textareaClassName,
+  expandOnFocus = false,
 }: {
   label: string;
   value: string;
@@ -41,6 +43,8 @@ export function RephraseField({
   onDraft?: () => void;
   /** External busy flag for the draft action (drives the button spinner). */
   drafting?: boolean;
+  /** When true, the textarea pops up larger on focus instead of staying fixed. */
+  expandOnFocus?: boolean;
 }) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
@@ -110,7 +114,11 @@ export function RephraseField({
           </div>
         )}
       </div>
-      <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={rows} placeholder={placeholder} className={textareaClassName} />
+      {expandOnFocus ? (
+        <ExpandingTextarea value={value} onChange={onChange} rows={rows} placeholder={placeholder} className={`px-3 py-1 text-base md:text-sm leading-tight ${textareaClassName ?? ""}`} />
+      ) : (
+        <Textarea value={value} onChange={(e) => onChange(e.target.value)} rows={rows} placeholder={placeholder} className={textareaClassName} />
+      )}
     </div>
   );
 }

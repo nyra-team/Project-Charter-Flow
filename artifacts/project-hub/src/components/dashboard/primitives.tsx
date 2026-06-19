@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Download, RefreshCw, TrendingUp, TrendingDown, Minus, Maximize2, Minimize2, Table2, Inbox } from "lucide-react";
+import { Download, RefreshCw, TrendingUp, TrendingDown, Minus, Maximize2, Minimize2, Table2, Inbox, Share2 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
@@ -55,13 +55,28 @@ export function MetricDrillModal({
       ? Object.keys(rows[0]).map((k) => ({ key: k, label: k }))
       : [];
 
-  const exportRows = () =>
-    exportCSV(
-      `${(title ?? "metric").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}.csv`,
-      rows.map((r) =>
-        Object.fromEntries(cols.map((c) => [c.label, r[c.key] == null ? "" : String(r[c.key])])),
-      ),
-    );
+  const csvFilename = `${(title ?? "metric").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}.csv`;
+  const csvData = () => rows.map((r) => Object.fromEntries(cols.map((c) => [c.label, r[c.key] == null ? "" : String(r[c.key])])));
+  // Share the rows as a CSV: use the native share sheet when the browser can
+  // share files (mobile / HTTPS), otherwise fall back to a plain CSV download.
+  // ponytail: Web Share API + download fallback — covers every environment.
+  const shareCSV = async () => {
+    const data = csvData();
+    if (!data.length) return;
+    const headers = Object.keys(data[0]!);
+    const csv = [
+      headers.join(","),
+      ...data.map((r) => headers.map((h) => { const v = String(r[h] ?? "").replace(/"/g, '""'); return /[",\n]/.test(v) ? `"${v}"` : v; }).join(",")),
+    ].join("\n");
+    try {
+      const file = new File([csv], csvFilename, { type: "text/csv" });
+      if (typeof navigator !== "undefined" && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: title ?? "Data" });
+        return;
+      }
+    } catch { /* user cancelled or share failed — fall through to download */ }
+    exportCSV(csvFilename, data);
+  };
 
   // The column header only shows when the body is scrolled to the very top;
   // any scroll (up or down) hides it. Position-based → no flicker.
@@ -151,10 +166,10 @@ export function MetricDrillModal({
           ) : <span />}
           {rows.length > 0 && (
             <button
-              onClick={exportRows}
+              onClick={shareCSV}
               className="inline-flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground px-2 py-1 rounded-md border border-border hover:border-foreground/30 hover:bg-accent/40 transition-colors"
             >
-              <Download size={11} /> Export CSV
+              <Share2 size={11} /> Share CSV
             </button>
           )}
         </div>
@@ -273,7 +288,7 @@ export function KPITile({
 
   const tile = (
       <div
-        className={`group relative overflow-hidden rounded-xl bg-card text-card-foreground border glass-surface glass-surface-hover lift-card ${t.hoverBorder} ${featured ? `${t.featBorder} shadow-lg shimmer-on-hover` : "border-card-border"} ${interactive ? "cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring/40" : ""}`}
+        className={`group relative h-full overflow-hidden rounded-xl bg-card text-card-foreground border glass-surface glass-surface-hover lift-card ${t.hoverBorder} ${featured ? `${t.featBorder} shadow-lg shimmer-on-hover` : "border-card-border"} ${interactive ? "cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring/40" : ""}`}
         onClick={interactive ? () => setDrillOpen(true) : undefined}
         role={interactive ? "button" : undefined}
         tabIndex={interactive ? 0 : undefined}

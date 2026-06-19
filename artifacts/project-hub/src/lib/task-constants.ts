@@ -20,10 +20,10 @@ export type TaskStatusValue = (typeof TASK_STATUSES)[number]["value"];
 // Labels are Critical/High/Medium/Low; the stored values stay P0–P3 so existing
 // data and the DB default ("P2" = Medium) keep working without a migration.
 export const TASK_PRIORITIES = [
-  { value: "P0", label: "Critical", color: "#FFFFFF", bg: "#312E81", solid: "#312E81" },
-  { value: "P1", label: "High",     color: "#FFFFFF", bg: "#4F46E5", solid: "#4F46E5" },
-  { value: "P2", label: "Medium",   color: "#FFFFFF", bg: "#818CF8", solid: "#818CF8" },
-  { value: "P3", label: "Low",      color: "#1F2937", bg: "#C7D2FE", solid: "#C7D2FE" },
+  { value: "P0", label: "P0", color: "#FFFFFF", bg: "#312E81", solid: "#312E81" },
+  { value: "P1", label: "P1", color: "#FFFFFF", bg: "#4F46E5", solid: "#4F46E5" },
+  { value: "P2", label: "P2", color: "#FFFFFF", bg: "#818CF8", solid: "#818CF8" },
+  { value: "P3", label: "P3", color: "#1F2937", bg: "#C7D2FE", solid: "#C7D2FE" },
 ] as const;
 
 export type TaskPriorityValue = (typeof TASK_PRIORITIES)[number]["value"];

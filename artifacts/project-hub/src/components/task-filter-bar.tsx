@@ -31,6 +31,8 @@ function useDebounce<T>(value: T, delay: number): T {
 
 export function TaskFilterBar({ filters, onChange, owners, ownerFilter, onOwnerChange }: TaskFilterBarProps) {
   const [searchInput, setSearchInput] = useState(filters.search);
+  // Search starts collapsed to an icon and pops out the field on click.
+  const [searchOpen, setSearchOpen] = useState(!!filters.search);
   const debouncedSearch = useDebounce(searchInput, 280);
 
   useEffect(() => {
@@ -50,23 +52,35 @@ export function TaskFilterBar({ filters, onChange, owners, ownerFilter, onOwnerC
 
   return (
     <div className="flex flex-wrap items-center gap-2 py-1">
-      <div className="relative flex-1 min-w-[180px]">
-        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <input
-          value={searchInput}
-          onChange={e => setSearchInput(e.target.value)}
-          placeholder="Search tasks..."
-          className="w-full pl-8 pr-2 text-xs border border-input bg-background text-foreground rounded-lg py-1.5 h-8 outline-none focus:ring-2 focus:ring-ring/40"
-        />
-        {searchInput && (
+      {searchOpen ? (
+        <div className="relative flex-1 min-w-[180px]">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            autoFocus
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Escape") { setSearchInput(""); setSearchOpen(false); } }}
+            placeholder="Search tasks..."
+            className="w-full pl-8 pr-7 text-xs border border-input bg-background text-foreground rounded-lg py-1.5 h-8 outline-none focus:ring-2 focus:ring-ring/40"
+          />
           <button
-            onClick={() => setSearchInput("")}
+            onClick={() => { setSearchInput(""); setSearchOpen(false); }}
+            title="Close search"
             className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground/60 hover:text-foreground"
           >
-            <X size={11} />
+            <X size={12} />
           </button>
-        )}
-      </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setSearchOpen(true)}
+          title="Search tasks"
+          className={`inline-flex items-center justify-center h-8 w-8 rounded-lg border border-input transition-colors ${filters.search ? "bg-primary/10 text-primary border-primary/40" : "bg-background text-muted-foreground hover:text-foreground hover:bg-accent"}`}
+        >
+          <Search size={14} />
+        </button>
+      )}
 
       <Select value={filters.status} onValueChange={v => onChange({ ...filters, status: v === "all" ? "" : v })}>
         <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="All Statuses" /></SelectTrigger>

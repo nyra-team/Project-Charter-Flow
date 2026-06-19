@@ -9,6 +9,7 @@ import { useAiStatus } from "../components/ai-button";
 import { RephraseField } from "@/components/ui-kit";
 import { ReferenceDocUpload } from "../components/ReferenceDocUpload";
 import { CustomFieldsEditor, type CustomField } from "../components/CustomFieldsEditor";
+import { useFormDraft, clearFormDraft } from "../lib/useFormDraft";
 import {
   ChevronLeft, Loader2, FileText, Sparkles, ShieldCheck, Search, X, Check, AlertTriangle, ListPlus,
 } from "lucide-react";
@@ -180,6 +181,27 @@ export default function NfaNew() {
   });
   const setApprover = (k: keyof ApproversState, v: EmpPick) => setApprovers(a => ({ ...a, [k]: v }));
 
+  // ── autosave the whole form to this device (survives reload / nav away) ───
+  useFormDraft("pmo:nfa-draft", {
+    functionDept, subject, refText, background, requirements, justification,
+    vendorDetails, modeOfProcurement, financialImplication, financialAmount,
+    recommendation, customFields, approvers,
+  }, (s) => {
+    if (s.functionDept != null) setFunctionDept(s.functionDept);
+    if (s.subject != null) setSubject(s.subject);
+    if (s.refText != null) setRefText(s.refText);
+    if (s.background != null) setBackground(s.background);
+    if (s.requirements != null) setRequirements(s.requirements);
+    if (s.justification != null) setJustification(s.justification);
+    if (s.vendorDetails != null) setVendorDetails(s.vendorDetails);
+    if (s.modeOfProcurement != null) setModeOfProcurement(s.modeOfProcurement);
+    if (s.financialImplication != null) setFinancialImplication(s.financialImplication);
+    if (s.financialAmount != null) setFinancialAmount(s.financialAmount);
+    if (s.recommendation != null) setRecommendation(s.recommendation);
+    if (s.customFields != null) setCustomFields(s.customFields);
+    if (s.approvers != null) setApprovers(s.approvers);
+  });
+
   // DOA filter — auto-decide CMD-signature requirement from the amount band.
   const [cmdRequired, setCmdRequired] = useState(false);
   const [doaChecked, setDoaChecked] = useState(false);
@@ -205,6 +227,35 @@ export default function NfaNew() {
     }, 400);
     return () => { cancelled = true; clearTimeout(t); };
   }, [financialAmount]);
+
+  // ── Auto-fill the basics straight from an uploaded document / email ───────
+  // Fills only EMPTY fields (incl. mandatory ones) with whatever the source
+  // actually states, so the user never retypes data the document provides.
+  async function autofillFromDoc(text: string) {
+    if (!text || !text.trim()) return;
+    try {
+      const res = await fetch("/api/ai/nfa/extract-fields", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceText: text }),
+      });
+      if (!res.ok) return;
+      const d = (await res.json()) as Record<string, unknown>;
+      let n = 0;
+      const str = (v: unknown, cur: string, set: (s: string) => void) => {
+        if (typeof v === "string" && v.trim() && !cur.trim()) { set(v.trim()); n++; }
+      };
+      str(d.subject, subject, setSubject);
+      if (typeof d.functionDept === "string" && d.functionDept.trim() && !functionDept.trim() && (FUNCTIONS_LIST as readonly string[]).includes(d.functionDept)) { setFunctionDept(d.functionDept); n++; }
+      if (typeof d.modeOfProcurement === "string" && !modeOfProcurement.trim() && (MODES as readonly string[]).includes(d.modeOfProcurement)) { setModeOfProcurement(d.modeOfProcurement); n++; }
+      if (typeof d.financialAmount === "string" && !financialAmount.trim()) {
+        const num = d.financialAmount.replace(/[^\d]/g, "");
+        if (num) { setFinancialAmount(num); n++; }
+      }
+      str(d.background, background, setBackground);
+      if (n) toast({ title: `Auto-filled ${n} field${n > 1 ? "s" : ""} from your document`, description: "Review and adjust before continuing." });
+    } catch { /* best-effort — the user can still type / draft */ }
+  }
 
   // ── Draft just the Description with AI (Basics step) ─────────────────────
   async function draftDescription() {
@@ -332,6 +383,7 @@ export default function NfaNew() {
         throw new Error(err?.error || `Create failed (${res.status})`);
       }
       const nfa = await res.json();
+      clearFormDraft("pmo:nfa-draft");
       toast({ title: `e-NFA created — ${nfa.noteNo ?? nfa.id}` });
       setLocation(`/nfas/${nfa.id}`);
     } catch (e) {
@@ -342,7 +394,7 @@ export default function NfaNew() {
   }
 
   return (
-    <div className="w-full pb-4 -mt-1 sm:-mt-3 lg:-mt-6 [&_input]:shadow-none [&_input]:rounded-md [&_input]:border-slate-200 [&_textarea]:shadow-none [&_textarea]:rounded-md [&_textarea]:border-slate-200 [&_[role=combobox]]:rounded-md [&_[role=combobox]]:bg-white [&_[role=combobox]]:border-slate-200 [&_[role=combobox]]:font-normal [&_[role=combobox]]:shadow-none [&_[role=combobox]:focus]:ring-0">
+    <div className="w-full pb-4 -mt-1 sm:-mt-3 lg:-mt-6 [&_input]:shadow-none [&_input]:rounded-md [&_input]:border [&_input]:border-slate-200 [&_input]:bg-white [&_textarea]:shadow-none [&_textarea]:rounded-md [&_textarea]:border [&_textarea]:border-slate-200 [&_textarea]:bg-white [&_[role=combobox]]:rounded-md [&_[role=combobox]]:bg-white [&_[role=combobox]]:border [&_[role=combobox]]:border-slate-200 [&_[role=combobox]]:font-normal [&_[role=combobox]]:shadow-none [&_[role=combobox]:focus]:ring-0 [&_input:focus]:border-blue-300 [&_input:focus-visible]:border-blue-300 [&_input:focus-visible]:ring-blue-200 [&_textarea:focus]:border-blue-300 [&_textarea:focus]:outline-none [&_textarea:focus]:ring-1 [&_textarea:focus]:ring-blue-200 [&_[role=combobox]:focus]:border-blue-300">
       <div className="mb-1">
         <Link href="/">
           <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -356,6 +408,7 @@ export default function NfaNew() {
         <div>
           <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground">e-NFA · Note for Approval</p>
           <h2 className="text-lg font-bold text-foreground tracking-tight">New e-NFA <span className="text-sm font-normal text-muted-foreground">— for non-project spend / procurement approvals</span></h2>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Your progress autosaves on this device — you can safely leave and come back.</p>
         </div>
         <div className="flex items-center gap-2 text-xs font-semibold flex-shrink-0">
           <span className={`inline-flex items-center gap-1.5 px-3 h-7 rounded-full ${step === 1 ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}>
@@ -368,6 +421,10 @@ export default function NfaNew() {
         </div>
       </div>
 
+      <div className="relative rounded-lg border border-slate-200 bg-slate-200 p-4 sm:p-5">
+      <div className="absolute top-3 right-3 z-10">
+        <ReferenceDocUpload onText={(t) => { setRefText(t); autofillFromDoc(t); }} />
+      </div>
       {step === 1 ? (
         <div className="space-y-2.5">
           {/* ── Note details (structured) ────────────────────────────────── */}
@@ -404,7 +461,6 @@ export default function NfaNew() {
               context="the 'Background / Description' of an internal approval note (e-NFA)"
               placeholder="What is being approved, the context, and why it's needed… or use “Draft with AI”."
             />
-            <ReferenceDocUpload onText={setRefText} />
           </Section>
 
           {/* ── Approval workflow ────────────────────────────────────────── */}
@@ -493,6 +549,7 @@ export default function NfaNew() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

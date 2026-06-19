@@ -413,6 +413,39 @@ router.post("/ai/extract-doc-text", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
+// POST /api/ai/charters/extract-fields
+// Pulls the structured Charter basics that are ACTUALLY present in an uploaded
+// reference document / email — so mandatory fields auto-fill from the source
+// instead of forcing the user to retype them. Extraction only: never invents;
+// any field not stated in the text is omitted.
+// ---------------------------------------------------------------------------
+router.post("/ai/charters/extract-fields", async (req, res): Promise<void> => {
+  const { sourceText } = (req.body || {}) as { sourceText?: string };
+  if (!sourceText || sourceText.trim().length < 20) { res.json({}); return; }
+  const result = await llm({
+    task: "charter_extract_fields",
+    system:
+      "You extract structured Project Charter fields from a source document or email. Return ONLY values explicitly stated or unambiguously implied in the text. If a field is not present, OMIT it entirely — never guess, never invent placeholders. Map free text to the allowed enum option only when it clearly matches; otherwise omit. Keep extracted strings verbatim/concise.",
+    prompt: `Source document (treat as the only source of truth):\n"""\n${sourceText.slice(0, MAX_DOC_TEXT_CHARS)}\n"""\n\nExtract any of these that the document provides:\n- title: the project / initiative name\n- sponsor: ONE of [CMD, ED, CEO, CFO, COO, CHRO] if a sponsoring executive is named\n- function: owning function / department\n- category: ONE of [Compliance, ROI, "Compliance + ROI"]\n- pmType: ONE of ["IT PM", "Business PM"]\n- pmName: the project manager's name\n- approvedBudget: approved budget as written (with currency)\n- leBudget: latest-estimate budget as written\n- members: array of key project member names mentioned\n- projectDescription: a 1-3 sentence description of the project drawn from the document\nOmit any field the document does not clearly provide.`,
+    jsonSchema: z.object({
+      title: z.string().optional(),
+      sponsor: z.string().optional(),
+      function: z.string().optional(),
+      category: z.string().optional(),
+      pmType: z.string().optional(),
+      pmName: z.string().optional(),
+      approvedBudget: z.string().optional(),
+      leBudget: z.string().optional(),
+      members: z.array(z.string()).optional(),
+      projectDescription: z.string().optional(),
+    }),
+    jsonSchemaHint: `{ "title":"...", "sponsor":"CFO", "function":"...", "category":"ROI", "pmType":"IT PM", "pmName":"...", "approvedBudget":"INR 50,00,000", "leBudget":"...", "members":["..."], "projectDescription":"..." }`,
+    maxTokens: 1200,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
 // POST /api/ai/charters/draft-template
 // Drafts the single-page Project Charter template fields (charter-template-new
 // form) from a few basic inputs. Returns the long-form narrative AND structured
@@ -1020,6 +1053,34 @@ router.post("/ai/nfa/draft-from-brief", async (req, res): Promise<void> => {
     }),
     jsonSchemaHint: `{ "subject":"one-line subject", "background":"why this is needed", "requirementItems":[{"item":"Platform Fee","details":"..."}], "orderFormNote":"attachment/order-form context or ''", "recommendation":"recommended action" }`,
     maxTokens: 3000,
+  });
+  if (!result.ok) return aiError(result.reason, result.message, res);
+  res.json(result.data);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/ai/nfa/extract-fields
+// Pulls the structured e-NFA basics actually present in an uploaded reference
+// document / email so mandatory fields auto-fill from the source. Extraction
+// only: never invents; absent fields are omitted.
+// ---------------------------------------------------------------------------
+router.post("/ai/nfa/extract-fields", async (req, res): Promise<void> => {
+  const { sourceText } = (req.body || {}) as { sourceText?: string };
+  if (!sourceText || sourceText.trim().length < 20) { res.json({}); return; }
+  const result = await llm({
+    task: "nfa_extract_fields",
+    system:
+      "You extract structured e-NFA (internal approval note) fields from a source document or email. Return ONLY values explicitly stated or unambiguously implied. If a field is not present, OMIT it — never guess or invent. Map free text to an allowed enum option only when it clearly matches; otherwise omit.",
+    prompt: `Source document (treat as the only source of truth):\n"""\n${sourceText.slice(0, MAX_DOC_TEXT_CHARS)}\n"""\n\nExtract any of these that the document provides:\n- subject: the note's subject / what is being approved\n- functionDept: owning function / department\n- modeOfProcurement: ONE of [Limited Tender, Open Tender, Single Source, Repeat Order, Rate Contract, Direct Purchase]\n- financialAmount: the spend amount as written (with currency)\n- background: 1-3 sentence background of the request drawn from the document\nOmit any field the document does not clearly provide.`,
+    jsonSchema: z.object({
+      subject: z.string().optional(),
+      functionDept: z.string().optional(),
+      modeOfProcurement: z.string().optional(),
+      financialAmount: z.string().optional(),
+      background: z.string().optional(),
+    }),
+    jsonSchemaHint: `{ "subject":"...", "functionDept":"...", "modeOfProcurement":"Limited Tender", "financialAmount":"INR 12,00,000", "background":"..." }`,
+    maxTokens: 1000,
   });
   if (!result.ok) return aiError(result.reason, result.message, res);
   res.json(result.data);

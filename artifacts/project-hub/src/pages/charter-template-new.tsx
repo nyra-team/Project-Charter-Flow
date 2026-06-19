@@ -9,6 +9,8 @@ import { useAiStatus } from "../components/ai-button";
 import { RephraseField } from "@/components/ui-kit";
 import { ReferenceDocUpload } from "../components/ReferenceDocUpload";
 import { CustomFieldsEditor, type CustomField } from "../components/CustomFieldsEditor";
+import { useFormDraft, clearFormDraft } from "../lib/useFormDraft";
+import { ExpandingTextarea } from "../components/ExpandingTextarea";
 import {
   ChevronLeft, Loader2, Plus, Trash2, FileText, Users, Target, TrendingUp,
   ShieldAlert, Coins, Table as TableIcon, ClipboardList, Sparkles, ListPlus,
@@ -233,6 +235,44 @@ export default function NewCharterTemplate() {
     rows: [["", "", ""], ["", "", ""]],
   });
 
+  // ── autosave the whole form to this device (survives reload / nav away) ───
+  useFormDraft("pmo:charter-draft", {
+    title, projectSponsor, department, category, pmType, pmName, projectApprovalDate,
+    lastRevisionDate, members, projectDescription, refText, executiveSummary, background,
+    inScope, outOfScope, businessOutcome, constraints, approvedBudget, leBudget,
+    scopeLimitations, milestones, kpis, roiPerAnnum, risks, assumptions,
+    potentialAdditionalBudget, customFields, vendor,
+  }, (s) => {
+    if (s.title != null) setTitle(s.title);
+    if (s.projectSponsor != null) setProjectSponsor(s.projectSponsor);
+    if (s.department != null) setDepartment(s.department);
+    if (s.category != null) setCategory(s.category);
+    if (s.pmType != null) setPmType(s.pmType);
+    if (s.pmName != null) setPmName(s.pmName);
+    if (s.projectApprovalDate != null) setProjectApprovalDate(s.projectApprovalDate);
+    if (s.lastRevisionDate != null) setLastRevisionDate(s.lastRevisionDate);
+    if (s.members != null) setMembers(s.members);
+    if (s.projectDescription != null) setProjectDescription(s.projectDescription);
+    if (s.refText != null) setRefText(s.refText);
+    if (s.executiveSummary != null) setExecutiveSummary(s.executiveSummary);
+    if (s.background != null) setBackground(s.background);
+    if (s.inScope != null) setInScope(s.inScope);
+    if (s.outOfScope != null) setOutOfScope(s.outOfScope);
+    if (s.businessOutcome != null) setBusinessOutcome(s.businessOutcome);
+    if (s.constraints != null) setConstraints(s.constraints);
+    if (s.approvedBudget != null) setApprovedBudget(s.approvedBudget);
+    if (s.leBudget != null) setLeBudget(s.leBudget);
+    if (s.scopeLimitations != null) setScopeLimitations(s.scopeLimitations);
+    if (s.milestones != null) setMilestones(s.milestones);
+    if (s.kpis != null) setKpis(s.kpis);
+    if (s.roiPerAnnum != null) setRoiPerAnnum(s.roiPerAnnum);
+    if (s.risks != null) setRisks(s.risks);
+    if (s.assumptions != null) setAssumptions(s.assumptions);
+    if (s.potentialAdditionalBudget != null) setPotentialAdditionalBudget(s.potentialAdditionalBudget);
+    if (s.customFields != null) setCustomFields(s.customFields);
+    if (s.vendor != null) setVendor(s.vendor);
+  });
+
   // ── dynamic-row helpers ──────────────────────────────────────────────────
   const addMilestone = () => setMilestones(m => [...m, { milestone: "", responsible: "", targetDate: "" }]);
   const addKpi = () => setKpis(k => [...k, { kpi: "", baseline: "", goal: "" }]);
@@ -245,6 +285,44 @@ export default function NewCharterTemplate() {
 
   function pad(s: string, min: number, marker: string) {
     return s.trim().length >= min ? s : (s + " " + marker).padEnd(min, " ");
+  }
+
+  // ── Auto-fill the basics straight from an uploaded document / email ───────
+  // Runs the moment a reference doc is attached: pulls whatever fields the
+  // source actually states (incl. mandatory ones) and fills only the EMPTY
+  // fields, so the user never retypes data the document already provides.
+  async function autofillFromDoc(text: string) {
+    if (!text || !text.trim()) return;
+    try {
+      const res = await fetch("/api/ai/charters/extract-fields", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceText: text }),
+      });
+      if (!res.ok) return;
+      const d = (await res.json()) as Record<string, unknown>;
+      let n = 0;
+      const str = (v: unknown, cur: string, set: (s: string) => void) => {
+        if (typeof v === "string" && v.trim() && !cur.trim()) { set(v.trim()); n++; }
+      };
+      const enumStr = (v: unknown, cur: string, allowed: readonly string[], set: (s: string) => void) => {
+        if (typeof v === "string" && !cur.trim() && allowed.includes(v)) { set(v); n++; }
+      };
+      str(d.title, title, setTitle);
+      enumStr(d.sponsor, projectSponsor, SPONSORS, setProjectSponsor);
+      enumStr(d.function, department, FUNCTIONS_LIST, setDepartment);
+      enumStr(d.category, category, CATEGORIES, setCategory);
+      enumStr(d.pmType, pmType, PM_TYPES, setPmType);
+      str(d.pmName, pmName, setPmName);
+      str(d.approvedBudget, approvedBudget, setApprovedBudget);
+      str(d.leBudget, leBudget, setLeBudget);
+      str(d.projectDescription, projectDescription, setProjectDescription);
+      if (Array.isArray(d.members) && d.members.length && members.every(m => !m.name.trim())) {
+        const names = (d.members as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0);
+        if (names.length) { setMembers(names.map(x => ({ name: x.trim() }))); n++; }
+      }
+      if (n) toast({ title: `Auto-filled ${n} field${n > 1 ? "s" : ""} from your document`, description: "Review and adjust before continuing." });
+    } catch { /* extraction is best-effort — the user can still type / draft */ }
   }
 
   // ── Draft just the Project Description with AI (Basics step) ──────────────
@@ -431,6 +509,7 @@ export default function NewCharterTemplate() {
       }
 
       const pcId = charter.pcId ?? `PC-${new Date().getFullYear()}-${String(id).padStart(5, "0")}`;
+      clearFormDraft("pmo:charter-draft");
       toast({ title: `Project Charter created — ${pcId}` });
       // Show the Charter+e-NFA preview overlay (download from there); the user
       // can then open the full charter page.
@@ -443,7 +522,7 @@ export default function NewCharterTemplate() {
   }
 
   return (
-    <div className="w-full pb-4 -mt-1 sm:-mt-3 lg:-mt-6 [&_input]:shadow-none [&_input]:rounded-md [&_input]:border-slate-200 [&_textarea]:shadow-none [&_textarea]:rounded-md [&_textarea]:border-slate-200 [&_[role=combobox]]:rounded-md [&_[role=combobox]]:bg-white [&_[role=combobox]]:border-slate-200 [&_[role=combobox]]:font-normal [&_[role=combobox]]:shadow-none [&_[role=combobox]:focus]:ring-0">
+    <div className="w-full pb-4 -mt-1 sm:-mt-3 lg:-mt-6 [&_input]:shadow-none [&_input]:rounded-md [&_input]:border [&_input]:border-slate-200 [&_input]:bg-white [&_textarea]:shadow-none [&_textarea]:rounded-md [&_textarea]:border [&_textarea]:border-slate-200 [&_textarea]:bg-white [&_[role=combobox]]:rounded-md [&_[role=combobox]]:bg-white [&_[role=combobox]]:border [&_[role=combobox]]:border-slate-200 [&_[role=combobox]]:font-normal [&_[role=combobox]]:shadow-none [&_[role=combobox]:focus]:ring-0 [&_input:focus]:border-blue-300 [&_input:focus-visible]:border-blue-300 [&_input:focus-visible]:ring-blue-200 [&_textarea:focus]:border-blue-300 [&_textarea:focus]:outline-none [&_textarea:focus]:ring-1 [&_textarea:focus]:ring-blue-200 [&_[role=combobox]:focus]:border-blue-300">
       <div className="mb-1">
         <Link href="/">
           <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -455,8 +534,8 @@ export default function NewCharterTemplate() {
       {/* Title + step indicator on one row */}
       <div className="flex items-start justify-between gap-4 mb-1.5">
         <div>
-          <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground">Project Charter · e-NFA</p>
-          <h2 className="text-lg font-bold text-foreground tracking-tight">New Project Charter <span className="text-sm font-normal text-muted-foreground">— complete the charter to initiate the approval workflow</span></h2>
+          <h2 className="text-lg font-bold text-foreground tracking-tight">Project Charter · e-NFA <span className="text-sm font-normal text-muted-foreground">— complete the charter to initiate the approval workflow</span></h2>
+          <p className="text-[11px] text-muted-foreground mt-0.5">Your progress autosaves on this device — you can safely leave and come back.</p>
         </div>
         <div className="flex items-center gap-2 text-xs font-semibold flex-shrink-0">
         <span className={`inline-flex items-center gap-1.5 px-3 h-7 rounded-full ${step === 1 ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}>
@@ -469,6 +548,10 @@ export default function NewCharterTemplate() {
         </div>
       </div>
 
+      <div className="relative rounded-lg border border-slate-200 bg-slate-200 p-4 sm:p-5">
+      <div className="absolute top-3 right-3 z-10">
+        <ReferenceDocUpload onText={(t) => { setRefText(t); autofillFromDoc(t); }} />
+      </div>
       {step === 1 ? (
         <div className="space-y-2.5">
           {/* ── Identification ─────────────────────────────────────────────── */}
@@ -476,7 +559,7 @@ export default function NewCharterTemplate() {
             <Field label="Project Name" required>
               <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. ERP System Upgrade 2026" className="h-8" />
             </Field>
-            <Grid cols={6}>
+            <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 lg:grid-cols-7">
               <Field label="Project Sponsor" required>
                 <Select value={projectSponsor} onValueChange={setProjectSponsor}>
                   <SelectTrigger className="h-8"><SelectValue placeholder="Sponsor" /></SelectTrigger>
@@ -495,51 +578,48 @@ export default function NewCharterTemplate() {
                   <SelectContent>{CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
-              <div className="flex gap-1 items-end">
-                <div className="shrink-0 space-y-0.5">
-                  <label className="text-xs font-medium text-foreground">Type</label>
-                  <Select value={pmType} onValueChange={setPmType}>
-                    <SelectTrigger className="h-8 w-16 px-2"><SelectValue placeholder="Type" /></SelectTrigger>
-                    <SelectContent>{PM_TYPES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div className="flex-1 min-w-0 space-y-0.5">
-                  <label className="text-xs font-medium text-foreground">Project Manager</label>
-                  <Input value={pmName} onChange={e => setPmName(e.target.value)} placeholder="Name" className="h-8 w-full min-w-0" />
-                </div>
-              </div>
+              <Field label="Type">
+                <Select value={pmType} onValueChange={setPmType}>
+                  <SelectTrigger className="h-8"><SelectValue placeholder="Type" /></SelectTrigger>
+                  <SelectContent>{PM_TYPES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent>
+                </Select>
+              </Field>
+              <Field label="Project Manager">
+                <Input value={pmName} onChange={e => setPmName(e.target.value)} placeholder="Name" className="h-8" />
+              </Field>
               <Field label="Approval Date" required>
                 <Input type="date" value={projectApprovalDate} onChange={e => setProjectApprovalDate(e.target.value)} className="h-8 px-2" />
               </Field>
               <Field label="Last Revision">
                 <Input type="date" value={lastRevisionDate} onChange={e => setLastRevisionDate(e.target.value)} className="h-8 px-2" />
               </Field>
-            </Grid>
+            </div>
             <RephraseField
               label="Project Description"
               required
               value={projectDescription}
               onChange={setProjectDescription}
               rows={1}
-              textareaClassName="min-h-[34px] py-1.5"
+              expandOnFocus
+              textareaClassName=""
               aiEnabled={aiEnabled}
               onDraft={draftDescription}
               drafting={descDrafting}
               context="the 'Project Description' of a Project Charter"
               placeholder="What the project is, the problem it solves, and the value it delivers… or use “Draft with AI”."
             />
-            <ReferenceDocUpload onText={setRefText} />
           </Section>
 
           {/* ── Key Project Members + Budget (side by side) ───────────────── */}
-          <div className="grid gap-2.5 grid-cols-1 md:grid-cols-2 items-start">
+          <div className="grid gap-2.5 grid-cols-2 items-start">
             <Section dense title="Key Project Members" subtitle="Core project team" icon={<Users size={16} />}>
+              <label className="text-xs font-medium text-foreground">Member name</label>
               <div className="space-y-1.5">
                 {members.map((m, i) => (
                   <div key={i} className="flex gap-2">
-                    <Input value={m.name} onChange={e => setMembers(arr => arr.map((x, j) => j === i ? { name: e.target.value } : x))} placeholder="Member name" className="h-7 flex-1" />
+                    <Input value={m.name} onChange={e => setMembers(arr => arr.map((x, j) => j === i ? { name: e.target.value } : x))} placeholder="Member name" className="h-9 flex-1" />
                     {members.length > 1 && (
-                      <button type="button" onClick={() => setMembers(arr => arr.filter((_, j) => j !== i))} className="w-9 h-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={14} /></button>
+                      <button type="button" onClick={() => setMembers(arr => arr.filter((_, j) => j !== i))} className="w-9 h-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={14} /></button>
                     )}
                   </div>
                 ))}
@@ -548,15 +628,15 @@ export default function NewCharterTemplate() {
             </Section>
 
             {/* ── Budget envelope (drives the AI draft + DOA routing) ───────── */}
-            <Section dense title="Budget" subtitle="Envelope & latest estimate" icon={<Coins size={16} />}>
-              <Grid>
+            <Section dense title="Budget" icon={<Coins size={16} />}>
+              <div className="grid grid-cols-2 gap-2">
                 <Field label="Approved Budget" hint="₹">
-                  <Input type="number" value={approvedBudget} onChange={e => setApprovedBudget(e.target.value)} placeholder="0" className="h-7" />
+                  <ExpandingTextarea value={approvedBudget} onChange={setApprovedBudget} placeholder="e.g. ₹50,00,000 — capex + opex, phased over FY26" className="text-sm px-3 py-1 leading-tight placeholder:text-xs" minPx={36} />
                 </Field>
                 <Field label="LE Budget" hint="Latest Estimate, ₹">
-                  <Input type="number" value={leBudget} onChange={e => setLeBudget(e.target.value)} placeholder="0" className="h-7" />
+                  <ExpandingTextarea value={leBudget} onChange={setLeBudget} placeholder="e.g. ₹48,00,000 — latest estimate at completion" className="text-sm px-3 py-1 leading-tight placeholder:text-xs" minPx={36} />
                 </Field>
-              </Grid>
+              </div>
             </Section>
           </div>
 
@@ -712,6 +792,7 @@ export default function NewCharterTemplate() {
           </div>
         </div>
       )}
+      </div>
 
       {previewId != null && (
         <CharterNfaPreview
