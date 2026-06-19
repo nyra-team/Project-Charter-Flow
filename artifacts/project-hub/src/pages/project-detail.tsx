@@ -11,24 +11,30 @@ import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "../lib/format";
 import { Link, useRoute } from "wouter";
 import {
-  useGetProject, useListMilestones, useListTasks, useListUsers, useUpdateTask,
+  useGetProject, useListMilestones, useListTasks, useListUsers, useUpdateTask, useCreateTask, useDeleteTask,
 } from "@workspace/api-client-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import {
   Check, ChevronDown, ChevronLeft, Flag, GanttChartSquare,
   ListTree, Search, Table2, Zap, Milestone, MessageSquare, Users,
-  GitBranch, X, Plus, LayoutDashboard, FileDown, Loader2, FolderOpen, Upload,
+  GitBranch, X, Plus, Trash2, LayoutDashboard, FileDown, Loader2, FolderOpen, Upload, SlidersHorizontal,
+  LayoutGrid, CalendarDays, Info,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { TASK_PRIORITIES, TASK_STATUSES } from "../lib/task-constants";
 import { PersonCell, TimelineCell, projectCode, SCALE_PRESETS } from "./projects";
+import { HoverHint } from "@/components/ui-kit";
 import { MondayGantt, type GanttGroup, type GanttItem } from "@/components/monday-gantt";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExcelGroupTable, type ExcelCol } from "@/components/excel-group-table";
+import { KanbanView } from "@/components/monday/KanbanView";
+import { CalendarView, type CalendarItem } from "@/components/monday/CalendarView";
+import { PriorityCell, OwnerCell, DateCell, type BoardColumn } from "@/components/monday";
 import { useUserStore } from "../lib/store";
 import { CharterOverview } from "../components/charter-overview";
 import { TaskCommsDrawer, type TaskCommsTarget } from "../components/TaskCommsDrawer";
+import { MoveJustifyModal } from "../components/MoveJustifyModal";
 import { ProjectCommsDrawer, type ProjectCommsTab } from "../components/ProjectCommsDrawer";
 import { TeamTab } from "../components/team-tab";
 import { DocumentsTab } from "../components/documents-tab";
@@ -47,6 +53,7 @@ type TaskRow = {
   assigneeName?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  endDateHistory?: string | null;
 };
 
 // Monday-style task code — no dedicated column on pmo_tasks, derive from the PK.
@@ -63,6 +70,13 @@ const PRIORITY_BY_VALUE = new Map(TASK_PRIORITIES.map((p) => [p.value, p]));
 // Monday.com status/RAG palette for the Gantt bars — Green (done / on track),
 // Amber (working on it / on hold), Red (stuck / delayed), Grey (not started).
 const RAG_HEX = { green: "#00c875", amber: "#fdab3d", red: "#e2445c", grey: "#c4c4c4" } as const;
+// Task-Gantt legend — one hover explainer per bar colour (RAG palette).
+const TASK_GANTT_LEGEND: { label: string; color: string; desc: string }[] = [
+  { label: "Completed", color: RAG_HEX.green, desc: "Done — the task is complete." },
+  { label: "In progress", color: RAG_HEX.amber, desc: "Working on it (or on hold)." },
+  { label: "Delayed", color: RAG_HEX.red, desc: "Stuck / past due — behind schedule." },
+  { label: "Not started", color: RAG_HEX.grey, desc: "Not yet started." },
+];
 function taskRagColor(status: string): string {
   switch (status) {
     case "completed": return RAG_HEX.green;
@@ -86,12 +100,21 @@ const COLS: { key: string; header: string; width: number; align?: "left" | "cent
   { key: "timeline", header: "Timeline", width: 180 },
 ];
 
+// Card cells for the per-project Tasks Kanban (mirrors the Projects board).
+const TASK_BOARD_COLUMNS: BoardColumn<TaskRow>[] = [
+  { key: "priority", header: "Priority", render: (t) => <PriorityCell priority={t.priority} /> },
+  { key: "owner", header: "Owner", render: (t) => <OwnerCell id={t.assigneeId} name={t.assigneeName} /> },
+  { key: "due", header: "Due", render: (t) => <DateCell value={t.endDate} /> },
+];
+
 // Accent colours cycled across milestone groups (left border + header swatch).
 const MS_COLORS = ["#6366F1", "#0EA5E9", "#10B981", "#F59E0B", "#EC4899", "#8B5CF6", "#14B8A6", "#F97316"];
 const TOTAL_W = COLS.reduce((s, c) => s + c.width, 0);
 // localStorage key for the user's adjusted column widths on this table.
 const TASKS_COLW_KEY = "ph:project-tasks:colw";
 const TASKS_COLORDER_KEY = "ph:project-tasks:colorder";
+// Remembers the last tab inside a project (first open defaults to table).
+const DETAIL_VIEW_KEY = "ph:project-detail:view";
 
 const PRIORITY_CHIPS: { value: string; label: string }[] = [
   { value: "", label: "All" },
@@ -112,6 +135,52 @@ const CRITICAL_COLOR = "#DC2626"; // red — critical-path emphasis
 // Task Gantt — the shared Monday-style chart fed the milestone-grouped tasks
 // (with dependency arrows from each task's predecessors). Keeps the critical-
 // path toggle alongside the zoom presets.
+// Inline "add subtask" row — shown under an expanded parent task in the table,
+// so a subtask can be added right here without opening the task-detail popup.
+// Module-level (not an inline closure) so its input keeps focus/state across
+// parent re-renders. Mirrors the modal's addSubtask payload.
+function AddSubtaskRow({ parent, projectId, colSpan, indent, createTask }: {
+  parent: TaskRow; projectId: number; colSpan: number; indent: number;
+  createTask: ReturnType<typeof useCreateTask>;
+}) {
+  const [name, setName] = useState("");
+  const add = () => {
+    const n = name.trim();
+    if (!n) return;
+    createTask.mutate(
+      { id: projectId, data: {
+        name: n, parentTaskId: parent.id,
+        milestoneId: parent.milestoneId ?? undefined,
+        priority: parent.priority ?? "P2",
+        status: "not_started", rag: "green",
+      } } as never,
+      { onSuccess: () => setName("") },
+    );
+  };
+  return (
+    <tr className="bg-gray-50/40">
+      <td colSpan={colSpan} className="border border-gray-200 px-2 py-1">
+        <div className="flex items-center gap-2" style={{ paddingLeft: indent }}>
+          <Plus size={12} className="shrink-0 text-gray-400" />
+          <input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") add(); }}
+            placeholder="Add subtask…"
+            className="flex-1 max-w-md bg-transparent text-[12px] text-gray-700 outline-none placeholder:text-gray-400"
+          />
+          <button
+            type="button"
+            onClick={add}
+            disabled={!name.trim() || createTask.isPending}
+            className="shrink-0 text-[11px] px-2.5 py-1 rounded bg-[#1868db] text-white hover:bg-[#1558bc] disabled:opacity-50"
+          >Add</button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 // Floating status dropdown — click cell to open, pick a status to save.
 function StatusDropdown({ task, updateTask }: { task: TaskRow; updateTask: ReturnType<typeof useUpdateTask> }) {
   const [open, setOpen] = useState(false);
@@ -349,6 +418,8 @@ export default function ProjectDetail() {
   // hook invalidates nothing, so without this an inline status/progress edit would
   // PATCH the server but never refresh the grid (looked like "it didn't change").
   const updateTask = useUpdateTask({ mutation: { onSuccess: () => { void refetchTasks(); } } });
+  const createTask = useCreateTask({ mutation: { onSuccess: () => { void refetchTasks(); } } });
+  const deleteTask = useDeleteTask({ mutation: { onSuccess: () => { void refetchTasks(); } } });
 
   const tasks = (rawTasks ?? []) as TaskRow[];
 
@@ -380,6 +451,7 @@ export default function ProjectDetail() {
       stage: (r.stage as string | null) ?? null, phase: null,
       assigneeId: t.assigneeId ?? null, assigneeName: t.assigneeName ?? null,
       startDate: t.startDate ?? null, endDate: t.endDate ?? null,
+      endDateHistory: (r.endDateHistory as string | null) ?? null,
       progressPct: (r.progressPct as number) ?? 0,
       predecessorIds: preds,
       estimatedHours: (r.estimatedHours as number | null) ?? null,
@@ -400,6 +472,9 @@ export default function ProjectDetail() {
   //    project's messages; the count map drives the per-row badge, and the
   //    drawer shares the same query key so posting refreshes both.
   const currentUserId = useUserStore((s) => s.userId);
+  // Justification gate for kanban status moves (same UX as the CXO board).
+  const [moveJustify, setMoveJustify] = useState<{ id: number; to: string; toLabel: string } | null>(null);
+  const [movingPending, setMovingPending] = useState(false);
   const [commsTask, setCommsTask] = useState<TaskCommsTarget | null>(null);
   const { data: projectMessages = [] } = useQuery({
     queryKey: ["project-messages", projectId],
@@ -427,9 +502,13 @@ export default function ProjectDetail() {
     [projectMessages],
   );
 
-  // View switcher — Table · Gantt. Defaults to Gantt so selecting a project
-  // opens straight onto the milestone/task timeline (auto-fitted to span).
-  const [view, setView] = useState<"overview" | "table" | "gantt">("gantt");
+  // View switcher — Overview · Table · Kanban · Gantt · Calendar. First open
+  // lands on the table; after that we remember the user's last pick (per-browser).
+  const [view, setView] = useState<"overview" | "table" | "kanban" | "gantt" | "calendar">(() => {
+    const s = localStorage.getItem(DETAIL_VIEW_KEY);
+    return s === "overview" || s === "gantt" || s === "table" || s === "kanban" || s === "calendar" ? s : "table";
+  });
+  useEffect(() => { try { localStorage.setItem(DETAIL_VIEW_KEY, view); } catch { /* ignore */ } }, [view]);
 
   // Critical-path overlay (Gantt only). Lazy + read-only: hit /schedule (pure
   // CPM, returns criticalTaskIds) rather than /critical-path, which persists
@@ -727,6 +806,17 @@ export default function ProjectDetail() {
   // ── Filters (search · milestone · priority). Milestone replaces the old
   //    status filter — the project view is now organised by milestone.
   const [search, setSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!searchOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      // Keep an active query visible — only auto-close the pop-out when empty.
+      if (searchRef.current && !searchRef.current.contains(e.target as Node) && !search) setSearchOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [searchOpen, search]);
   const [milestone, setMilestone] = useState("");
   const [priority, setPriority] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
@@ -896,13 +986,31 @@ export default function ProjectDetail() {
           return (
             <td key="name" className="border border-gray-200 px-2 py-0.5 font-medium text-gray-800">
               <span className="flex items-center gap-1 min-w-0" style={{ paddingLeft: depth * 14 }}>
-                {subs.length > 0 ? (
+                {(depth === 0 || subs.length > 0) ? (
                   <ChevronDown size={12} className={`shrink-0 text-gray-400 transition-transform ${open ? "" : "-rotate-90"}`} />
                 ) : (
                   <span className="w-3 shrink-0" />
                 )}
                 {depth > 0 ? (
-                  <span className="truncate text-left font-normal text-gray-700" title={t.name}>{t.name}</span>
+                  <span className="group/sub flex items-center gap-1 min-w-0">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setOpenTaskId(t.id); }}
+                      className="truncate text-left font-normal text-gray-700 hover:text-primary hover:underline"
+                      title={t.name}
+                    >{t.name}</button>
+                    <button
+                      type="button"
+                      title="Delete subtask"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm(`Delete subtask "${t.name}"?`)) deleteTask.mutate({ id: t.id } as never);
+                      }}
+                      className="shrink-0 opacity-0 group-hover/sub:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </span>
                 ) : (
                   <button
                     type="button"
@@ -943,7 +1051,7 @@ export default function ProjectDetail() {
             </td>
           );
         case "timeline":
-          return <td key="timeline" className="border border-gray-200 px-2 py-0.5 whitespace-nowrap"><TimelineCell start={t.startDate} end={t.endDate} /></td>;
+          return <td key="timeline" className="border border-gray-200 px-2 py-0.5 whitespace-nowrap"><TimelineCell start={t.startDate} end={t.endDate} endHistory={t.endDateHistory} /></td>;
         default:
           return <td key={key} className="border border-gray-200 px-2 py-0.5" />;
       }
@@ -951,12 +1059,15 @@ export default function ProjectDetail() {
     return (
       <>
         <tr
-          className={`transition-colors ${depth > 0 ? "bg-gray-50/70 hover:bg-gray-100/70" : "bg-white hover:bg-gray-50"} ${subs.length > 0 ? "cursor-pointer" : ""}`}
-          onClick={() => subs.length > 0 && toggleTask(t.id)}
+          className={`transition-colors ${depth > 0 ? "bg-gray-50/70 hover:bg-gray-100/70" : "bg-white hover:bg-gray-50"} ${(depth === 0 || subs.length > 0) ? "cursor-pointer" : ""}`}
+          onClick={() => (depth === 0 || subs.length > 0) && toggleTask(t.id)}
         >
           {cols.map((c) => cell(c.key))}
         </tr>
         {open && subs.map((s) => <TaskTr key={s.id} t={s} depth={depth + 1} cols={cols} />)}
+        {open && depth === 0 && (
+          <AddSubtaskRow parent={t} projectId={projectId} colSpan={cols.length} indent={(depth + 1) * 14 + 16} createTask={createTask} />
+        )}
       </>
     );
   };
@@ -966,7 +1077,7 @@ export default function ProjectDetail() {
   return (
     <div className="space-y-2">
       {/* Header — back to Projects + project identity */}
-      <div className="flex items-center justify-between gap-3 flex-wrap ph-rise">
+      <div className="relative flex items-center justify-between gap-3 flex-wrap ph-rise">
         <div className="flex items-center gap-3 min-w-0">
           <Link href="/projects">
             <button
@@ -1011,7 +1122,7 @@ export default function ProjectDetail() {
             className="h-9 px-3 rounded-xl flex items-center gap-1.5 text-[12px] font-semibold border border-border bg-card/70 text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
           >
             {genBusy ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
-            Generate Live Charter
+            Live Project Report
           </button>
 
           <div className="flex items-center gap-0.5 glass-surface lift-card rounded-xl p-1">
@@ -1033,37 +1144,57 @@ export default function ProjectDetail() {
             ))}
           </div>
         </div>
+
       </div>
 
       {section === "team" && <TeamTab projectId={projectId} />}
 
       {section === "tasks" && (<>
-      {/* ── Filter bar — same glass strip as the Projects view ────────────── */}
-      <div className="glass-surface lift-card ph-rise rounded-xl px-2 py-1.5 flex flex-wrap items-center gap-0.5 gap-y-1 w-fit max-w-full relative z-50">
-        <div className="relative w-[72px]">
-          <Search size={10} className="absolute left-1 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-4 pr-0 h-5 text-[10px] border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-          />
-        </div>
+      {/* ── Toolbar: Search + View switcher (left) · Filters (right) ───────── */}
+      <div className="glass-surface lift-card ph-rise rounded-xl px-2.5 py-1.5 flex flex-wrap items-center gap-x-2 gap-y-2 w-full max-w-full relative z-50">
+        {/* Search — icon button that expands into an inline field, left of the toggles */}
+        {searchOpen ? (
+          <div ref={searchRef} className="flex items-center gap-1.5 px-3 h-6 rounded-full bg-card border border-primary/30 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/10 transition-colors">
+            <Search size={14} className="shrink-0 text-primary" />
+            <Input
+              autoFocus
+              placeholder="Search tasks…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") { setSearch(""); setSearchOpen(false); } }}
+              className="h-6 w-80 text-[12px] border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0"
+            />
+            <button type="button" onClick={() => { setSearch(""); setSearchOpen(false); }} title="Close search" className="shrink-0 text-muted-foreground hover:text-foreground">
+              <X size={15} />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            title="Search"
+            className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${search ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}
+          >
+            <Search size={13} />
+          </button>
+        )}
 
-        {/* View switcher — Overview · Table · Gantt */}
-        <div className="flex items-center gap-0.5 mr-0.5 pr-0.5 border-r border-border/60">
+        {/* View switcher — Overview · Table · Gantt (borderless segmented pills) */}
+        <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
           {([
             { key: "overview", label: "Overview", Icon: LayoutDashboard },
             { key: "table", label: "Table", Icon: Table2 },
+            { key: "kanban", label: "Kanban", Icon: LayoutGrid },
             { key: "gantt", label: "Gantt", Icon: GanttChartSquare },
+            { key: "calendar", label: "Calendar", Icon: CalendarDays },
           ] as const).map(({ key, label, Icon }) => (
             <button
               key={key}
               type="button"
               onClick={() => setView(key)}
               title={`${label} view`}
-              className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
-                view === key ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              className={`h-6 px-2 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
+                view === key ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <Icon size={13} />
@@ -1072,61 +1203,102 @@ export default function ProjectDetail() {
           ))}
         </div>
 
-        {/* Milestone filter (replaces the old status filter) */}
-        <div className="relative" ref={filterRef}>
-          <button
-            type="button"
-            onClick={() => { setFilterOpen((o) => !o); setPrioOpen(false); }}
-            title="Filter by milestone"
-            className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
-              milestone ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-            }`}
-          >
-            <Milestone size={13} /> Milestones
-          </button>
-          {filterOpen && (
-            <div className="absolute left-0 top-full mt-1.5 z-50 w-52 max-h-72 overflow-y-auto rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
-              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Milestone</div>
-              {MILESTONE_CHIPS.map((c) => (
-                <button
-                  key={c.value || "all"}
-                  onClick={() => { setMilestone(c.value); setFilterOpen(false); }}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${milestone === c.value ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
-                >
-                  <span className="truncate">{c.label}</span>
-                  {milestone === c.value && <Check size={13} className="shrink-0" />}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {/* Task-Gantt legend — one hover explainer per bar colour (Gantt only) */}
+        {view === "gantt" && (
+          <div className="flex items-center gap-2 pl-1.5 ml-0.5 border-l border-border/60">
+            {TASK_GANTT_LEGEND.map((l) => (
+              <HoverHint key={l.label} title={l.label} footer={l.desc}>
+                <span className="flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap cursor-help">
+                  <span className="w-2 h-2 rounded-sm" style={{ background: l.color }} />
+                  {l.label}
+                  <Info size={9} className="opacity-40" />
+                </span>
+              </HoverHint>
+            ))}
+          </div>
+        )}
 
-        {/* Priority filter */}
-        <div className="relative" ref={prioRef}>
-          <button
-            type="button"
-            onClick={() => { setPrioOpen((o) => !o); setFilterOpen(false); }}
-            title="Filter by priority"
-            className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
-              priority ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-            }`}
-          >
-            <Flag size={13} /> Priority
-          </button>
-          {prioOpen && (
-            <div className="absolute left-0 top-full mt-1.5 z-50 w-44 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
-              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Priority</div>
-              {PRIORITY_CHIPS.map((c) => (
-                <button
-                  key={c.value || "all"}
-                  onClick={() => { setPriority(c.value); setPrioOpen(false); }}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${priority === c.value ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
-                >
-                  {c.label}
-                  {priority === c.value && <Check size={13} />}
-                </button>
-              ))}
-            </div>
+        {/* Filters — pushed to the right, clearly labelled & visually distinct
+            from the view switcher (bordered pills, caret, current value shown). */}
+        <div className="ml-auto flex items-center gap-1.5">
+          <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <SlidersHorizontal size={12} /> Filter by
+          </span>
+
+          {/* Milestone filter */}
+          <div className="relative" ref={filterRef}>
+            <button
+              type="button"
+              onClick={() => { setFilterOpen((o) => !o); setPrioOpen(false); }}
+              title="Filter tasks by milestone"
+              className={`h-6 pl-2 pr-1.5 rounded-md border flex items-center gap-1 text-[11px] transition-colors ${
+                milestone ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-foreground/80 hover:border-primary/40 hover:text-foreground"
+              }`}
+            >
+              <Milestone size={12} />
+              <span className="text-muted-foreground">Milestone:</span>
+              <span className="font-semibold max-w-[110px] truncate">{MILESTONE_CHIPS.find((c) => c.value === milestone)?.label ?? "All"}</span>
+              <ChevronDown size={12} className={`opacity-60 transition-transform ${filterOpen ? "rotate-180" : ""}`} />
+            </button>
+            {filterOpen && (
+              <div className="absolute right-0 top-full mt-1.5 z-50 w-56 max-h-72 overflow-y-auto rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
+                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Filter by milestone</div>
+                {MILESTONE_CHIPS.map((c) => (
+                  <button
+                    key={c.value || "all"}
+                    onClick={() => { setMilestone(c.value); setFilterOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${milestone === c.value ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
+                  >
+                    <span className="truncate">{c.label}</span>
+                    {milestone === c.value && <Check size={13} className="shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Priority filter */}
+          <div className="relative" ref={prioRef}>
+            <button
+              type="button"
+              onClick={() => { setPrioOpen((o) => !o); setFilterOpen(false); }}
+              title="Filter tasks by priority"
+              className={`h-6 pl-2 pr-1.5 rounded-md border flex items-center gap-1 text-[11px] transition-colors ${
+                priority ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-foreground/80 hover:border-primary/40 hover:text-foreground"
+              }`}
+            >
+              <Flag size={12} />
+              <span className="text-muted-foreground">Priority:</span>
+              <span className="font-semibold">{PRIORITY_CHIPS.find((c) => c.value === priority)?.label ?? "All"}</span>
+              <ChevronDown size={12} className={`opacity-60 transition-transform ${prioOpen ? "rotate-180" : ""}`} />
+            </button>
+            {prioOpen && (
+              <div className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
+                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Filter by priority</div>
+                {PRIORITY_CHIPS.map((c) => (
+                  <button
+                    key={c.value || "all"}
+                    onClick={() => { setPriority(c.value); setPrioOpen(false); }}
+                    className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${priority === c.value ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
+                  >
+                    {c.label}
+                    {priority === c.value && <Check size={13} />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Clear filters — only when a filter is active */}
+          {(milestone || priority) && (
+            <button
+              type="button"
+              onClick={() => { setMilestone(""); setPriority(""); }}
+              title="Clear all filters"
+              className="h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <X size={12} /> Clear
+            </button>
           )}
         </div>
       </div>
@@ -1144,6 +1316,25 @@ export default function ProjectDetail() {
           ownerName={(() => { const id = Number((project as { projectOwnerId?: number } | undefined)?.projectOwnerId ?? 0); return id ? (usersById.get(id) ?? null) : null; })()}
           tasks={tasks as unknown as Array<{ name?: string; status: string; parentTaskId?: number | null; milestoneId?: number | null }>}
           milestones={(rawMilestones ?? []) as unknown as Array<{ id: number; name: string; dueDate?: string | null; status: string }>}
+        />
+      ) : view === "kanban" ? (
+        <KanbanView<TaskRow>
+          groups={TASK_STATUSES.map((s) => ({ key: s.value, label: s.label, color: s.solid, rows: filtered.filter((t) => t.status === s.value) }))}
+          columns={TASK_BOARD_COLUMNS}
+          getRowId={(t) => `task:${t.id}`}
+          getName={(t) => <span className="font-medium">{t.name}</span>}
+          onOpenRow={(t) => setOpenTaskId(t.id)}
+          onMoveToGroup={(rowId, status) => {
+            const id = Number(rowId.replace("task:", ""));
+            if (!Number.isFinite(id)) return;
+            // Gate the status change behind a justification (CXO board parity).
+            setMoveJustify({ id, to: status, toLabel: STATUS_BY_VALUE.get(status as never)?.label ?? status });
+          }}
+        />
+      ) : view === "calendar" ? (
+        <CalendarView<CalendarItem>
+          items={filtered.map((t) => ({ id: t.id, date: t.endDate ?? t.startDate ?? null, title: t.name, status: t.status }))}
+          onOpenItem={(it) => setOpenTaskId(Number(it.id))}
         />
       ) : groups.length > 0 ? (
         view === "gantt" ? (
@@ -1167,7 +1358,24 @@ export default function ProjectDetail() {
                 </button>
 
                 {open && (
-                  <ExcelGroupTable cols={COLS} accent={group.color} storageKey={`ph:project-tasks:tbl:${group.key}`}>
+                  <ExcelGroupTable
+                    cols={COLS}
+                    accent={group.color}
+                    storageKey={`ph:project-tasks:tbl:${group.key}`}
+                    renderHeaderLabel={(c) => c.key === "code" ? (
+                      <span className="inline-flex items-center gap-1">
+                        {c.header}
+                        <HoverHint
+                          title="How task codes are formed"
+                          footer={<>“TSK-” + the task's zero-padded database ID (e.g. <b className="text-popover-foreground">TSK-0042</b>) — generated automatically and stable for the life of the task.</>}
+                        >
+                          <span className="inline-flex cursor-help pointer-events-auto" aria-label="How task codes are formed">
+                            <Info size={10} className="opacity-60" />
+                          </span>
+                        </HoverHint>
+                      </span>
+                    ) : c.header}
+                  >
                     {(cols) => (
                       <tbody>
                         {group.rows.map((t) => <TaskTr key={t.id} t={t} depth={0} cols={cols} />)}
@@ -1205,6 +1413,32 @@ export default function ProjectDetail() {
         senderId={currentUserId}
         resolveName={(id) => usersById.get(id) ?? `User ${id}`}
       />
+
+      {moveJustify && (
+        <MoveJustifyModal
+          toLabel={moveJustify.toLabel}
+          pending={movingPending}
+          onCancel={() => { setMoveJustify(null); void refetchTasks(); }}
+          onConfirm={async (reason) => {
+            const mv = moveJustify;
+            setMovingPending(true);
+            try {
+              await updateTask.mutateAsync({ id: mv.id, data: { status: mv.to } as never });
+              try {
+                await fetch(`/api/projects/${projectId}/messages`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ senderId: currentUserId, taskId: mv.id, body: `Status → ${mv.toLabel}: ${reason}` }),
+                });
+              } catch { /* justification comment is best-effort */ }
+            } finally {
+              setMovingPending(false);
+              setMoveJustify(null);
+              void refetchTasks();
+            }
+          }}
+        />
+      )}
 
       <ProjectCommsDrawer
         projectId={projectId}

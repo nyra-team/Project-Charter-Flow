@@ -488,6 +488,13 @@ router.patch("/tasks/:id", requireRole(...WRITE_ROLES), async (req, res): Promis
   const newEndDate = (updateData.endDate as string | undefined) ?? existing.endDate;
   const newActualEnd = (updateData.actualEnd as string | undefined) ?? existing.actualEnd;
   updateData.scheduleVarianceDays = computeScheduleVarianceDays(newEndDate, newActualEnd);
+  // Revised-target trail: when endDate actually changes (and there was a prior
+  // date), append the superseded date so the timeline can strike it through.
+  if (updateData.endDate !== undefined && existing.endDate && updateData.endDate !== existing.endDate) {
+    let hist: string[] = [];
+    try { hist = JSON.parse((existing as Record<string, unknown>).endDateHistory as string || "[]"); } catch { /* ignore */ }
+    updateData.endDateHistory = JSON.stringify([...hist, existing.endDate]);
+  }
   const [task] = await db.update(tasksTable).set(updateData).where(eq(tasksTable.id, params.data.id)).returning();
   if (!task) { res.status(404).json({ error: "Task not found" }); return; }
   const [enriched] = await enrichTasks([task as unknown as Record<string, unknown>]);

@@ -12,7 +12,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Link } from "wouter";
 import {
   Paperclip, X, ChevronUp, ChevronDown, Plus, Pencil,
-  CheckSquare, MoreHorizontal, Eye, Share2, ListFilter,
+  CheckSquare, MoreHorizontal, Eye, Share2,
   Bold, Italic, List, ListOrdered, ListChecks, Table,
   AtSign, Smile,
 } from "lucide-react";
@@ -60,6 +60,171 @@ function SidebarRow({ label, children }: { label: string; children: React.ReactN
   );
 }
 
+// Atlassian-style rich-text editor — the SAME toolbar/options used by the task
+// Description (text styles, bold/italic/more, colour, lists, action item,
+// @mention, emoji, attach, table, divider). Shared so the comment composer has
+// every option the description has. Self-contained (owns its own menu state +
+// contentEditable); `onSave` receives the HTML.
+function RichEditor({
+  people, initialHTML = "", placeholder, autoFocus, minHeight = 64,
+  onSave, onCancel, saveLabel = "Save", saving, clearOnSave,
+}: {
+  people: Array<{ id: number; name: string }>;
+  initialHTML?: string;
+  placeholder?: string;
+  autoFocus?: boolean;
+  minHeight?: number;
+  onSave: (html: string) => void;
+  onCancel?: () => void;
+  saveLabel?: string;
+  saving?: boolean;
+  clearOnSave?: boolean;
+}) {
+  const [menu, setMenu] = useState<"" | "style" | "color" | "mention" | "emoji" | "attach" | "more">("");
+  const [mentionQ, setMentionQ] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const savedRange = useRef<Range | null>(null);
+
+  // Seed once on mount; optionally focus.
+  useEffect(() => { if (ref.current) { ref.current.innerHTML = initialHTML; if (autoFocus) ref.current.focus(); } /* eslint-disable-next-line */ }, []);
+  useEffect(() => {
+    if (!menu) return;
+    const onDown = (e: MouseEvent) => { if (!toolbarRef.current?.contains(e.target as Node)) setMenu(""); };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menu]);
+
+  const exec = (cmd: string, val?: string) => { document.execCommand(cmd, false, val); ref.current?.focus(); };
+  const appendToEditor = (html: string) => { const el = ref.current; if (!el) return; el.focus(); el.innerHTML += html; };
+  const saveRange = () => { const s = window.getSelection(); if (s && s.rangeCount && ref.current?.contains(s.anchorNode)) savedRange.current = s.getRangeAt(0).cloneRange(); };
+  const insertMention = (name: string) => {
+    const el = ref.current; if (!el) return;
+    el.focus();
+    const s = window.getSelection();
+    if (savedRange.current && s) { s.removeAllRanges(); s.addRange(savedRange.current); }
+    document.execCommand("insertText", false, `@${name} `);
+    setMenu(""); setMentionQ("");
+  };
+  const isEmpty = () => !(ref.current?.textContent?.trim()) && !ref.current?.querySelector("img,table,hr,a");
+  const handleSave = () => {
+    const html = ref.current?.innerHTML ?? "";
+    if (isEmpty()) return;
+    onSave(html);
+    if (clearOnSave && ref.current) ref.current.innerHTML = "";
+  };
+
+  return (
+    <div>
+      <div className="border border-[#dfe1e6] rounded-t-lg bg-white">
+        <div ref={toolbarRef} className="flex items-center gap-0.5 px-2 py-1.5 text-[#44546f] flex-wrap">
+          <div className="relative">
+            <ToolBtn title="Text styles" onClick={() => setMenu((m) => m === "style" ? "" : "style")}><span className="inline-flex items-center text-[12px] font-medium">Tt</span><ChevronDown size={12} /></ToolBtn>
+            {menu === "style" && (
+              <div className="absolute z-30 mt-1 w-40 rounded-lg border border-[#dfe1e6] bg-white shadow-lg py-1">
+                {([["p", "Normal text"], ["h1", "Heading 1"], ["h2", "Heading 2"], ["h3", "Heading 3"], ["blockquote", "Quote"]] as const).map(([tag, lbl]) => (
+                  <button key={tag} type="button" onMouseDown={(e) => { e.preventDefault(); exec("formatBlock", tag); setMenu(""); }} className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#f1f2f4]">{lbl}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          <Divider />
+          <ToolBtn title="Bold" onClick={() => exec("bold")}><Bold size={16} /></ToolBtn>
+          <ToolBtn title="Italic" onClick={() => exec("italic")}><Italic size={16} /></ToolBtn>
+          <div className="relative">
+            <ToolBtn title="More formatting" onClick={() => setMenu((m) => m === "more" ? "" : "more")}><MoreHorizontal size={16} /></ToolBtn>
+            {menu === "more" && (
+              <div className="absolute z-30 mt-1 w-44 rounded-lg border border-[#dfe1e6] bg-white shadow-lg py-1">
+                {([["underline", "Underline"], ["strikeThrough", "Strikethrough"], ["subscript", "Subscript"], ["superscript", "Superscript"], ["removeFormat", "Clear formatting"]] as const).map(([cmd, lbl]) => (
+                  <button key={cmd} type="button" onMouseDown={(e) => { e.preventDefault(); exec(cmd); setMenu(""); }} className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#f1f2f4]">{lbl}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          <Divider />
+          <div className="relative">
+            <ToolBtn title="Text color" onClick={() => setMenu((m) => m === "color" ? "" : "color")}><span className="text-[12px] font-medium underline decoration-[#ae2e24] decoration-2">A</span><ChevronDown size={12} /></ToolBtn>
+            {menu === "color" && (
+              <div className="absolute z-30 mt-1 p-2 rounded-lg border border-[#dfe1e6] bg-white shadow-lg grid grid-cols-5 gap-1.5">
+                {["#172b4d", "#ae2e24", "#216e4e", "#0055cc", "#a54800", "#5e4db2", "#206a83", "#943d73", "#626f86", "#e56910"].map((c) => (
+                  <button key={c} type="button" onMouseDown={(e) => { e.preventDefault(); exec("foreColor", c); setMenu(""); }} className="w-5 h-5 rounded-full border border-black/10" style={{ background: c }} />
+                ))}
+              </div>
+            )}
+          </div>
+          <Divider />
+          <ToolBtn title="Bulleted list" onClick={() => exec("insertUnorderedList")}><List size={16} /></ToolBtn>
+          <ToolBtn title="Numbered list" onClick={() => exec("insertOrderedList")}><ListOrdered size={16} /></ToolBtn>
+          <Divider />
+          <ToolBtn title="Action item" onClick={() => exec("insertHTML", '<label style="display:flex;align-items:flex-start;gap:6px"><input type="checkbox" style="margin-top:3px"/><span>&nbsp;</span></label>')}><ListChecks size={16} /></ToolBtn>
+          <div className="relative">
+            <ToolBtn title="Mention" onClick={() => { saveRange(); setMentionQ(""); setMenu((m) => m === "mention" ? "" : "mention"); }}><AtSign size={16} /></ToolBtn>
+            {menu === "mention" && (
+              <div className="absolute z-30 mt-1 w-56 rounded-lg border border-[#dfe1e6] bg-white shadow-lg p-1">
+                <input
+                  autoFocus
+                  value={mentionQ}
+                  onChange={(e) => setMentionQ(e.target.value)}
+                  placeholder="Search people…"
+                  className="w-full text-[12px] border border-[#dfe1e6] rounded px-2 py-1 outline-none focus:border-[#1868db] mb-1"
+                />
+                <div className="max-h-48 overflow-y-auto">
+                  {people.filter((u) => u.name?.toLowerCase().includes(mentionQ.toLowerCase())).slice(0, 30).map((u) => (
+                    <button key={u.id} type="button" onMouseDown={(e) => { e.preventDefault(); insertMention(u.name); }} className="w-full flex items-center gap-2 text-left px-2 py-1.5 text-[12px] rounded hover:bg-[#f1f2f4]">
+                      <PersonAvatar id={u.id} name={u.name} size={20} /> <span className="truncate">{u.name}</span>
+                    </button>
+                  ))}
+                  {people.filter((u) => u.name?.toLowerCase().includes(mentionQ.toLowerCase())).length === 0 && (
+                    <p className="px-2 py-1.5 text-[12px] text-[#626f86]">No matches</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="relative">
+            <ToolBtn title="Emoji" onClick={() => setMenu((m) => m === "emoji" ? "" : "emoji")}><Smile size={16} /></ToolBtn>
+            {menu === "emoji" && (
+              <div className="absolute z-30 mt-1 w-[268px] max-h-52 overflow-y-auto p-2 rounded-lg border border-[#dfe1e6] bg-white shadow-lg grid grid-cols-8 gap-0.5">
+                {EMOJIS.map((e, i) => (
+                  <button key={i} type="button" onMouseDown={(ev) => { ev.preventDefault(); exec("insertText", e); }} className="h-7 w-7 flex items-center justify-center text-[16px] rounded hover:bg-[#f1f2f4]">{e}</button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="relative">
+            <ToolBtn title="Attach" onClick={() => setMenu((m) => m === "attach" ? "" : "attach")}><Paperclip size={16} /></ToolBtn>
+            {menu === "attach" && (
+              <div className="absolute z-30 mt-1 w-64 p-2 rounded-lg border border-[#dfe1e6] bg-white shadow-lg">
+                <FileDropzone compact onUploaded={(m) => {
+                  const isImg = (m.fileType || "").startsWith("image/");
+                  appendToEditor(isImg
+                    ? `<div><img src="${m.fileUrl}" alt="${m.fileName}" style="max-width:100%"/></div>`
+                    : `<div>📎 <a href="${m.fileUrl}" target="_blank" rel="noreferrer">${m.fileName}</a></div>`);
+                  setMenu("");
+                }} />
+              </div>
+            )}
+          </div>
+          <ToolBtn title="Insert table" onClick={() => { const cell = "<td style='border:1px solid #c1c7d0;padding:6px;min-width:60px'>&nbsp;</td>"; const row = `<tr>${cell}${cell}${cell}</tr>`; exec("insertHTML", `<table style='border-collapse:collapse;width:100%;border:1px solid #c1c7d0'><tbody>${row}${row}</tbody></table><p><br/></p>`); }}><Table size={16} /></ToolBtn>
+          <ToolBtn title="Divider" onClick={() => exec("insertHorizontalRule")}><Plus size={16} /></ToolBtn>
+        </div>
+      </div>
+      <div
+        ref={ref}
+        contentEditable
+        suppressContentEditableWarning
+        data-ph={placeholder}
+        className="w-full text-[12px] text-[#172b4d] border border-t-0 border-[#dfe1e6] bg-white rounded-b-lg px-3 py-1.5 outline-none resize-y overflow-auto empty:before:content-[attr(data-ph)] empty:before:text-[#626f86] [&_h1]:text-[17px] [&_h1]:font-semibold [&_h2]:text-[17px] [&_h2]:font-semibold [&_h3]:text-[15px] [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-[#dfe1e6] [&_blockquote]:pl-3 [&_blockquote]:text-[#626f86] [&_pre]:bg-[#f1f2f4] [&_pre]:rounded [&_pre]:p-2 [&_a]:text-[#1868db] [&_a]:underline [&_table]:border-collapse [&_td]:border [&_td]:border-[#c1c7d0] [&_td]:p-1.5"
+        style={{ resize: "vertical", minHeight }}
+      />
+      <div className="flex items-center gap-2 mt-2.5">
+        <button type="button" onClick={handleSave} disabled={saving} className="text-[12px] font-medium px-4 py-1.5 rounded bg-[#1868db] text-white hover:bg-[#1558bc] disabled:opacity-50">{saveLabel}</button>
+        {onCancel && <button type="button" onClick={onCancel} className="text-[12px] px-3 py-1.5 rounded text-[#44546f] hover:bg-[#f1f2f4]">Cancel</button>}
+      </div>
+    </div>
+  );
+}
+
 export function TaskDetailModal({
   task, allTasks, onClose, onRefresh,
 }: {
@@ -101,10 +266,8 @@ export function TaskDetailModal({
   };
   // Seed the editor with the saved HTML each time it opens.
   useEffect(() => { if (editingDesc && descRef.current) descRef.current.innerHTML = task.description ?? ""; }, [editingDesc, task.description]);
-  const [actTab, setActTab] = useState<"all" | "comments" | "history" | "worklog">("comments");
   const [subName, setSubName] = useState("");
   const [subOpen, setSubOpen] = useState(false);
-  const [commentsOpen, setCommentsOpen] = useState(false);
   const { data: people = [] } = useListUsers();
   const createTask = useCreateTask();
 
@@ -176,7 +339,7 @@ export function TaskDetailModal({
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="w-[94vw] max-w-[1040px] max-h-[92vh] p-0 gap-0 overflow-hidden flex flex-col bg-white">
+      <DialogContent className="w-[95vw] max-w-[1240px] max-h-[92vh] p-0 gap-0 overflow-hidden flex flex-col bg-white">
         {/* Top bar — Add epic / code  +  right-side icon cluster */}
         <div className="flex items-center justify-between pl-5 pr-12 py-1.5 border-b border-[#dfe1e6] shrink-0">
           <div className="flex items-center gap-2 text-[12px] text-[#626f86] min-w-0">
@@ -198,8 +361,8 @@ export function TaskDetailModal({
 
         {/* Two-column body */}
         <div className="flex-1 min-h-0 flex">
-          {/* ── LEFT (main) ── */}
-          <div className="flex-1 min-w-0 px-5 pt-3 pb-4 overflow-y-auto">
+          {/* ── LEFT (main) — narrower ── */}
+          <div className="w-[42%] shrink-0 min-w-0 px-5 pt-3 pb-4 overflow-y-auto">
             <h1 className="w-full text-[17px] font-semibold text-[#172b4d] leading-tight mb-3 px-1 -ml-1">{task.name}</h1>
 
             {/* Description — click to reveal the Atlassian-style rich-text editor */}
@@ -326,6 +489,9 @@ export function TaskDetailModal({
               )}
             </div>
 
+            {/* Subtasks + Linked work items — hidden when this task is itself a
+                subtask (no nesting / cross-links from a subtask's own popup). */}
+            {task.parentTaskId == null && <>
             {/* Subtasks — in-flow collapsible dropdown (not a floating popup) */}
             <div className="mb-3">
               <button type="button" onClick={() => setSubOpen((v) => !v)} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-[#172b4d] mb-2">
@@ -395,99 +561,9 @@ export function TaskDetailModal({
                 {linkable.map((t) => <option key={t.id} value={t.id}>{codeOf(t.id)} · {t.name}</option>)}
               </select>
             </div>
+            </>}
 
-            {/* Activity */}
-            <div>
-              <p className="text-[12px] font-semibold text-[#172b4d] mb-2">Activity</p>
-              <div className="flex items-center justify-between mb-3">
-                <div className="inline-flex items-center gap-1 p-0.5 rounded bg-[#f1f2f4]">
-                  {([["all", "All"], ["comments", "Comments"], ["history", "History"], ["worklog", "Work log"]] as const).map(([k, lbl]) => (
-                    <button key={k} type="button" onClick={() => setActTab(k)}
-                      className={`text-[12px] px-3 py-1 rounded font-medium transition-colors ${actTab === k ? "bg-white text-[#1868db] shadow-sm" : "text-[#44546f] hover:bg-white/60"}`}>
-                      {lbl}
-                    </button>
-                  ))}
-                </div>
-                <button type="button" className="text-[#626f86] hover:text-[#172b4d]"><ListFilter size={18} /></button>
-              </div>
-
-              {(actTab === "all" || actTab === "comments") ? (
-                <>
-                  {/* Comment composer */}
-                  <div className="flex items-start gap-2 mb-4">
-                    <PersonAvatar id={task.assigneeId} name={task.assigneeName ?? "?"} size={32} />
-                    <div className="flex-1 min-w-0 rounded-lg border border-[#c1c7d0] focus-within:border-[#1868db] p-2.5">
-                      <input
-                        value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter") submitComment(); }}
-                        placeholder="Add a comment…"
-                        className="w-full text-[12px] outline-none bg-transparent mb-2"
-                      />
-                      <div className="flex flex-wrap items-center gap-2">
-                        {["Who is working on this...?", "Can I get more info...?", "Status update..."].map((q) => (
-                          <button key={q} type="button" onClick={() => setDraft(q)}
-                            className="text-[12px] px-3 py-1 rounded border border-[#dfe1e6] text-[#44546f] hover:bg-[#f1f2f4]">{q}</button>
-                        ))}
-                        <button
-                          onClick={submitComment}
-                          disabled={!draft.trim() || addComment.isPending}
-                          className="ml-auto text-[12px] font-medium px-3 py-1 rounded bg-[#1868db] text-white hover:bg-[#1558bc] disabled:opacity-50"
-                        >Save</button>
-                      </div>
-                    </div>
-                  </div>
-
-                </>
-              ) : (
-                <p className="text-[12px] text-[#626f86] py-4">No {actTab === "history" ? "history" : "work log"} entries yet.</p>
-              )}
-            </div>
-          </div>
-
-          {/* ── RIGHT (sidebar) ── */}
-          <div className="w-[300px] shrink-0 border-l border-[#dfe1e6] px-4 pt-3 pb-4 bg-white overflow-y-auto">
-            {/* Status + Priority */}
-            <div className="flex items-center gap-2 mb-4">
-              <div className="relative h-8 w-[140px] rounded border border-[#dfe1e6] overflow-hidden [&_select]:!text-left [&_select]:!pr-6">
-                <StatusSelect value={task.status} onChange={(v) => patch.mutate({ status: v })} />
-                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-70" />
-              </div>
-              <div className="relative h-8 w-[120px] rounded border border-[#dfe1e6] overflow-hidden [&_select]:!text-left [&_select]:!pr-6">
-                <PrioritySelect value={task.priority} onChange={(v) => patch.mutate({ priority: v })} />
-                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-70" />
-              </div>
-            </div>
-
-            {/* Past comments — collapsible dropdown */}
-            {(comments.data ?? []).length > 0 && (
-              <div className="border border-[#dfe1e6] rounded-lg p-3 mb-4">
-                <button type="button" onClick={() => setCommentsOpen((v) => !v)} className="w-full flex items-center justify-between text-[12px] font-semibold text-[#172b4d] mb-2">
-                  Comments <span className="text-[#626f86] font-normal">({comments.data!.length})</span>
-                  <ChevronDown size={14} className={`ml-auto text-[#626f86] transition-transform ${commentsOpen ? "" : "-rotate-90"}`} />
-                </button>
-                {commentsOpen && <div className="space-y-3 max-h-56 overflow-y-auto">
-                  {comments.data!.map((c) => (
-                    <div key={c.id} className="flex items-start gap-2">
-                      <PersonAvatar id={c.senderId} name={c.senderName ?? "?"} size={24} />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[11px]"><span className="font-medium text-[#172b4d]">{c.senderName ?? "User"}</span> <span className="text-[#626f86]">· {new Date(c.createdAt).toLocaleString()}</span></p>
-                        {c.body && <p className="text-[12px] text-[#172b4d] whitespace-pre-wrap">{c.body}</p>}
-                        {c.attachments?.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {c.attachments.map((a, i) => (
-                              <span key={i} className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[#f1f2f4] text-[#626f86]"><Paperclip size={9} />{attName(a as AttView)}</span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>}
-              </div>
-            )}
-
-            {/* Details panel */}
+            {/* Details — moved to the left column (the right is comments-only now) */}
             <div className="border border-[#dfe1e6] rounded-lg">
               <button
                 onClick={() => setDetailsOpen((v) => !v)}
@@ -535,6 +611,61 @@ export function TaskDetailModal({
                       : <span className="text-[#626f86]">None</span>}
                   </SidebarRow>
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── RIGHT (main) — Comments, the bigger half ── */}
+          <div className="flex-1 min-w-0 border-l border-[#dfe1e6] px-4 pt-3 pb-4 bg-white overflow-y-auto flex flex-col">
+            {/* Status + Priority */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="relative h-8 w-[130px] rounded border border-[#dfe1e6] overflow-hidden [&_select]:!text-left [&_select]:!pr-6">
+                <StatusSelect value={task.status} onChange={(v) => patch.mutate({ status: v })} />
+                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-70" />
+              </div>
+              <div className="relative h-8 w-[110px] rounded border border-[#dfe1e6] overflow-hidden [&_select]:!text-left [&_select]:!pr-6">
+                <PrioritySelect value={task.priority} onChange={(v) => patch.mutate({ priority: v })} />
+                <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-70" />
+              </div>
+            </div>
+
+            {/* Comments — composer (full rich editor, same options as Description)
+                + thread, the whole conversation lives here */}
+            <p className="text-[12px] font-semibold text-[#172b4d] mb-2">Comments</p>
+            <div className="flex items-start gap-2 mb-4">
+              <PersonAvatar id={task.assigneeId} name={task.assigneeName ?? "?"} size={28} />
+              <div className="flex-1 min-w-0">
+                <RichEditor
+                  people={people}
+                  placeholder="Add a comment…"
+                  saveLabel="Comment"
+                  clearOnSave
+                  saving={addComment.isPending}
+                  onSave={(html) => addComment.mutate(html)}
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 min-h-0 space-y-3 overflow-y-auto">
+              {(comments.data ?? []).length === 0 ? (
+                <p className="text-[12px] text-[#626f86]">No comments yet. Start the conversation above.</p>
+              ) : (
+                comments.data!.map((c) => (
+                  <div key={c.id} className="flex items-start gap-2">
+                    <PersonAvatar id={c.senderId} name={c.senderName ?? "?"} size={24} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px]"><span className="font-medium text-[#172b4d]">{c.senderName ?? "User"}</span> <span className="text-[#626f86]">· {new Date(c.createdAt).toLocaleString()}</span></p>
+                      {c.body && <div className="text-[12px] text-[#172b4d] whitespace-pre-wrap [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_a]:text-[#1868db] [&_a]:underline [&_img]:max-w-full [&_table]:border-collapse [&_td]:border [&_td]:border-[#c1c7d0] [&_td]:p-1.5" dangerouslySetInnerHTML={{ __html: c.body }} />}
+                      {c.attachments?.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {c.attachments.map((a, i) => (
+                            <span key={i} className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded bg-[#f1f2f4] text-[#626f86]"><Paperclip size={9} />{attName(a as AttView)}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </div>

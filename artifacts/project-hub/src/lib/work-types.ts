@@ -28,6 +28,7 @@ export interface AggTask {
   assigneeName: string | null;
   startDate: string | null;
   endDate: string | null;
+  endDateHistory?: string | null;
   progressPct: number;
   predecessorIds: number[] | string;
   estimatedHours: number | null;

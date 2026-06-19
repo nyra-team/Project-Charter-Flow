@@ -7,7 +7,7 @@ import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "../lib/format";
-import { BarChart2, Search, ChevronDown, ChevronLeft, ChevronRight, Filter, Columns3, Check, Plus, Table2, LayoutGrid, GanttChartSquare, CalendarClock, Building2, Flag, Info, ListChecks, GripVertical, MessageSquare, BellRing, Loader2 } from "lucide-react";
+import { BarChart2, Search, ChevronDown, ChevronLeft, ChevronRight, Filter, Check, Plus, Table2, LayoutGrid, GanttChartSquare, CalendarClock, Building2, Flag, Info, ListChecks, GripVertical, MessageSquare, BellRing, Loader2, X, Trash2 } from "lucide-react";
 import {
   DndContext, DragOverlay, PointerSensor, KeyboardSensor, useSensor, useSensors,
   pointerWithin, rectIntersection, defaultDropAnimationSideEffects,
@@ -26,6 +26,7 @@ import { useUserView } from "../hooks/use-user-view";
 import { type BoardGroup, type BoardColumn, ProgressCell, DateCell } from "@/components/monday";
 import { KanbanView as ProjectsKanbanBoard } from "@/components/monday/KanbanView";
 import { ProjectCommsDrawer, type ProjectCommsTab } from "@/components/ProjectCommsDrawer";
+import { MoveJustifyModal } from "@/components/MoveJustifyModal";
 import { useUserStore } from "../lib/store";
 import { PriorityChip, RagDot } from "@/components/task-status-chip";
 import { MondayGantt, type GanttGroup, type GanttItem } from "@/components/monday-gantt";
@@ -104,8 +105,15 @@ function dateParts(s: string) {
 // Timeline cell — start → end range inside a pill. Compacts when the two dates
 // share a month ("05→12 Jun"); widens to "05 Jun → 12 Jul" across months, and
 // adds the year ("05 Jun 25 → 12 Jan 26") when the years differ.
-export function TimelineCell({ start, end }: { start?: string | null; end?: string | null }) {
-  if (!start && !end) return <span className="text-[11px] text-gray-400">—</span>;
+export function TimelineCell({ start, end, endHistory }: { start?: string | null; end?: string | null; endHistory?: string | string[] | null }) {
+  // Superseded end dates (oldest→newest), struck through under the current one.
+  let prior: string[] = [];
+  if (Array.isArray(endHistory)) prior = endHistory;
+  else if (typeof endHistory === "string") { try { prior = JSON.parse(endHistory || "[]"); } catch { /* ignore */ } }
+  prior = prior.filter(Boolean);
+  if (!start && !end) {
+    if (prior.length === 0) return <span className="text-[11px] text-gray-400">—</span>;
+  }
   let text: string;
   if (start && end) {
     const a = dateParts(start), b = dateParts(end);
@@ -116,14 +124,35 @@ export function TimelineCell({ start, end }: { start?: string | null; end?: stri
     } else {
       text = `${a.day} ${a.mon} ${a.yy} → ${b.day} ${b.mon} ${b.yy}`;
     }
-  } else {
+  } else if (start || end) {
     const o = dateParts((start ?? end)!);
     text = `${o.day} ${o.mon} ${o.yy}`;
+  } else {
+    text = "—";
   }
-  return (
-    <span className="flex w-full items-center justify-center rounded-full bg-gray-100 border border-gray-200 px-2 h-5 text-[11px] text-gray-700 whitespace-nowrap">
+  // Hover tooltip — weeks elapsed since the start date.
+  let weeksTip: string | undefined;
+  if (start) {
+    const sMs = new Date(start.slice(0, 10)).getTime();
+    const elapsed = Math.max(0, Math.floor((Date.now() - sMs) / (7 * 86_400_000)));
+    weeksTip = `${elapsed} week${elapsed === 1 ? "" : "s"} elapsed`;
+  }
+  const pill = (
+    <span title={weeksTip} className="flex w-full items-center justify-center rounded-full bg-gray-100 border border-gray-200 px-2 h-5 text-[11px] text-gray-700 whitespace-nowrap cursor-default">
       {text}
     </span>
+  );
+  if (prior.length === 0) return pill;
+  // Revised target: current pill on top, superseded end dates struck below
+  // (newest superseded first) — mirrors the CXO Action Centre date display.
+  return (
+    <div className="flex flex-col items-center gap-0.5" title={`Previous: ${prior.slice().reverse().join(", ")}`}>
+      {pill}
+      {prior.slice().reverse().map((d, i) => {
+        const o = dateParts(d);
+        return <span key={i} className="text-[10px] leading-tight line-through text-gray-400 whitespace-nowrap">{o.day} {o.mon} {o.yy}</span>;
+      })}
+    </div>
   );
 }
 
@@ -296,8 +325,17 @@ const DISPLAY_STATUSES: DisplayStatus[] = [
   { key: "completed", label: "Completed", color: "#16A34A" }, // green
   { key: "cancelled", label: "Cancelled", color: "#F97316" }, // orange
   { key: "postponed", label: "Postponed", color: "#EF4444" }, // red
+  { key: "benefits",  label: "Benefits",  color: "#14B8A6" }, // teal
 ];
 const DISPLAY_BY_KEY = new Map(DISPLAY_STATUSES.map(d => [d.key, d]));
+// What each Gantt legend colour means — shown per-colour on hover.
+const STATUS_LEGEND_DESC: Record<string, string> = {
+  new: "Not started yet — still in planning.",
+  active: "In execution — work is underway.",
+  completed: "Delivered and closed.",
+  cancelled: "Cancelled — work stopped before completion.",
+  postponed: "On hold / deferred to a later date.",
+};
 
 // Fixed column widths (px) so every status table lines up identically.
 const COLS: { key: string; header: string; width: number; align?: "left" | "center" }[] = [
@@ -330,6 +368,8 @@ function displayStatusOf(raw: string): DisplayStatus {
       return DISPLAY_BY_KEY.get("cancelled")!;
     case "on_hold": case "postponed": case "paused": case "deferred":
       return DISPLAY_BY_KEY.get("postponed")!;
+    case "benefits": case "benefits_realization":
+      return DISPLAY_BY_KEY.get("benefits")!;
     default:
       return DISPLAY_BY_KEY.get("active")!;
   }
@@ -358,6 +398,11 @@ const PRIORITY_CHIPS: { value: string; label: string }[] = [
 // localStorage key for the user's adjusted table column widths.
 const PROJECTS_COLW_KEY = "ph:projects:colw";
 const PROJECTS_COLORDER_KEY = "ph:projects:colorder";
+// localStorage keys for the user's custom columns + their per-project values.
+const CUSTOM_COLS_KEY = "ph:projects:customcols";
+const CUSTOM_VALS_KEY = "ph:projects:customvals";
+// Remembers the last view the user picked (first open defaults to table).
+const PROJECTS_VIEW_KEY = "ph:projects:view";
 
 const msTime = (s?: string | null) => (s ? new Date(s.slice(0, 10)).getTime() : null);
 
@@ -1381,6 +1426,9 @@ export default function ProjectsList() {
   // ── Project-level Communication + Attachments drawer (opened per-project
   //    from a Kanban card or a Table row). Backed by project-scoped messages.
   const currentUserId = useUserStore((s) => s.userId);
+  // Justification gate for kanban status moves (same UX as the CXO board).
+  const [moveJustify, setMoveJustify] = useState<{ id: number; to: string; toLabel: string } | null>(null);
+  const [movingPending, setMovingPending] = useState(false);
   const [commsProject, setCommsProject] = useState<{ id: number; code: string; name: string } | null>(null);
   const [commsTab, setCommsTab] = useState<ProjectCommsTab>("communication");
   const openComms = (p: ProjectRow, tab: ProjectCommsTab) => {
@@ -1399,15 +1447,40 @@ export default function ProjectsList() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggleGroup = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
 
-  // View switcher — Table · Kanban · Gantt. Defaults to Gantt so the portfolio
-  // of projects opens straight onto the timeline (auto-fitted to span).
-  const [view, setView] = useState<"table" | "kanban" | "gantt" | "calendar">("gantt");
+  // View switcher — Table · Kanban · Gantt. First open lands on the table; after
+  // that we remember whichever view the user last picked (per-browser).
+  // (Calendar lives on the Tasks view now, not here.)
+  const [view, setView] = useState<"table" | "kanban" | "gantt">(() => {
+    const s = localStorage.getItem(PROJECTS_VIEW_KEY);
+    return s === "kanban" || s === "gantt" || s === "table" ? s : "table";
+  });
+  useEffect(() => { try { localStorage.setItem(PROJECTS_VIEW_KEY, view); } catch { /* ignore */ } }, [view]);
 
   // Optional columns (Budget · Project Description) added globally to every table.
   const [extraCols, setExtraCols] = useState<Record<OptionalKey, boolean>>({ budget: false, description: false });
+  // User-defined custom columns + their per-project values. Persisted locally
+  // (no project-custom-field backend) so a user's added fields survive reloads.
+  // ponytail: localStorage-only — values are per-browser, not shared/synced.
+  const [customCols, setCustomCols] = useState<{ id: string; header: string }[]>(() => {
+    try { const s = JSON.parse(localStorage.getItem(CUSTOM_COLS_KEY) ?? "null"); return Array.isArray(s) ? s : []; } catch { return []; }
+  });
+  const [customVals, setCustomVals] = useState<Record<string, string>>(() => {
+    try { const s = JSON.parse(localStorage.getItem(CUSTOM_VALS_KEY) ?? "null"); return s && typeof s === "object" ? s : {}; } catch { return {}; }
+  });
+  useEffect(() => { try { localStorage.setItem(CUSTOM_COLS_KEY, JSON.stringify(customCols)); } catch { /* ignore */ } }, [customCols]);
+  useEffect(() => { try { localStorage.setItem(CUSTOM_VALS_KEY, JSON.stringify(customVals)); } catch { /* ignore */ } }, [customVals]);
+  const setCustomVal = (projectId: number, fieldId: string, value: string) =>
+    setCustomVals((m) => ({ ...m, [`${projectId}:${fieldId}`]: value }));
   // Visible columns (default order). Each <ExcelGroupTable> reorders/resizes its
   // own copy independently, so the status tables never affect one another.
-  const activeCols = useMemo(() => [...COLS, ...OPTIONAL_COLS.filter((c) => extraCols[c.key])], [extraCols]);
+  const activeCols = useMemo(
+    () => [
+      ...COLS,
+      ...OPTIONAL_COLS.filter((c) => extraCols[c.key]),
+      ...customCols.map((c) => ({ key: `cf:${c.id}`, header: c.header || "Untitled", width: 160 as number })),
+    ],
+    [extraCols, customCols],
+  );
 
   // Signed-in user's own department (master-DB function), used to default the view.
   const { data: me } = useQuery({
@@ -1439,17 +1512,21 @@ export default function ProjectsList() {
     if (me?.function) setDept(me.function);
   }, [me]);
 
-  // Icon menus — Filter (status) + Department + Add column. Close on outside click.
+  // Icon menus — Search + Filter (status) + Department + Add column. Close on outside click.
+  const [searchOpen, setSearchOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [prioOpen, setPrioOpen] = useState(false);
   const [deptOpen, setDeptOpen] = useState(false);
   const [colsOpen, setColsOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement | null>(null);
   const filterRef = useRef<HTMLDivElement | null>(null);
   const prioRef = useRef<HTMLDivElement | null>(null);
   const deptRef = useRef<HTMLDivElement | null>(null);
   const colsRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     function onDoc(e: MouseEvent) {
+      // Only auto-close the search pop-out when it's empty (keep an active query visible).
+      if (searchRef.current && !searchRef.current.contains(e.target as Node) && !search) setSearchOpen(false);
       if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false);
       if (prioRef.current && !prioRef.current.contains(e.target as Node)) setPrioOpen(false);
       if (deptRef.current && !deptRef.current.contains(e.target as Node)) setDeptOpen(false);
@@ -1457,7 +1534,7 @@ export default function ProjectsList() {
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
+  }, [search]);
 
   // Sync active view → local state when the user picks a different view.
   useEffect(() => {
@@ -1524,37 +1601,44 @@ export default function ProjectsList() {
   return (
     <div className="space-y-2 -mt-2 sm:-mt-3 lg:-mt-4">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 flex-wrap ph-rise">
+      <div className="relative flex items-center justify-between gap-3 flex-wrap ph-rise">
         <div>
           <h2 className="text-xl font-bold text-foreground">Projects</h2>
           <p className="text-sm text-muted-foreground mt-0.5">All projects in execution and planning</p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Workspace-wide Communication + Attachments (not per-project) */}
-          <button
-            type="button"
-            onClick={() => { setCommsProject({ id: 0, code: "ALL", name: "All Projects" }); setCommsTab("communication"); }}
-            title="Attachments & Communication"
-            aria-label="Attachments & Communication"
-            className="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-border bg-card/70 text-foreground hover:bg-accent transition-colors"
-          >
-            <MessageSquare size={14} />
-          </button>
           <JiraImportButton onDone={() => { void refetch(); }} />
         </div>
       </div>
 
       {/* ── Filter bar + saved views (Stage 3) ───────────────────────────── */}
       <div className="glass-surface lift-card ph-rise rounded-xl px-2 py-1.5 flex flex-wrap items-center gap-0.5 gap-y-1 w-fit max-w-full relative z-50">
-        <div className="relative w-[72px]">
-          <Search size={10} className="absolute left-1 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-4 pr-0 h-5 text-[10px] border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
-          />
-        </div>
+        {/* Search — icon button that expands into an inline field, left of the toggles */}
+        {searchOpen ? (
+          <div ref={searchRef} className="flex items-center gap-1 mr-0.5 pl-1.5 pr-0.5 rounded-md bg-primary/5 border border-primary/30">
+            <Search size={13} className="shrink-0 text-primary" />
+            <Input
+              autoFocus
+              placeholder="Search projects…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") { setSearch(""); setSearchOpen(false); } }}
+              className="h-6 w-44 text-[11px] border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-1"
+            />
+            <button type="button" onClick={() => { setSearch(""); setSearchOpen(false); }} title="Close search" className="shrink-0 text-muted-foreground hover:text-foreground">
+              <X size={13} />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            title="Search"
+            className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${search ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"}`}
+          >
+            <Search size={13} />
+          </button>
+        )}
 
         {/* View switcher — Table · Kanban · Gantt */}
         <div className="flex items-center gap-0.5 mr-0.5 pr-0.5 border-r border-border/60">
@@ -1562,7 +1646,6 @@ export default function ProjectsList() {
             { key: "table", label: "Table", Icon: Table2 },
             { key: "kanban", label: "Kanban", Icon: LayoutGrid },
             { key: "gantt", label: "Gantt", Icon: GanttChartSquare },
-            { key: "calendar", label: "Calendar", Icon: CalendarClock },
           ] as const).map(({ key, label, Icon }) => (
             <button
               key={key}
@@ -1674,46 +1757,20 @@ export default function ProjectsList() {
           )}
         </div>
 
-        {/* Add column — icon only; Budget · Project Description. Table view
-            only — the Kanban and Gantt views have no table columns to toggle. */}
-        {view === "table" && (
-        <div className="relative" ref={colsRef}>
-          <button
-            type="button"
-            onClick={() => { setColsOpen((o) => !o); setFilterOpen(false); setPrioOpen(false); setDeptOpen(false); }}
-            title="Add column"
-            className="h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-          >
-            <Columns3 size={13} /> Add column
-          </button>
-          {colsOpen && (
-            <div className="absolute left-0 top-full mt-1.5 z-50 w-52 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
-              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1"><Plus size={11} /> Add column</div>
-              {OPTIONAL_COLS.map((c) => (
-                <button
-                  key={c.key}
-                  onClick={() => setExtraCols((s) => ({ ...s, [c.key]: !s[c.key] }))}
-                  className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-left hover:bg-accent/60 transition-colors"
-                >
-                  {c.header}
-                  <span className={`w-4 h-4 rounded border flex items-center justify-center ${extraCols[c.key] ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}>
-                    {extraCols[c.key] && <Check size={11} />}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        )}
+        {/* (The Add-column control moved to a "+" at the top-right of the table.) */}
 
-        {/* Status legend — shown only in the Gantt view */}
+        {/* Status legend — shown only in the Gantt view. Each colour carries its
+            own hover explainer (one per status), not a single legend-wide note. */}
         {view === "gantt" && (
           <div className="flex items-center gap-2 pl-1.5 ml-0.5 border-l border-border/60">
             {DISPLAY_STATUSES.map((d) => (
-              <span key={d.key} className="flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap">
-                <span className="w-2 h-2 rounded-sm" style={{ background: d.color }} />
-                {d.label}
-              </span>
+              <HoverHint key={d.key} title={`${d.label} projects`} footer={STATUS_LEGEND_DESC[d.key]}>
+                <span className="flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap cursor-help">
+                  <span className="w-2 h-2 rounded-sm" style={{ background: d.color }} />
+                  {d.label}
+                  <Info size={9} className="opacity-40" />
+                </span>
+              </HoverHint>
             ))}
           </div>
         )}
@@ -1732,45 +1789,78 @@ export default function ProjectsList() {
             groups={kanbanGroups}
             columns={PROJECT_COLUMNS}
             getRowId={(p) => `project:${p.id}`}
-            getName={(p) => (
-              <div className="flex items-start justify-between gap-1.5">
-                <span className="font-medium">{p.name}</span>
-                <span className="flex items-center gap-0.5 shrink-0">
-                  <button
-                    type="button"
-                    title="Attachments & Communication"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => { e.stopPropagation(); openComms(p, "communication"); }}
-                    className="p-1 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                  >
-                    <MessageSquare size={13} />
-                  </button>
-                </span>
-              </div>
-            )}
+            getName={(p) => <span className="font-medium">{p.name}</span>}
             onOpenRow={(p) => setLocation(`/projects/${p.id}`)}
             onMoveToGroup={(rowId, groupKey) => {
               const id = Number(rowId.replace("project:", ""));
               if (!Number.isFinite(id)) return;
-              void (async () => {
-                try {
-                  await fetch(`/api/projects/${id}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ status: groupKey }),
-                  });
-                } finally {
-                  refetch();
-                }
-              })();
+              // Gate the status change behind a justification (CXO board parity).
+              setMoveJustify({ id, to: groupKey, toLabel: DISPLAY_BY_KEY.get(groupKey)?.label ?? groupKey });
             }}
           />
         ) : view === "gantt" ? (
           <GanttView rows={filtered} ownerName={ownerName} managerName={managerName} ownerPhoto={ownerPhoto} managerPhoto={managerPhoto} taskAgg={taskAgg} onOpen={(id) => setLocation(`/projects/${id}`)} />
-        ) : view === "calendar" ? (
-          <ProjectFullCalendar rows={filtered} onOpen={(id) => setLocation(`/projects/${id}`)} />
         ) : (
         <div className="space-y-5">
+          {/* Columns control — a "+" at the top-right of the table. Toggles the
+              built-in optional columns and adds/renames/removes custom fields. */}
+          <div className="flex items-center justify-end -mb-2">
+            <div className="relative" ref={colsRef}>
+              <button
+                type="button"
+                onClick={() => { setColsOpen((o) => !o); setFilterOpen(false); setPrioOpen(false); setDeptOpen(false); }}
+                title="Add / manage columns"
+                aria-label="Add column"
+                className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-border bg-card/70 text-foreground hover:bg-accent transition-colors"
+              >
+                <Plus size={15} />
+              </button>
+              {colsOpen && (
+                <div className="absolute right-0 top-full mt-1.5 z-50 w-60 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
+                  <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Columns</div>
+                  {OPTIONAL_COLS.map((c) => (
+                    <button
+                      key={c.key}
+                      onClick={() => setExtraCols((s) => ({ ...s, [c.key]: !s[c.key] }))}
+                      className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-left hover:bg-accent/60 transition-colors"
+                    >
+                      {c.header}
+                      <span className={`w-4 h-4 rounded border flex items-center justify-center ${extraCols[c.key] ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}>
+                        {extraCols[c.key] && <Check size={11} />}
+                      </span>
+                    </button>
+                  ))}
+                  <div className="my-1 border-t border-border/60" />
+                  <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Custom fields</div>
+                  {customCols.map((c) => (
+                    <div key={c.id} className="flex items-center gap-1.5 px-2 py-1">
+                      <input
+                        value={c.header}
+                        onChange={(e) => setCustomCols((cols) => cols.map((x) => x.id === c.id ? { ...x, header: e.target.value } : x))}
+                        placeholder="Field name"
+                        className="flex-1 min-w-0 text-[12px] rounded border border-border bg-background px-2 py-1 outline-none focus:ring-1 focus:ring-primary/40"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCustomCols((cols) => cols.filter((x) => x.id !== c.id))}
+                        title="Remove field"
+                        className="shrink-0 rounded p-1 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setCustomCols((cols) => [...cols, { id: `cf-${Date.now()}`, header: "New field" }])}
+                    className="mx-2 my-1 inline-flex items-center gap-1.5 rounded-md border border-dashed border-primary/40 bg-primary/5 px-2.5 py-1 text-[12px] font-semibold text-primary hover:bg-primary/10 transition-colors"
+                  >
+                    <Plus size={12} /> Add field
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
           {boardGroups.map((group) => {
             const open = !collapsed[group.key];
             return (
@@ -1862,7 +1952,24 @@ export default function ProjectsList() {
                         case "timeline": return <td key="timeline" className="border border-gray-200 px-2 py-0.5 whitespace-nowrap"><TimelineCell start={p.startDate} end={p.endDate} /></td>;
                         case "budget": return <td key="budget" className="border border-gray-200 px-2 py-0.5 text-gray-800 tabular-nums whitespace-nowrap">{formatCurrency((p.capexBudget ?? 0) + (p.opexBudget ?? 0))}</td>;
                         case "description": return <td key="description" className="border border-gray-200 px-2 py-0.5 text-gray-700 truncate" title={p.description ?? ""}>{p.description || <span className="text-gray-400">—</span>}</td>;
-                        default: return <td key={key} className="border border-gray-200 px-2 py-0.5" />;
+                        default:
+                          // Custom user-defined column — editable cell, value stored locally.
+                          if (key.startsWith("cf:")) {
+                            const fid = key.slice(3);
+                            const vkey = `${p.id}:${fid}`;
+                            return (
+                              <td key={key} className="border border-gray-200 px-1 py-0.5">
+                                <input
+                                  value={customVals[vkey] ?? ""}
+                                  onChange={(e) => setCustomVal(p.id, fid, e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  placeholder="—"
+                                  className="w-full bg-transparent text-[11px] text-gray-800 px-1 py-0.5 rounded outline-none focus:bg-gray-50 placeholder:text-gray-300"
+                                />
+                              </td>
+                            );
+                          }
+                          return <td key={key} className="border border-gray-200 px-2 py-0.5" />;
                       }
                     };
                     return (
@@ -1983,6 +2090,35 @@ export default function ProjectsList() {
         resolveName={(id) => usersById.get(id) ?? `User ${id}`}
         people={users}
       />
+
+      {moveJustify && (
+        <MoveJustifyModal
+          toLabel={moveJustify.toLabel}
+          pending={movingPending}
+          onCancel={() => { setMoveJustify(null); refetch(); }}
+          onConfirm={async (reason) => {
+            setMovingPending(true);
+            try {
+              await fetch(`/api/projects/${moveJustify.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status: moveJustify.to }),
+              });
+              try {
+                await fetch(`/api/projects/${moveJustify.id}/messages`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ senderId: currentUserId, body: `Status → ${moveJustify.toLabel}: ${reason}` }),
+                });
+              } catch { /* justification comment is best-effort */ }
+            } finally {
+              setMovingPending(false);
+              setMoveJustify(null);
+              refetch();
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

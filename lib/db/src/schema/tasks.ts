@@ -26,6 +26,10 @@ export const tasksTable = pgTable("pmo_tasks", {
   progressPct: integer("progress_pct").notNull().default(0),
   startDate: text("start_date"),
   endDate: text("end_date"),
+  // JSON array of superseded end dates (oldest→newest). Appended whenever
+  // endDate changes, so the timeline can strike prior targets and show the new
+  // one (mirrors the CXO Action Centre revised-date display).
+  endDateHistory: text("end_date_history").notNull().default("[]"),
   actualStart: text("actual_start"),
   actualEnd: text("actual_end"),
   estimatedHours: numeric("estimated_hours", { precision: 8, scale: 2 }),

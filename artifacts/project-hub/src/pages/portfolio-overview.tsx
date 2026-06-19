@@ -82,6 +82,25 @@ function Avatar({ name, photoUrl }: { name?: string | null; photoUrl?: string | 
   );
 }
 
+// Compact progress donut — the Action-Centre list-view ring, reused here so the
+// Portfolio Summary reads in the same visual language as the rest of the suite.
+function ProgressRing({ pct, color, size = 30 }: { pct: number; color: string; size?: number }) {
+  const sw = 3.5;
+  const r = (size - sw) / 2;
+  const circ = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, pct));
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0 -rotate-90">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={sw} />
+      <circle
+        cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round"
+        strokeDasharray={circ} strokeDashoffset={circ * (1 - clamped / 100)}
+        style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(.16,1,.3,1)" }}
+      />
+    </svg>
+  );
+}
+
 // ── Leadership roster ───────────────────────────────────────────────────────
 type Leader = { code: string; name: string; role: string; designation: string | null; officeEmail: string | null; photoUrl: string | null };
 
@@ -617,6 +636,14 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
   const toggleLeader = (code: string) =>
     setExpandedLeaders(prev => { const n = new Set(prev); n.has(code) ? n.delete(code) : n.add(code); return n; });
 
+  // Code → name for the CMD + the 13 CXOs (the function heads).
+  const leaderNameByCode = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const l of leadership?.reports ?? []) m.set(l.code, l.name);
+    if (leadership?.cmd) m.set(leadership.cmd.code, leadership.cmd.name);
+    return m;
+  }, [leadership]);
+
   // Top Strategic Projects — top 10 active projects by progress, rendered in the
   // drill popup exactly like the chairman/executive dashboard's section.
   const topProjects = useMemo(() =>
@@ -624,15 +651,19 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
       .filter((p) => p.status === "active")
       .sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0))
       .slice(0, 10)
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        ragStatus: p.ragStatus ?? "green",
-        progress: p.progress ?? 0,
-        sponsor: (p as unknown as Record<string, unknown>).projectSponsorName as string | undefined ?? "—",
-        end: p.endDate,
-      })),
-  [projects]);
+      .map((p) => {
+        // Functional head = the CXO who heads this project's department/function.
+        const headCode = leaderCodeForFunction(p.function);
+        return {
+          id: p.id,
+          name: p.name,
+          ragStatus: p.ragStatus ?? "green",
+          progress: p.progress ?? 0,
+          functionalHead: headCode ? (leaderNameByCode.get(headCode) ?? "—") : "—",
+          end: p.endDate,
+        };
+      }),
+  [projects, leaderNameByCode]);
   // Columns mirror the dashboard's Top Strategic Projects table (RAG badge,
   // progress bar, sponsor, due date).
   const topDrillCols: DrillColumn[] = [
@@ -646,13 +677,13 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
         <span className="text-xs font-bold text-muted-foreground w-8">{v as number}%</span>
       </div>
     ) },
-    { key: "sponsor", label: "Sponsor", render: (v) => <span className="text-xs text-muted-foreground truncate block max-w-[120px]">{v as string}</span> },
+    { key: "functionalHead", label: "Functional Head", render: (v) => <span className="text-xs text-muted-foreground truncate block max-w-[140px]">{v as string}</span> },
     { key: "due", label: "Due Date", render: (v) => v ? (
       <span className="text-xs text-muted-foreground flex items-center gap-1"><Clock size={10} /> {v as string}</span>
     ) : <span className="text-xs text-muted-foreground/60">—</span> },
   ];
   const topDrillRows = topProjects.map((p) => ({
-    id: p.id, name: p.name, rag: p.ragStatus, progress: p.progress, sponsor: p.sponsor,
+    id: p.id, name: p.name, rag: p.ragStatus, progress: p.progress, functionalHead: p.functionalHead,
     due: p.end ? new Date(p.end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "",
   }));
 
@@ -910,7 +941,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
           drill={{ subtitle: "Charters in review stages", columns: [{ key: "stage", label: "Review Stage" }, { key: "count", label: "Charters", align: "right" }], rows: approvalDrillRows, linkHref: "/approvals", linkLabel: "Open approvals queue", emptyText: "No charters awaiting review." }} />
         <KPITile compact label="Top Strategic Projects" value={topProjects.length} icon={Trophy} tone="primary" sub="By progress"
           hint={{ footer: "Top 10 active projects ranked by % progress — same as the Project Hub executive dashboard." }}
-          drill={{ title: "Top Strategic Projects", subtitle: "Active projects by progress — with sponsor and next milestone", columns: topDrillCols, rows: topDrillRows, rowHref: projectRowHref, emptyText: "No active projects." }} />
+          drill={{ title: "Top Strategic Projects", subtitle: "Active projects by progress — with functional head and due date", columns: topDrillCols, rows: topDrillRows, rowHref: projectRowHref, emptyText: "No active projects." }} />
         <KPITile compact label="Issues Requiring Attention" value={issues.length} icon={AlertCircle} tone={issues.length > 0 ? "danger" : "success"} sub={issues.length > 0 ? "Delayed / off-track" : "All on track"}
           hint={{ footer: "Active projects flagged Delayed (end date passed) or Off Track (progress gap > 15%). Click to see the data." }}
           drill={{ title: "Issues Requiring Attention", subtitle: "Delayed & off-track projects — click a row to open", columns: issuesDrillCols, rows: issuesDrillRows, rowHref: projectRowHref, emptyText: "No issues — all projects on track." }} />
@@ -1158,7 +1189,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
           that splits the old delivery bar into discrete Status / Progress /
           Timeline columns. Deliberately a different visual language from the
           KPI cards above. */}
-      <section className="rounded-xl border border-border bg-card shadow-sm overflow-hidden ph-rise">
+      <section className="rounded-2xl border border-border/70 bg-card overflow-hidden ph-rise shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_28px_-18px_rgba(15,23,42,0.22)]">
         {/* Header */}
         <div className="px-5 py-4 border-b border-border">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1231,7 +1262,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
 
         {/* Table */}
         <div className="overflow-x-auto">
-          <Table className="min-w-[1000px] table-fixed [&_th]:border-r [&_th]:border-border/50 [&_td]:border-r [&_td]:border-border/40 [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0">
+          <Table className="min-w-[1000px] table-fixed [&_th]:border-r [&_th]:border-border [&_td]:border-r [&_td]:border-border/70 [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0">
             <colgroup>
               <col style={{ width: "11%" }} />
               <col style={{ width: "14%" }} />
@@ -1244,7 +1275,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
               <col style={{ width: "8%" }} />
             </colgroup>
             <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border">
+              <TableRow className="bg-muted/30 hover:bg-muted/30 border-b border-border">
                 {([
                   { key: "health", label: "Status", align: "left", sortable: true },
                   { key: "name", label: "Project", align: "left", sortable: true },
@@ -1253,7 +1284,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                   { key: null, label: "Due", align: "left", sortable: false },
                   { key: null, label: "Timeline", align: "left", sortable: false },
                   { key: null, label: "Justification", align: "left", sortable: false },
-                  { key: "budgetVar", label: "Budget", align: "right", sortable: true },
+                  { key: "budgetVar", label: "Budget Variance", align: "right", sortable: true },
                   { key: "schedVar", label: "Schedule", align: "right", sortable: true },
                 ] as { key: SummarySortKey | null; label: string; align: "left" | "right" | "center"; sortable: boolean }[]).map((c, i) => {
                   const active = c.sortable && summarySort.key === c.key;
@@ -1261,7 +1292,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                   return (
                     <TableHead
                       key={c.label}
-                      className={`h-10 text-[10px] font-mono uppercase tracking-wider font-semibold text-muted-foreground/70 ${i === 0 ? "pl-5" : "px-3"} ${i === 8 ? "pr-5" : ""}`}
+                      className={`h-10 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground ${i === 0 ? "pl-5" : "px-3"} ${i === 8 ? "pr-5" : ""}`}
                     >
                       {c.sortable ? (
                         <button
@@ -1293,20 +1324,24 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                   <TableRow
                     key={r.id}
                     onClick={() => setLocation(`/projects/${r.id}`)}
-                    className={`group cursor-pointer border-b border-border/40 transition-colors hover:bg-primary/[0.06] ${i % 2 === 1 ? "bg-muted/20" : ""}`}
+                    className={`group cursor-pointer border-b border-border/70 transition-colors hover:bg-primary/[0.06] ${i % 2 === 1 ? "bg-muted/20" : ""}`}
                   >
-                    {/* Status — dot + sentence-case label */}
-                    <TableCell className="py-3.5 pl-5 pr-3 align-middle">
+                    {/* Status — per-row colour rail (Action-Centre signature) +
+                        soft ringed health pill (Claims/Action-Centre language). */}
+                    <TableCell className="py-2 pl-5 pr-3 align-middle" style={{ boxShadow: `inset 4px 0 0 0 ${dColor}` }}>
                       <HoverHint label={DELIVERY_DESC[r.dKey]}>
-                        <span className="inline-flex items-center gap-2 text-[12px] font-medium text-card-foreground whitespace-nowrap">
-                          <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: dColor, boxShadow: `0 0 0 3px ${dColor}22` }} />
+                        <span
+                          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap"
+                          style={{ background: `${dColor}14`, color: dColor, boxShadow: `inset 0 0 0 1px ${dColor}33` }}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: dColor }} />
                           {DELIVERY_STATUS_LABEL[r.dKey]}
                         </span>
                       </HoverHint>
                     </TableCell>
 
                     {/* Project — name + dept (priority label removed) */}
-                    <TableCell className="py-3.5 px-3 align-middle">
+                    <TableCell className="py-2 px-3 align-middle">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[13px] font-medium text-card-foreground truncate group-hover:text-primary transition-colors">{r.name}</span>
                         <ArrowRight size={12} className="shrink-0 text-primary opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all" />
@@ -1317,28 +1352,28 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                     </TableCell>
 
                     {/* Owner */}
-                    <TableCell className="py-3.5 px-3 align-middle">
+                    <TableCell className="py-2 px-3 align-middle">
                       <div className="flex items-center gap-2 min-w-0">
                         <Avatar name={r.owner} photoUrl={r.ownerPhoto} />
                         <span className="text-[12px] text-muted-foreground truncate">{r.owner}</span>
                       </div>
                     </TableCell>
 
-                    {/* Progress — clean linear bar + % + task count */}
-                    <TableCell className="py-3.5 px-3 align-middle">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden min-w-[56px]">
-                          <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${prog}%`, background: dColor }} />
+                    {/* Progress — donut ring + tone % + task rollup (Action-Centre) */}
+                    <TableCell className="py-2 px-3 align-middle">
+                      <div className="flex items-center gap-2.5" title={agg && agg.total > 0 ? `${agg.done}/${agg.total} tasks` : `${prog}% complete`}>
+                        <ProgressRing pct={prog} color={dColor} size={26} />
+                        <div className="min-w-0 leading-tight">
+                          <div className="text-[12.5px] font-bold num-tabular" style={{ color: prog >= 100 ? C.green : prog > 0 ? dColor : undefined }}>{prog}%</div>
+                          {agg && agg.total > 0 && (
+                            <div className="text-[10px] text-muted-foreground/70 num-tabular">{agg.done}/{agg.total} tasks</div>
+                          )}
                         </div>
-                        <span className="text-[11px] font-semibold num-tabular w-8 text-right shrink-0 text-card-foreground">{prog}%</span>
                       </div>
-                      {agg && agg.total > 0 && (
-                        <div className="text-[10px] text-muted-foreground/70 mt-1 num-tabular">{agg.done}/{agg.total} tasks</div>
-                      )}
                     </TableCell>
 
                     {/* Due — planned end date, coloured by overdue/completed */}
-                    <TableCell className="py-3.5 px-3 align-middle">
+                    <TableCell className="py-2 px-3 align-middle">
                       {endDate ? (
                         <span
                           className="text-[11.5px] font-medium tabular-nums whitespace-nowrap"
@@ -1350,7 +1385,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                     </TableCell>
 
                     {/* Timeline — date range in a pill; relative status below it */}
-                    <TableCell className="py-3.5 px-3 align-middle">
+                    <TableCell className="py-2 px-3 align-middle">
                       {(r.start || r.end) ? (
                         <div className="flex flex-col items-start gap-1">
                           <span className="inline-flex rounded-full bg-muted/70 ring-1 ring-border/60 px-2.5 py-1 whitespace-nowrap">
@@ -1371,7 +1406,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                         the recorded reason (hover for full text); for a delayed /
                         off-track project with none yet, a one-click request pings
                         the owner. */}
-                    <TableCell className="py-3.5 px-3 align-middle overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                    <TableCell className="py-2 px-3 align-middle overflow-hidden" onClick={(e) => e.stopPropagation()}>
                       {(() => {
                         const j = justByProject.get(r.id);
                         if (j) {
@@ -1416,24 +1451,30 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                       })()}
                     </TableCell>
 
-                    {/* Budget variance */}
-                    <TableCell className="py-3.5 px-3 text-right tabular-nums whitespace-nowrap font-semibold text-[12px] align-middle">
-                      {r.budgetVarPct == null ? <span className="text-muted-foreground/40 font-medium">—</span> : (
-                        <span className="inline-flex items-center justify-end gap-0.5" style={{ color: r.budgetVarPct > 0 ? C.red : r.budgetVarPct < 0 ? C.green : undefined }}>
-                          {r.budgetVarPct > 0 ? <ArrowUp size={11} /> : r.budgetVarPct < 0 ? <ArrowDown size={11} /> : null}
-                          {r.budgetVarPct > 0 ? "+" : ""}{r.budgetVarPct}%
-                        </span>
-                      )}
+                    {/* Budget variance — soft directional pill */}
+                    <TableCell className="py-2 px-3 text-right whitespace-nowrap align-middle">
+                      {r.budgetVarPct == null ? <span className="text-muted-foreground/40 font-medium text-[12px]">—</span> : (() => {
+                        const c = r.budgetVarPct > 0 ? C.red : r.budgetVarPct < 0 ? C.green : null;
+                        return (
+                          <span className="inline-flex items-center justify-end gap-0.5 rounded-md px-1.5 py-0.5 text-[11.5px] font-bold tabular-nums" style={c ? { background: `${c}14`, color: c } : { color: "hsl(var(--muted-foreground))" }}>
+                            {r.budgetVarPct > 0 ? <ArrowUp size={11} /> : r.budgetVarPct < 0 ? <ArrowDown size={11} /> : null}
+                            {r.budgetVarPct > 0 ? "+" : ""}{r.budgetVarPct}%
+                          </span>
+                        );
+                      })()}
                     </TableCell>
 
-                    {/* Schedule variance */}
-                    <TableCell className="py-3.5 px-3 pr-5 text-right tabular-nums whitespace-nowrap font-semibold text-[12px] align-middle">
-                      {r.schedVarDays == null ? <span className="text-muted-foreground/40 font-medium">—</span> : (
-                        <span className="inline-flex items-center justify-end gap-0.5" style={{ color: r.schedVarDays < 0 ? C.red : r.schedVarDays > 0 ? C.green : undefined }}>
-                          {r.schedVarDays > 0 ? <ArrowUp size={11} /> : r.schedVarDays < 0 ? <ArrowDown size={11} /> : null}
-                          {r.schedVarDays > 0 ? "+" : ""}{r.schedVarDays}d
-                        </span>
-                      )}
+                    {/* Schedule variance — soft directional pill */}
+                    <TableCell className="py-2 px-3 pr-5 text-right whitespace-nowrap align-middle">
+                      {r.schedVarDays == null ? <span className="text-muted-foreground/40 font-medium text-[12px]">—</span> : (() => {
+                        const c = r.schedVarDays < 0 ? C.red : r.schedVarDays > 0 ? C.green : null;
+                        return (
+                          <span className="inline-flex items-center justify-end gap-0.5 rounded-md px-1.5 py-0.5 text-[11.5px] font-bold tabular-nums" style={c ? { background: `${c}14`, color: c } : { color: "hsl(var(--muted-foreground))" }}>
+                            {r.schedVarDays > 0 ? <ArrowUp size={11} /> : r.schedVarDays < 0 ? <ArrowDown size={11} /> : null}
+                            {r.schedVarDays > 0 ? "+" : ""}{r.schedVarDays}d
+                          </span>
+                        );
+                      })()}
                     </TableCell>
                   </TableRow>
                 );
