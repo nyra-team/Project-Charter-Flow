@@ -18,7 +18,6 @@ type CreateBody = {
   currency?: string;
   closesAt?: string;
   evaluationThresholdPct?: number;
-  blindGrading?: boolean;
   surrogateBiddingAllowed?: boolean;
   alternativeBidsAllowed?: boolean;
 };
@@ -28,7 +27,7 @@ export default function RfxNewPage() {
   const { toast } = useToast();
   const [form, setForm] = useState<CreateBody>({
     type: "rfp", title: "", summary: "", brief: "", currency: "INR",
-    evaluationThresholdPct: 60, blindGrading: true, surrogateBiddingAllowed: true, alternativeBidsAllowed: false,
+    evaluationThresholdPct: 60, surrogateBiddingAllowed: true, alternativeBidsAllowed: false,
   });
   function set<K extends keyof CreateBody>(k: K, v: CreateBody[K]) { setForm(f => ({ ...f, [k]: v })); }
   const create = useMutation({
@@ -81,8 +80,7 @@ export default function RfxNewPage() {
             <Input type="number" min={0} max={100} value={form.evaluationThresholdPct ?? 60} onChange={e => set("evaluationThresholdPct", Number(e.target.value))} />
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-border">
-          <ToggleRow label="Blind grading" v={!!form.blindGrading} onChange={v => set("blindGrading", v)} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-border">
           <ToggleRow label="Surrogate bidding" v={!!form.surrogateBiddingAllowed} onChange={v => set("surrogateBiddingAllowed", v)} />
           <ToggleRow label="Alternative bids" v={!!form.alternativeBidsAllowed} onChange={v => set("alternativeBidsAllowed", v)} />
         </div>

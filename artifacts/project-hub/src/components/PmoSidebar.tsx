@@ -23,6 +23,7 @@ import {
   LayoutGrid,
   Wrench,
   FlaskConical,
+  AlertTriangle,
 } from "lucide-react";
 
 const SIDEBAR_COLLAPSED_KEY = "ph:sidebar:collapsed";
@@ -33,6 +34,9 @@ const SIDEBAR_COLLAPSED_KEY = "ph:sidebar:collapsed";
 // where we intercept the sentinel. It never matches a real path, so the default
 // active-state logic correctly leaves it unhighlighted.
 const CHARTER_NFA_HREF = "#charter-nfa";
+// "Business Case" opens the two-card workflow chooser popup (intercepted in
+// `navigate` below, same pattern as the sentinel above).
+const BUSINESS_CASE_HREF = "#business-case";
 
 // Type the nav data against THIS app's lucide/React copy. The shared
 // CollapsibleSidebar resolves React from its own @types/react tree, so its
@@ -56,13 +60,14 @@ const CHARTER: Item = { icon: FileText, label: "Charter + e-NFA", href: CHARTER_
 const BUSINESS_CASE: Item = {
   icon: Sparkles,
   label: "Business Case",
-  href: CHARTER_NFA_HREF,
+  href: BUSINESS_CASE_HREF,
   className:
     "btn-glossy-cta !w-fit !mx-auto !mb-3 !gap-2 !px-4 !py-0 !h-9 !rounded-full " +
     "!text-[13px] !font-semibold [&_svg]:!w-3.5 [&_svg]:!h-3.5",
 };
 const MY_TASKS: Item = { icon: UserCheck, label: "My Tasks", href: "/my-tasks" };
 const APPROVALS: Item = { icon: CheckSquare, label: "Approvals", href: "/approvals" };
+const RISKS_ISSUES: Item = { icon: AlertTriangle, label: "Risks / Issues", href: "/issues" };
 const VENDOR_ITEMS: Item[] = [
   { icon: ScrollText, label: "New RFP", href: "/rfx" },
   { icon: Building2, label: "Vendor on board", href: "/vendors" },
@@ -105,14 +110,17 @@ export default function PmoSidebar({
   isAdmin,
   isSuperAdmin,
   onCharterNfa,
+  onBusinessCase,
   mobileOpen,
   onClose,
   footer,
 }: {
   isAdmin: boolean;
   isSuperAdmin: boolean;
-  /** Opens the Charter/e-NFA workflow chooser popup. */
+  /** "Charter + e-NFA" nav item handler (navigates to the charters list). */
   onCharterNfa: () => void;
+  /** "Business Case" CTA handler — opens the two-card workflow chooser popup. */
+  onBusinessCase: () => void;
   mobileOpen?: boolean;
   onClose?: () => void;
   /** Rendered at the bottom of the rail (e.g. the signed-in profile block). */
@@ -153,7 +161,7 @@ export default function PmoSidebar({
     // Collapsed rail: leaf icons + ONE representative icon per dropdown group
     // (Vendor / Workspace / Admin / Roles) — the group's own icon, no chevron.
     // Each navigates to its first destination.
-    sections = [{ items: [PORTFOLIO, PROJECTS, CHARTER, MY_TASKS, APPROVALS] }];
+    sections = [{ items: [PORTFOLIO, PROJECTS, CHARTER, MY_TASKS, APPROVALS, RISKS_ISSUES] }];
     sections.push({ items: [
       { icon: ShoppingCart, label: "Vendor Evaluation", href: VENDOR_ITEMS[0]!.href },
       { icon: LayoutGrid, label: "Workspace", href: WORKSPACE_ITEMS[0]!.href },
@@ -167,12 +175,27 @@ export default function PmoSidebar({
     sections = [
       { items: [BUSINESS_CASE, PORTFOLIO, PROJECTS, CHARTER, MY_TASKS] },
       { title: "Vendor Evaluation", icon: ShoppingCart, collapsible: true, items: VENDOR_ITEMS },
-      { items: [APPROVALS] },
+      { items: [APPROVALS, RISKS_ISSUES] },
       { title: "Workspace", icon: LayoutGrid, collapsible: true, items: WORKSPACE_ITEMS },
     ];
     if (isAdmin) sections.push({ title: "Admin", icon: Wrench, items: ADMIN_ITEMS });
     if (isSuperAdmin) sections.push({ items: ROLES_ITEMS });
   }
+
+  // Mirror the shared sidebar's default active logic, but treat the
+  // "Charter + e-NFA" sentinel as if it lived at /charters (where it navigates)
+  // so it highlights on the charters routes without a real route href.
+  const effHref = (href: string) => (href === CHARTER_NFA_HREF ? "/charters" : href);
+  const matches = (href: string, pathname: string) => {
+    const h = effHref(href);
+    return pathname === h || pathname.startsWith(h + "/");
+  };
+  const allHrefs = sections.flatMap((s) => s.items).filter((it) => !it.external).map((it) => it.href);
+  const isActive = (href: string, pathname: string) => {
+    if (!matches(href, pathname)) return false;
+    const bestLen = Math.max(...allHrefs.filter((h) => matches(h, pathname)).map((h) => effHref(h).length));
+    return effHref(href).length === bestLen;
+  };
 
   return (
     <CollapsibleSidebar
@@ -182,10 +205,15 @@ export default function PmoSidebar({
       appName="Project Hub"
       logoHref="/portfolio"
       sections={sections as unknown as SidebarSections}
+      isActive={isActive}
       currentPath={location}
       navigate={(href) => {
         if (href === CHARTER_NFA_HREF) {
           onCharterNfa();
+          return;
+        }
+        if (href === BUSINESS_CASE_HREF) {
+          onBusinessCase();
           return;
         }
         // Clicking "Projects" auto-collapses the rail for a wider board.

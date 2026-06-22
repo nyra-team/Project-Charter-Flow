@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Info } from "lucide-react";
 import { startColumnDrag } from "@/lib/col-drag";
 
-export type ExcelCol = { key: string; header: string; width: number; align?: "left" | "center" };
+export type ExcelCol = { key: string; header: string; width: number; align?: "left" | "center"; info?: string };
 
 // One Excel-style group table that OWNS its own column order + widths (persisted
 // under `storageKey`), so every group (New / Active / each milestone, …) is an
@@ -110,7 +111,19 @@ export function ExcelGroupTable({
                 title="Drag to reorder · drag the right edge to resize"
                 className={`relative border border-gray-200 px-2 py-0.5 font-semibold select-none cursor-grab active:cursor-grabbing transition-colors ${c.align === "center" ? "text-center" : "text-left"} ${dragKey === c.key ? "bg-primary/15 text-primary shadow-inner" : ""}`}
               >
-                <span className="block truncate pointer-events-none">{renderHeaderLabel ? renderHeaderLabel(c) : c.header}</span>
+                <span className={`flex items-center gap-1 min-w-0 ${c.align === "center" ? "justify-center" : ""}`}>
+                  <span className="truncate pointer-events-none">{renderHeaderLabel ? renderHeaderLabel(c) : c.header}</span>
+                  {c.info && (
+                    <span
+                      title={c.info}
+                      aria-label={c.info}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      className="shrink-0 inline-flex pointer-events-auto cursor-help text-gray-400 hover:text-primary transition-colors"
+                    >
+                      <Info size={11} />
+                    </span>
+                  )}
+                </span>
                 {i < orderedCols.length - 1 && (
                   <span
                     onMouseDown={startResize(c.key, orderedCols[i + 1]!.key)}

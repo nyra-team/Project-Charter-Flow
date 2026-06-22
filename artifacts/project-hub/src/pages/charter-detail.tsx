@@ -7,6 +7,7 @@ import {
 } from "@workspace/api-client-react";
 import { formatCurrency, formatDate } from "../lib/format";
 import { StatusBadge } from "../components/status-badge";
+import { DocxView } from "../components/DocxView";
 import { useUserStore } from "../lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,19 +41,6 @@ const editSchema = z.object({
 });
 
 type EditValues = z.infer<typeof editSchema>;
-
-const APPROVAL_STAGE_LABELS: Record<string, string> = {
-  draft: "Draft",
-  submitted: "Submitted",
-  parallel_review: "HOD / ED / CFO Review",
-  scm_review: "SCM Negotiation",
-  chairman_review: "Chairman Approval",
-  finance_review: "Finance (SAP Order)",
-  pmo_review: "PMO Team Selection",
-  approved: "Approved",
-  active: "Project Active",
-  rejected: "Rejected",
-};
 
 function SectionBox({ title, children, icon }: { title: string; children: React.ReactNode; icon?: React.ReactNode }) {
   return (
@@ -169,11 +157,7 @@ export default function CharterDetail() {
 
   const TABS = [
     { id: "details" as const, label: "Details" },
-    { id: "benefits" as const, label: "Benefits" },
     { id: "vendors" as const, label: `Vendors${vendors?.length ? ` (${vendors.length})` : ""}` },
-    { id: "risks" as const, label: `Risks${risks?.length ? ` (${risks.length})` : ""}` },
-    { id: "squad" as const, label: `Squad${squad?.length ? ` (${squad.length})` : ""}` },
-    { id: "approvals" as const, label: `Approvals${approvals?.length ? ` (${approvals.length})` : ""}` },
   ];
 
   const statusStep = [
@@ -184,10 +168,10 @@ export default function CharterDetail() {
   return (
     <div className="space-y-5">
       {/* Back */}
-      <Link href="/approvals">
+      <Link href="/charters">
         <button className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
           <ChevronLeft size={15} />
-          Back to Approvals
+          Back to Charters
         </button>
       </Link>
 
@@ -348,34 +332,12 @@ export default function CharterDetail() {
           </div>
         )}
 
-        {/* Approval Progress Bar */}
-        {charter.status !== "rejected" && (
-          <div className="mt-5 pt-4 border-t border-gray-100">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Workflow Progress</span>
-              <span className="text-xs font-semibold text-indigo-600 capitalize">{APPROVAL_STAGE_LABELS[charter.status] ?? charter.status}</span>
-            </div>
-            <div className="flex gap-1">
-              {["draft", "parallel_review", "scm_review", "chairman_review", "finance_review", "pmo_review", "approved"].map((stage, i) => {
-                const stageIdx = ["draft", "parallel_review", "scm_review", "chairman_review", "finance_review", "pmo_review", "approved"].indexOf(charter.status);
-                const isDone = i <= stageIdx;
-                return (
-                  <div
-                    key={stage}
-                    className="flex-1 h-1.5 rounded-full transition-all"
-                    style={{ background: isDone ? "linear-gradient(90deg,#6366F1,#8B5CF6)" : "#E2E8F0" }}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Two column layout */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 gap-5">
         {/* Main content */}
-        <div className="xl:col-span-2 space-y-5">
+        <div className="space-y-5">
           {/* Tabs */}
           <div className="flex gap-1 p-1 rounded-xl" style={{ background: "#F1F5F9" }}>
             {TABS.map(tab => (
@@ -433,27 +395,10 @@ export default function CharterDetail() {
                   </SectionBox>
                 ) : (
                   <>
-                    <SectionBox title="Description" icon={<Target size={16} />}>
-                      <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{charter.description}</p>
+                    {/* Document — the generated Charter + e-NFA rendered inline, same docx view as the create preview. */}
+                    <SectionBox title="Charter + e-NFA Document" icon={<FileDown size={16} />}>
+                      <DocxView docxUrl={`/api/charters/${charterId}/docx`} fileName={`${(charter.title || "Charter").replace(/[^\w\s.-]/g, "").trim() || "Charter"} — NFA.docx`} height="78vh" />
                     </SectionBox>
-                    <SectionBox title="Scope" icon={<Target size={16} />}>
-                      <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{charter.scope}</p>
-                    </SectionBox>
-                    <SectionBox title="Deliverables">
-                      <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{charter.deliverables}</p>
-                    </SectionBox>
-                    {charter.solutionComparison && (
-                      <SectionBox title="Solution Comparison">
-                        <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{charter.solutionComparison}</p>
-                      </SectionBox>
-                    )}
-                    {((charter as unknown as { customFields?: { id: string; label: string; value: string }[] }).customFields ?? [])
-                      .filter((f) => f && (f.label?.trim() || f.value?.trim()))
-                      .map((f) => (
-                        <SectionBox key={f.id} title={f.label || "Additional Field"}>
-                          <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">{f.value}</p>
-                        </SectionBox>
-                      ))}
                   </>
                 )}
               </div>
@@ -677,77 +622,6 @@ export default function CharterDetail() {
           )}
         </div>
 
-        {/* Sidebar */}
-        <div className="space-y-4">
-          {/* Budget & Timeline */}
-          <SectionBox title="Budget & Timeline">
-            {isEditing ? (
-              <Form {...editForm}>
-                <div className="space-y-3">
-                  <FormField control={editForm.control} name="tentativeBudget" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs text-gray-500">Budget (USD)</FormLabel>
-                      <FormControl><Input {...field} type="number" className="h-9" /></FormControl>
-                    </FormItem>
-                  )} />
-                  <FormField control={editForm.control} name="startDate" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs text-gray-500">Start Date</FormLabel>
-                      <FormControl><Input {...field} type="date" className="h-9" /></FormControl>
-                    </FormItem>
-                  )} />
-                  <FormField control={editForm.control} name="endDate" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs text-gray-500">End Date</FormLabel>
-                      <FormControl><Input {...field} type="date" className="h-9" /></FormControl>
-                    </FormItem>
-                  )} />
-                  <FormField control={editForm.control} name="durationDays" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs text-gray-500">Duration (days)</FormLabel>
-                      <FormControl><Input {...field} type="number" className="h-9" /></FormControl>
-                    </FormItem>
-                  )} />
-                </div>
-              </Form>
-            ) : (
-              <div>
-                <InfoRow label="Tentative Budget" value={formatCurrency(charter.tentativeBudget)} />
-                {charter.finalNegotiatedBudget && (
-                  <InfoRow label="Negotiated Budget" value={
-                    <span className="text-emerald-600 font-bold">{formatCurrency(charter.finalNegotiatedBudget)}</span>
-                  } />
-                )}
-                <InfoRow label="Start Date" value={formatDate(charter.startDate)} />
-                <InfoRow label="End Date" value={formatDate(charter.endDate)} />
-                <InfoRow label="Duration" value={charter.durationDays ? `${charter.durationDays} days` : null} />
-                {charter.internalOrderNumber && (
-                  <InfoRow label="SAP Order" value={<span className="font-mono text-blue-600">{charter.internalOrderNumber}</span>} />
-                )}
-              </div>
-            )}
-          </SectionBox>
-
-          {/* People */}
-          <SectionBox title="Stakeholders">
-            <InfoRow
-              label="Sponsor"
-              value={users?.find(u => u.id === charter.projectSponsorId)?.name ?? null}
-            />
-            <InfoRow
-              label="Owner"
-              value={users?.find(u => u.id === charter.projectOwnerId)?.name ?? null}
-            />
-            <InfoRow
-              label="Manager"
-              value={users?.find(u => u.id === charter.projectManagerId)?.name ?? null}
-            />
-            <InfoRow
-              label="Submitted by"
-              value={users?.find(u => u.id === charter.submittedById)?.name ?? `User ${charter.submittedById}`}
-            />
-          </SectionBox>
-        </div>
       </div>
     </div>
   );

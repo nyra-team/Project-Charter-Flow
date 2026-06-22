@@ -270,21 +270,23 @@ function InlineCell({ type, value, options, onSave, placeholder, displayLabel }:
 
   const display = displayLabel ?? (value || "");
 
+  // ponytail: date cells always show the native <input type="date"> — its built-in
+  // calendar icon sits inside the cell, no separate picker lib needed.
+  if (type === "date") {
+    return (
+      <input type="date" value={value || ""}
+        onChange={e => onSave(e.target.value || "")}
+        title={display || placeholder}
+        className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-0.5 w-full outline-none focus:ring-2 focus:ring-ring/40" style={{ maxWidth: 115 }} />
+    );
+  }
+
   if (!editing) {
     return (
       <span className="cursor-pointer hover:bg-primary/10 px-1 rounded text-xs text-foreground truncate block"
         onClick={() => { setLocal(value); setEditing(true); }} title={display || placeholder}>
         {display || <span className="text-muted-foreground/60 italic">{placeholder ?? "—"}</span>}
       </span>
-    );
-  }
-
-  if (type === "date") {
-    return (
-      <input type="date" autoFocus value={local}
-        onChange={e => setLocal(e.target.value)} onBlur={commit}
-        onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-        className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-0.5 w-full outline-none focus:ring-2 focus:ring-ring/40" style={{ maxWidth: 115 }} />
     );
   }
 
@@ -959,7 +961,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
           if (!draggedId || draggedId === task.id) return;
           handleRowDrop(draggedId, task.id, position);
         }}
-        className={`border-b border-border/40 hover:bg-accent/30 transition-all duration-150 text-xs ${
+        className={`group border-b border-border/40 hover:bg-accent/30 transition-all duration-150 text-xs ${
           task.isCritical ? "bg-destructive/5" : isSubtask ? "bg-primary/5" : "bg-card"
         } ${groupBy !== "none" ? "cursor-grab active:cursor-grabbing" : ""} ${
           isDragged ? "opacity-40" : ""
@@ -969,7 +971,10 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         {/* Expand toggle */}
         <td className="px-1 text-center" style={{ width: 28, position: "sticky", left: 0, zIndex: 2, background: "hsl(var(--card))" }}>
           {!isSubtask && subs.length > 0 && (
-            <button onClick={() => toggleExpand(task.id)} className="text-muted-foreground hover:text-primary">
+            <button
+              onClick={() => toggleExpand(task.id)}
+              className={`text-muted-foreground hover:text-primary transition-opacity ${isExp ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}
+            >
               {isExp ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
             </button>
           )}

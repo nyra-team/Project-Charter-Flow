@@ -78,15 +78,15 @@ const PROJECT_COLUMNS: BoardColumn<ProjectRow>[] = [
 function TaskStatusBar({ agg }: { agg?: TaskAgg }) {
   if (!agg || agg.total === 0) return <span className="text-[10px] text-gray-400">No tasks</span>;
   const seg = [
-    { n: agg.done, c: "#10B981" },
-    { n: agg.in_progress, c: "#6366F1" },
-    { n: agg.delayed, c: "#EF4444" },
-    { n: agg.on_hold, c: "#94A3B8" },
-    { n: agg.not_started, c: "#CBD5E1" },
+    { n: agg.done, c: "#10B981", label: "done" },
+    { n: agg.in_progress, c: "#6366F1", label: "in progress" },
+    { n: agg.delayed, c: "#EF4444", label: "delayed" },
+    { n: agg.on_hold, c: "#94A3B8", label: "on hold" },
+    { n: agg.not_started, c: "#CBD5E1", label: "not started" },
   ].filter(s => s.n > 0);
   return (
     <div className="flex items-center gap-2 w-full">
-      <div className="flex h-2 flex-1 min-w-[60px] rounded-full overflow-hidden bg-gray-200" title={`${agg.done} done · ${agg.in_progress} in progress · ${agg.delayed} delayed · ${agg.on_hold} on hold · ${agg.not_started} not started`}>
+      <div className="flex h-2 flex-1 min-w-[60px] rounded-full overflow-hidden bg-gray-200" title={seg.map(s => `${s.n} ${s.label}`).join(" · ")}>
         {seg.map((s, i) => <div key={i} style={{ width: `${(s.n / agg.total) * 100}%`, background: s.c }} />)}
       </div>
       <span className="text-[10px] font-semibold text-gray-700 tabular-nums whitespace-nowrap">{agg.done}/{agg.total}</span>
@@ -338,21 +338,21 @@ const STATUS_LEGEND_DESC: Record<string, string> = {
 };
 
 // Fixed column widths (px) so every status table lines up identically.
-const COLS: { key: string; header: string; width: number; align?: "left" | "center" }[] = [
-  { key: "code", header: "Project Code", width: 120 },
-  { key: "name", header: "Project Name", width: 240 },
-  { key: "team", header: "Team", width: 130, align: "center" },
+const COLS: { key: string; header: string; width: number; align?: "left" | "center"; info?: string }[] = [
+  { key: "code", header: "Project Code", width: 120, info: "Auto-generated project reference code." },
+  { key: "name", header: "Project Name", width: 240, info: "Project title — click a row to open it." },
+  { key: "team", header: "Team", width: 130, align: "center", info: "Project owner and manager." },
   { key: "status", header: "Health", width: 116, align: "center" },
-  { key: "justification", header: "Justification", width: 220, align: "left" },
-  { key: "tasks", header: "Tasks", width: 64, align: "center" },
-  { key: "taskStatus", header: "Task Status", width: 170 },
-  { key: "timeline", header: "Timeline", width: 170 },
+  { key: "justification", header: "Justification", width: 220, align: "left", info: "Owner's explanation, required when a project is delayed or off-track." },
+  { key: "tasks", header: "Tasks", width: 64, align: "center", info: "Completed tasks out of total." },
+  { key: "taskStatus", header: "Task Status", width: 170, info: "Breakdown of the project's tasks by status." },
+  { key: "timeline", header: "Timeline", width: 170, info: "Planned start and end dates with elapsed progress." },
 ];
 // Optional columns the user can add globally via the "Add column" menu.
 type OptionalKey = "budget" | "description";
-const OPTIONAL_COLS: { key: OptionalKey; header: string; width: number; align?: "left" | "center" }[] = [
-  { key: "budget", header: "Budget", width: 130 },
-  { key: "description", header: "Project Description", width: 300 },
+const OPTIONAL_COLS: { key: OptionalKey; header: string; width: number; align?: "left" | "center"; info?: string }[] = [
+  { key: "budget", header: "Budget", width: 130, info: "Approved budget and spend to date." },
+  { key: "description", header: "Project Description", width: 300, info: "Short description of the project." },
 ];
 
 // Map any raw project status onto one of the five display statuses.
@@ -1456,13 +1456,12 @@ export default function ProjectsList() {
   });
   useEffect(() => { try { localStorage.setItem(PROJECTS_VIEW_KEY, view); } catch { /* ignore */ } }, [view]);
 
-  // Optional columns (Budget · Project Description) added globally to every table.
-  const [extraCols, setExtraCols] = useState<Record<OptionalKey, boolean>>({ budget: false, description: false });
-  // User-defined custom columns + their per-project values. Persisted locally
-  // (no project-custom-field backend) so a user's added fields survive reloads.
+  // Optional + custom columns are PER status-table (keyed by group.key) so a
+  // field added to one table only shows in that table, never the others.
   // ponytail: localStorage-only — values are per-browser, not shared/synced.
-  const [customCols, setCustomCols] = useState<{ id: string; header: string }[]>(() => {
-    try { const s = JSON.parse(localStorage.getItem(CUSTOM_COLS_KEY) ?? "null"); return Array.isArray(s) ? s : []; } catch { return []; }
+  const [extraCols, setExtraCols] = useState<Record<string, Partial<Record<OptionalKey, boolean>>>>({});
+  const [customCols, setCustomCols] = useState<Record<string, { id: string; header: string }[]>>(() => {
+    try { const s = JSON.parse(localStorage.getItem(CUSTOM_COLS_KEY) ?? "null"); return s && typeof s === "object" && !Array.isArray(s) ? s : {}; } catch { return {}; }
   });
   const [customVals, setCustomVals] = useState<Record<string, string>>(() => {
     try { const s = JSON.parse(localStorage.getItem(CUSTOM_VALS_KEY) ?? "null"); return s && typeof s === "object" ? s : {}; } catch { return {}; }
@@ -1471,16 +1470,13 @@ export default function ProjectsList() {
   useEffect(() => { try { localStorage.setItem(CUSTOM_VALS_KEY, JSON.stringify(customVals)); } catch { /* ignore */ } }, [customVals]);
   const setCustomVal = (projectId: number, fieldId: string, value: string) =>
     setCustomVals((m) => ({ ...m, [`${projectId}:${fieldId}`]: value }));
-  // Visible columns (default order). Each <ExcelGroupTable> reorders/resizes its
-  // own copy independently, so the status tables never affect one another.
-  const activeCols = useMemo(
-    () => [
-      ...COLS,
-      ...OPTIONAL_COLS.filter((c) => extraCols[c.key]),
-      ...customCols.map((c) => ({ key: `cf:${c.id}`, header: c.header || "Untitled", width: 160 as number })),
-    ],
-    [extraCols, customCols],
-  );
+  // Columns for one status-table (default order). Each <ExcelGroupTable> reorders/
+  // resizes its own copy independently, so the status tables never affect one another.
+  const activeColsFor = (groupKey: string) => [
+    ...COLS,
+    ...OPTIONAL_COLS.filter((c) => extraCols[groupKey]?.[c.key]),
+    ...(customCols[groupKey] ?? []).map((c) => ({ key: `cf:${c.id}`, header: c.header || "Untitled", width: 160 as number, info: "Custom field — click the header to rename it." })),
+  ];
 
   // Signed-in user's own department (master-DB function), used to default the view.
   const { data: me } = useQuery({
@@ -1493,15 +1489,27 @@ export default function ProjectsList() {
     staleTime: 5 * 60_000,
   });
 
-  // Department filter (derived from project.function + the user's own dept).
+  // Every department in the org (master-DB employees.function) — so departments
+  // with no projects still appear in the filter.
+  const { data: allDepts = [] } = useQuery({
+    queryKey: ["/api/departments"],
+    queryFn: async () => {
+      const r = await fetch("/api/departments");
+      return r.ok ? (r.json() as Promise<string[]>) : [];
+    },
+    staleTime: 10 * 60_000,
+  });
+
+  // Department filter (full DB list + project.function + the user's own dept).
   const [dept, setDept] = useState("");
   const deptOptions = useMemo(() => {
     const set = new Set<string>();
+    for (const d of (allDepts as string[])) set.add(d);
     for (const p of (projects ?? []) as ProjectRow[]) if (p.function) set.add(p.function);
     set.add("HR"); // always offer the HR department filter
     if (me?.function) set.add(me.function); // ensure the user's own dept is selectable
     return [...set].sort((a, b) => a.localeCompare(b));
-  }, [projects, me]);
+  }, [projects, me, allDepts]);
 
   // On first load, default the Projects view to the user's own department.
   // Clearing the filter then reveals every other department's projects.
@@ -1517,7 +1525,7 @@ export default function ProjectsList() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [prioOpen, setPrioOpen] = useState(false);
   const [deptOpen, setDeptOpen] = useState(false);
-  const [colsOpen, setColsOpen] = useState(false);
+  const [colsOpen, setColsOpen] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement | null>(null);
   const filterRef = useRef<HTMLDivElement | null>(null);
   const prioRef = useRef<HTMLDivElement | null>(null);
@@ -1530,7 +1538,7 @@ export default function ProjectsList() {
       if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false);
       if (prioRef.current && !prioRef.current.contains(e.target as Node)) setPrioOpen(false);
       if (deptRef.current && !deptRef.current.contains(e.target as Node)) setDeptOpen(false);
-      if (colsRef.current && !colsRef.current.contains(e.target as Node)) setColsOpen(false);
+      if (colsRef.current && !colsRef.current.contains(e.target as Node)) setColsOpen(null);
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -1599,19 +1607,15 @@ export default function ProjectsList() {
   );
 
   return (
-    <div className="space-y-2 -mt-2 sm:-mt-3 lg:-mt-4">
-      {/* Header */}
-      <div className="relative flex items-center justify-between gap-3 flex-wrap ph-rise">
+    <div className="space-y-2 pt-1.5">
+      {/* Header — z-50 so the toolbar filter dropdowns sit above the Gantt/Kanban
+          (ph-rise leaves a transform → stacking context, so it needs an explicit z). */}
+      <div className="relative z-50 flex items-center justify-between gap-3 flex-wrap ph-rise">
         <div>
           <h2 className="text-xl font-bold text-foreground">Projects</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">All projects in execution and planning</p>
         </div>
-        <div className="flex items-center gap-3">
-          <JiraImportButton onDone={() => { void refetch(); }} />
-        </div>
-      </div>
-
-      {/* ── Filter bar + saved views (Stage 3) ───────────────────────────── */}
+        {/* Right side: filter/view toolbar moved up, beside the Jira import button */}
+        <div className="flex items-center gap-3 flex-wrap">
       <div className="glass-surface lift-card ph-rise rounded-xl px-2 py-1.5 flex flex-wrap items-center gap-0.5 gap-y-1 w-fit max-w-full relative z-50">
         {/* Search — icon button that expands into an inline field, left of the toggles */}
         {searchOpen ? (
@@ -1666,7 +1670,7 @@ export default function ProjectsList() {
         <div className="relative" ref={filterRef}>
           <button
             type="button"
-            onClick={() => { setFilterOpen((o) => !o); setPrioOpen(false); setDeptOpen(false); setColsOpen(false); }}
+            onClick={() => { setFilterOpen((o) => !o); setPrioOpen(false); setDeptOpen(false); setColsOpen(null); }}
             title="Filter by status"
             className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
               status ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
@@ -1695,7 +1699,7 @@ export default function ProjectsList() {
         <div className="relative" ref={prioRef}>
           <button
             type="button"
-            onClick={() => { setPrioOpen((o) => !o); setFilterOpen(false); setDeptOpen(false); setColsOpen(false); }}
+            onClick={() => { setPrioOpen((o) => !o); setFilterOpen(false); setDeptOpen(false); setColsOpen(null); }}
             title="Filter by priority"
             className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
               priority ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
@@ -1724,7 +1728,7 @@ export default function ProjectsList() {
         <div className="relative" ref={deptRef}>
           <button
             type="button"
-            onClick={() => { setDeptOpen((o) => !o); setFilterOpen(false); setPrioOpen(false); setColsOpen(false); }}
+            onClick={() => { setDeptOpen((o) => !o); setFilterOpen(false); setPrioOpen(false); setColsOpen(null); }}
             title="Filter by department"
             className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
               dept ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
@@ -1758,22 +1762,9 @@ export default function ProjectsList() {
         </div>
 
         {/* (The Add-column control moved to a "+" at the top-right of the table.) */}
-
-        {/* Status legend — shown only in the Gantt view. Each colour carries its
-            own hover explainer (one per status), not a single legend-wide note. */}
-        {view === "gantt" && (
-          <div className="flex items-center gap-2 pl-1.5 ml-0.5 border-l border-border/60">
-            {DISPLAY_STATUSES.map((d) => (
-              <HoverHint key={d.key} title={`${d.label} projects`} footer={STATUS_LEGEND_DESC[d.key]}>
-                <span className="flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap cursor-help">
-                  <span className="w-2 h-2 rounded-sm" style={{ background: d.color }} />
-                  {d.label}
-                  <Info size={9} className="opacity-40" />
-                </span>
-              </HoverHint>
-            ))}
-          </div>
-        )}
+      </div>
+        <JiraImportButton onDone={() => { void refetch(); }} />
+        </div>
       </div>
 
       {/* One Excel-style table per status (New · Active · Completed · Cancelled
@@ -1799,90 +1790,124 @@ export default function ProjectsList() {
             }}
           />
         ) : view === "gantt" ? (
-          <GanttView rows={filtered} ownerName={ownerName} managerName={managerName} ownerPhoto={ownerPhoto} managerPhoto={managerPhoto} taskAgg={taskAgg} onOpen={(id) => setLocation(`/projects/${id}`)} />
+          <div className="space-y-2">
+            {/* Status legend — below the toolbar bar, Gantt view only. */}
+            <div className="flex flex-wrap items-center gap-2">
+              {DISPLAY_STATUSES.map((d) => (
+                <HoverHint key={d.key} title={`${d.label} projects`} footer={STATUS_LEGEND_DESC[d.key]}>
+                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap cursor-help">
+                    <span className="w-2 h-2 rounded-sm" style={{ background: d.color }} />
+                    {d.label}
+                    <Info size={9} className="opacity-40" />
+                  </span>
+                </HoverHint>
+              ))}
+            </div>
+            <GanttView rows={filtered} ownerName={ownerName} managerName={managerName} ownerPhoto={ownerPhoto} managerPhoto={managerPhoto} taskAgg={taskAgg} onOpen={(id) => setLocation(`/projects/${id}`)} />
+          </div>
         ) : (
         <div className="space-y-5">
-          {/* Columns control — a "+" at the top-right of the table. Toggles the
-              built-in optional columns and adds/renames/removes custom fields. */}
-          <div className="flex items-center justify-end -mb-2">
-            <div className="relative" ref={colsRef}>
-              <button
-                type="button"
-                onClick={() => { setColsOpen((o) => !o); setFilterOpen(false); setPrioOpen(false); setDeptOpen(false); }}
-                title="Add / manage columns"
-                aria-label="Add column"
-                className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-border bg-card/70 text-foreground hover:bg-accent transition-colors"
-              >
-                <Plus size={15} />
-              </button>
-              {colsOpen && (
-                <div className="absolute right-0 top-full mt-1.5 z-50 w-60 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
-                  <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Columns</div>
-                  {OPTIONAL_COLS.map((c) => (
-                    <button
-                      key={c.key}
-                      onClick={() => setExtraCols((s) => ({ ...s, [c.key]: !s[c.key] }))}
-                      className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-left hover:bg-accent/60 transition-colors"
-                    >
-                      {c.header}
-                      <span className={`w-4 h-4 rounded border flex items-center justify-center ${extraCols[c.key] ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}>
-                        {extraCols[c.key] && <Check size={11} />}
-                      </span>
-                    </button>
-                  ))}
-                  <div className="my-1 border-t border-border/60" />
-                  <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Custom fields</div>
-                  {customCols.map((c) => (
-                    <div key={c.id} className="flex items-center gap-1.5 px-2 py-1">
-                      <input
-                        value={c.header}
-                        onChange={(e) => setCustomCols((cols) => cols.map((x) => x.id === c.id ? { ...x, header: e.target.value } : x))}
-                        placeholder="Field name"
-                        className="flex-1 min-w-0 text-[12px] rounded border border-border bg-background px-2 py-1 outline-none focus:ring-1 focus:ring-primary/40"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setCustomCols((cols) => cols.filter((x) => x.id !== c.id))}
-                        title="Remove field"
-                        className="shrink-0 rounded p-1 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setCustomCols((cols) => [...cols, { id: `cf-${Date.now()}`, header: "New field" }])}
-                    className="mx-2 my-1 inline-flex items-center gap-1.5 rounded-md border border-dashed border-primary/40 bg-primary/5 px-2.5 py-1 text-[12px] font-semibold text-primary hover:bg-primary/10 transition-colors"
-                  >
-                    <Plus size={12} /> Add field
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
           {boardGroups.map((group) => {
             const open = !collapsed[group.key];
             return (
             <div key={group.key}>
-              {/* Status dropdown header — click to expand/collapse the table */}
-              <button
-                type="button"
-                onClick={() => toggleGroup(group.key)}
-                className="flex items-center gap-2 mb-2 px-0.5 w-full text-left group/header"
-              >
-                <ChevronDown size={15} className={`text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
-                <span className="w-2.5 h-2.5 rounded-sm" style={{ background: group.color }} />
-                <h3 className="text-sm font-semibold text-foreground">{group.label}</h3>
-                <span className="text-xs text-muted-foreground">({group.rows.length})</span>
-              </button>
+              {/* Status header (expand/collapse) + per-table column manager */}
+              <div className="flex items-center gap-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.key)}
+                  className="flex items-center gap-2 px-0.5 flex-1 min-w-0 text-left group/header"
+                >
+                  <ChevronDown size={15} className={`text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
+                  <span className="w-2.5 h-2.5 rounded-sm" style={{ background: group.color }} />
+                  <h3 className="text-sm font-semibold text-foreground">{group.label}</h3>
+                  <span className="text-xs text-muted-foreground">({group.rows.length})</span>
+                </button>
+                {/* Columns "+" — adds optional / custom fields to THIS table only */}
+                <div className="relative" ref={colsOpen === group.key ? colsRef : undefined}>
+                  <button
+                    type="button"
+                    onClick={() => { setColsOpen((o) => o === group.key ? null : group.key); setFilterOpen(false); setPrioOpen(false); setDeptOpen(false); }}
+                    title="Add / manage columns for this table"
+                    aria-label="Add column"
+                    className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-border bg-card/70 text-foreground hover:bg-accent transition-colors"
+                  >
+                    <Plus size={15} />
+                  </button>
+                  {colsOpen === group.key && (
+                    <div className="absolute right-0 top-full mt-1.5 z-50 w-60 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
+                      <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Columns — {group.label}</div>
+                      {OPTIONAL_COLS.map((c) => (
+                        <button
+                          key={c.key}
+                          onClick={() => setExtraCols((s) => ({ ...s, [group.key]: { ...s[group.key], [c.key]: !s[group.key]?.[c.key] } }))}
+                          className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-left hover:bg-accent/60 transition-colors"
+                        >
+                          {c.header}
+                          <span className={`w-4 h-4 rounded border flex items-center justify-center ${extraCols[group.key]?.[c.key] ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}>
+                            {extraCols[group.key]?.[c.key] && <Check size={11} />}
+                          </span>
+                        </button>
+                      ))}
+                      <div className="my-1 border-t border-border/60" />
+                      <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Custom fields</div>
+                      {(customCols[group.key] ?? []).map((c) => (
+                        <div key={c.id} className="flex items-center gap-1.5 px-2 py-1">
+                          <input
+                            value={c.header}
+                            onChange={(e) => { const v = e.target.value; setCustomCols((cols) => ({ ...cols, [group.key]: (cols[group.key] ?? []).map((x) => x.id === c.id ? { ...x, header: v } : x) })); }}
+                            placeholder="Field name"
+                            className="flex-1 min-w-0 text-[12px] rounded border border-border bg-background px-2 py-1 outline-none focus:ring-1 focus:ring-primary/40"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setCustomCols((cols) => ({ ...cols, [group.key]: (cols[group.key] ?? []).filter((x) => x.id !== c.id) }))}
+                            title="Remove field"
+                            className="shrink-0 rounded p-1 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setCustomCols((cols) => ({ ...cols, [group.key]: [...(cols[group.key] ?? []), { id: `cf-${Date.now()}`, header: "New field" }] }))}
+                        className="mx-2 my-1 inline-flex items-center gap-1.5 rounded-md border border-dashed border-primary/40 bg-primary/5 px-2.5 py-1 text-[12px] font-semibold text-primary hover:bg-primary/10 transition-colors"
+                      >
+                        <Plus size={12} /> Add field
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {open && (
                 <ExcelGroupTable
-                  cols={activeCols}
+                  cols={activeColsFor(group.key)}
                   accent={group.color}
                   storageKey={`ph:projects:tbl:${group.key}`}
-                  renderHeaderLabel={(c) => (c.key === "status" ? <HealthHeaderTip /> : c.header)}
+                  renderHeaderLabel={(c) => {
+                    if (c.key === "status") return <HealthHeaderTip />;
+                    // Custom fields ("cf:<id>") get an inline-rename input right in
+                    // the header — same edit as the Add-column dropdown. pointer-events-auto
+                    // overrides the wrapper's pointer-events-none; stopPropagation keeps a
+                    // click from starting a column drag.
+                    if (c.key.startsWith("cf:")) {
+                      const id = c.key.slice(3);
+                      return (
+                        <input
+                          value={(customCols[group.key] ?? []).find((x) => x.id === id)?.header ?? ""}
+                          onChange={(e) => { const v = e.target.value; setCustomCols((cols) => ({ ...cols, [group.key]: (cols[group.key] ?? []).map((x) => x.id === id ? { ...x, header: v } : x) })); }}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                          placeholder="Field name"
+                          title="Rename field"
+                          className="pointer-events-auto w-full bg-transparent text-[9px] uppercase tracking-wider font-semibold text-gray-500 outline-none rounded px-0.5 -mx-0.5 cursor-text hover:bg-white focus:bg-white focus:ring-1 focus:ring-primary/40"
+                        />
+                      );
+                    }
+                    return c.header;
+                  }}
                 >
                   {(orderedCols) => {
                     const cell = (key: string, p: ProjectRow) => {

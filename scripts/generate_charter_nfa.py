@@ -256,111 +256,143 @@ def build(data, out_path):
     members_disp = ", ".join(m.get("name", "") for m in members if m.get("name")) or "—"
     para(doc, members_disp)
 
-    # 2. Project Description / Executive Summary
-    heading(doc, "2. Project Description / Executive Summary", level=1)
-    para(doc, data.get("executiveSummary") or data.get("description") or "—")
+    # ── Reorderable body sections (2…N) ──────────────────────────────────────
+    # Order is author-controlled (drag-to-reorder on the e-NFA form), persisted
+    # as data["sectionOrder"]. Section 1 (Project Information) and the Approval
+    # block stay fixed. Heading numbers follow the final order, not hard-coded.
+    def sec_exec(n):
+        heading(doc, f"{n}. Project Description / Executive Summary", level=1)
+        para(doc, data.get("executiveSummary") or data.get("description") or "—")
+        heading(doc, "Background", level=2)
+        para(doc, data.get("background") or "—")
+        return True
 
-    # 3. Background
-    heading(doc, "3. Background", level=1)
-    para(doc, data.get("background") or "—")
+    def sec_scope(n):
+        heading(doc, f"{n}. Scope", level=1)
+        heading(doc, f"{n}.1 In Scope", level=2)
+        para(doc, data.get("scope") or "—")
+        heading(doc, f"{n}.2 Out of Scope", level=2)
+        para(doc, data.get("outOfScope") or "—")
+        return True
 
-    # 4. Scope
-    heading(doc, "4. Scope", level=1)
-    heading(doc, "4.1 In Scope", level=2)
-    para(doc, data.get("scope") or "—")
-    heading(doc, "4.2 Out of Scope", level=2)
-    para(doc, data.get("outOfScope") or "—")
+    def sec_outcome(n):
+        heading(doc, f"{n}. Business Outcome", level=1)
+        para(doc, data.get("businessOutcome") or "—")
+        return True
 
-    # 5. Business Outcome
-    heading(doc, "5. Business Outcome", level=1)
-    para(doc, data.get("businessOutcome") or "—")
+    def sec_constraints(n):
+        heading(doc, f"{n}. Constraints", level=1)
+        if data.get("constraints"):
+            para(doc, data["constraints"])
+        cons_rows = [["Item", "Detail"]]
+        if data.get("tentativeBudget"):
+            cons_rows.append(["Approved Budget", fmt_inr(data.get("tentativeBudget"))])
+        if data.get("leAmount"):
+            cons_rows.append(["LE Budget", fmt_inr(data.get("leAmount"))])
+        if data.get("scopeLimitations"):
+            cons_rows.append(["Scope Limitations", data.get("scopeLimitations")])
+        if len(cons_rows) > 1:
+            build_table(doc, cons_rows, col_widths_cm=[5.0, 12.6], first_col_header=True)
+        return True
 
-    # 6. Constraints
-    heading(doc, "6. Constraints", level=1)
-    if data.get("constraints"):
-        para(doc, data["constraints"])
-    cons_rows = [["Item", "Detail"]]
-    if data.get("tentativeBudget"):
-        cons_rows.append(["Approved Budget", fmt_inr(data.get("tentativeBudget"))])
-    if data.get("leAmount"):
-        cons_rows.append(["LE Budget", fmt_inr(data.get("leAmount"))])
-    if data.get("scopeLimitations"):
-        cons_rows.append(["Scope Limitations", data.get("scopeLimitations")])
-    if len(cons_rows) > 1:
-        build_table(doc, cons_rows, col_widths_cm=[5.0, 12.6], first_col_header=True)
+    def sec_deliverables(n):
+        heading(doc, f"{n}. Project Deliverables (Key Milestones)", level=1)
+        milestones = data.get("milestones") or []
+        if milestones:
+            rows = [["Key Milestone", "Responsible", "Target Date"]]
+            for m in milestones:
+                rows.append([m.get("milestone", ""), m.get("responsible", ""), m.get("targetDate", "")])
+            build_table(doc, rows, col_widths_cm=[9.4, 4.6, 3.6], band=True)
+        else:
+            para(doc, "No milestones captured.", italic=True, color=MUTED)
+        return True
 
-    # 7. Project Deliverables (Key Milestones)
-    heading(doc, "7. Project Deliverables (Key Milestones)", level=1)
-    milestones = data.get("milestones") or []
-    if milestones:
-        rows = [["Key Milestone", "Responsible", "Target Date"]]
-        for m in milestones:
-            rows.append([m.get("milestone", ""), m.get("responsible", ""), m.get("targetDate", "")])
-        build_table(doc, rows, col_widths_cm=[9.4, 4.6, 3.6], band=True)
-    else:
-        para(doc, "No milestones captured.", italic=True, color=MUTED)
+    def sec_benefits(n):
+        heading(doc, f"{n}. Benefits", level=1)
+        para(doc, "Topline improvement, bottom-line optimization, compliance benefits & productivity improvement.",
+             italic=True, color=MUTED, space_after=4)
+        kpis = data.get("kpis") or []
+        if kpis:
+            rows = [["KPI", "Baseline", "Goal"]]
+            for k in kpis:
+                rows.append([k.get("kpi", ""), k.get("baseline", ""), k.get("goal", "")])
+            build_table(doc, rows, col_widths_cm=[8.4, 4.4, 4.8], band=True)
+        else:
+            para(doc, "No KPIs captured.", italic=True, color=MUTED)
+        heading(doc, "ROI / Annum", level=2)
+        roi = data.get("roiPerAnnum")
+        if roi:
+            para(doc, fmt_inr(roi))
+        else:
+            para(doc, "Not quantified.", italic=True, color=MUTED)
+        return True
 
-    # 8. Benefits
-    heading(doc, "8. Benefits", level=1)
-    para(doc, "Topline improvement, bottom-line optimization, compliance benefits & productivity improvement.",
-         italic=True, color=MUTED, space_after=4)
-    kpis = data.get("kpis") or []
-    if kpis:
-        rows = [["KPI", "Baseline", "Goal"]]
-        for k in kpis:
-            rows.append([k.get("kpi", ""), k.get("baseline", ""), k.get("goal", "")])
-        build_table(doc, rows, col_widths_cm=[8.4, 4.4, 4.8], band=True)
-    else:
-        para(doc, "No KPIs captured.", italic=True, color=MUTED)
+    def sec_risks(n):
+        heading(doc, f"{n}. Risks", level=1)
+        risks = data.get("structuredRisks") or []
+        risks_text = data.get("risks")
+        if risks:
+            for r in risks:
+                bullet(doc, f"{r.get('title','')}: {r.get('description','') or ''}".strip(": "))
+        elif isinstance(risks_text, str) and risks_text.strip():
+            para(doc, risks_text)
+        else:
+            para(doc, "—")
+        heading(doc, "Assumptions", level=2)
+        para(doc, data.get("assumptions") or "—")
+        heading(doc, "Potential Additional Budget Areas", level=2)
+        para(doc, data.get("potentialAdditionalBudget") or "—")
+        return True
 
-    # 9. ROI / Annum
-    heading(doc, "9. ROI / Annum", level=1)
-    roi = data.get("roiPerAnnum")
-    if roi:
-        para(doc, fmt_inr(roi))
-    else:
-        para(doc, "Not quantified.", italic=True, color=MUTED)
+    def sec_vendor(n):
+        heading(doc, f"{n}. Vendor Comparison Matrix", level=1)
+        vm = data.get("vendorMatrix") or {}
+        vcols = vm.get("columns") or []
+        vrows = [r for r in (vm.get("rows") or [])
+                 if any((str(c).strip() if c is not None else "") for c in r)]
+        if vcols and vrows:
+            table = [list(vcols)] + [[("" if c is None else str(c)) for c in r] for r in vrows]
+            build_table(doc, table, band=True)
+        else:
+            para(doc, "No vendor comparison captured.", italic=True, color=MUTED)
+        return True
 
-    # 10. Risks
-    heading(doc, "10. Risks", level=1)
-    risks = data.get("structuredRisks") or []
-    risks_text = data.get("risks")
-    if risks:
-        for r in risks:
-            bullet(doc, f"{r.get('title','')}: {r.get('description','') or ''}".strip(": "))
-    elif isinstance(risks_text, str) and risks_text.strip():
-        para(doc, risks_text)
-    else:
-        para(doc, "—")
-
-    # 11. Assumptions
-    heading(doc, "11. Assumptions", level=1)
-    para(doc, data.get("assumptions") or "—")
-
-    # 12. Potential Additional Budget Areas
-    heading(doc, "12. Potential Additional Budget Areas", level=1)
-    para(doc, data.get("potentialAdditionalBudget") or "—")
-
-    # 13. Vendor Comparison Matrix
-    heading(doc, "13. Vendor Comparison Matrix", level=1)
-    vm = data.get("vendorMatrix") or {}
-    vcols = vm.get("columns") or []
-    vrows = [r for r in (vm.get("rows") or [])
-             if any((str(c).strip() if c is not None else "") for c in r)]
-    if vcols and vrows:
-        table = [list(vcols)] + [[("" if c is None else str(c)) for c in r] for r in vrows]
-        build_table(doc, table, band=True)
-    else:
-        para(doc, "No vendor comparison captured.", italic=True, color=MUTED)
-
-    # 14. Additional Information — author-added custom fields (in their order)
-    custom = [f for f in (data.get("customFields") or []) if (f.get("label") or f.get("value"))]
-    if custom:
-        heading(doc, "14. Additional Information", level=1)
+    def sec_additional(n):
+        custom = [f for f in (data.get("customFields") or []) if (f.get("label") or f.get("value"))]
+        if not custom:
+            return False  # nothing to show — skip without consuming a number
+        heading(doc, f"{n}. Additional Information", level=1)
         for f in custom:
             if f.get("label"):
                 para(doc, f.get("label", ""), bold=True, space_after=1)
             para(doc, f.get("value", ""), space_after=4)
+        return True
+
+    RENDERERS = {
+        "executiveSummary": sec_exec,
+        "scope": sec_scope,
+        "businessOutcome": sec_outcome,
+        "constraints": sec_constraints,
+        "deliverables": sec_deliverables,
+        "benefits": sec_benefits,
+        "risks": sec_risks,
+        "vendorMatrix": sec_vendor,
+        "additionalFields": sec_additional,
+    }
+    DEFAULT_ORDER = ["executiveSummary", "scope", "businessOutcome", "constraints",
+                     "deliverables", "benefits", "risks", "vendorMatrix", "additionalFields"]
+    # Honor the author's order; append any known section they omitted so the doc
+    # never silently drops content. Unknown ids (e.g. "rfp", no doc section) skip.
+    raw_order = data.get("sectionOrder") or []
+    order = [s for s in raw_order if s in RENDERERS]
+    for s in DEFAULT_ORDER:
+        if s not in order:
+            order.append(s)
+
+    n = 2
+    for sid in order:
+        if RENDERERS[sid](n):
+            n += 1
 
     # Approval & Sign-off
     heading(doc, "Approval & Sign-off", level=1)

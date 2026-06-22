@@ -5,6 +5,7 @@
 // its subtasks indented beneath it.
 // The previous full detail page is preserved at ./project-detail.legacy.tsx.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/extra-api";
 import { useToast } from "@/hooks/use-toast";
@@ -18,8 +19,8 @@ import { Input } from "@/components/ui/input";
 import {
   Check, ChevronDown, ChevronLeft, Flag, GanttChartSquare,
   ListTree, Search, Table2, Zap, Milestone, MessageSquare, Users,
-  GitBranch, X, Plus, Trash2, LayoutDashboard, FileDown, Loader2, FolderOpen, Upload, SlidersHorizontal,
-  LayoutGrid, CalendarDays, Info,
+  GitBranch, X, Plus, Trash2, LayoutDashboard, FileDown, Loader2, FolderOpen, Upload,
+  LayoutGrid, CalendarDays, Info, AlertTriangle, ShieldAlert,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { TASK_PRIORITIES, TASK_STATUSES } from "../lib/task-constants";
@@ -31,6 +32,9 @@ import { ExcelGroupTable, type ExcelCol } from "@/components/excel-group-table";
 import { KanbanView } from "@/components/monday/KanbanView";
 import { CalendarView, type CalendarItem } from "@/components/monday/CalendarView";
 import { PriorityCell, OwnerCell, DateCell, type BoardColumn } from "@/components/monday";
+import { RangeCalendar } from "@/components/ui/calendar-rac";
+import { parseDate, getLocalTimeZone, today as racToday, type CalendarDate } from "@internationalized/date";
+import type { DateRange } from "react-aria-components";
 import { useUserStore } from "../lib/store";
 import { CharterOverview } from "../components/charter-overview";
 import { TaskCommsDrawer, type TaskCommsTarget } from "../components/TaskCommsDrawer";
@@ -39,6 +43,8 @@ import { ProjectCommsDrawer, type ProjectCommsTab } from "../components/ProjectC
 import { TeamTab } from "../components/team-tab";
 import { DocumentsTab } from "../components/documents-tab";
 import { TaskDetailModal } from "../components/task-detail-modal";
+import { IssuesTab } from "../components/issues-tab";
+import { RaiseIssueForm } from "../components/raise-issue-form";
 import type { AggTask } from "../lib/work-types";
 
 // Structural subset of what useListTasks returns — the fields this table reads.
@@ -88,16 +94,16 @@ function taskRagColor(status: string): string {
 }
 
 // Fixed column widths (px) — same resizable-weights scheme as the Projects table.
-const COLS: { key: string; header: string; width: number; align?: "left" | "center" }[] = [
+const COLS: { key: string; header: string; width: number; align?: "left" | "center"; info?: string }[] = [
   { key: "code", header: "Task Code", width: 110 },
-  { key: "name", header: "Task Name", width: 300 },
-  { key: "owner", header: "Assignee", width: 70, align: "center" },
-  { key: "status", header: "Status", width: 120, align: "center" },
-  { key: "priority", header: "Priority", width: 110, align: "center" },
-  { key: "progress", header: "Progress", width: 100, align: "center" },
-  { key: "subtasks", header: "Subtasks", width: 80, align: "center" },
-  { key: "dependency", header: "Dependencies", width: 160 },
-  { key: "timeline", header: "Timeline", width: 180 },
+  { key: "name", header: "Task Name", width: 300, info: "Task title — click to open task details." },
+  { key: "owner", header: "Assignee", width: 70, align: "center", info: "Person responsible for the task." },
+  { key: "status", header: "Status", width: 120, align: "center", info: "Current task status (Not Started, In Progress, Delayed, On Hold, Completed)." },
+  { key: "priority", header: "Priority", width: 110, align: "center", info: "Task priority, P0 (highest) to P3 (lowest)." },
+  { key: "progress", header: "Progress", width: 100, align: "center", info: "Percent complete; rolls up from subtasks where present." },
+  { key: "subtasks", header: "Subtasks", width: 80, align: "center", info: "Completed subtasks out of total." },
+  { key: "dependency", header: "Predecessors", width: 160, info: "Tasks that must finish before this one can proceed." },
+  { key: "timeline", header: "Timeline", width: 180, info: "Planned start and end dates." },
 ];
 
 // Card cells for the per-project Tasks Kanban (mirrors the Projects board).
@@ -224,6 +230,68 @@ function StatusDropdown({ task, updateTask }: { task: TaskRow; updateTask: Retur
   );
 }
 
+// Timeline cell with an in-cell calendar icon to pick start / end dates.
+// Native <input type="date"> carries its own picker; the icon just toggles the editor.
+function TimelineEditCell({ task, updateTask }: { task: TaskRow; updateTask: ReturnType<typeof useUpdateTask> }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+  const save = (field: "startDate" | "endDate", v: string) =>
+    updateTask.mutate({ id: task.id, data: { [field]: v || null } as never });
+  // Same react-aria range picker as the CXO Action Centre (calendar-rac).
+  const parse = (iso?: string | null): CalendarDate | null => {
+    if (!iso) return null;
+    try { return parseDate(iso.slice(0, 10)); } catch { return null; }
+  };
+  const startCd = parse(task.startDate);
+  const endCd = parse(task.endDate);
+  const value: DateRange | null = startCd ? { start: startCd, end: endCd ?? startCd } : null;
+  const onChange = (val: DateRange | null) => {
+    if (!val) { save("startDate", ""); save("endDate", ""); return; }
+    save("startDate", val.start.toString());
+    save("endDate", val.end.toString());
+    setOpen(false);
+  };
+  const setTodayRange = () => { const t = racToday(getLocalTimeZone()).toString(); save("startDate", t); save("endDate", t); };
+  return (
+    <div ref={ref} className="relative flex items-center gap-1 w-full">
+      <button type="button" title="Set start / end date"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        className="shrink-0 text-gray-500 hover:text-primary p-0.5 rounded">
+        <CalendarDays size={14} />
+      </button>
+      <div className="min-w-0 flex-1 overflow-hidden"><TimelineCell start={task.startDate} end={task.endDate} endHistory={task.endDateHistory} /></div>
+      {open && (
+        <div className="absolute top-full right-0 mt-1 z-50 rounded-lg bg-white border border-gray-200 shadow-xl select-none p-2 scale-[0.65] origin-top-right" onClick={(e) => e.stopPropagation()}>
+          <RangeCalendar
+            aria-label="Task start / end date range"
+            value={value}
+            onChange={onChange}
+            defaultFocusedValue={startCd ?? undefined}
+            className="w-fit"
+          />
+          <div className="flex items-center justify-between px-1 pt-2 mt-1 border-t border-border">
+            <span className="text-[11px] text-muted-foreground">
+              {task.startDate && task.endDate
+                ? (task.startDate.slice(0, 10) === task.endDate.slice(0, 10) ? "Pick an end date" : `${task.startDate.slice(0, 10)} – ${task.endDate.slice(0, 10)}`)
+                : "Pick a start & end date"}
+            </span>
+            <div className="flex items-center gap-3">
+              <button type="button" onClick={() => { save("startDate", ""); save("endDate", ""); }} className="text-[12px] text-primary hover:underline font-medium">Clear</button>
+              <button type="button" onClick={setTodayRange} className="text-[12px] text-primary hover:underline font-medium">Today</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Inline progress editor — click to type, blur/Enter to save.
 function ProgressInput({ task, updateTask }: { task: TaskRow; updateTask: ReturnType<typeof useUpdateTask> }) {
   const pp = (task as Record<string, unknown>).progressPct as number | undefined;
@@ -266,6 +334,75 @@ function ProgressInput({ task, updateTask }: { task: TaskRow; updateTask: Return
       </span>
       <span className="text-[10px] font-semibold text-gray-600 tabular-nums">{pct}%</span>
     </span>
+  );
+}
+
+// Inline owner picker — click the avatar to assign/reassign right in the row
+// (subtasks included), no need to open the task popup. Searchable people list.
+function OwnerSelect({ task, users, updateTask, currentName }: {
+  task: TaskRow;
+  users: { id: number; name: string; photoUrl?: string | null }[];
+  updateTask: ReturnType<typeof useUpdateTask>;
+  currentName: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Portal to <body> with fixed coords so the menu isn't clipped by / painted
+  // under the rows below it (table rows make their own stacking contexts).
+  const place = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setPos({ left: r.left + r.width / 2, top: r.bottom + 4 });
+  };
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!btnRef.current?.contains(t) && !menuRef.current?.contains(t)) setOpen(false);
+    };
+    const onScroll = () => setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [open]);
+  const needle = q.trim().toLowerCase();
+  const list = needle ? users.filter((u) => u.name.toLowerCase().includes(needle)) : users;
+  const pick = (id: number | null) => {
+    setOpen(false); setQ("");
+    if (id !== (task.assigneeId ?? null)) updateTask.mutate({ id: task.id, data: { assigneeId: id } as never });
+  };
+  return (
+    <div className="inline-flex">
+      <button ref={btnRef} type="button" title="Assign owner" onClick={(e) => { e.stopPropagation(); if (!open) place(); setOpen((o) => !o); }} className="cursor-pointer hover:opacity-80">
+        <PersonCell name={currentName} />
+      </button>
+      {open && pos && createPortal(
+        <div ref={menuRef} style={{ position: "fixed", left: pos.left, top: pos.top, transform: "translateX(-50%)" }} className="z-[300] w-56 rounded-lg bg-white border border-gray-200 shadow-xl py-1 animate-in fade-in-0 zoom-in-95" onClick={(e) => e.stopPropagation()}>
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search people…" className="w-[calc(100%-12px)] mx-1.5 mb-1 px-2 py-1 text-xs border border-input rounded outline-none focus:ring-2 focus:ring-ring/40" />
+          <div className="max-h-56 overflow-y-auto">
+            <button type="button" onClick={() => pick(null)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-50 text-gray-500">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] bg-gray-100 text-gray-400 border border-gray-200">—</span> Unassigned
+            </button>
+            {list.map((u) => (
+              <button key={u.id} type="button" onClick={() => pick(u.id)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-50">
+                <PersonCell name={u.name} photoUrl={u.photoUrl} />
+                <span className="text-gray-700 truncate">{u.name}</span>
+                {u.id === task.assigneeId && <Check size={12} className="ml-auto text-gray-500" />}
+              </button>
+            ))}
+            {list.length === 0 && <div className="px-3 py-2 text-xs text-gray-400">No matches</div>}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
   );
 }
 
@@ -821,6 +958,7 @@ export default function ProjectDetail() {
   const [priority, setPriority] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [prioOpen, setPrioOpen] = useState(false);
+  const [issuesPanelOpen, setIssuesPanelOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement | null>(null);
   const prioRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -966,7 +1104,7 @@ export default function ProjectDetail() {
   const subtaskCount = filtered.reduce((s, t) => s + (subtasksByParent.get(t.id)?.length ?? 0), 0);
 
   // One <tr> — shared by parent tasks and (indented) subtasks.
-  const TaskTr = ({ t, depth, cols }: { t: TaskRow; depth: number; cols: ExcelCol[] }) => {
+  const TaskTr = ({ t, depth, cols, isLast }: { t: TaskRow; depth: number; cols: ExcelCol[]; isLast?: boolean }) => {
     const subs = subtasksByParent.get(t.id) ?? [];
     const st = taskStatusOf(t.status);
     const pr = PRIORITY_BY_VALUE.get(t.priority as never);
@@ -974,20 +1112,41 @@ export default function ProjectDetail() {
     // One <td> per column key — rendered in the current (drag-reorderable) order.
     const cell = (key: string) => {
       switch (key) {
-        case "code":
+        case "code": {
+          // Tree connector — one continuous spine flowing through the cell rows,
+          // linking each subtask code to its parent. The spine drops from the
+          // *middle* of the parent's "TSK" label (BASE + indent + MID); children
+          // indent by STEP so the curved tick still flows rightward into them.
+          // Anchored to the <td> so it spans the full cell height (incl. borders).
+          const BASE = 8, STEP = 26, MID = 13;          // px-2 pad, per-level indent, spine offset into "TSK"
+          const spineX = BASE + (depth - 1) * STEP + MID; // parent code mid (for this child row)
           return (
-            <td key="code" className="border border-gray-200 px-2 py-0.5 font-mono text-[11px] font-semibold text-gray-800 whitespace-nowrap">
-              <span className="flex items-center gap-1.5" style={{ paddingLeft: depth * 14 }}>
-                <span className={depth > 0 ? "text-gray-500" : ""}>{taskCode(t)}</span>
+            <td key="code" className="relative border border-gray-200 px-2 py-0.5 font-mono text-[11px] font-semibold text-gray-800 whitespace-nowrap">
+              {open && subs.length > 0 && (
+                // Parent: spine descends from just *below* its code (not through it) toward the subtasks.
+                <span aria-hidden className="absolute w-px bg-gray-400" style={{ left: BASE + depth * STEP + MID, top: "calc(50% + 8px)", bottom: -1 }} />
+              )}
+              {depth > 0 && (
+                <>
+                  <span aria-hidden className="absolute w-px bg-gray-400" style={{ left: spineX, top: -1, ...(isLast ? { height: "calc(50% + 1px)" } : { bottom: -1 }) }} />
+                  {/* square elbow tick into the code — stops ~4px short of "TSK" */}
+                  <span aria-hidden className="absolute h-px bg-gray-400" style={{ left: spineX, top: "50%", width: STEP - MID - 4 }} />
+                </>
+              )}
+              <span className="relative flex items-center gap-1.5" style={{ paddingLeft: depth * STEP }}>
+                <span className={`${depth > 0 ? "text-gray-500" : ""} bg-inherit`}>{taskCode(t)}</span>
               </span>
             </td>
           );
+        }
         case "name":
           return (
             <td key="name" className="border border-gray-200 px-2 py-0.5 font-medium text-gray-800">
               <span className="flex items-center gap-1 min-w-0" style={{ paddingLeft: depth * 14 }}>
-                {(depth === 0 || subs.length > 0) ? (
-                  <ChevronDown size={12} className={`shrink-0 text-gray-400 transition-transform ${open ? "" : "-rotate-90"}`} />
+                {subs.length > 0 ? (
+                  <ChevronDown size={12} className={`shrink-0 text-gray-400 transition-all ${open ? "" : "-rotate-90"} ${open ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`} />
+                ) : depth > 0 ? (
+                  <span className="w-3 shrink-0 mr-0.5" />
                 ) : (
                   <span className="w-3 shrink-0" />
                 )}
@@ -1023,7 +1182,7 @@ export default function ProjectDetail() {
             </td>
           );
         case "owner":
-          return <td key="owner" className="border border-gray-200 px-2 py-0.5 text-center"><PersonCell name={assigneeName(t)} /></td>;
+          return <td key="owner" className="border border-gray-200 px-2 py-0.5 text-center"><OwnerSelect task={t} users={users} updateTask={updateTask} currentName={assigneeName(t)} /></td>;
         case "status":
           return (
             <td key="status" className="border border-gray-200 px-0 py-0 text-center whitespace-nowrap relative" style={{ background: st.bg, color: st.color }}>
@@ -1051,7 +1210,7 @@ export default function ProjectDetail() {
             </td>
           );
         case "timeline":
-          return <td key="timeline" className="border border-gray-200 px-2 py-0.5 whitespace-nowrap"><TimelineCell start={t.startDate} end={t.endDate} endHistory={t.endDateHistory} /></td>;
+          return <td key="timeline" className="border border-gray-200 px-2 py-0.5 whitespace-nowrap"><TimelineEditCell task={t} updateTask={updateTask} /></td>;
         default:
           return <td key={key} className="border border-gray-200 px-2 py-0.5" />;
       }
@@ -1059,12 +1218,12 @@ export default function ProjectDetail() {
     return (
       <>
         <tr
-          className={`transition-colors ${depth > 0 ? "bg-gray-50/70 hover:bg-gray-100/70" : "bg-white hover:bg-gray-50"} ${(depth === 0 || subs.length > 0) ? "cursor-pointer" : ""}`}
+          className={`group transition-colors ${depth > 0 ? "bg-gray-50/70 hover:bg-gray-100/70" : "bg-white hover:bg-gray-50"} ${(depth === 0 || subs.length > 0) ? "cursor-pointer" : ""}`}
           onClick={() => (depth === 0 || subs.length > 0) && toggleTask(t.id)}
         >
           {cols.map((c) => cell(c.key))}
         </tr>
-        {open && subs.map((s) => <TaskTr key={s.id} t={s} depth={depth + 1} cols={cols} />)}
+        {open && subs.map((s, i) => <TaskTr key={s.id} t={s} depth={depth + 1} cols={cols} isLast={i === subs.length - 1} />)}
         {open && depth === 0 && (
           <AddSubtaskRow parent={t} projectId={projectId} colSpan={cols.length} indent={(depth + 1) * 14 + 16} createTask={createTask} />
         )}
@@ -1106,9 +1265,9 @@ export default function ProjectDetail() {
             type="button"
             onClick={() => setDocsOpen(true)}
             title="View this project's documents — organised by lifecycle stage, with versioning and access controls"
-            className="h-9 px-3 rounded-xl flex items-center gap-1.5 text-[12px] font-semibold glass-surface lift-card text-primary hover:bg-primary/10 transition-colors"
+            className="h-7 px-2 rounded-lg flex items-center gap-1 text-[11px] font-semibold glass-surface lift-card text-primary hover:bg-primary/10 transition-colors"
           >
-            <FolderOpen size={14} />
+            <FolderOpen size={12} />
             Documents
           </button>
 
@@ -1119,13 +1278,13 @@ export default function ProjectDetail() {
             onClick={() => void generateLiveCharter()}
             disabled={genBusy}
             title="Generate a live PDF charter (In Scope · Out of Scope · Background · Current Status · Timeline) from the latest data"
-            className="h-9 px-3 rounded-xl flex items-center gap-1.5 text-[12px] font-semibold border border-border bg-card/70 text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
+            className="h-7 px-2 rounded-lg flex items-center gap-1 text-[11px] font-semibold border border-border bg-card/70 text-foreground hover:bg-accent disabled:opacity-50 transition-colors"
           >
-            {genBusy ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+            {genBusy ? <Loader2 size={12} className="animate-spin" /> : <FileDown size={12} />}
             Live Project Report
           </button>
 
-          <div className="flex items-center gap-0.5 glass-surface lift-card rounded-xl p-1">
+          <div className="flex items-center gap-0.5 glass-surface lift-card rounded-lg p-0.5">
             {([
               { key: "tasks", label: "Tasks", Icon: ListTree },
               { key: "team", label: "Team", Icon: Users },
@@ -1134,11 +1293,11 @@ export default function ProjectDetail() {
                 key={key}
                 type="button"
                 onClick={() => setSection(key)}
-                className={`h-7 px-3 rounded-lg flex items-center gap-1.5 text-[12px] font-semibold transition-colors ${
+                className={`h-6 px-2 rounded-md flex items-center gap-1 text-[11px] font-semibold transition-colors ${
                   section === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-accent"
                 }`}
               >
-                <Icon size={13} />
+                <Icon size={12} />
                 {label}
               </button>
             ))}
@@ -1151,7 +1310,7 @@ export default function ProjectDetail() {
 
       {section === "tasks" && (<>
       {/* ── Toolbar: Search + View switcher (left) · Filters (right) ───────── */}
-      <div className="glass-surface lift-card ph-rise rounded-xl px-2.5 py-1.5 flex flex-wrap items-center gap-x-2 gap-y-2 w-full max-w-full relative z-50">
+      <div className="glass-surface lift-card ph-rise rounded-xl px-2.5 py-1.5 flex flex-wrap items-center gap-x-2 gap-y-2 w-fit max-w-full relative z-50">
         {/* Search — icon button that expands into an inline field, left of the toggles */}
         {searchOpen ? (
           <div ref={searchRef} className="flex items-center gap-1.5 px-3 h-6 rounded-full bg-card border border-primary/30 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/10 transition-colors">
@@ -1201,29 +1360,9 @@ export default function ProjectDetail() {
               {label}
             </button>
           ))}
-        </div>
 
-        {/* Task-Gantt legend — one hover explainer per bar colour (Gantt only) */}
-        {view === "gantt" && (
-          <div className="flex items-center gap-2 pl-1.5 ml-0.5 border-l border-border/60">
-            {TASK_GANTT_LEGEND.map((l) => (
-              <HoverHint key={l.label} title={l.label} footer={l.desc}>
-                <span className="flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap cursor-help">
-                  <span className="w-2 h-2 rounded-sm" style={{ background: l.color }} />
-                  {l.label}
-                  <Info size={9} className="opacity-40" />
-                </span>
-              </HoverHint>
-            ))}
-          </div>
-        )}
-
-        {/* Filters — pushed to the right, clearly labelled & visually distinct
-            from the view switcher (bordered pills, caret, current value shown). */}
-        <div className="ml-auto flex items-center gap-1.5">
-          <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <SlidersHorizontal size={12} /> Filter by
-          </span>
+          {/* Divider, then the two filters — same grey group as the view tabs */}
+          <span className="w-px h-4 bg-border/70 mx-1 self-center" />
 
           {/* Milestone filter */}
           <div className="relative" ref={filterRef}>
@@ -1231,17 +1370,16 @@ export default function ProjectDetail() {
               type="button"
               onClick={() => { setFilterOpen((o) => !o); setPrioOpen(false); }}
               title="Filter tasks by milestone"
-              className={`h-6 pl-2 pr-1.5 rounded-md border flex items-center gap-1 text-[11px] transition-colors ${
-                milestone ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-foreground/80 hover:border-primary/40 hover:text-foreground"
+              className={`h-6 pl-2 pr-1.5 rounded-md flex items-center gap-1 text-[11px] transition-colors ${
+                milestone ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <Milestone size={12} />
-              <span className="text-muted-foreground">Milestone:</span>
-              <span className="font-semibold max-w-[110px] truncate">{MILESTONE_CHIPS.find((c) => c.value === milestone)?.label ?? "All"}</span>
+              <span className="font-medium">Milestone</span>
               <ChevronDown size={12} className={`opacity-60 transition-transform ${filterOpen ? "rotate-180" : ""}`} />
             </button>
             {filterOpen && (
-              <div className="absolute right-0 top-full mt-1.5 z-50 w-56 max-h-72 overflow-y-auto rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
+              <div className="absolute left-0 top-full mt-1.5 z-50 w-56 max-h-72 overflow-y-auto rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
                 <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Filter by milestone</div>
                 {MILESTONE_CHIPS.map((c) => (
                   <button
@@ -1263,17 +1401,16 @@ export default function ProjectDetail() {
               type="button"
               onClick={() => { setPrioOpen((o) => !o); setFilterOpen(false); }}
               title="Filter tasks by priority"
-              className={`h-6 pl-2 pr-1.5 rounded-md border flex items-center gap-1 text-[11px] transition-colors ${
-                priority ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-foreground/80 hover:border-primary/40 hover:text-foreground"
+              className={`h-6 pl-2 pr-1.5 rounded-md flex items-center gap-1 text-[11px] transition-colors ${
+                priority ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <Flag size={12} />
-              <span className="text-muted-foreground">Priority:</span>
-              <span className="font-semibold">{PRIORITY_CHIPS.find((c) => c.value === priority)?.label ?? "All"}</span>
+              <span className="font-medium">Priority</span>
               <ChevronDown size={12} className={`opacity-60 transition-transform ${prioOpen ? "rotate-180" : ""}`} />
             </button>
             {prioOpen && (
-              <div className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
+              <div className="absolute left-0 top-full mt-1.5 z-50 w-48 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
                 <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Filter by priority</div>
                 {PRIORITY_CHIPS.map((c) => (
                   <button
@@ -1289,6 +1426,17 @@ export default function ProjectDetail() {
             )}
           </div>
 
+          {/* Issues — opens this project's issues register */}
+          <button
+            type="button"
+            onClick={() => setIssuesPanelOpen(true)}
+            title="Open this project's issues"
+            className="h-6 pl-2 pr-2 rounded-md flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          >
+            <AlertTriangle size={12} />
+            <span className="font-medium">Issues</span>
+          </button>
+
           {/* Clear filters — only when a filter is active */}
           {(milestone || priority) && (
             <button
@@ -1301,6 +1449,22 @@ export default function ProjectDetail() {
             </button>
           )}
         </div>
+
+        {/* Task-Gantt legend — one hover explainer per bar colour (Gantt only) */}
+        {view === "gantt" && (
+          <div className="flex items-center gap-2 pl-1.5 ml-0.5 border-l border-border/60">
+            {TASK_GANTT_LEGEND.map((l) => (
+              <HoverHint key={l.label} title={l.label} footer={l.desc}>
+                <span className="flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap cursor-help">
+                  <span className="w-2 h-2 rounded-sm" style={{ background: l.color }} />
+                  {l.label}
+                  <Info size={9} className="opacity-40" />
+                </span>
+              </HoverHint>
+            ))}
+          </div>
+        )}
+
       </div>
 
       {/* ── One Excel-style table per task status, Projects-view style ─────── */}
@@ -1485,6 +1649,22 @@ export default function ProjectDetail() {
               onUploadOpenChange={setDocsUploadOpen}
               showUploadButton={false}
             />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Issues — raise + manage this project's issues */}
+      <Dialog open={issuesPanelOpen} onOpenChange={(v) => { if (!v) setIssuesPanelOpen(false); }}>
+        <DialogContent className="max-w-5xl w-[92vw] h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
+          <DialogHeader className="px-5 py-3 border-b border-border/60 flex-shrink-0">
+            <DialogTitle className="flex items-center gap-2 tracking-tight text-base pr-10">
+              <AlertTriangle size={16} className="text-primary" />
+              <span className="truncate">Issues · {project?.name ?? "Project"}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-auto scrollbar-thin p-5 space-y-5">
+            <RaiseIssueForm projectId={projectId} />
+            <IssuesTab projectId={projectId} />
           </div>
         </DialogContent>
       </Dialog>

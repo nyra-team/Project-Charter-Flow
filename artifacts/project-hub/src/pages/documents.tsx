@@ -2,9 +2,10 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useListProjects } from "@workspace/api-client-react";
 import { DocumentsTab } from "../components/documents-tab";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
-import { FileText, FilePlus2, Files, FolderArchive, ChevronDown, ChevronRight, Upload, Download, FileCheck2, Share2 } from "lucide-react";
+import { FileText, FilePlus2, Files, ChevronDown, ChevronRight, Upload, Download, FileCheck2, Folder } from "lucide-react";
 import { formatDate } from "../lib/format";
-import { ShareDialog } from "../components/ShareDialog";
+import { LIFECYCLE_STAGES, canonicalStageKey } from "../lib/lifecycle-config";
+import { LIFECYCLE_PHASES } from "../lib/lifecycle-phases";
 
 type Project = { id: number; name: string; status: string; stage?: string | null };
 
@@ -20,6 +21,8 @@ type CentralDoc = {
 type Section = "templates" | "project-documents";
 
 const TEMPLATE_PHASES = ["Plan", "Execute", "Close"] as const;
+// Phase label → dot colour, shared with the project-document phase headers.
+const PHASE_COLOR: Record<string, string> = Object.fromEntries(LIFECYCLE_PHASES.map(p => [p.label, p.color]));
 
 // Sentinel for the project picker's "show every project's documents" option.
 const ALL_PROJECTS = -1;
@@ -67,7 +70,7 @@ export default function DocumentsPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
 
   // Template phase sections — collapsed by default; click to expand.
-  const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set(["Plan"]));
+  const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
   function togglePhase(k: string) {
     setExpandedPhases(prev => {
       const next = new Set(prev);
@@ -164,7 +167,7 @@ export default function DocumentsPage() {
                         <TableCell colSpan={3} className="py-2">
                           <div className="flex items-center gap-2">
                             {open ? <ChevronDown size={14} className="text-muted-foreground" /> : <ChevronRight size={14} className="text-muted-foreground" />}
-                            <FolderArchive size={14} className="text-muted-foreground" />
+                            <span className="w-2.5 h-2.5 rounded-full" style={{ background: PHASE_COLOR[phase] ?? "#94A3B8" }} />
                             <span className="text-sm font-semibold text-foreground">{phase}</span>
                             <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{rows.length} template{rows.length !== 1 ? "s" : ""}</span>
                           </div>
@@ -229,30 +232,74 @@ export default function DocumentsPage() {
   );
 }
 
-// Drive-style Share button per document — opens a dialog with the copyable
-// public link (always latest version) + upload-new-version (read/write).
-function PublicLink({ docId, docName }: { docId: number; docName: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold border border-border text-muted-foreground hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
-        title="Share — get public link & upload new version"
-      >
-        <Share2 size={12} /> Share
-      </button>
-      {open && <ShareDialog docId={docId} docName={docName} onClose={() => setOpen(false)} />}
-    </>
-  );
-}
-
 // Flat, newest-first feed of every project's documents — the "per project → PMO"
 // central reflection. Click a row's project to drill into that project's tab.
 function AllProjectsTable({ docs, onPickProject }: { docs: CentralDoc[]; onPickProject: (id: number) => void }) {
+  // Club docs under the 3 lifecycle phases (Plan / Execute / Close), segregated
+  // by stage within each. Legacy stage keys fold to their canonical home;
+  // anything unstaged goes in a trailing "Unassigned" group.
+  const phaseGroups = useMemo(() => {
+    const byStage: Record<string, CentralDoc[]> = {};
+    for (const d of docs) {
+      const k = canonicalStageKey(d.stage) || "__unstaged__";
+      (byStage[k] ??= []).push(d);
+    }
+    const stageMeta = (key: string) => LIFECYCLE_STAGES.find(s => s.key === key);
+    type StageGroup = { key: string; label: string; color: string | undefined; docs: CentralDoc[] };
+    type PhaseGroup = { key: string; label: string; color: string; count: number; stages: StageGroup[] };
+    const phases: PhaseGroup[] = LIFECYCLE_PHASES.map(p => {
+      const stages: StageGroup[] = p.stageKeys
+        .filter(k => (byStage[k] ?? []).length > 0)
+        .map(k => { const m = stageMeta(k); return { key: k, label: m?.label ?? k, color: m?.color as string | undefined, docs: byStage[k]! }; });
+      return { key: p.key, label: p.label, color: p.color, count: stages.reduce((s, g) => s + g.docs.length, 0), stages };
+    }).filter(p => p.stages.length > 0);
+    if ((byStage["__unstaged__"] ?? []).length > 0) {
+      const d = byStage["__unstaged__"];
+      phases.push({ key: "__unstaged__", label: "Unassigned to a stage", color: "#94A3B8", count: d.length, stages: [{ key: "__unstaged__", label: "Unassigned to a stage", color: undefined, docs: d }] });
+    }
+    return phases;
+  }, [docs]);
+
+  // Phases + their stages collapsed by default; click a header to expand it.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const toggle = (k: string) => setExpanded(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+
   if (docs.length === 0) {
     return <div className="glass-surface rounded-2xl p-10 text-center text-sm text-muted-foreground">No documents across any project yet.</div>;
   }
+
+  const docRow = (d: CentralDoc) => {
+    const isTemplate = (d.tags ?? []).includes("template");
+    return (
+      <TableRow key={d.id} className="group">
+        <TableCell className="pl-6">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border ${isTemplate ? "bg-amber-accent/10 border-amber-accent/30" : "bg-primary/10 border-primary/20"}`}>
+              {isTemplate ? <FileCheck2 size={15} className="text-amber-accent" /> : <FileText size={15} className="text-primary" />}
+            </div>
+            <div className="min-w-0">
+              <span className="text-sm font-semibold text-foreground">{d.name}</span>
+              <span className="ml-2 text-[11px] font-mono font-semibold text-primary">v{d.version}</span>
+            </div>
+          </div>
+        </TableCell>
+        <TableCell>
+          <button onClick={() => onPickProject(d.projectId)} className="text-xs font-semibold text-primary hover:underline">
+            {d.projectName ?? `#${d.projectId}`}
+          </button>
+        </TableCell>
+        <TableCell className="text-xs text-muted-foreground font-mono whitespace-nowrap">{d.uploadedAt ? formatDate(d.uploadedAt) : "—"}</TableCell>
+        <TableCell className="text-right">
+          {d.fileUrl ? (
+            <a href={d.fileUrl} download className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-accent transition-colors">
+              <Download size={13} /> Download
+            </a>
+          ) : <span className="text-xs text-muted-foreground/50">—</span>}
+        </TableCell>
+      </TableRow>
+    );
+  };
+
   return (
     <div className="glass-surface lift-card rounded-2xl overflow-hidden">
       <Table>
@@ -260,44 +307,46 @@ function AllProjectsTable({ docs, onPickProject }: { docs: CentralDoc[]; onPickP
           <TableRow className="hover:bg-transparent">
             <TableHead className="pl-6">Document</TableHead>
             <TableHead>Project</TableHead>
-            <TableHead>Stage</TableHead>
             <TableHead>Uploaded</TableHead>
-            <TableHead>Public Link</TableHead>
             <TableHead className="text-right">Download</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {docs.map(d => {
-            const isTemplate = (d.tags ?? []).includes("template");
+          {phaseGroups.map(p => {
+            const pOpen = expanded.has(p.key);
             return (
-              <TableRow key={d.id} className="group">
-                <TableCell className="pl-6">
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border ${isTemplate ? "bg-amber-accent/10 border-amber-accent/30" : "bg-primary/10 border-primary/20"}`}>
-                      {isTemplate ? <FileCheck2 size={15} className="text-amber-accent" /> : <FileText size={15} className="text-primary" />}
+              <Fragment key={p.key}>
+                {/* Phase header (Plan / Execute / Close) */}
+                <TableRow className="bg-muted/60 hover:bg-muted/70 cursor-pointer border-t-2 border-border" onClick={() => toggle(p.key)}>
+                  <TableCell colSpan={4} className="py-2">
+                    <div className="flex items-center gap-2">
+                      {pOpen ? <ChevronDown size={15} className="text-muted-foreground" /> : <ChevronRight size={15} className="text-muted-foreground" />}
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
+                      <span className="text-sm font-bold text-foreground uppercase tracking-wide">{p.label}</span>
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{p.count} doc{p.count !== 1 ? "s" : ""}</span>
                     </div>
-                    <div className="min-w-0">
-                      <span className="text-sm font-semibold text-foreground">{d.name}</span>
-                      <span className="ml-2 text-[11px] font-mono font-semibold text-primary">v{d.version}</span>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <button onClick={() => onPickProject(d.projectId)} className="text-xs font-semibold text-primary hover:underline">
-                    {d.projectName ?? `#${d.projectId}`}
-                  </button>
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">{d.stage ?? "—"}</TableCell>
-                <TableCell className="text-xs text-muted-foreground font-mono whitespace-nowrap">{d.uploadedAt ? formatDate(d.uploadedAt) : "—"}</TableCell>
-                <TableCell><PublicLink docId={d.id} docName={d.name} /></TableCell>
-                <TableCell className="text-right">
-                  {d.fileUrl ? (
-                    <a href={d.fileUrl} download className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold text-muted-foreground hover:text-primary hover:bg-accent transition-colors">
-                      <Download size={13} /> Download
-                    </a>
-                  ) : <span className="text-xs text-muted-foreground/50">—</span>}
-                </TableCell>
-              </TableRow>
+                  </TableCell>
+                </TableRow>
+                {pOpen && p.stages.map(g => {
+                  const open = expanded.has(g.key);
+                  return (
+                    <Fragment key={g.key}>
+                      {/* Stage subsection header */}
+                      <TableRow className="bg-muted/30 hover:bg-muted/40 cursor-pointer" onClick={() => toggle(g.key)}>
+                        <TableCell colSpan={4} className="py-1.5 pl-10">
+                          <div className="flex items-center gap-2">
+                            {open ? <ChevronDown size={13} className="text-muted-foreground" /> : <ChevronRight size={13} className="text-muted-foreground" />}
+                            <Folder size={13} style={g.color ? { color: g.color } : undefined} className={g.color ? "" : "text-muted-foreground"} />
+                            <span className="text-[13px] font-semibold text-foreground">{g.label}</span>
+                            <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{g.docs.length} doc{g.docs.length !== 1 ? "s" : ""}</span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      {open && g.docs.map(docRow)}
+                    </Fragment>
+                  );
+                })}
+              </Fragment>
             );
           })}
         </TableBody>

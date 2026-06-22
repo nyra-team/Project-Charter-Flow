@@ -167,6 +167,9 @@ export default function NfaNew() {
   const [requirements, setRequirements] = useState("");
   const [justification, setJustification] = useState("");
   const [vendorDetails, setVendorDetails] = useState("");
+  // Checkpoint: the RFP brief. When this has content, submitting the e-NFA uses
+  // it to generate a draft RFP in the RFP section for vendor selection.
+  const [rfpCheckpoint, setRfpCheckpoint] = useState("");
   const [modeOfProcurement, setModeOfProcurement] = useState("");
   const [financialImplication, setFinancialImplication] = useState("");
   const [financialAmount, setFinancialAmount] = useState("");
@@ -385,6 +388,28 @@ export default function NfaNew() {
       const nfa = await res.json();
       clearFormDraft("pmo:nfa-draft");
       toast({ title: `e-NFA created — ${nfa.noteNo ?? nfa.id}` });
+
+      // Checkpoint: when the RFP brief has content, use it to spin up a draft
+      // RFP in the RFP section so vendor selection can start straight away.
+      if (rfpCheckpoint.trim()) {
+        try {
+          const rfpRes = await fetch("/api/rfx", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              type: "rfp",
+              title: subject.trim(),
+              brief: rfpCheckpoint.trim(),
+              summary: requirements.trim() || justification.trim() || undefined,
+            }),
+          });
+          if (rfpRes.ok) toast({ title: "RFP generated", description: "A draft RFP was placed in the RFP section." });
+          else toast({ title: "e-NFA saved, but RFP generation failed", variant: "destructive" });
+        } catch {
+          toast({ title: "e-NFA saved, but RFP generation failed", variant: "destructive" });
+        }
+      }
+
       setLocation(`/nfas/${nfa.id}`);
     } catch (e) {
       toast({ title: (e as Error)?.message || "Failed to create e-NFA", variant: "destructive" });
@@ -394,7 +419,7 @@ export default function NfaNew() {
   }
 
   return (
-    <div className="w-full pb-4 -mt-1 sm:-mt-3 lg:-mt-6 [&_input]:shadow-none [&_input]:rounded-md [&_input]:border [&_input]:border-slate-200 [&_input]:bg-white [&_textarea]:shadow-none [&_textarea]:rounded-md [&_textarea]:border [&_textarea]:border-slate-200 [&_textarea]:bg-white [&_[role=combobox]]:rounded-md [&_[role=combobox]]:bg-white [&_[role=combobox]]:border [&_[role=combobox]]:border-slate-200 [&_[role=combobox]]:font-normal [&_[role=combobox]]:shadow-none [&_[role=combobox]:focus]:ring-0 [&_input:focus]:border-blue-300 [&_input:focus-visible]:border-blue-300 [&_input:focus-visible]:ring-blue-200 [&_textarea:focus]:border-blue-300 [&_textarea:focus]:outline-none [&_textarea:focus]:ring-1 [&_textarea:focus]:ring-blue-200 [&_[role=combobox]:focus]:border-blue-300">
+    <div className="w-full pb-4 [&_input]:shadow-none [&_input]:rounded-md [&_input]:border [&_input]:border-slate-200 [&_input]:bg-white [&_textarea]:shadow-none [&_textarea]:rounded-md [&_textarea]:border [&_textarea]:border-slate-200 [&_textarea]:bg-white [&_[role=combobox]]:rounded-md [&_[role=combobox]]:bg-white [&_[role=combobox]]:border [&_[role=combobox]]:border-slate-200 [&_[role=combobox]]:font-normal [&_[role=combobox]]:shadow-none [&_[role=combobox]:focus]:ring-0 [&_input:focus]:border-blue-300 [&_input:focus-visible]:border-blue-300 [&_input:focus-visible]:ring-blue-200 [&_textarea:focus]:border-blue-300 [&_textarea:focus]:outline-none [&_textarea:focus]:ring-1 [&_textarea:focus]:ring-blue-200 [&_[role=combobox]:focus]:border-blue-300">
       <div className="mb-1">
         <Link href="/">
           <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -523,6 +548,14 @@ export default function NfaNew() {
           <Section title="Note Details" subtitle="Requirements, justification & vendors (Description is on the Basics step)" icon={<FileText size={18} />}>
             <RephraseField label="Requirements" value={requirements} onChange={setRequirements} rows={3} aiEnabled={aiEnabled} context="the 'Requirements' section of an e-NFA (procurement details)" placeholder="What is being procured — items, quantities, specs…" />
             <RephraseField label="Justification" value={justification} onChange={setJustification} rows={3} aiEnabled={aiEnabled} context="the 'Justification' section of an e-NFA" placeholder="Why this spend is necessary and justified…" />
+
+            {/* Checkpoint — its content is used to generate a draft RFP in the
+                RFP section when this e-NFA is submitted. Leave blank for no RFP. */}
+            <div className="rounded-lg border border-primary/30 bg-primary/[0.04] p-3">
+              <RephraseField label="RFP Checkpoint — brief for vendor selection" value={rfpCheckpoint} onChange={setRfpCheckpoint} rows={3} aiEnabled={aiEnabled} context="the brief / scope of work for an RFP (Request for Proposal) issued to vendors" placeholder="Scope, deliverables and evaluation criteria for the RFP. When filled, submitting this e-NFA generates a draft RFP from this." />
+              <p className="text-[11px] text-muted-foreground mt-1.5">When this has content, submitting the e-NFA generates a draft RFP in the RFP section using it.</p>
+            </div>
+
             <RephraseField label="Vendor Details" value={vendorDetails} onChange={setVendorDetails} rows={3} aiEnabled={aiEnabled} context="the 'Vendor Details' section of an e-NFA" placeholder="Shortlisted vendors / selection approach…" />
           </Section>
 

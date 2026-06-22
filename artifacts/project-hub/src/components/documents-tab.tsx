@@ -12,10 +12,10 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FileDropzone } from "@/components/ui/file-dropzone";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
-import { Plus, FileText, Trash2, Lock, Unlock, History, Tag, Folder, Search, Upload, Download, FileCheck2, Eye, Loader2, ExternalLink, Sparkles, ChevronDown, ChevronRight, Share2, SlidersHorizontal, X } from "lucide-react";
+import { Plus, FileText, Trash2, Lock, Unlock, History, Tag, Folder, Search, Upload, Download, FileCheck2, Eye, Loader2, ExternalLink, Sparkles, ChevronDown, ChevronRight, SlidersHorizontal, X } from "lucide-react";
 import { formatDate } from "../lib/format";
-import { ShareDialog } from "./ShareDialog";
-import { LIFECYCLE_STAGES } from "../lib/lifecycle-config";
+import { LIFECYCLE_STAGES, canonicalStageKey } from "../lib/lifecycle-config";
+import { LIFECYCLE_PHASES } from "../lib/lifecycle-phases";
 
 type Doc = {
   id: number; projectId: number; stage?: string | null; name: string;
@@ -94,7 +94,6 @@ export function DocumentsTab({
   const setShowAdd = (v: boolean) => { if (onUploadOpenChange) onUploadOpenChange(v); else setInternalShowAdd(v); };
   const [versionDocId, setVersionDocId] = useState<number | null>(null);
   const [previewDoc, setPreviewDoc] = useState<Doc | null>(null);
-  const [shareDoc, setShareDoc] = useState<Doc | null>(null);
   const [tagFilter, setTagFilter] = useState<string>("");
   const [accessFilter, setAccessFilter] = useState<string>("");
   const [form, setForm] = useState({
@@ -118,22 +117,29 @@ export function DocumentsTab({
     });
   }, [allDocs, search, tagFilter, accessFilter]);
 
-  // Group the filtered docs by lifecycle stage, ordered by the canonical stage
-  // sequence, with anything unstaged appended last.
-  const stageGroups = useMemo(() => {
+  // Club docs under the 3 lifecycle phases (Plan / Execute / Close), and within
+  // each phase keep them segregated by stage. Legacy stage keys fold into their
+  // canonical home; anything unstaged goes in a trailing "Unassigned" group.
+  const phaseGroups = useMemo(() => {
     const byStage: Record<string, Doc[]> = {};
     for (const d of filtered) {
-      const k = d.stage || "__unstaged__";
+      const k = canonicalStageKey(d.stage) || "__unstaged__";
       (byStage[k] ??= []).push(d);
     }
+    const stageMeta = (key: string) => LIFECYCLE_STAGES.find(s => s.key === key);
     type StageGroup = { key: string; label: string; color: string | undefined; docs: Doc[] };
-    const groups: StageGroup[] = LIFECYCLE_STAGES
-      .filter(s => (byStage[s.key] ?? []).length > 0)
-      .map(s => ({ key: s.key, label: s.label, color: s.color as string | undefined, docs: byStage[s.key]! }));
+    type PhaseGroup = { key: string; label: string; color: string; count: number; stages: StageGroup[] };
+    const phases: PhaseGroup[] = LIFECYCLE_PHASES.map(p => {
+      const stages: StageGroup[] = p.stageKeys
+        .filter(k => (byStage[k] ?? []).length > 0)
+        .map(k => { const m = stageMeta(k); return { key: k, label: m?.label ?? k, color: m?.color as string | undefined, docs: byStage[k]! }; });
+      return { key: p.key, label: p.label, color: p.color, count: stages.reduce((s, g) => s + g.docs.length, 0), stages };
+    }).filter(p => p.stages.length > 0);
     if ((byStage["__unstaged__"] ?? []).length > 0) {
-      groups.push({ key: "__unstaged__", label: "Unassigned to a stage", color: undefined, docs: byStage["__unstaged__"] });
+      const docs = byStage["__unstaged__"];
+      phases.push({ key: "__unstaged__", label: "Unassigned to a stage", color: "#94A3B8", count: docs.length, stages: [{ key: "__unstaged__", label: "Unassigned to a stage", color: undefined, docs }] });
     }
-    return groups;
+    return phases;
   }, [filtered]);
 
   // Stage sections are collapsed by default; clicking a header expands that section.
@@ -250,17 +256,6 @@ export function DocumentsTab({
         {/* Uploaded By */}
         <TableCell className="align-top text-xs text-muted-foreground whitespace-nowrap">{userName(d.uploadedBy)}</TableCell>
 
-        {/* Public Link — opens the Drive-style Share dialog (copyable link + upload-new-version) */}
-        <TableCell className="align-top">
-          <button
-            onClick={() => setShareDoc(d)}
-            className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold border border-border text-muted-foreground hover:text-primary hover:border-primary/40 hover:bg-primary/5 transition-colors"
-            title="Share — get public link & upload new version"
-          >
-            <Share2 size={12} /> Share
-          </button>
-        </TableCell>
-
         {/* Uploaded date */}
         <TableCell className="align-top text-xs text-muted-foreground font-mono whitespace-nowrap">{d.uploadedAt ? formatDate(d.uploadedAt) : "—"}</TableCell>
 
@@ -375,29 +370,46 @@ export function DocumentsTab({
                 <TableHead>Access</TableHead>
                 <TableHead>Tags</TableHead>
                 <TableHead>Uploaded By</TableHead>
-                <TableHead>Public Link</TableHead>
                 <TableHead>Uploaded</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {stageGroups.map(g => {
-                const open = expandedStages.has(g.key);
-                const countLabel = `${g.docs.length} doc${g.docs.length !== 1 ? "s" : ""}`;
+              {phaseGroups.map(p => {
+                const pOpen = expandedStages.has(p.key);
                 return (
-                  <Fragment key={g.key}>
-                    {/* Stage section header — click to expand/collapse the documents inside */}
-                    <TableRow className="bg-muted/40 hover:bg-muted/50 cursor-pointer border-t-2 border-border" onClick={() => toggleStage(g.key)}>
-                      <TableCell colSpan={7} className="py-2">
+                  <Fragment key={p.key}>
+                    {/* Phase header (Plan / Execute / Close) — click to expand its stages */}
+                    <TableRow className="bg-muted/60 hover:bg-muted/70 cursor-pointer border-t-2 border-border" onClick={() => toggleStage(p.key)}>
+                      <TableCell colSpan={6} className="py-2">
                         <div className="flex items-center gap-2">
-                          {open ? <ChevronDown size={14} className="text-muted-foreground" /> : <ChevronRight size={14} className="text-muted-foreground" />}
-                          <Folder size={14} style={g.color ? { color: g.color } : undefined} className={g.color ? "" : "text-muted-foreground"} />
-                          <span className="text-sm font-semibold text-foreground">{g.label}</span>
-                          <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{countLabel}</span>
+                          {pOpen ? <ChevronDown size={15} className="text-muted-foreground" /> : <ChevronRight size={15} className="text-muted-foreground" />}
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
+                          <span className="text-sm font-bold text-foreground uppercase tracking-wide">{p.label}</span>
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{p.count} doc{p.count !== 1 ? "s" : ""}</span>
                         </div>
                       </TableCell>
                     </TableRow>
-                    {open && g.docs.map(d => <DocRow key={d.id} d={d} />)}
+                    {pOpen && p.stages.map(g => {
+                      const open = expandedStages.has(g.key);
+                      const countLabel = `${g.docs.length} doc${g.docs.length !== 1 ? "s" : ""}`;
+                      return (
+                        <Fragment key={g.key}>
+                          {/* Stage subsection header — click to expand/collapse its documents */}
+                          <TableRow className="bg-muted/30 hover:bg-muted/40 cursor-pointer" onClick={() => toggleStage(g.key)}>
+                            <TableCell colSpan={6} className="py-1.5 pl-10">
+                              <div className="flex items-center gap-2">
+                                {open ? <ChevronDown size={13} className="text-muted-foreground" /> : <ChevronRight size={13} className="text-muted-foreground" />}
+                                <Folder size={13} style={g.color ? { color: g.color } : undefined} className={g.color ? "" : "text-muted-foreground"} />
+                                <span className="text-[13px] font-semibold text-foreground">{g.label}</span>
+                                <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{countLabel}</span>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                          {open && g.docs.map(d => <DocRow key={d.id} d={d} />)}
+                        </Fragment>
+                      );
+                    })}
                   </Fragment>
                 );
               })}
@@ -495,14 +507,6 @@ export function DocumentsTab({
         <DocumentPreviewModal doc={previewDoc} onClose={() => setPreviewDoc(null)} />
       )}
 
-      {/* Drive-style share dialog — copyable public link + upload new version */}
-      {shareDoc && (
-        <ShareDialog
-          docId={shareDoc.id}
-          docName={shareDoc.name}
-          onClose={() => setShareDoc(null)}
-        />
-      )}
     </div>
   );
 }

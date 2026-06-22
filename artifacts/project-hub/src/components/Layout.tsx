@@ -28,7 +28,7 @@ function ThemeToggle() {
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { role, setRole } = useUserStore();
   const { profile, signOut } = useAuth();
 
@@ -37,9 +37,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [connectorsOpen, setConnectorsOpen] = useState(false);
-  // Charter/e-NFA workflow chooser — opened by the "Charter + e-NFA" nav item.
   const [charterNfaOpen, setCharterNfaOpen] = useState(false);
-  const openCharterNfa = () => { setMobileOpen(false); setCharterNfaOpen(true); };
+  // "Charter + e-NFA" nav item goes straight to the charters list (no chooser popup).
+  const openCharterNfa = () => { setMobileOpen(false); setLocation("/charters"); };
+  // "Business Case" CTA opens the two-card workflow chooser popup.
+  const openBusinessCase = () => { setMobileOpen(false); setCharterNfaOpen(true); };
 
   // Close mobile drawer on route change.
   useEffect(() => { setMobileOpen(false); }, [location]);
@@ -86,6 +88,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         isAdmin={isAdmin}
         isSuperAdmin={isSuperAdmin}
         onCharterNfa={openCharterNfa}
+        onBusinessCase={openBusinessCase}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
         footer={profileFooter}
@@ -137,7 +140,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* Page Content */}
         <div className="relative flex-1 overflow-y-auto scrollbar-thin bg-background">
           <div className="page-ambient" />
-          <div key={location} className="relative w-full p-4 sm:p-6 lg:p-8 ph-rise">
+          <div key={location} className="relative w-full px-4 sm:px-6 lg:px-8 pt-3 pb-6 lg:pb-8 ph-rise">
             {children}
           </div>
         </div>
@@ -145,8 +148,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Connectors & data-sources popup — globally available to admins. */}
       <ConnectorsPopup open={connectorsOpen} onClose={() => setConnectorsOpen(false)} />
-
-      {/* Charter / e-NFA workflow chooser — opened by the "Charter + e-NFA" nav item. */}
       <CharterNfaPopup open={charterNfaOpen} onClose={() => setCharterNfaOpen(false)} />
     </div>
   );

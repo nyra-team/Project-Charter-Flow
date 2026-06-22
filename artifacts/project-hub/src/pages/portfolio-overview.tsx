@@ -511,14 +511,23 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
     return m;
   }, [charters]);
 
+  // Every department in the org (master-DB employees.function), so the dropdown
+  // offers departments even when they have no projects yet.
+  const { data: allDepts = [] } = useQuery({
+    queryKey: ["/api/departments"],
+    queryFn: async () => {
+      const r = await fetch("/api/departments", { credentials: "include" });
+      return r.ok ? (r.json() as Promise<string[]>) : [];
+    },
+    staleTime: 10 * 60_000,
+  });
+
   const deptOptions = useMemo(() => {
     const derived = projects.map(p => p.function).filter(Boolean) as string[];
-    // Always offer HR (plus any departments present in the data). HR is pinned
-    // so it can be selected even before an HR project loads; selecting it filters
-    // the fetched projects down to function === "HR".
-    const d = [...new Set(["HR", ...derived])];
+    // Full DB department list (+ HR pinned) merged with any present in the data.
+    const d = [...new Set(["HR", ...(allDepts as string[]), ...derived])].sort((a, b) => a.localeCompare(b));
     return d.map(x => ({ value: x, label: x }));
-  }, [projects]);
+  }, [projects, allDepts]);
 
   const filtered = useMemo(() => {
     let list = projects;
@@ -867,6 +876,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
         headerSlot,
       )}
 
+      <div className="mt-4">
       <CollapsibleSection
         title="Key Metrics"
         subtitle="Portfolio KPIs & variance"
@@ -983,6 +993,7 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
         </div>
       </Drillable>
       </CollapsibleSection>
+      </div>
 
       <CollapsibleSection
         title="Charts & Graphs"
@@ -1260,8 +1271,9 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
           })()}
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
+        {/* Table — cap the height of shadcn's own scroll wrapper (its direct child div)
+            so the sticky column header pins to that single scroll container. */}
+        <div className="[&>div]:max-h-[70vh]">
           <Table className="min-w-[1000px] table-fixed [&_th]:border-r [&_th]:border-border [&_td]:border-r [&_td]:border-border/70 [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0">
             <colgroup>
               <col style={{ width: "11%" }} />
@@ -1274,8 +1286,8 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
               <col style={{ width: "8%" }} />
               <col style={{ width: "8%" }} />
             </colgroup>
-            <TableHeader>
-              <TableRow className="bg-muted/30 hover:bg-muted/30 border-b border-border">
+            <TableHeader className="sticky top-0 z-20">
+              <TableRow className="bg-muted hover:bg-muted border-b border-border [&_th]:bg-muted">
                 {([
                   { key: "health", label: "Status", align: "left", sortable: true },
                   { key: "name", label: "Project", align: "left", sortable: true },

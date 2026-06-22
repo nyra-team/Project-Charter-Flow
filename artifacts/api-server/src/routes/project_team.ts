@@ -11,6 +11,9 @@ const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
 // Responsible, Accountable, Support, Consulted, Informed.
 const RACI_TYPES = ["R", "A", "S", "C", "I"];
 
+// Per-member approval status, set inline in the Team table.
+const APPROVAL_VALUES = ["pending", "approved", "rejected"];
+
 // ── Team members ────────────────────────────────────────────────────────────
 
 // Bulk list across all projects — feeds the Projects board "Team" column so it
@@ -30,9 +33,9 @@ router.get("/projects/:id/team-members", async (req, res): Promise<void> => {
 router.post("/projects/:id/team-members", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const { memberType, userId, externalName, externalOrg, externalEmail, externalKind, role, responsibilities } = req.body as {
+  const { memberType, userId, externalName, externalOrg, externalEmail, externalKind, role, responsibilities, approval } = req.body as {
     memberType?: string; userId?: number; externalName?: string; externalOrg?: string;
-    externalEmail?: string; externalKind?: string; role?: string; responsibilities?: string;
+    externalEmail?: string; externalKind?: string; role?: string; responsibilities?: string; approval?: string;
   };
   if (memberType !== "internal" && memberType !== "external") {
     res.status(400).json({ error: "memberType must be 'internal' or 'external'" }); return;
@@ -49,6 +52,7 @@ router.post("/projects/:id/team-members", requireRole(...WRITE_ROLES), async (re
     externalKind: memberType === "external" ? externalKind : null,
     role,
     responsibilities,
+    approval: APPROVAL_VALUES.includes(approval ?? "") ? approval : "pending",
   }).returning();
   res.status(201).json(member);
 });
@@ -57,9 +61,12 @@ router.patch("/team-members/:id", requireRole(...WRITE_ROLES), async (req, res):
   const id = parseInt(req.params.id);
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const updateData: Record<string, unknown> = {};
-  const fields = ["userId", "externalName", "externalOrg", "externalEmail", "externalKind", "role", "responsibilities"];
+  const fields = ["userId", "externalName", "externalOrg", "externalEmail", "externalKind", "role", "responsibilities", "approval"];
   for (const f of fields) {
     if (req.body[f] !== undefined) updateData[f] = req.body[f];
+  }
+  if (updateData.approval !== undefined && !APPROVAL_VALUES.includes(String(updateData.approval))) {
+    res.status(400).json({ error: `Invalid approval '${updateData.approval}'. Allowed: ${APPROVAL_VALUES.join(", ")}.` }); return;
   }
   if (Object.keys(updateData).length === 0) { res.status(400).json({ error: "No editable fields supplied" }); return; }
   const [member] = await db.update(projectTeamMembersTable).set(updateData).where(eq(projectTeamMembersTable.id, id)).returning();

@@ -1,5 +1,6 @@
 import {
   useGetPendingApprovals, useDecideApproval, useListProjects,
+  useUpdateProjectTeamMember,
 } from "@workspace/api-client-react";
 import { useUserStore } from "../lib/store";
 import { LIFECYCLE_STAGES } from "../lib/lifecycle-config";
@@ -7,9 +8,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  CheckSquare, CheckCircle2, XCircle, ChevronRight,
+  CheckSquare, CheckCircle2, XCircle, ChevronRight, Users,
   Clock, FileText, MessageSquare, AlertCircle, Stamp, AlertOctagon,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui-kit";
@@ -398,6 +399,81 @@ function InitiatorApproverGroups({ approvals }: { approvals: ApprovalLike[] }) {
   );
 }
 
+// ── Team Member Approvals ────────────────────────────────────────────────────
+// Surfaces every project team member still pending sign-off (the inline Approval
+// column in the project Team tab) and lets an approver Approve / Reject here.
+// Pre-RBAC: any authenticated Project Hub user can decide (PATCH allows the
+// "initiator" relationship); proper approver routing comes with full RBAC.
+function TeamApprovals() {
+  const { toast } = useToast();
+  const { role, userId } = useUserStore();
+  const { data: projects = [] } = useListProjects();
+  const update = useUpdateProjectTeamMember();
+  const { data: members = [], refetch } = useQuery({
+    queryKey: ["/api/team-members", "all"],
+    queryFn: async () => {
+      const r = await fetch("/api/team-members", { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to load team members");
+      return r.json() as Promise<Array<Record<string, unknown>>>;
+    },
+  });
+
+  const projectName = (id: unknown) => (projects as Array<{ id: number; name?: string }>).find(p => p.id === id)?.name ?? `Project #${id}`;
+
+  // Internal-member assignment requests. The initiator/testing role sees every
+  // pending request (same convention as the charter queue); a real member sees
+  // only their own. External members have no app login, so they're not routed
+  // here — that comes with full RBAC.
+  const isInitiator = role === "initiator";
+  const pending = (members ?? []).filter(m =>
+    ((m.approval as string) ?? "pending") === "pending" &&
+    m.memberType === "internal" &&
+    (isInitiator || m.userId === userId),
+  );
+  if (pending.length === 0) return null;
+
+  const decide = (m: Record<string, unknown>, approval: "approved" | "rejected") =>
+    update.mutate({ id: m.id as number, data: { approval } as never }, {
+      onSuccess: () => { void refetch(); toast({ title: approval === "approved" ? "Member approved" : "Member rejected" }); },
+      onError: () => toast({ title: "Action failed", variant: "destructive" }),
+    });
+
+  return (
+    <div>
+      <h3 className="text-sm font-bold text-foreground mb-1 mt-2 flex items-center gap-2">
+        <Users size={15} className="text-primary" /> Team Assignment Requests
+        <span className="text-xs font-normal text-muted-foreground">({pending.length})</span>
+      </h3>
+      <p className="text-xs text-muted-foreground mb-3">{isInitiator
+        ? "Internal members added to project teams, awaiting confirmation — accept or decline on their behalf (testing)."
+        : "You've been added to the following project teams — accept to confirm your role, or decline."}</p>
+      <div className="space-y-2">
+        {pending.map(m => (
+          <div key={m.id as number} className="glass-surface lift-card rounded-2xl p-3 flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground truncate">
+                {projectName(m.projectId)}
+                {m.role ? <span className="text-[11px] font-normal text-muted-foreground"> · as {m.role as string}</span> : null}
+              </p>
+              <p className="text-[11px] text-muted-foreground truncate">
+                {m.responsibilities ? (m.responsibilities as string) : "Internal team member"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button onClick={() => decide(m, "approved")} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-success/10 text-success border border-success/20 hover:bg-success/20 transition-colors">
+                <CheckCircle2 size={13} /> Accept
+              </button>
+              <button onClick={() => decide(m, "rejected")} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20 transition-colors">
+                <XCircle size={13} /> Decline
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ApprovalsList() {
   const { role, userId } = useUserStore();
   // Initiator is a testing/demo role — fetch *all* pending approvals (no
@@ -460,6 +536,9 @@ export default function ApprovalsList() {
 
       {/* Initiator-only: per-stage advance panel (covers every lifecycle stage) */}
       {isInitiator && <InitiatorStageAdvancePanel />}
+
+      {/* Team member sign-offs (from the project Team tab Approval column) */}
+      <TeamApprovals />
 
       {/* Approval items */}
       {isLoading ? (

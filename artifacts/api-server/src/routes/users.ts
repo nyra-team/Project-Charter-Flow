@@ -94,6 +94,29 @@ router.get("/users", async (_req, res): Promise<void> => {
   res.json(users.map((u) => ({ ...serializeUser(u), photoUrl: (u.email && photoByEmail.get(u.email.toLowerCase())) ?? null })));
 });
 
+// GET /api/departments — every department (master-DB employees.function),
+// including those with no projects, so the department dropdowns can offer the
+// full canonical list. Deduped + sorted. Best-effort: returns [] if master DB
+// is unavailable so the frontend falls back to project-derived departments.
+router.get("/departments", async (_req, res): Promise<void> => {
+  try {
+    const masterDb = getMasterDb();
+    const { data, error } = await masterDb
+      .from("employees")
+      .select("function")
+      .not("function", "is", null);
+    if (error) throw error;
+    const set = new Set<string>();
+    for (const row of (data ?? []) as Array<{ function: string | null }>) {
+      const f = (row.function ?? "").trim();
+      if (f) set.add(f);
+    }
+    res.json([...set].sort((a, b) => a.localeCompare(b)));
+  } catch {
+    res.json([]);
+  }
+});
+
 router.post("/users", async (req, res): Promise<void> => {
   const { name, email, role, department } = req.body;
   if (!name || !email || !role) {

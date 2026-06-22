@@ -6,16 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
-import { ArrowLeft, KeyRound, Lock, Sparkles, Send, ShieldCheck, AlertOctagon } from "lucide-react";
+import { ArrowLeft, KeyRound, Lock, Sparkles, Send, ShieldCheck, AlertOctagon, Download } from "lucide-react";
+import { buildRfxRfpDocx } from "../lib/rfx-rfp-docx";
 
 type RfxBundle = {
   event: {
     id: number; type: string; title: string; summary: string | null; brief: string | null;
     status: string; closesAt: string | null; currency: string;
     blindGrading: boolean; evaluationThresholdPct: number;
+    surrogateBiddingAllowed: boolean; alternativeBidsAllowed: boolean;
     awardRationale: string | null;
   };
   invitations: Array<{ id: number; vendorId: number; status: string; submittedAt: string | null }>;
@@ -75,62 +76,34 @@ export default function RfxDetailPage() {
           <div className="flex items-center gap-2 mt-2">
             <Badge className={STATUS_TONE[e.status] ?? ""}>{e.status}</Badge>
             {e.closesAt && <Badge variant="outline">closes {new Date(e.closesAt).toLocaleString()}</Badge>}
-            {e.blindGrading && <Badge variant="outline">blind grading</Badge>}
             <Badge variant="outline">commercial gate {e.evaluationThresholdPct}%</Badge>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={async () => {
+            try {
+              const blob = await buildRfxRfpDocx({ ...e, questions: data.questions, dimensions: data.dimensions });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `RFP_${e.title.replace(/\s+/g, "_")}.docx`;
+              document.body.appendChild(a); a.click(); a.remove();
+              URL.revokeObjectURL(url);
+            } catch (err) {
+              toast({ variant: "destructive", title: "Couldn't generate RFP", description: (err as Error).message });
+            }
+          }}>
+            <Download size={14} className="mr-1.5" /> Download RFP
+          </Button>
           {e.status === "draft" && <Button onClick={() => publish.mutate()}>Publish</Button>}
         </div>
       </div>
 
-      <Tabs defaultValue="brief">
-        <TabsList>
-          <TabsTrigger value="brief">Brief</TabsTrigger>
-          <TabsTrigger value="questions">Questions ({data.questions.length})</TabsTrigger>
-          <TabsTrigger value="dimensions">Dimensions ({data.dimensions.length})</TabsTrigger>
-          <TabsTrigger value="vendors">Vendors ({data.invitations.length})</TabsTrigger>
-          <TabsTrigger value="bids">Bids ({data.envelopes.length})</TabsTrigger>
-          <TabsTrigger value="scoring">Scoring</TabsTrigger>
-          <TabsTrigger value="award">Award</TabsTrigger>
-          <TabsTrigger value="audit">Audit</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="brief">
-          <div className="rounded-2xl border border-border bg-card/40 p-5 space-y-3 text-sm">
-            {e.summary && <p className="text-muted-foreground">{e.summary}</p>}
-            <pre className="whitespace-pre-wrap font-sans text-sm">{e.brief || "No brief yet."}</pre>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="questions">
-          <QuestionsPanel rfxId={id} questions={data.questions} editable={e.status === "draft"} />
-        </TabsContent>
-
-        <TabsContent value="dimensions">
-          <DimensionsPanel rfxId={id} dimensions={data.dimensions} editable={e.status === "draft"} />
-        </TabsContent>
-
-        <TabsContent value="vendors">
-          <VendorsPanel rfxId={id} invitations={data.invitations} allVendors={vendors} eventStatus={e.status} />
-        </TabsContent>
-
-        <TabsContent value="bids">
-          <BidsPanel rfxId={id} envelopes={data.envelopes} invitations={data.invitations} vendorById={vendorById} past={past} />
-        </TabsContent>
-
-        <TabsContent value="scoring">
-          <ScoringPanel rfxId={id} envelopes={data.envelopes} dimensions={data.dimensions} blind={e.blindGrading} />
-        </TabsContent>
-
-        <TabsContent value="award">
-          <AwardPanel rfxId={id} bundle={data} vendorById={vendorById} />
-        </TabsContent>
-
-        <TabsContent value="audit">
-          <AuditPanel rfxId={id} />
-        </TabsContent>
-      </Tabs>
+      {/* RFP brief — the only section shown. */}
+      <div className="rounded-2xl border border-border bg-card/40 p-5 space-y-3 text-sm">
+        {e.summary && <p className="text-muted-foreground">{e.summary}</p>}
+        <pre className="whitespace-pre-wrap font-sans text-sm">{e.brief || "No brief yet."}</pre>
+      </div>
     </div>
   );
 }
@@ -355,9 +328,43 @@ function ScoringPanel({ rfxId, envelopes, dimensions, blind }: { rfxId: number; 
   if (openEnvelopes.length === 0) return <p className="p-6 text-sm text-muted-foreground text-center">No envelopes opened yet. Unlock from the Bids tab first.</p>;
   if (dimensions.length === 0) return <p className="p-6 text-sm text-muted-foreground text-center">No scoring dimensions defined. Add them from the Dimensions tab.</p>;
 
+  // Once the matrix is filled, roll the scores up into a weighted ranking so the
+  // RFP shows the evaluation result + recommended vendor.
+  const ranked = openEnvelopes.map(env => {
+    const dims = dimensions.filter(d => d.kind === env.kind || env.kind === "alternative");
+    let wSum = 0, wTot = 0, have = 0;
+    for (const d of dims) {
+      const s = scores.find(x => x.envelopeId === env.id && x.dimensionId === d.id);
+      if (s) { wSum += s.score * d.weight; wTot += d.weight; have++; }
+    }
+    return { env, score: wTot ? wSum / wTot : 0, filled: dims.length > 0 && have === dims.length };
+  }).sort((a, b) => b.score - a.score);
+  const allFilled = ranked.length > 0 && ranked.every(r => r.filled);
+
   return (
     <div className="space-y-4">
       {blind && <p className="text-xs text-muted-foreground">Blind grading is on — vendor identities are hidden under aliases.</p>}
+
+      {/* Evaluation result — appears once every envelope is fully scored */}
+      {allFilled && (
+        <div className="rounded-2xl border border-primary/30 bg-primary/[0.04] p-4">
+          <h3 className="text-sm font-bold text-foreground mb-2">Evaluation Result</h3>
+          <div className="space-y-1.5">
+            {ranked.map((r, i) => (
+              <div key={r.env.id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="inline-flex items-center gap-2 min-w-0">
+                  <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-[11px] font-bold ${i === 0 ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>{i + 1}</span>
+                  <span className="truncate">{r.env.labelAlias || `Envelope #${r.env.id}`}</span>
+                  {i === 0 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-success/15 text-success">Recommended</span>}
+                </span>
+                <span className="font-bold tabular-nums">{r.score.toFixed(1)}<span className="text-xs font-normal text-muted-foreground">/100</span></span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground mt-2">Weighted across all scoring dimensions. Confirm and award on the Award tab.</p>
+        </div>
+      )}
+
       {openEnvelopes.map(env => (
         <div key={env.id} className="rounded-2xl border border-border bg-card/40 p-4 space-y-2">
           <h3 className="text-sm font-semibold">{env.labelAlias || `Envelope #${env.id}`} <Badge variant="outline" className="ml-2 text-xs">{env.kind}</Badge></h3>

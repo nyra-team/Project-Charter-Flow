@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { KPITile, DashboardCard, useAutoRefresh, type DrillColumn } from "../../components/dashboard/primitives";
 import { HoverHint, chartTooltipProps, type HoverHintRow } from "../../components/ui-kit";
 import { StageDetailDialog } from "../../components/stage-detail-dialog";
+import { CharterNfaPopup } from "../../components/CharterNfaPopup";
 import { useAuth } from "../../auth/context";
 
 const DEMAND_STAGES = ["initiation", "vendor_selection"] as const;
@@ -202,6 +203,7 @@ export default function GeneralDashboard() {
   }));
 
   const [stageDetail, setStageDetail] = useState<string | null>(null);
+  const [charterNfaOpen, setCharterNfaOpen] = useState(false);
   const projectsAtSelectedStage = useMemo(
     () => (stageDetail ? (projects ?? []).filter((p) => (p.stage ?? "initiation") === stageDetail) : []),
     [projects, stageDetail],
@@ -289,12 +291,10 @@ export default function GeneralDashboard() {
           </div>
           <div className="flex items-center gap-3">
             <RefreshButton />
-            <Link href="/demands/new">
-              <button className="btn-glossy-cta flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold" data-testid="button-new-demand">
-                <Sparkles size={14} />
-                <span>Business Case</span>
-              </button>
-            </Link>
+            <button onClick={() => setCharterNfaOpen(true)} className="btn-glossy-cta flex items-center gap-2 px-4 h-9 rounded-md text-[13px] font-semibold" data-testid="button-new-demand">
+              <Sparkles size={14} />
+              <span>Business Case</span>
+            </button>
           </div>
         </div>
       </div>
@@ -380,6 +380,7 @@ export default function GeneralDashboard() {
           priority: (p as { priority?: string | null }).priority ?? null,
         }))}
       />
+      <CharterNfaPopup open={charterNfaOpen} onClose={() => setCharterNfaOpen(false)} />
     </div>
   );
 }

@@ -23,6 +23,8 @@ export const projectTeamMembersTable = pgTable("pmo_project_team_members", {
   externalKind: text("external_kind"),
   role: text("role"),
   responsibilities: text("responsibilities"),
+  // pending | approved | rejected — set inline per member in the Team table.
+  approval: text("approval").notNull().default("pending"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

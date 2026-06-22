@@ -13,11 +13,11 @@ type Entry = { id: number; projectId: number; taskId?: number | null; workstream
 // they are distinct concepts (S does part of the work; C is asked for input).
 const RACI_OPTS = ["R", "A", "S", "C", "I"] as const;
 const RACI_META: Record<string, { color: string; bg: string; label: string }> = {
-  R: { color: "hsl(var(--primary))", bg: "hsl(var(--primary) / 0.10)", label: "Responsible" },
-  A: { color: "hsl(var(--success))", bg: "hsl(var(--success) / 0.10)", label: "Accountable" },
-  S: { color: "#0d9488", bg: "rgba(13,148,136,0.10)", label: "Support" },
-  C: { color: "hsl(var(--warn))", bg: "hsl(var(--warn) / 0.10)", label: "Consulted" },
-  I: { color: "hsl(var(--muted-foreground))", bg: "hsl(var(--border))", label: "Informed" },
+  R: { color: "hsl(var(--primary))", bg: "hsl(var(--primary) / 0.05)", label: "Responsible" },
+  A: { color: "hsl(var(--success))", bg: "hsl(var(--success) / 0.05)", label: "Accountable" },
+  S: { color: "#0d9488", bg: "rgba(13,148,136,0.05)", label: "Support" },
+  C: { color: "hsl(var(--warn))", bg: "hsl(var(--warn) / 0.05)", label: "Consulted" },
+  I: { color: "hsl(var(--muted-foreground))", bg: "hsl(var(--border) / 0.5)", label: "Informed" },
 };
 
 export function RaciTab({ projectId }: { projectId: number }) {
@@ -169,15 +169,15 @@ export function RaciTab({ projectId }: { projectId: number }) {
                       const v = cell[`${t.id}-${u.id}`]?.raciType ?? "";
                       const m = v ? RACI_META[v] : null;
                       return (
-                        <td key={u.id} className="px-1 py-1 text-center">
+                        <td key={u.id} className="px-0.5 py-0.5 text-center">
                           <select
                             value={v}
                             onChange={e => setCell(t.id, u.id, e.target.value)}
-                            className="w-12 h-7 text-xs font-bold rounded text-center border"
+                            className="w-8 h-5 text-[10px] font-bold rounded text-center border"
                             style={{
                               background: m?.bg ?? "hsl(var(--card))",
-                              color: m?.color ?? "hsl(var(--muted-foreground))",
-                              borderColor: m?.color ?? "hsl(var(--border))",
+                              color: m ? `color-mix(in srgb, ${m.color} 70%, transparent)` : "hsl(var(--muted-foreground))",
+                              borderColor: "hsl(var(--border) / 0.6)",
                             }}
                           >
                             <option value="">—</option>

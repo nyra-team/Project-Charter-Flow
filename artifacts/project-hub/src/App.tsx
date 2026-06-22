@@ -7,13 +7,16 @@ import { AuthConsumer } from "./auth/AuthConsumer";
 import { SessionExpiredModal } from "./components/SessionExpiredModal";
 import { JustificationRequiredModal } from "./components/JustificationRequiredModal";
 import { AskNyra } from "./components/AskNyra";
+import { TitleTooltip } from "./components/ui-kit/TitleTooltip";
 import NewCharterTemplate from "./pages/charter-template-new";
 import NewDemand from "./pages/demand-new";
 import CharterNfaSelect from "./pages/charter-nfa-select";
 import DemandsList from "./pages/demands";
 import PipelinePage from "./pages/pipeline";
 import CharterDetail from "./pages/charter-detail";
+import ChartersList from "./pages/charters";
 import ApprovalsList from "./pages/approvals";
+import IssuesList from "./pages/issues";
 import ProjectsList from "./pages/projects";
 import ProjectDetail from "./pages/project-detail";
 import NewTask from "./pages/task-new";
@@ -37,6 +40,7 @@ import PifNew from "./pages/pif-new";
 import PifDetail from "./pages/pif-detail";
 import NfaNew from "./pages/nfa-new";
 import NfaDetail from "./pages/nfa-detail";
+import NfasList from "./pages/nfas";
 import NudgesPage from "./pages/nudges";
 import AdminIntegrationsPage from "./pages/admin-integrations";
 import VendorsPage from "./pages/vendors";
@@ -75,10 +79,12 @@ function Router() {
       <Switch>
         <Route path="/"><Redirect to="/portfolio" /></Route>
         <Route path="/charters/new" component={NewCharterTemplate} />
+        <Route path="/charters" component={ChartersList} />
         <Route path="/charter-nfa" component={CharterNfaSelect} />
         <Route path="/demands/new" component={NewDemand} />
         <Route path="/demands" component={DemandsList} />
         <Route path="/pipeline" component={PipelinePage} />
+        <Route path="/issues" component={IssuesList} />
         <Route path="/charters/:id" component={CharterDetail} />
         <Route path="/approvals" component={ApprovalsList} />
         <Route path="/projects" component={ProjectsList} />
@@ -105,6 +111,7 @@ function Router() {
         <Route path="/pifs" component={PifsList} />
         <Route path="/nfas/new" component={NfaNew} />
         <Route path="/nfas/:id" component={NfaDetail} />
+        <Route path="/nfas" component={NfasList} />
         <Route path="/nudges" component={NudgesPage} />
         <Route path="/automations" component={AutomationsPage} />
         <Route path="/activity" component={ActivityPage} />
@@ -130,6 +137,7 @@ function App() {
             <Router />
           </WouterRouter>
           <Toaster />
+          <TitleTooltip />
           <SessionExpiredModal />
           <JustificationRequiredModal />
           <AskNyra />

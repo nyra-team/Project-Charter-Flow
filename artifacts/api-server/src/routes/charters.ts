@@ -71,6 +71,10 @@ const ExtendedCharterPatch = z.object({
   vendorMatrix: z.object({ columns: z.array(z.string()), rows: z.array(z.array(z.string())) }).optional(),
   // User-defined extra fields (step-2 form), in author-arranged order.
   customFields: z.array(z.object({ id: z.string(), label: z.string(), value: z.string() })).optional(),
+  // Author-arranged order of the narrative sections (drag-to-reorder on the
+  // e-NFA form). Stashed in the scoringWeights jsonb to avoid a DB migration;
+  // the DOCX generator reads it to order sections 2…N.
+  sectionOrder: z.array(z.string()).optional(),
   // Investment summary
   kind: z.enum(["capex", "opex", "mixed"]).optional(),
   capexAmount: z.coerce.number().optional(),
@@ -217,7 +221,13 @@ router.patch("/charters/:id", requireRole(...WRITE_ROLES), async (req, res): Pro
     res.status(400).json({ error: extended.error.message });
     return;
   }
-  const updateData: Record<string, unknown> = { ...legacy.data, ...extended.data };
+  const { sectionOrder, ...extData } = extended.data;
+  const updateData: Record<string, unknown> = { ...legacy.data, ...extData };
+  // sectionOrder has no column of its own — merge it into the scoringWeights jsonb.
+  if (sectionOrder) {
+    const [cur] = await db.select({ sw: chartersTable.scoringWeights }).from(chartersTable).where(eq(chartersTable.id, params.data.id));
+    updateData.scoringWeights = { ...((cur?.sw as Record<string, unknown>) ?? {}), sectionOrder };
+  }
   if (legacy.data.tentativeBudget !== undefined) {
     updateData.tentativeBudget = String(legacy.data.tentativeBudget);
   }
@@ -530,7 +540,8 @@ router.get("/charters/:id/docx", async (req, res): Promise<void> => {
     dir = await mkdtemp(path.join(tmpdir(), "charter-nfa-"));
     const inPath = path.join(dir, "in.json");
     const outPath = path.join(dir, "out.docx");
-    const payload = { ...formatCharter(charter as Record<string, unknown>), structuredRisks: risks };
+    const sectionOrder = (charter.scoringWeights as { sectionOrder?: string[] } | null)?.sectionOrder;
+    const payload = { ...formatCharter(charter as Record<string, unknown>), structuredRisks: risks, sectionOrder };
     await writeFile(inPath, JSON.stringify(payload), "utf-8");
 
     await new Promise<void>((resolve, reject) => {

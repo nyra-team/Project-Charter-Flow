@@ -4,6 +4,7 @@ import { useUserStore } from "../lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useListUsers } from "@workspace/api-client-react";
 import { FUNCTIONS_LIST } from "../lib/lifecycle-config";
 import { useAiStatus } from "../components/ai-button";
 import { RephraseField } from "@/components/ui-kit";
@@ -14,8 +15,17 @@ import { ExpandingTextarea } from "../components/ExpandingTextarea";
 import {
   ChevronLeft, Loader2, Plus, Trash2, FileText, Users, Target, TrendingUp,
   ShieldAlert, Coins, Table as TableIcon, ClipboardList, Sparkles, ListPlus,
-  Download, X, ExternalLink,
+  Download, X, ExternalLink, GripVertical,
 } from "lucide-react";
+import {
+  DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy,
+  useSortable, arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 // ── Single-page Project Charter + e-NFA form ───────────────────────────────
 // Mirrors the corporate Project Charter template one-to-one. Persists to the
@@ -70,6 +80,42 @@ function Grid({ children, cols = 2 }: { children: React.ReactNode; cols?: number
   const colClass = cols === 6 ? "sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6"
     : cols === 3 ? "md:grid-cols-3" : "md:grid-cols-2";
   return <div className={`grid gap-2 grid-cols-1 ${colClass}`}>{children}</div>;
+}
+
+// Canonical order of the reorderable step-2 narrative sections.
+const DEFAULT_SECTION_ORDER = [
+  "executiveSummary", "scope", "businessOutcome", "constraints",
+  "deliverables", "benefits", "risks", "vendorMatrix", "additionalFields",
+];
+
+// Wraps a step-2 <Section> with a drag handle so the whole section can be reordered.
+function SortableSection({ id, children }: { id: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 20 : undefined,
+    opacity: isDragging ? 0.85 : 1,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`group flex items-start gap-1.5 rounded-lg ${isDragging ? "bg-card shadow-lg ring-1 ring-primary/40" : ""}`}
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        title="Drag to reorder section"
+        aria-label="Drag to reorder section"
+        className="mt-2.5 shrink-0 cursor-grab touch-none rounded p-1 text-muted-foreground/50 transition-colors hover:bg-accent hover:text-primary active:cursor-grabbing"
+      >
+        <GripVertical size={16} />
+      </button>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
 }
 
 // Charter + e-NFA preview shown right after "Create Project Charter". Renders the
@@ -191,6 +237,13 @@ export default function NewCharterTemplate() {
   const [projectApprovalDate, setProjectApprovalDate] = useState("");
   const [lastRevisionDate, setLastRevisionDate] = useState("");
   const [members, setMembers] = useState<Member[]>([{ name: "" }]);
+  const { data: usersData = [] } = useListUsers();
+  // Member dropdown options = employee directory ∪ any names already chosen / AI-drafted
+  // (so a loaded name not in the directory still shows as selected).
+  const memberOptions = (() => {
+    const names = (usersData as Array<{ name?: string }>).map(u => u.name).filter((n): n is string => !!n && n.trim().length > 0);
+    return Array.from(new Set([...names, ...members.map(m => m.name).filter(n => n.trim().length > 0)]));
+  })();
 
   // Mandatory project description (Basics step) — also seeds the charter
   // `description` payload. Has its own AI "Draft" + "Rephrase" actions.
@@ -229,6 +282,9 @@ export default function NewCharterTemplate() {
   // User-defined extra fields (step 2) — add anywhere, drag to reorder.
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
 
+  // Author-arranged order of the step-2 narrative sections (drag to reorder).
+  const [sectionOrder, setSectionOrder] = useState<string[]>([...DEFAULT_SECTION_ORDER]);
+
   // Vendor comparison matrix — fully flexible table
   const [vendor, setVendor] = useState<VendorMatrix>({
     columns: ["Criteria", "Vendor A", "Vendor B"],
@@ -241,7 +297,8 @@ export default function NewCharterTemplate() {
     lastRevisionDate, members, projectDescription, refText, executiveSummary, background,
     inScope, outOfScope, businessOutcome, constraints, approvedBudget, leBudget,
     scopeLimitations, milestones, kpis, roiPerAnnum, risks, assumptions,
-    potentialAdditionalBudget, customFields, vendor,
+    potentialAdditionalBudget, customFields, vendor, sectionOrder,
+    drafted,
   }, (s) => {
     if (s.title != null) setTitle(s.title);
     if (s.projectSponsor != null) setProjectSponsor(s.projectSponsor);
@@ -271,6 +328,13 @@ export default function NewCharterTemplate() {
     if (s.potentialAdditionalBudget != null) setPotentialAdditionalBudget(s.potentialAdditionalBudget);
     if (s.customFields != null) setCustomFields(s.customFields);
     if (s.vendor != null) setVendor(s.vendor);
+    // Once an AI draft was done for these basics, don't regenerate it again.
+    if (s.drafted != null) setDrafted(s.drafted);
+    // Merge a saved order with the canonical list so new sections still appear.
+    if (Array.isArray(s.sectionOrder)) {
+      const saved = s.sectionOrder.filter((id: string) => DEFAULT_SECTION_ORDER.includes(id));
+      setSectionOrder([...saved, ...DEFAULT_SECTION_ORDER.filter(id => !saved.includes(id))]);
+    }
   });
 
   // ── dynamic-row helpers ──────────────────────────────────────────────────
@@ -282,6 +346,18 @@ export default function NewCharterTemplate() {
   const addVendorRow = () => setVendor(v => ({ ...v, rows: [...v.rows, v.columns.map(() => "")] }));
   const removeVendorColumn = (ci: number) => setVendor(v => v.columns.length <= 1 ? v : ({ columns: v.columns.filter((_, i) => i !== ci), rows: v.rows.map(r => r.filter((_, i) => i !== ci)) }));
   const removeVendorRow = (ri: number) => setVendor(v => ({ ...v, rows: v.rows.filter((_, i) => i !== ri) }));
+
+  // ── section drag-to-reorder ──────────────────────────────────────────────
+  const sectionSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+  const onSectionDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (over && active.id !== over.id) {
+      setSectionOrder(order => arrayMove(order, order.indexOf(String(active.id)), order.indexOf(String(over.id))));
+    }
+  };
 
   function pad(s: string, min: number, marker: string) {
     return s.trim().length >= min ? s : (s + " " + marker).padEnd(min, " ");
@@ -493,6 +569,7 @@ export default function NewCharterTemplate() {
         risks,
         vendorMatrix: vendor,
         customFields: customFields.filter(f => f.label.trim() || f.value.trim()),
+        sectionOrder,
       };
       for (const k of Object.keys(extended)) {
         const v = extended[k];
@@ -508,6 +585,39 @@ export default function NewCharterTemplate() {
         });
       }
 
+      // Float a draft RFP for vendor selection — generated from this charter's
+      // own data, mapped into the RFP's native format (title · one-line summary ·
+      // structured brief). Vendors' later submissions fill the Comparison Matrix.
+      try {
+        const rfpBrief = [
+          background.trim() && `Background\n${background.trim()}`,
+          inScope.trim() && `Scope of Work\n${inScope.trim()}`,
+          outOfScope.trim() && `Out of Scope\n${outOfScope.trim()}`,
+          deliverables && deliverables !== "To be defined." && `Key Deliverables\n${deliverables}`,
+          constraints.trim() && `Constraints\n${constraints.trim()}`,
+        ].filter(Boolean).join("\n\n");
+        const rfpSummary = (executiveSummary.trim().split("\n")[0] || businessOutcome.trim().split("\n")[0] || `Vendor selection for ${title.trim()}`).slice(0, 240);
+        const rfpRes = await fetch("/api/rfx", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            // Same fields a manually-created RFP carries (rfx-new form parity)
+            // so it's a complete, floatable RFP.
+            type: "rfp",
+            title: title.trim(),
+            summary: rfpSummary,
+            brief: rfpBrief || undefined,
+            currency: "INR",
+            closesAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            blindGrading: true,
+            surrogateBiddingAllowed: true,
+            alternativeBidsAllowed: false,
+            charterId: id,
+          }),
+        });
+        if (rfpRes.ok) toast({ title: "RFP generated", description: "A draft RFP was placed in the RFP section." });
+      } catch { /* charter is saved regardless — RFP is best-effort */ }
+
       const pcId = charter.pcId ?? `PC-${new Date().getFullYear()}-${String(id).padStart(5, "0")}`;
       clearFormDraft("pmo:charter-draft");
       toast({ title: `Project Charter created — ${pcId}` });
@@ -522,7 +632,7 @@ export default function NewCharterTemplate() {
   }
 
   return (
-    <div className="w-full pb-4 -mt-1 sm:-mt-3 lg:-mt-6 [&_input]:shadow-none [&_input]:rounded-md [&_input]:border [&_input]:border-slate-200 [&_input]:bg-white [&_textarea]:shadow-none [&_textarea]:rounded-md [&_textarea]:border [&_textarea]:border-slate-200 [&_textarea]:bg-white [&_[role=combobox]]:rounded-md [&_[role=combobox]]:bg-white [&_[role=combobox]]:border [&_[role=combobox]]:border-slate-200 [&_[role=combobox]]:font-normal [&_[role=combobox]]:shadow-none [&_[role=combobox]:focus]:ring-0 [&_input:focus]:border-blue-300 [&_input:focus-visible]:border-blue-300 [&_input:focus-visible]:ring-blue-200 [&_textarea:focus]:border-blue-300 [&_textarea:focus]:outline-none [&_textarea:focus]:ring-1 [&_textarea:focus]:ring-blue-200 [&_[role=combobox]:focus]:border-blue-300">
+    <div className="w-full pb-4 [&_input]:shadow-none [&_input]:rounded-md [&_input]:border [&_input]:border-slate-200 [&_input]:bg-white [&_textarea]:shadow-none [&_textarea]:rounded-md [&_textarea]:border [&_textarea]:border-slate-200 [&_textarea]:bg-white [&_[role=combobox]]:rounded-md [&_[role=combobox]]:bg-white [&_[role=combobox]]:border [&_[role=combobox]]:border-slate-200 [&_[role=combobox]]:font-normal [&_[role=combobox]]:shadow-none [&_[role=combobox]:focus]:ring-0 [&_input:focus]:border-blue-300 [&_input:focus-visible]:border-blue-300 [&_input:focus-visible]:ring-blue-200 [&_textarea:focus]:border-blue-300 [&_textarea:focus]:outline-none [&_textarea:focus]:ring-1 [&_textarea:focus]:ring-blue-200 [&_[role=combobox]:focus]:border-blue-300">
       <div className="mb-1">
         <Link href="/">
           <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -617,7 +727,12 @@ export default function NewCharterTemplate() {
               <div className="space-y-1.5">
                 {members.map((m, i) => (
                   <div key={i} className="flex gap-2">
-                    <Input value={m.name} onChange={e => setMembers(arr => arr.map((x, j) => j === i ? { name: e.target.value } : x))} placeholder="Member name" className="h-9 flex-1" />
+                    <Select value={m.name || undefined} onValueChange={val => setMembers(arr => arr.map((x, j) => j === i ? { name: val } : x))}>
+                      <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="Select member…" /></SelectTrigger>
+                      <SelectContent>
+                        {memberOptions.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
                     {members.length > 1 && (
                       <button type="button" onClick={() => setMembers(arr => arr.filter((_, j) => j !== i))} className="w-9 h-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={14} /></button>
                     )}
@@ -660,125 +775,140 @@ export default function NewCharterTemplate() {
               </p>
             </div>
           )}
-
-          {/* ── Description & Background ───────────────────────────────────── */}
-          <Section title="Executive Summary" icon={<FileText size={18} />}>
-            <RephraseField label="Executive Summary" value={executiveSummary} onChange={setExecutiveSummary} rows={4} aiEnabled={aiEnabled} context="the 'Executive Summary' of a Project Charter" placeholder="A concise summary of the initiative — what it is, why now, and the headline value..." />
-            <RephraseField label="Background" value={background} onChange={setBackground} rows={4} aiEnabled={aiEnabled} context="the 'Background' section of a Project Charter" placeholder="The history and context that led to this initiative..." />
-          </Section>
-
-          {/* ── Scope ─────────────────────────────────────────────────────── */}
-          <Section title="Scope" icon={<Target size={18} />}>
-            <RephraseField label="In Scope" value={inScope} onChange={setInScope} rows={3} aiEnabled={aiEnabled} context="the 'In Scope' section of a Project Charter" placeholder="What this project will deliver / cover..." />
-            <RephraseField label="Out of Scope" value={outOfScope} onChange={setOutOfScope} rows={3} aiEnabled={aiEnabled} context="the 'Out of Scope' section of a Project Charter" placeholder="What is explicitly excluded..." />
-          </Section>
-
-          {/* ── Business Outcome ──────────────────────────────────────────── */}
-          <Section title="Business Outcome" icon={<TrendingUp size={18} />}>
-            <RephraseField label="Business Outcome" value={businessOutcome} onChange={setBusinessOutcome} rows={3} aiEnabled={aiEnabled} context="the 'Business Outcome' section of a Project Charter" placeholder="The expected business outcome of this project..." />
-          </Section>
-
-          {/* ── Constraints ───────────────────────────────────────────────── */}
-          <Section title="Constraints" subtitle="Scope limitations and other constraints" icon={<Coins size={18} />}>
-            <RephraseField label="Scope Limitations" value={scopeLimitations} onChange={setScopeLimitations} rows={2} aiEnabled={aiEnabled} context="the 'Scope Limitations' of a Project Charter" placeholder="Known limitations on scope..." />
-            <RephraseField label="Other Constraints" value={constraints} onChange={setConstraints} rows={2} aiEnabled={aiEnabled} context="the 'Constraints' section of a Project Charter" placeholder="Time, resourcing, technical, regulatory constraints..." />
-          </Section>
-
-          {/* ── Deliverables / Milestones ─────────────────────────────────── */}
-          <Section title="Project Deliverables" subtitle="Key milestones, owners and target dates" icon={<ClipboardList size={18} />}>
-            <div className="space-y-2">
-              <div className="hidden md:grid grid-cols-[1fr_180px_150px_40px] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                <span>Key Milestone</span><span>Responsible</span><span>Target Date</span><span />
-              </div>
-              {milestones.map((m, i) => (
-                <div key={i} className="grid grid-cols-1 md:grid-cols-[1fr_180px_150px_40px] gap-2">
-                  <Input value={m.milestone} onChange={e => setMilestones(arr => arr.map((x, j) => j === i ? { ...x, milestone: e.target.value } : x))} placeholder="Milestone" className="h-8" />
-                  <Input value={m.responsible} onChange={e => setMilestones(arr => arr.map((x, j) => j === i ? { ...x, responsible: e.target.value } : x))} placeholder="Responsible" className="h-8" />
-                  <Input type="date" value={m.targetDate} onChange={e => setMilestones(arr => arr.map((x, j) => j === i ? { ...x, targetDate: e.target.value } : x))} className="h-8" />
-                  {milestones.length > 1
-                    ? <button type="button" onClick={() => setMilestones(arr => arr.filter((_, j) => j !== i))} className="w-10 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={15} /></button>
-                    : <span />}
-                </div>
-              ))}
-            </div>
-            <button type="button" onClick={addMilestone} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80"><Plus size={13} /> Add milestone</button>
-          </Section>
-
-          {/* ── Benefits ──────────────────────────────────────────────────── */}
-          <Section title="Benefits" subtitle="Topline improvement, bottom-line optimization, compliance benefits & productivity improvement" icon={<TrendingUp size={18} />}>
-            <div className="space-y-2">
-              <div className="hidden md:grid grid-cols-[1fr_1fr_1fr_40px] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                <span>KPI</span><span>Base Line</span><span>Goal</span><span />
-              </div>
-              {kpis.map((k, i) => (
-                <div key={i} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_40px] gap-2">
-                  <Input value={k.kpi} onChange={e => setKpis(arr => arr.map((x, j) => j === i ? { ...x, kpi: e.target.value } : x))} placeholder="KPI" className="h-8" />
-                  <Input value={k.baseline} onChange={e => setKpis(arr => arr.map((x, j) => j === i ? { ...x, baseline: e.target.value } : x))} placeholder="Baseline" className="h-8" />
-                  <Input value={k.goal} onChange={e => setKpis(arr => arr.map((x, j) => j === i ? { ...x, goal: e.target.value } : x))} placeholder="Goal" className="h-8" />
-                  {kpis.length > 1
-                    ? <button type="button" onClick={() => setKpis(arr => arr.filter((_, j) => j !== i))} className="w-10 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={15} /></button>
-                    : <span />}
-                </div>
-              ))}
-            </div>
-            <button type="button" onClick={addKpi} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80"><Plus size={13} /> Add KPI</button>
-            <Field label="ROI / Annum" hint="₹ per year">
-              <Input type="number" value={roiPerAnnum} onChange={e => setRoiPerAnnum(e.target.value)} placeholder="0" className="h-8 md:max-w-xs" />
-            </Field>
-          </Section>
-
-          {/* ── Risks / Assumptions / Additional budget ───────────────────── */}
-          <Section title="Risks, Assumptions & Additional Budget" icon={<ShieldAlert size={18} />}>
-            <RephraseField label="Risks" value={risks} onChange={setRisks} rows={3} aiEnabled={aiEnabled} context="the 'Risks' section of a Project Charter" placeholder="Key risks and mitigations..." />
-            <RephraseField label="Assumptions" value={assumptions} onChange={setAssumptions} rows={3} aiEnabled={aiEnabled} context="the 'Assumptions' section of a Project Charter" placeholder="Assumptions underpinning the plan..." />
-            <RephraseField label="Potential Additional Budget Areas" value={potentialAdditionalBudget} onChange={setPotentialAdditionalBudget} rows={2} aiEnabled={aiEnabled} context="the 'Potential Additional Budget' section of a Project Charter" placeholder="Areas that may need additional budget later..." />
-          </Section>
-
-          {/* ── Vendor Comparison Matrix ──────────────────────────────────── */}
-          <Section title="Vendor Comparison Matrix" subtitle="Add columns and rows as desired" icon={<TableIcon size={18} />}>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr>
-                    {vendor.columns.map((c, ci) => (
-                      <th key={ci} className="p-1 min-w-[140px]">
-                        <div className="flex items-center gap-1">
-                          <Input value={c} onChange={e => setVendor(v => ({ ...v, columns: v.columns.map((x, j) => j === ci ? e.target.value : x) }))} className="h-8 font-semibold" />
-                          {vendor.columns.length > 1 && (
-                            <button type="button" onClick={() => removeVendorColumn(ci)} title="Remove column" className="text-muted-foreground hover:text-destructive shrink-0"><Trash2 size={13} /></button>
-                          )}
-                        </div>
-                      </th>
+          {/* ── Reorderable narrative sections — drag the grip to reorder. ── */}
+          <p className="text-[11px] text-muted-foreground -mb-1 pl-5">Drag the <GripVertical size={11} className="inline -mt-0.5" /> handle to reorder sections — the order is saved and used in the generated document.</p>
+          {(() => {
+            const sectionNodes: Record<string, React.ReactNode> = {
+              executiveSummary: (
+                <Section title="Executive Summary" icon={<FileText size={18} />}>
+                  <RephraseField label="Executive Summary" value={executiveSummary} onChange={setExecutiveSummary} rows={4} aiEnabled={aiEnabled} context="the 'Executive Summary' of a Project Charter" placeholder="A concise summary of the initiative — what it is, why now, and the headline value..." />
+                  <RephraseField label="Background" value={background} onChange={setBackground} rows={4} aiEnabled={aiEnabled} context="the 'Background' section of a Project Charter" placeholder="The history and context that led to this initiative..." />
+                </Section>
+              ),
+              scope: (
+                <Section title="Scope" icon={<Target size={18} />}>
+                  <RephraseField label="In Scope" value={inScope} onChange={setInScope} rows={3} aiEnabled={aiEnabled} context="the 'In Scope' section of a Project Charter" placeholder="What this project will deliver / cover..." />
+                  <RephraseField label="Out of Scope" value={outOfScope} onChange={setOutOfScope} rows={3} aiEnabled={aiEnabled} context="the 'Out of Scope' section of a Project Charter" placeholder="What is explicitly excluded..." />
+                </Section>
+              ),
+              businessOutcome: (
+                <Section title="Business Outcome" icon={<TrendingUp size={18} />}>
+                  <RephraseField label="Business Outcome" value={businessOutcome} onChange={setBusinessOutcome} rows={3} aiEnabled={aiEnabled} context="the 'Business Outcome' section of a Project Charter" placeholder="The expected business outcome of this project..." />
+                </Section>
+              ),
+              constraints: (
+                <Section title="Constraints" subtitle="Scope limitations and other constraints" icon={<Coins size={18} />}>
+                  <RephraseField label="Scope Limitations" value={scopeLimitations} onChange={setScopeLimitations} rows={2} aiEnabled={aiEnabled} context="the 'Scope Limitations' of a Project Charter" placeholder="Known limitations on scope..." />
+                  <RephraseField label="Other Constraints" value={constraints} onChange={setConstraints} rows={2} aiEnabled={aiEnabled} context="the 'Constraints' section of a Project Charter" placeholder="Time, resourcing, technical, regulatory constraints..." />
+                </Section>
+              ),
+              deliverables: (
+                <Section title="Project Deliverables" subtitle="Key milestones, owners and target dates" icon={<ClipboardList size={18} />}>
+                  <div className="space-y-2">
+                    <div className="hidden md:grid grid-cols-[1fr_180px_150px_40px] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <span>Key Milestone</span><span>Responsible</span><span>Target Date</span><span />
+                    </div>
+                    {milestones.map((m, i) => (
+                      <div key={i} className="grid grid-cols-1 md:grid-cols-[1fr_180px_150px_40px] gap-2">
+                        <Input value={m.milestone} onChange={e => setMilestones(arr => arr.map((x, j) => j === i ? { ...x, milestone: e.target.value } : x))} placeholder="Milestone" className="h-8" />
+                        <Input value={m.responsible} onChange={e => setMilestones(arr => arr.map((x, j) => j === i ? { ...x, responsible: e.target.value } : x))} placeholder="Responsible" className="h-8" />
+                        <Input type="date" value={m.targetDate} onChange={e => setMilestones(arr => arr.map((x, j) => j === i ? { ...x, targetDate: e.target.value } : x))} className="h-8" />
+                        {milestones.length > 1
+                          ? <button type="button" onClick={() => setMilestones(arr => arr.filter((_, j) => j !== i))} className="w-10 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={15} /></button>
+                          : <span />}
+                      </div>
                     ))}
-                    <th className="w-10" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {vendor.rows.map((row, ri) => (
-                    <tr key={ri}>
-                      {row.map((cell, ci) => (
-                        <td key={ci} className="p-1">
-                          <Input value={cell} onChange={e => setVendor(v => ({ ...v, rows: v.rows.map((r, j) => j === ri ? r.map((x, k) => k === ci ? e.target.value : x) : r) }))} className="h-8" />
-                        </td>
-                      ))}
-                      <td className="p-1">
-                        <button type="button" onClick={() => removeVendorRow(ri)} title="Remove row" className="w-9 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10"><Trash2 size={14} /></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="flex gap-4">
-              <button type="button" onClick={addVendorRow} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80"><Plus size={13} /> Add row</button>
-              <button type="button" onClick={addVendorColumn} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80"><Plus size={13} /> Add column</button>
-            </div>
-          </Section>
-
-          {/* ── Additional (user-defined) fields ──────────────────────────── */}
-          <Section title="Additional Fields" subtitle="Add your own sections anywhere — drag the handle to reorder" icon={<ListPlus size={18} />}>
-            <CustomFieldsEditor fields={customFields} onChange={setCustomFields} />
-          </Section>
+                  </div>
+                  <button type="button" onClick={addMilestone} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80"><Plus size={13} /> Add milestone</button>
+                </Section>
+              ),
+              benefits: (
+                <Section title="Benefits" subtitle="Topline improvement, bottom-line optimization, compliance benefits & productivity improvement" icon={<TrendingUp size={18} />}>
+                  <div className="space-y-2">
+                    <div className="hidden md:grid grid-cols-[1fr_1fr_1fr_40px] gap-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <span>KPI</span><span>Base Line</span><span>Goal</span><span />
+                    </div>
+                    {kpis.map((k, i) => (
+                      <div key={i} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_40px] gap-2">
+                        <Input value={k.kpi} onChange={e => setKpis(arr => arr.map((x, j) => j === i ? { ...x, kpi: e.target.value } : x))} placeholder="KPI" className="h-8" />
+                        <Input value={k.baseline} onChange={e => setKpis(arr => arr.map((x, j) => j === i ? { ...x, baseline: e.target.value } : x))} placeholder="Baseline" className="h-8" />
+                        <Input value={k.goal} onChange={e => setKpis(arr => arr.map((x, j) => j === i ? { ...x, goal: e.target.value } : x))} placeholder="Goal" className="h-8" />
+                        {kpis.length > 1
+                          ? <button type="button" onClick={() => setKpis(arr => arr.filter((_, j) => j !== i))} className="w-10 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={15} /></button>
+                          : <span />}
+                      </div>
+                    ))}
+                  </div>
+                  <button type="button" onClick={addKpi} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80"><Plus size={13} /> Add KPI</button>
+                  <Field label="ROI / Annum" hint="₹ per year">
+                    <Input type="number" value={roiPerAnnum} onChange={e => setRoiPerAnnum(e.target.value)} placeholder="0" className="h-8 md:max-w-xs" />
+                  </Field>
+                </Section>
+              ),
+              risks: (
+                <Section title="Risks, Assumptions & Additional Budget" icon={<ShieldAlert size={18} />}>
+                  <RephraseField label="Risks" value={risks} onChange={setRisks} rows={3} aiEnabled={aiEnabled} context="the 'Risks' section of a Project Charter" placeholder="Key risks and mitigations..." />
+                  <RephraseField label="Assumptions" value={assumptions} onChange={setAssumptions} rows={3} aiEnabled={aiEnabled} context="the 'Assumptions' section of a Project Charter" placeholder="Assumptions underpinning the plan..." />
+                  <RephraseField label="Potential Additional Budget Areas" value={potentialAdditionalBudget} onChange={setPotentialAdditionalBudget} rows={2} aiEnabled={aiEnabled} context="the 'Potential Additional Budget' section of a Project Charter" placeholder="Areas that may need additional budget later..." />
+                </Section>
+              ),
+              vendorMatrix: (
+                <Section title="Vendor Comparison Matrix" subtitle="Add columns and rows as desired" icon={<TableIcon size={18} />}>
+                  <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-sm">
+                      <thead>
+                        <tr>
+                          {vendor.columns.map((c, ci) => (
+                            <th key={ci} className="p-1 min-w-[140px]">
+                              <div className="flex items-center gap-1">
+                                <Input value={c} onChange={e => setVendor(v => ({ ...v, columns: v.columns.map((x, j) => j === ci ? e.target.value : x) }))} className="h-8 font-semibold" />
+                                {vendor.columns.length > 1 && (
+                                  <button type="button" onClick={() => removeVendorColumn(ci)} title="Remove column" className="text-muted-foreground hover:text-destructive shrink-0"><Trash2 size={13} /></button>
+                                )}
+                              </div>
+                            </th>
+                          ))}
+                          <th className="w-10" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {vendor.rows.map((row, ri) => (
+                          <tr key={ri}>
+                            {row.map((cell, ci) => (
+                              <td key={ci} className="p-1">
+                                <Input value={cell} onChange={e => setVendor(v => ({ ...v, rows: v.rows.map((r, j) => j === ri ? r.map((x, k) => k === ci ? e.target.value : x) : r) }))} className="h-8" />
+                              </td>
+                            ))}
+                            <td className="p-1">
+                              <button type="button" onClick={() => removeVendorRow(ri)} title="Remove row" className="w-9 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10"><Trash2 size={14} /></button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex gap-4">
+                    <button type="button" onClick={addVendorRow} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80"><Plus size={13} /> Add row</button>
+                    <button type="button" onClick={addVendorColumn} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80"><Plus size={13} /> Add column</button>
+                  </div>
+                </Section>
+              ),
+              additionalFields: (
+                <Section title="Additional Fields" subtitle="Add your own sections anywhere — drag the handle to reorder" icon={<ListPlus size={18} />}>
+                  <CustomFieldsEditor fields={customFields} onChange={setCustomFields} />
+                </Section>
+              ),
+            };
+            return (
+              <DndContext sensors={sectionSensors} collisionDetection={closestCenter} onDragEnd={onSectionDragEnd}>
+                <SortableContext items={sectionOrder} strategy={verticalListSortingStrategy}>
+                  {sectionOrder.map(id => sectionNodes[id]
+                    ? <SortableSection key={id} id={id}>{sectionNodes[id]}</SortableSection>
+                    : null)}
+                </SortableContext>
+              </DndContext>
+            );
+          })()}
 
           {/* ── Step 2 footer ─────────────────────────────────────────────── */}
           <div className="flex items-center justify-between gap-3 pt-2">

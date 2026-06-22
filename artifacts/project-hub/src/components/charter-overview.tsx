@@ -5,6 +5,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { Download, FileText } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/extra-api";
 import { formatCurrency } from "../lib/format";
 import { getStatusMeta } from "../lib/task-constants";
@@ -136,6 +138,16 @@ export function CharterOverview({
   // the most open work — feed the right-side "insights" (no per-task listing).
   let subTotal = 0, subDone = 0;
   for (const arr of subsByParent.values()) { subTotal += arr.length; subDone += arr.filter((s) => s.status === "completed").length; }
+  // Proper completion roll-up across tasks AND subtasks: a parent task is
+  // represented by its subtasks (3/4 subtasks done → 75%, not 0); a leaf task
+  // with no subtasks counts as one unit. This drives the headline % + verdict.
+  let unitTotal = 0, unitDone = 0;
+  for (const t of top) {
+    const subs = (t.id != null ? subsByParent.get(t.id) : undefined) ?? [];
+    if (subs.length) { unitTotal += subs.length; unitDone += subs.filter((s) => s.status === "completed").length; }
+    else { unitTotal += 1; if (t.status === "completed") unitDone += 1; }
+  }
+  const rollupPct = unitTotal ? Math.round((unitDone / unitTotal) * 100) : (pnum("progress") ?? 0);
   const upcomingMs = milestones
     .filter((m) => m.status !== "completed" && m.dueDate)
     .map((m) => ({ m, t: new Date(m.dueDate!).getTime() }))
@@ -169,6 +181,61 @@ export function CharterOverview({
 
   // ── AI summary — reads the milestones + tasks and explains the project ────
   const projId = Number(p.id ?? 0);
+
+  // ── e-NFAs for this project — kept here so they can be downloaded (.docx)
+  //    from the overview. "Draft demo e-NFA" seeds one (with a vendor-evaluation
+  //    checkpoint) linked to this project so the flow can be demoed end-to-end.
+  const { toast } = useToast();
+  const { data: nfas = [], refetch: refetchNfas } = useQuery({
+    queryKey: ["project-nfas", projId],
+    queryFn: () => api.get<Array<{ id: number; noteNo: string; subject: string; status: string }>>(`/api/nfas?projectId=${projId}`),
+    enabled: projId > 0,
+  });
+  // Download via fetch (the global interceptor attaches the bearer the .docx
+  // route requires) → blob → save. A plain <a href> would 401 (no bearer).
+  async function downloadNfaDocx(id: number, name: string) {
+    try {
+      const res = await fetch(`/api/nfas/${id}/docx`);
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(name || "e-nfa").replace(/[^\w.-]+/g, "_")}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Download failed", variant: "destructive" });
+    }
+  }
+
+  const [demoBusy, setDemoBusy] = useState(false);
+  async function draftDemoNfa() {
+    if (!projId) return;
+    setDemoBusy(true);
+    try {
+      await api.post("/api/nfas", {
+        projectId: projId,
+        subject: `${projectName || str(p, "name") || "Project"} — Vendor Procurement Approval (Demo)`,
+        department: str(p, "function"),
+        functionDept: str(p, "function"),
+        background: "Demo e-NFA generated for this project to seek approval for vendor procurement, ahead of floating an RFP.",
+        requirements: "Procure the systems / services scoped in the project charter.",
+        justification: "Required to deliver the project objectives within the approved timeline and budget.",
+        vendorDetails: "Vendor evaluation checkpoint — RFP to be floated to vendors; the comparison matrix will be filled from the vendors' submitted data via the RFP evaluation.",
+        modeOfProcurement: "RFP / competitive bidding",
+        financialImplication: "As per the approved project budget.",
+        recommendation: "Recommended for approval to proceed with the RFP for vendor selection.",
+        signatories: [],
+      });
+      toast({ title: "Demo e-NFA drafted", description: "Download it below or open to edit." });
+      void refetchNfas();
+    } catch {
+      toast({ title: "Could not draft demo e-NFA", variant: "destructive" });
+    } finally {
+      setDemoBusy(false);
+    }
+  }
   const aiInput = (() => {
     const lines: string[] = [`Project: ${str(c, "title") || projectName || "Project"}`];
     if (str(p, "status")) lines.push(`Status: ${cap(str(p, "status"))}`);
@@ -462,9 +529,9 @@ export function CharterOverview({
         <div className="rounded-lg border border-border/60 bg-card/50 p-2.5 mb-3">
           <div className="flex items-center gap-2 mb-2">
             <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-              <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${tpct}%` }} />
+              <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${rollupPct}%` }} />
             </div>
-            <span className="text-[12px] font-bold tabular-nums text-foreground">{tpct}%</span>
+            <span className="text-[12px] font-bold tabular-nums text-foreground">{rollupPct}%</span>
           </div>
           <div className="flex flex-wrap gap-x-2.5 gap-y-1 text-[10.5px]">
             <span className="inline-flex items-center gap-1"><span className="text-muted-foreground">Total</span><b className="text-foreground tabular-nums">{total}</b></span>
@@ -484,16 +551,16 @@ export function CharterOverview({
           <Para>No tasks yet — a summary will appear as work is added.</Para>
         ) : (() => {
           const behind = msOverdue > 0 || tdelayed > 0;
-          const verdict = tpct >= 100 ? "fully delivered" : behind ? "running behind schedule" : "on track";
-          const verdictTone = tpct >= 100 || !behind ? "#16A34A" : "#DC2626";
+          const verdict = rollupPct >= 100 ? "fully delivered" : behind ? "running behind schedule" : "on track";
+          const verdictTone = rollupPct >= 100 || !behind ? "#16A34A" : "#DC2626";
           const s: string[] = [];
-          s.push(`The project is ${tpct}% complete, with ${tdone} of ${total} task${total === 1 ? "" : "s"} done.`);
+          s.push(`The project is ${rollupPct}% complete across all tasks and subtasks.`);
+          s.push(`${tdone} of ${total} top-level task${total === 1 ? "" : "s"} ${tdone === 1 ? "is" : "are"} done${subTotal ? `, and ${subDone} of ${subTotal} subtask${subTotal === 1 ? "" : "s"}` : ""}.`);
           const wip: string[] = [];
           if (tinprog) wip.push(`${tinprog} in progress`);
           if (tnot) wip.push(`${tnot} not started`);
           if (wip.length) s.push(`${wip.join(" and ")}${wip.length === 1 ? " remains" : " remain"}.`);
           if (tdelayed || tonhold) s.push(`${tdelayed + tonhold} task${tdelayed + tonhold === 1 ? "" : "s"} need attention (${tdelayed} delayed, ${tonhold} on hold).`);
-          if (subTotal) s.push(`Subtasks are ${subDone} of ${subTotal} complete.`);
           if (milestones.length) s.push(`${msDone} of ${milestones.length} milestone${milestones.length === 1 ? "" : "s"} ${msDone === 1 ? "is" : "are"} complete${msOverdue ? `, with ${msOverdue} overdue` : ""}.`);
           if (bottleneck) s.push(`Most of the remaining work is in “${bottleneck.name}” (${bottleneck.open} open).`);
           if (nextMs) s.push(`The next milestone is “${nextMs.name}”${nextMs.dueDate ? `, due ${fmtDate(nextMs.dueDate)}` : ""}.`);
@@ -520,6 +587,32 @@ export function CharterOverview({
           ownerName ? ["Project Owner", <span className="inline-flex items-center rounded px-1.5 py-0.5 bg-primary/10 text-primary font-semibold">{ownerName}</span>] : null,
           members.length > 0 ? ["Key Members", members.filter((m) => m.name?.trim()).map((m) => m.name).join(", ") || "—"] : null,
         ]} />
+      </Section>
+
+      {/* Approval Notes (e-NFA) — this project's notes, downloadable as .docx */}
+      <Section title="Approval Notes (e-NFA)">
+        {nfas.length === 0 ? (
+          <p className="text-[12px] text-muted-foreground">No e-NFA for this project yet.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {nfas.map((n) => (
+              <div key={n.id} className="flex items-center justify-between gap-2">
+                <Link href={`/nfas/${n.id}`}>
+                  <span className="inline-flex items-center gap-1.5 text-[12px] text-foreground hover:text-primary truncate cursor-pointer">
+                    <FileText size={12} className="text-primary shrink-0" />
+                    {n.subject || n.noteNo}
+                  </span>
+                </Link>
+                <button onClick={() => downloadNfaDocx(n.id, n.subject || n.noteNo)} className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline" title="Download .docx">
+                  <Download size={11} /> .docx
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button onClick={draftDemoNfa} disabled={demoBusy || !projId} className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed">
+          {demoBusy ? "Drafting…" : "+ Draft demo e-NFA"}
+        </button>
       </Section>
     </aside>
     </div>

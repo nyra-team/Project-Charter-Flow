@@ -111,9 +111,9 @@ export default function NfasList() {
 
       {/* ── List ───────────────────────────────────────────────────── */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-40 rounded-2xl" />
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
           ))}
         </div>
       ) : !nfas || nfas.length === 0 ? (
@@ -140,7 +140,7 @@ export default function NfasList() {
                   <StatusIcon status={b.statuses[0]} />
                   {b.label} · {b.items.length}
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
                   {b.items.map((n) => (
                     <NfaCard key={n.id} nfa={n} />
                   ))}
@@ -158,19 +158,19 @@ function NfaCard({ nfa }: { nfa: Nfa }) {
   const total = nfa.signatories?.length ?? 0;
   return (
     <Link href={`/nfas/${nfa.id}`}>
-      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 group cursor-pointer" data-testid={`nfa-card-${nfa.id}`}>
-        <div className="flex items-start justify-between gap-3 mb-2">
-          <span className="px-2 py-0.5 rounded bg-accent text-accent-foreground text-[10px] font-mono uppercase tracking-wider shrink-0">
+      <div className="glass-surface lift-card rounded-xl p-3 cursor-pointer" data-testid={`nfa-card-${nfa.id}`}>
+        <div className="flex items-center justify-between gap-2 mb-1.5">
+          <span className="px-1.5 py-0.5 rounded bg-accent text-accent-foreground text-[9px] font-mono uppercase tracking-wider shrink-0">
             No. {nfa.noteNo}
           </span>
-          <span className="text-[10px] font-mono text-muted-foreground">{approved}/{total} signed</span>
+          <span className="text-[9px] font-mono text-muted-foreground shrink-0">{approved}/{total} signed</span>
         </div>
-        <h3 className="text-base font-semibold tracking-tight text-card-foreground line-clamp-2 min-h-[2.5rem]">
+        <h3 className="text-sm font-semibold tracking-tight text-card-foreground line-clamp-1">
           {nfa.subject || "(untitled note)"}
         </h3>
-        <div className="mt-4 pt-3 border-t border-border/60 flex items-center justify-between text-[11px] text-muted-foreground">
-          <span className="font-mono">{nfa.totalInr || nfa.totalUsd || nfa.department || "—"}</span>
-          <span>Updated {formatDate(nfa.updatedAt)}</span>
+        <div className="mt-2 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+          <span className="font-mono truncate">{nfa.totalInr || nfa.totalUsd || nfa.department || "—"}</span>
+          <span className="shrink-0">{formatDate(nfa.updatedAt)}</span>
         </div>
       </div>
     </Link>

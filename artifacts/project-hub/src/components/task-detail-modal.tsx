@@ -268,6 +268,9 @@ export function TaskDetailModal({
   useEffect(() => { if (editingDesc && descRef.current) descRef.current.innerHTML = task.description ?? ""; }, [editingDesc, task.description]);
   const [subName, setSubName] = useState("");
   const [subOpen, setSubOpen] = useState(false);
+  // Live value while dragging the no-subtask progress slider (null = use stored).
+  const [progressDraft, setProgressDraft] = useState<number | null>(null);
+  useEffect(() => { setProgressDraft(null); }, [task.id, task.progressPct]);
   const { data: people = [] } = useListUsers();
   const createTask = useCreateTask();
 
@@ -488,6 +491,38 @@ export function TaskDetailModal({
                 </div>
               )}
             </div>
+
+            {/* Progress slider — only when the task has no subtasks. With subtasks,
+                progress is derived (rolled up) and shown read-only inside Subtasks. */}
+            {subtasks.length === 0 && (() => {
+              const stored = task.status === "completed" ? 100 : Math.max(0, Math.min(100, task.progressPct ?? 0));
+              const shown = task.status === "completed" ? 100 : (progressDraft ?? stored);
+              const commit = (v: number) => { if (v !== stored) patch.mutate({ progressPct: v }); };
+              return (
+                <div className="mb-3">
+                  <p className="text-[12px] font-semibold text-[#172b4d] mb-2">Progress</p>
+                  <div className="flex items-center gap-3">
+                    {/* Uncontrolled: the browser owns the thumb during drag (a controlled
+                        value re-rendered from react-query can stick). Remounts via key when
+                        the server value changes; the % label tracks the live draft. */}
+                    <input
+                      key={`${task.id}:${stored}`}
+                      type="range" min={0} max={100} step={5}
+                      defaultValue={stored}
+                      disabled={task.status === "completed"}
+                      onClick={(e) => e.stopPropagation()}
+                      onInput={(e) => setProgressDraft(Number((e.target as HTMLInputElement).value))}
+                      onChange={(e) => setProgressDraft(Number(e.target.value))}
+                      onPointerUp={(e) => commit(Number((e.target as HTMLInputElement).value))}
+                      onKeyUp={(e) => commit(Number((e.target as HTMLInputElement).value))}
+                      className="flex-1 h-1.5 accent-[#22a06b] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    />
+                    <span className="text-[12px] text-[#626f86] num-tabular shrink-0 w-10 text-right">{shown}%</span>
+                  </div>
+                  {task.status === "completed" && <p className="text-[11px] text-[#626f86] mt-1">Completed — fixed at 100%.</p>}
+                </div>
+              );
+            })()}
 
             {/* Subtasks + Linked work items — hidden when this task is itself a
                 subtask (no nesting / cross-links from a subtask's own popup). */}
