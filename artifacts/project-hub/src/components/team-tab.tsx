@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   useListProjectTeamMembers, useCreateProjectTeamMember,
   useUpdateProjectTeamMember, useDeleteProjectTeamMember,
@@ -6,9 +6,7 @@ import {
   useListUsers,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Users, Building2, Plus, Pencil, Trash2, Download, UserCheck } from "lucide-react";
+import { Users, Building2, Plus, Trash2, Download, UserCheck, Check, X, ChevronDown, Info } from "lucide-react";
 
 // ── Domain types (mirror the generated API shapes; kept local so the table code
 //    reads cleanly, same convention as resource-tab.tsx / raci-tab.tsx). ───────
@@ -23,15 +21,24 @@ type Member = {
   externalKind?: string | null;
   role?: string | null;
   responsibilities?: string | null;
+  approval?: string | null;
 };
 type RaciCell = { id: number; projectId: number; memberId: number; deliverable: string; raciType: string };
 type User = { id: number; name: string; role?: string; department?: string; photoUrl?: string | null };
 
 const EXTERNAL_KINDS = ["vendor", "partner", "consultant", "contractor"] as const;
 
+// Per-member approval status — set inline via the Approval column.
+const APPROVAL_OPTS = ["pending", "approved", "rejected"] as const;
+const APPROVAL_META: Record<string, { label: string; color: string; bg: string }> = {
+  pending: { label: "Pending", color: "hsl(var(--warn))", bg: "hsl(var(--warn) / 0.10)" },
+  approved: { label: "Approved", color: "hsl(var(--success))", bg: "hsl(var(--success) / 0.10)" },
+  rejected: { label: "Rejected", color: "hsl(var(--destructive))", bg: "hsl(var(--destructive) / 0.10)" },
+};
+
 // RASCI legend — identical palette to the per-task RACI matrix (raci-tab.tsx) so
 // the two surfaces read the same across the app.
-const RACI_OPTS = ["R", "A", "S", "C", "I"] as const;
+const RACI_OPTS = ["R", "A", "C", "I"] as const;
 const RACI_META: Record<string, { color: string; bg: string; label: string }> = {
   R: { color: "hsl(var(--primary))", bg: "hsl(var(--primary) / 0.10)", label: "Responsible" },
   A: { color: "hsl(var(--success))", bg: "hsl(var(--success) / 0.10)", label: "Accountable" },
@@ -40,6 +47,41 @@ const RACI_META: Record<string, { color: string; bg: string; label: string }> = 
   I: { color: "hsl(var(--muted-foreground))", bg: "hsl(var(--border))", label: "Informed" },
 };
 
+// Detailed per-role explanation — shown in the RACI header info popover.
+const RACI_DESC: Record<string, string> = {
+  R: "Does the actual work to produce the deliverable. Can be several people.",
+  A: "Ultimately answerable — approves and signs off. Exactly one per deliverable.",
+  C: "Consulted for input or expertise before decisions are made (two-way dialogue).",
+  I: "Kept informed of progress and outcomes after the fact (one-way updates).",
+};
+
+// Solid cell fills for the matrix letters (the bold colored look of the reference).
+
+// Info "i" with a styled hover card detailing what each RACI letter means.
+function RaciInfo() {
+  return (
+    <span className="relative inline-flex group/raci align-middle">
+      <Info size={13} className="text-muted-foreground hover:text-primary cursor-help transition-colors" aria-label="What is RACI?" />
+      <span className="pointer-events-none absolute left-1/2 bottom-full z-50 mb-2 w-60 -translate-x-1/4 origin-bottom scale-95 opacity-0 transition-all duration-150 group-hover/raci:scale-100 group-hover/raci:opacity-100">
+        <span className="block rounded-lg border border-border bg-popover/95 backdrop-blur p-2.5 text-left shadow-xl ring-1 ring-black/5">
+          <span className="block text-[10px] font-bold text-foreground mb-1.5">RACI — who does what per deliverable</span>
+          <ul className="space-y-1">
+            {RACI_OPTS.map(k => (
+              <li key={k} className="flex gap-1.5 text-[10px] leading-snug">
+                <span className="mt-0.5 inline-flex items-center justify-center w-3.5 h-3.5 rounded text-[8px] font-bold shrink-0" style={{ color: RACI_META[k].color, background: RACI_META[k].bg }}>{k}</span>
+                <span className="text-muted-foreground"><b className="text-foreground">{RACI_META[k].label}</b> — {RACI_DESC[k]}</span>
+              </li>
+            ))}
+          </ul>
+          <span className="block mt-1.5 pt-1.5 border-t border-border/60 text-[9px] text-muted-foreground">
+            Exactly one <b className="text-foreground">Accountable</b> per deliverable; R / C / I may each have several.
+          </span>
+        </span>
+      </span>
+    </span>
+  );
+}
+
 function nameInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -47,7 +89,8 @@ function nameInitials(name: string): string {
   return ((parts[0]![0] ?? "") + (parts[parts.length - 1]![0] ?? "")).toUpperCase();
 }
 
-type FormState = {
+// Draft row state — one new (unsaved) member being filled inline in the table.
+type Draft = {
   memberType: "internal" | "external";
   userId: string;
   externalName: string;
@@ -56,11 +99,42 @@ type FormState = {
   externalKind: string;
   role: string;
   responsibilities: string;
+  approval: string;
 };
-const EMPTY_FORM: FormState = {
-  memberType: "internal", userId: "", externalName: "", externalOrg: "",
-  externalEmail: "", externalKind: "vendor", role: "", responsibilities: "",
-};
+const emptyDraft = (memberType: "internal" | "external"): Draft => ({
+  memberType, userId: "", externalName: "", externalOrg: "",
+  externalEmail: "", externalKind: "vendor", role: "", responsibilities: "", approval: "pending",
+});
+
+// Per-table column widths + a drag-to-resize handler (in-memory, per instance).
+function useColWidths(initial: Record<string, number>) {
+  const [w, setW] = useState<Record<string, number>>(initial);
+  const startResize = (key: string) => (e: React.MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
+    const startX = e.clientX;
+    const startW = w[key] ?? 120;
+    const onMove = (ev: MouseEvent) => setW(prev => ({ ...prev, [key]: Math.max(48, startW + (ev.clientX - startX)) }));
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = ""; document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none";
+  };
+  return { w, startResize };
+}
+
+// A header cell with a drag handle on its right edge.
+function ResizableTh({ children, onResize, className }: { children: React.ReactNode; onResize: (e: React.MouseEvent) => void; className?: string }) {
+  return (
+    <th className={`relative ${className ?? ""}`}>
+      {children}
+      <span onMouseDown={onResize} title="Drag to resize" aria-hidden className="absolute top-0 right-0 h-full w-1.5 translate-x-1/2 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 z-10" />
+    </th>
+  );
+}
 
 export function TeamTab({ projectId }: { projectId: number }) {
   const { toast } = useToast();
@@ -87,64 +161,34 @@ export function TeamTab({ projectId }: { projectId: number }) {
   const memberSub = (m: Member) =>
     m.memberType === "internal" ? (usersById.get(m.userId ?? -1)?.department ?? null) : (m.externalOrg ?? null);
 
-  // ── Add / edit modal ────────────────────────────────────────────────────────
-  const [showForm, setShowForm] = useState(false);
-  const [editId, setEditId] = useState<number | null>(null);
-  const [form, setForm] = useState<FormState>(EMPTY_FORM);
+  // ── Inline add (draft row) + inline edit (per-cell) ──────────────────────────
+  // Per-type drafts so BOTH tables can carry their own default "to-be-added" row.
+  const [internalDraft, setInternalDraft] = useState<Draft | null>(null);
+  const [externalDraft, setExternalDraft] = useState<Draft | null>(null);
 
-  function openAdd(memberType: "internal" | "external") {
-    setEditId(null);
-    setForm({ ...EMPTY_FORM, memberType });
-    setShowForm(true);
-  }
-  function openEdit(m: Member) {
-    setEditId(m.id);
-    setForm({
-      memberType: m.memberType,
-      userId: m.userId != null ? String(m.userId) : "",
-      externalName: m.externalName ?? "",
-      externalOrg: m.externalOrg ?? "",
-      externalEmail: m.externalEmail ?? "",
-      externalKind: m.externalKind ?? "vendor",
-      role: m.role ?? "",
-      responsibilities: m.responsibilities ?? "",
+  function saveDraft(draft: Draft, clear: () => void) {
+    if (draft.memberType === "internal" && !draft.userId) { toast({ title: "Select an employee", variant: "destructive" }); return; }
+    if (draft.memberType === "external" && !draft.externalName.trim()) { toast({ title: "Enter the member's name", variant: "destructive" }); return; }
+
+    const data: any = draft.memberType === "internal"
+      ? { memberType: "internal", userId: parseInt(draft.userId), role: draft.role || undefined, responsibilities: draft.responsibilities || undefined, approval: draft.approval }
+      : {
+          memberType: "external", externalName: draft.externalName, externalOrg: draft.externalOrg || undefined,
+          externalEmail: draft.externalEmail || undefined, externalKind: draft.externalKind || undefined,
+          role: draft.role || undefined, responsibilities: draft.responsibilities || undefined, approval: draft.approval,
+        };
+    createMember.mutate({ id: projectId, data }, {
+      onSuccess: () => { toast({ title: "Member added" }); clear(); refetch(); },
+      onError: () => toast({ title: "Failed to save member", variant: "destructive" }),
     });
-    setShowForm(true);
   }
 
-  function handleSubmit() {
-    if (form.memberType === "internal" && !form.userId) { toast({ title: "Select an employee", variant: "destructive" }); return; }
-    if (form.memberType === "external" && !form.externalName.trim()) { toast({ title: "Enter the member's name", variant: "destructive" }); return; }
-
-    const onDone = (msg: string) => {
-      toast({ title: msg });
-      setShowForm(false);
-      setForm(EMPTY_FORM);
-      setEditId(null);
-      refetch();
-    };
-    const onErr = () => toast({ title: "Failed to save member", variant: "destructive" });
-
-    if (editId != null) {
-      // Edit only touches the editable fields (memberType is fixed once created).
-      const data = form.memberType === "internal"
-        ? { userId: parseInt(form.userId), role: form.role || undefined, responsibilities: form.responsibilities || undefined }
-        : {
-            externalName: form.externalName, externalOrg: form.externalOrg || undefined,
-            externalEmail: form.externalEmail || undefined, externalKind: form.externalKind || undefined,
-            role: form.role || undefined, responsibilities: form.responsibilities || undefined,
-          };
-      updateMember.mutate({ id: editId, data }, { onSuccess: () => onDone("Member updated"), onError: onErr });
-    } else {
-      const data = form.memberType === "internal"
-        ? { memberType: "internal", userId: parseInt(form.userId), role: form.role || undefined, responsibilities: form.responsibilities || undefined }
-        : {
-            memberType: "external", externalName: form.externalName, externalOrg: form.externalOrg || undefined,
-            externalEmail: form.externalEmail || undefined, externalKind: form.externalKind || undefined,
-            role: form.role || undefined, responsibilities: form.responsibilities || undefined,
-          };
-      createMember.mutate({ id: projectId, data }, { onSuccess: () => onDone("Member added"), onError: onErr });
-    }
+  // Inline per-cell edit of an existing member.
+  function updateField(m: Member, patch: Record<string, unknown>) {
+    updateMember.mutate({ id: m.id, data: patch as any }, {
+      onSuccess: () => refetch(),
+      onError: () => toast({ title: "Failed to update member", variant: "destructive" }),
+    });
   }
 
   function handleDelete(m: Member) {
@@ -152,8 +196,13 @@ export function TeamTab({ projectId }: { projectId: number }) {
     deleteMember.mutate({ id: m.id }, { onSuccess: () => { refetch(); refetchRaci(); toast({ title: "Member removed" }); } });
   }
 
-  // ── RACI matrix (members × deliverables) ──────────────────────────────────────
+  // ── RACI matrix — ROLES (columns) × deliverables (rows). Assignment is to the
+  //    ROLE, not an individual. The backend keys cells by memberId, so each role
+  //    column is persisted against every member holding that role (so it round-trips).
   const [extraDeliverables, setExtraDeliverables] = useState<string[]>([]);
+  const [raciOpen, setRaciOpen] = useState(true);
+  const [newDeliverable, setNewDeliverable] = useState<string | null>(null);
+
   const deliverables = useMemo(() => {
     const set = new Set<string>();
     for (const c of cells) set.add(c.deliverable);
@@ -161,41 +210,83 @@ export function TeamTab({ projectId }: { projectId: number }) {
     return Array.from(set);
   }, [cells, extraDeliverables]);
 
+  // The matrix renders only the project's own deliverables — no prefilled
+  // defaults. It stays empty until the user adds rows manually.
+  const displayDeliverables = deliverables;
+
+  // Distinct roles on the team → one column each, in first-seen order.
+  const roles = useMemo(() => {
+    const seen: string[] = [];
+    for (const m of members) { const r = (m.role ?? "").trim(); if (r && !seen.includes(r)) seen.push(r); }
+    return seen;
+  }, [members]);
+
+  // role -> every member id holding it (a letter is written to all of them).
+  const roleMemberIds = useMemo(() => {
+    const m = new Map<string, number[]>();
+    for (const mem of members) {
+      const r = (mem.role ?? "").trim();
+      if (!r) continue;
+      const arr = m.get(r) ?? []; arr.push(mem.id); m.set(r, arr);
+    }
+    return m;
+  }, [members]);
+
   const cellMap = useMemo(() => {
     const m: Record<string, RaciCell | undefined> = {};
     for (const c of cells) m[`${c.memberId}__${c.deliverable}`] = c;
     return m;
   }, [cells]);
 
-  function setCell(memberId: number, deliverable: string, type: string) {
-    const existing = cellMap[`${memberId}__${deliverable}`];
-    if (type === "") {
-      if (existing) deleteRaci.mutate({ id: existing.id }, { onSuccess: () => refetchRaci() });
-      return;
+  // Current letter for a (deliverable, role) cell — read off any member of the role.
+  const letterFor = (deliverable: string, role: string): string => {
+    for (const mid of roleMemberIds.get(role) ?? []) {
+      const c = cellMap[`${mid}__${deliverable}`];
+      if (c) return c.raciType;
     }
-    if (existing) {
-      // No PATCH endpoint — delete + recreate, same as the per-task RACI tab.
-      deleteRaci.mutate({ id: existing.id }, {
-        onSuccess: () => createRaci.mutate({ id: projectId, data: { memberId, deliverable, raciType: type } }, { onSuccess: () => refetchRaci() }),
-      });
-    } else {
-      createRaci.mutate({ id: projectId, data: { memberId, deliverable, raciType: type } }, { onSuccess: () => refetchRaci() });
+    return "";
+  };
+
+  // Persist a letter for (role, deliverable). Writes to all members of that role;
+  // "" clears it. Enforces a single Accountable per deliverable (clears other A's).
+  function setRoleCell(role: string, deliverable: string, type: string) {
+    const mids = roleMemberIds.get(role) ?? [];
+    if (mids.length === 0) return;
+    const toDelete: number[] = [];
+    for (const mid of mids) { const ex = cellMap[`${mid}__${deliverable}`]; if (ex) toDelete.push(ex.id); }
+    if (type === "A") {
+      for (const c of cells) if (c.deliverable === deliverable && c.raciType === "A" && !mids.includes(c.memberId)) toDelete.push(c.id);
     }
+    Promise.all(toDelete.map(id => deleteRaci.mutateAsync({ id })))
+      .then(() => type
+        ? Promise.all(mids.map(mid => createRaci.mutateAsync({ id: projectId, data: { memberId: mid, deliverable, raciType: type } }))).then(() => refetchRaci())
+        : refetchRaci());
+  }
+
+  // Click a cell to cycle —  ·  → R → A → C → I →  ·
+  const CYCLE = ["", "R", "A", "C", "I"] as const;
+  function cycleCell(role: string, deliverable: string) {
+    const cur = letterFor(deliverable, role);
+    setRoleCell(role, deliverable, CYCLE[(CYCLE.indexOf(cur as never) + 1 + CYCLE.length) % CYCLE.length]);
   }
 
   function addDeliverable() {
-    const name = prompt("Deliverable / workstream name (e.g. Plan, Build, Test, Deploy):")?.trim();
-    if (!name) return;
-    if (deliverables.includes(name)) { toast({ title: "That column already exists" }); return; }
-    setExtraDeliverables(prev => [...prev, name]);
+    const d = (newDeliverable ?? "").trim();
+    if (!d) { setNewDeliverable(null); return; }
+    if (deliverables.includes(d)) { toast({ title: "That deliverable already exists", variant: "destructive" }); return; }
+    setExtraDeliverables(prev => [...prev, d]);
+    setNewDeliverable(null);
+  }
+  function removeDeliverable(d: string) {
+    if (!confirm(`Remove the "${d}" row and its RACI assignments?`)) return;
+    const ids = cells.filter(c => c.deliverable === d).map(c => c.id);
+    Promise.all(ids.map(id => deleteRaci.mutateAsync({ id }))).then(() => refetchRaci());
+    setExtraDeliverables(prev => prev.filter(x => x !== d));
   }
 
   function exportCsv() {
-    const headers = ["Member", "Type", "Role", ...deliverables];
-    const rows = members.map(m => {
-      const raci = deliverables.map(d => cellMap[`${m.id}__${d}`]?.raciType ?? "");
-      return [memberName(m), m.memberType, m.role ?? "", ...raci];
-    });
+    const headers = ["Task / Deliverable", ...roles];
+    const rows = displayDeliverables.map(d => [d, ...roles.map(r => letterFor(d, r))]);
     const csv = [headers, ...rows]
       .map(row => row.map(c => `"${(c ?? "").replace(/"/g, '""')}"`).join(","))
       .join("\n");
@@ -211,10 +302,10 @@ export function TeamTab({ projectId }: { projectId: number }) {
   const Avatar = ({ m }: { m: Member }) => {
     const photo = m.memberType === "internal" ? usersById.get(m.userId ?? -1)?.photoUrl : null;
     const name = memberName(m);
-    if (photo) return <img src={photo} alt={name} className="w-7 h-7 rounded-full object-cover border border-border" />;
+    if (photo) return <img src={photo} alt={name} className="w-6 h-6 rounded-full object-cover border border-border" />;
     return (
       <span
-        className="inline-flex items-center justify-center w-7 h-7 rounded-full text-[10px] font-semibold text-white shrink-0"
+        className="inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-semibold text-white shrink-0"
         style={{ background: m.memberType === "internal" ? "hsl(var(--primary))" : "#0d9488" }}
       >
         {nameInitials(name)}
@@ -223,273 +314,348 @@ export function TeamTab({ projectId }: { projectId: number }) {
   };
 
   return (
-    <div className="space-y-5">
-      {/* Header */}
-      <div className="glass-surface lift-card ph-rise rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h3 className="font-semibold text-foreground flex items-center gap-2">
-            <Users size={16} className="text-primary" /> Project Team Management
-          </h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {internal.length} internal · {external.length} external — all participants in one place
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => openAdd("internal")}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90"
-          >
-            <Plus size={14} /> Add internal
-          </button>
-          <button
-            onClick={() => openAdd("external")}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold border border-border hover:bg-muted/40"
-            style={{ color: "#0d9488" }}
-          >
-            <Plus size={14} /> Add external
-          </button>
-        </div>
-      </div>
-
+    <div className="space-y-2">
       {/* Internal Team */}
       <MemberSection
         title="Internal Team" subtitle="Employees and resources from within the organization."
-        icon={<Users size={15} className="text-primary" />} members={internal}
-        Avatar={Avatar} memberName={memberName} memberSub={memberSub}
-        onEdit={openEdit} onDelete={handleDelete}
-        emptyHint='No internal members yet. Click "Add internal" to assign employees.'
+        icon={<Users size={15} className="text-primary" />} members={internal} type="internal"
+        usersArr={usersArr} Avatar={Avatar} memberName={memberName} memberSub={memberSub}
+        onUpdateField={updateField} onDelete={handleDelete}
+        draft={internalDraft} onDraftChange={setInternalDraft} onDraftSave={() => internalDraft && saveDraft(internalDraft, () => setInternalDraft(null))} onDraftCancel={() => setInternalDraft(null)}
+        emptyHint='No internal members yet. Click "Add internal" to add a row.'
       />
 
       {/* External Team */}
       <MemberSection
         title="External Team" subtitle="Vendor, partner, consultant or contractor resources on this project."
-        icon={<Building2 size={15} style={{ color: "#0d9488" }} />} members={external}
-        Avatar={Avatar} memberName={memberName} memberSub={memberSub}
-        onEdit={openEdit} onDelete={handleDelete} showKind
-        emptyHint='No external members yet. Click "Add external" to add a vendor or consultant.'
+        icon={<Building2 size={15} style={{ color: "#0d9488" }} />} members={external} type="external"
+        usersArr={usersArr} Avatar={Avatar} memberName={memberName} memberSub={memberSub}
+        onUpdateField={updateField} onDelete={handleDelete} showKind
+        draft={externalDraft} onDraftChange={setExternalDraft} onDraftSave={() => externalDraft && saveDraft(externalDraft, () => setExternalDraft(null))} onDraftCancel={() => setExternalDraft(null)}
+        emptyHint='No external members yet. Click "Add external" to add a row.'
       />
 
-      {/* RACI matrix */}
-      <div className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
-        <div className="px-5 py-3 border-b border-border/60 flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <h4 className="text-sm font-bold text-foreground flex items-center gap-2"><UserCheck size={15} className="text-primary" /> Team RACI Matrix</h4>
-            <p className="text-xs text-muted-foreground mt-0.5">Who is Responsible / Accountable / Support / Consulted / Informed for each deliverable.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={addDeliverable} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg border border-border hover:bg-muted/40">
-              <Plus size={13} /> Deliverable
+      {/* RASCI — inline table (deliverable × role), same pattern as the member tables.
+          No overflow-hidden so the header info popover isn't clipped; header gets its
+          own rounded top to keep the corners clean. */}
+      <div className="rounded-lg border border-border border-l-4" style={{ borderLeftColor: "#8b5cf6" }}>
+        <div className="px-2.5 py-1 border-b border-border bg-muted/50 rounded-t-[6px] flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-1 min-w-0">
+            <button onClick={() => setRaciOpen(o => !o)} className="flex items-center gap-1 min-w-0 text-left">
+              <ChevronDown size={12} className={`text-muted-foreground transition-transform ${raciOpen ? "" : "-rotate-90"}`} />
+              <h4 className="text-xs font-bold text-foreground flex items-center gap-1"><UserCheck size={12} className="text-primary" /> Team RACI Matrix</h4>
             </button>
-            <button onClick={exportCsv} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg border border-border hover:bg-muted/40">
-              <Download size={13} /> CSV
+            <RaciInfo />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button onClick={() => { setRaciOpen(true); setNewDeliverable(""); }} className="flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg text-primary-foreground bg-primary hover:bg-primary/90">
+              <Plus size={12} /> Add task / deliverable
+            </button>
+            <button onClick={exportCsv} className="flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-lg border border-border hover:bg-muted/40">
+              <Download size={12} /> CSV
             </button>
           </div>
         </div>
 
-        {/* Legend */}
-        <div className="px-5 py-2.5 border-b border-border/60 flex items-center gap-3 flex-wrap">
-          <span className="text-xs font-semibold text-muted-foreground">LEGEND:</span>
-          {RACI_OPTS.map(k => (
-            <span key={k} className="text-xs flex items-center gap-1.5">
-              <span className="w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center" style={{ background: RACI_META[k].bg, color: RACI_META[k].color }}>{k}</span>
-              {RACI_META[k].label}
-            </span>
-          ))}
-        </div>
-
-        {members.length === 0 || deliverables.length === 0 ? (
-          <div className="p-10 text-center text-sm text-muted-foreground">
-            {members.length === 0 ? "Add team members first, then map their RACI." : 'Add a deliverable column to start mapping RACI.'}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead style={{ background: "hsl(var(--muted) / 0.40)" }}>
-                <tr>
-                  <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase sticky left-0 z-10" style={{ background: "hsl(var(--muted) / 0.40)" }}>Member</th>
-                  {deliverables.map(d => (
-                    <th key={d} className="text-center px-2 py-2 text-xs font-bold text-muted-foreground uppercase whitespace-nowrap">{d}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {members.map(m => (
-                  <tr key={m.id} className="border-t border-border/60">
-                    <td className="px-4 py-2 sticky left-0 bg-card">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Avatar m={m} />
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-foreground truncate">{memberName(m)}</p>
-                          <p className="text-[11px] text-muted-foreground truncate">
-                            {m.memberType === "external" ? "External" : "Internal"}{m.role ? ` · ${m.role}` : ""}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    {deliverables.map(d => {
-                      const v = cellMap[`${m.id}__${d}`]?.raciType ?? "";
-                      const meta = v ? RACI_META[v] : null;
-                      return (
-                        <td key={d} className="px-1 py-1 text-center">
-                          <select
-                            value={v}
-                            onChange={e => setCell(m.id, d, e.target.value)}
-                            className="w-12 h-7 text-xs font-bold rounded text-center border"
-                            style={{
-                              background: meta?.bg ?? "hsl(var(--card))",
-                              color: meta?.color ?? "hsl(var(--muted-foreground))",
-                              borderColor: meta?.color ?? "hsl(var(--border))",
-                            }}
-                          >
-                            <option value="">—</option>
-                            {RACI_OPTS.map(o => <option key={o} value={o}>{o}</option>)}
-                          </select>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {raciOpen && (<>
+        {roles.length === 0 && (
+          <div className="px-3 py-1.5 border-b border-border bg-amber-50 text-[11px] text-amber-700">
+            Assign a <b>Role</b> to team members above — each distinct role becomes a column here. You can still add deliverables now.
           </div>
         )}
-      </div>
+        <div className="overflow-x-auto p-2">
+          <table className="w-full text-sm border-collapse table-fixed [&_th]:border [&_th]:border-border [&_td]:border [&_td]:border-border">
+            <thead>
+              <tr>
+                <th className="w-44 text-center px-2 py-2 text-[11px] font-bold text-foreground">Tasks / Deliverables</th>
+                {roles.map(r => (
+                  <th key={r} className="text-center px-2 py-2 text-[11px] font-bold text-foreground whitespace-nowrap">{r}</th>
+                ))}
+                <th className="w-9" />
+              </tr>
+            </thead>
+            <tbody>
+              {displayDeliverables.length === 0 && (
+                <tr>
+                  <td colSpan={roles.length + 2} className="px-3 py-3 text-center text-[11px] text-muted-foreground">
+                    No tasks / deliverables yet — use <b>Add task / deliverable</b> to start the matrix.
+                  </td>
+                </tr>
+              )}
+              {displayDeliverables.map(d => (
+                <tr key={d} className="group/row">
+                  <td className="px-3 py-0.5 text-[12px] font-medium text-foreground bg-white text-center align-middle leading-snug">{d}</td>
+                  {roles.map(r => {
+                    const letter = letterFor(d, r);
+                    return (
+                      <td key={r} className="p-0.5 text-center align-middle">
+                        <button
+                          type="button"
+                          onClick={() => cycleCell(r, d)}
+                          title={letter ? `${RACI_META[letter]?.label ?? letter} — click to change` : "Click to assign R / A / C / I"}
+                          className="w-full h-full min-h-[22px] flex items-center justify-center text-[12px] font-bold text-foreground transition-colors hover:bg-muted/30"
+                        >
+                          {letter || <span className="text-base font-normal text-muted-foreground/30">+</span>}
+                        </button>
+                      </td>
+                    );
+                  })}
+                  <td className="px-1 text-center align-middle">
+                    <button onClick={() => removeDeliverable(d)} className="text-muted-foreground/50 hover:text-destructive transition-colors" title="Remove deliverable"><Trash2 size={13} /></button>
+                  </td>
+                </tr>
+              ))}
 
-      {/* Add / edit modal */}
-      <Dialog open={showForm} onOpenChange={v => { if (!v) { setShowForm(false); setEditId(null); } }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {form.memberType === "internal"
-                ? <><Users size={16} className="text-primary" /> {editId != null ? "Edit" : "Add"} internal member</>
-                : <><Building2 size={16} style={{ color: "#0d9488" }} /> {editId != null ? "Edit" : "Add"} external member</>}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            {form.memberType === "internal" ? (
-              <div>
-                <label className="text-xs font-semibold text-muted-foreground">Employee</label>
-                <select
-                  value={form.userId}
-                  onChange={e => setForm({ ...form, userId: e.target.value })}
-                  className="w-full text-sm border border-border rounded-lg px-3 py-2 mt-1"
-                >
-                  <option value="">Select employee…</option>
-                  {usersArr.map(u => <option key={u.id} value={u.id}>{u.name}{u.role ? ` (${u.role})` : ""}</option>)}
-                </select>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-muted-foreground">Name</label>
-                    <Input value={form.externalName} onChange={e => setForm({ ...form, externalName: e.target.value })} placeholder="e.g. Priya Nair" />
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-muted-foreground">Organisation</label>
-                    <Input value={form.externalOrg} onChange={e => setForm({ ...form, externalOrg: e.target.value })} placeholder="e.g. Acme Consulting" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs font-semibold text-muted-foreground">Type</label>
-                    <select
-                      value={form.externalKind}
-                      onChange={e => setForm({ ...form, externalKind: e.target.value })}
-                      className="w-full text-sm border border-border rounded-lg px-3 py-2 mt-1 capitalize"
-                    >
-                      {EXTERNAL_KINDS.map(k => <option key={k} value={k} className="capitalize">{k}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs font-semibold text-muted-foreground">Email</label>
-                    <Input type="email" value={form.externalEmail} onChange={e => setForm({ ...form, externalEmail: e.target.value })} placeholder="name@vendor.com" />
-                  </div>
-                </div>
-              </>
-            )}
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground">Role</label>
-              <Input value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} placeholder="e.g. Project Manager, Security Consultant" />
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-muted-foreground">Responsibilities</label>
-              <textarea
-                value={form.responsibilities}
-                onChange={e => setForm({ ...form, responsibilities: e.target.value })}
-                placeholder="What this person is responsible for on the project…"
-                rows={3}
-                className="w-full text-sm border border-border rounded-lg px-3 py-2 mt-1 resize-y"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={() => { setShowForm(false); setEditId(null); }} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted/40">Cancel</button>
-              <button onClick={handleSubmit} className="px-4 py-2 text-sm font-semibold text-primary-foreground rounded-lg bg-primary hover:bg-primary/90">
-                {editId != null ? "Save" : "Add member"}
-              </button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+              {/* New-deliverable draft row */}
+              {newDeliverable !== null && (
+                <tr>
+                  <td className="px-2 py-1 bg-white">
+                    <input
+                      value={newDeliverable}
+                      onChange={e => setNewDeliverable(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") addDeliverable(); if (e.key === "Escape") setNewDeliverable(null); }}
+                      placeholder="Task / deliverable name"
+                      autoFocus
+                      className="w-full min-w-0 text-xs border border-border rounded px-2 py-1 bg-card outline-none focus:ring-1 focus:ring-primary/40"
+                    />
+                  </td>
+                  <td colSpan={roles.length} className="px-3 text-[11px] text-muted-foreground">Add the row, then click each role's cell to assign R / A / C / I.</td>
+                  <td className="px-1 text-center whitespace-nowrap">
+                    <button onClick={addDeliverable} className="text-success hover:opacity-80 transition" title="Add"><Check size={15} /></button>
+                    <button onClick={() => setNewDeliverable(null)} className="text-muted-foreground/70 hover:text-destructive transition ml-1" title="Cancel"><X size={15} /></button>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+        </div>
+      </>)}
+      </div>
     </div>
   );
 }
 
-// A single category table (Internal or External). Kept as a small local
-// component so both sections share exactly one layout.
+// Approval status dropdown — shared by existing rows and the draft row.
+function ApprovalSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const v = APPROVAL_META[value] ? value : "pending";
+  const meta = APPROVAL_META[v]!;
+  return (
+    <select
+      value={v}
+      onChange={e => onChange(e.target.value)}
+      className="text-xs font-medium bg-transparent px-2 py-0.5 outline-none border-0 cursor-pointer"
+      style={{ color: meta.color }}
+    >
+      {APPROVAL_OPTS.map(o => (
+        <option key={o} value={o} style={{ color: "hsl(var(--foreground))", background: "hsl(var(--card))" }}>{APPROVAL_META[o].label}</option>
+      ))}
+    </select>
+  );
+}
+
+// Uncontrolled inline text cell for an existing member — saves on blur, only if
+// the value actually changed. key={value} remounts it when a refetch brings a new
+// server value so the defaultValue stays in sync.
+function CellInput({ value, placeholder, onSave, multiline }: { value: string; placeholder?: string; onSave: (v: string) => void; multiline?: boolean }) {
+  if (multiline) {
+    // Auto-grow textarea so a long responsibility wraps onto further lines in full.
+    const grow = (el: HTMLTextAreaElement) => { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; };
+    return (
+      <textarea
+        key={value}
+        defaultValue={value}
+        placeholder={placeholder}
+        rows={1}
+        ref={el => { if (el) grow(el); }}
+        onInput={e => grow(e.currentTarget)}
+        onBlur={e => { const next = e.target.value.trim(); if (next !== value) onSave(next); }}
+        className="w-full bg-transparent text-xs px-2 py-0.5 outline-none border-0 resize-none leading-snug whitespace-pre-wrap break-words overflow-hidden"
+      />
+    );
+  }
+  return (
+    <input
+      key={value}
+      defaultValue={value}
+      placeholder={placeholder}
+      onBlur={e => { const next = e.target.value.trim(); if (next !== value) onSave(next); }}
+      className="w-full bg-transparent text-xs px-2 py-0.5 outline-none border-0"
+    />
+  );
+}
+
+// A single category table (Internal or External). Rows are inline-editable and a
+// blank draft row is appended when the user clicks Add internal / Add external.
 function MemberSection({
-  title, subtitle, icon, members, Avatar, memberName, memberSub, onEdit, onDelete, emptyHint, showKind,
+  title, subtitle, icon, members, type, usersArr, Avatar, memberName, memberSub,
+  onUpdateField, onDelete, draft, onDraftChange, onDraftSave, onDraftCancel, emptyHint, showKind,
 }: {
   title: string; subtitle: string; icon: React.ReactNode; members: Member[];
+  type: "internal" | "external"; usersArr: User[];
   Avatar: (p: { m: Member }) => JSX.Element;
   memberName: (m: Member) => string; memberSub: (m: Member) => string | null;
-  onEdit: (m: Member) => void; onDelete: (m: Member) => void; emptyHint: string; showKind?: boolean;
+  onUpdateField: (m: Member, patch: Record<string, unknown>) => void; onDelete: (m: Member) => void;
+  draft: Draft | null; onDraftChange: (d: Draft) => void; onDraftSave: () => void; onDraftCancel: () => void;
+  emptyHint: string; showKind?: boolean;
 }) {
+  const colCount = showKind ? 6 : 5;
+  const [open, setOpen] = useState(true);
+  const accent = type === "internal" ? "#3b82f6" : "#10b981";
+  const cols = [
+    { key: "member", label: "Member", w: 240 },
+    ...(showKind ? [{ key: "type", label: "Type", w: 100 }] : []),
+    { key: "role", label: "Role", w: 150 },
+    { key: "resp", label: "Responsibility", w: 220 },
+    { key: "approval", label: "Approval", w: 110 },
+    { key: "actions", label: "", w: 48 },
+  ];
+  const { w, startResize } = useColWidths(Object.fromEntries(cols.map(c => [c.key, c.w])));
+  // Empty table → show a default blank "to-be-added" row by default.
+  useEffect(() => {
+    if (members.length === 0 && !draft) onDraftChange(emptyDraft(type));
+  }, [members.length, draft, type]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
-    <div className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
-      <div className="px-5 py-3 border-b border-border/60">
-        <h4 className="text-sm font-bold text-foreground flex items-center gap-2">{icon} {title} <span className="text-xs font-normal text-muted-foreground">({members.length})</span></h4>
-        <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
+    <div className="rounded-lg border border-border border-l-4 overflow-hidden" style={{ borderLeftColor: accent }}>
+      <div className="px-2.5 py-1 border-b border-border bg-muted/50 flex items-center justify-between gap-2">
+        <button onClick={() => setOpen(o => !o)} className="flex items-center gap-1 min-w-0 text-left" title={subtitle}>
+          <ChevronDown size={12} className={`text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
+          <h4 className="text-xs font-bold text-foreground flex items-center gap-1">{icon} {title} <span className="text-[10px] font-normal text-muted-foreground">({members.length})</span></h4>
+        </button>
+        <button
+          onClick={() => { setOpen(true); onDraftChange(emptyDraft(type)); }}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90"
+        >
+          <Plus size={12} /> Add {type}
+        </button>
       </div>
-      {members.length === 0 ? (
-        <div className="p-8 text-center text-sm text-muted-foreground">{emptyHint}</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead style={{ background: "hsl(var(--muted) / 0.40)" }}>
-              <tr>
-                <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Member</th>
-                {showKind && <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Type</th>}
-                <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Role</th>
-                <th className="text-left px-4 py-2 text-xs font-bold text-muted-foreground uppercase tracking-wide">Responsibilities</th>
-                <th className="px-3 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.map(m => (
-                <tr key={m.id} className="border-t border-border/60 hover:bg-primary/5">
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <Avatar m={m} />
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-foreground truncate">{memberName(m)}</p>
-                        {memberSub(m) && <p className="text-[11px] text-muted-foreground truncate">{memberSub(m)}{m.externalEmail ? ` · ${m.externalEmail}` : ""}</p>}
-                        {!memberSub(m) && m.externalEmail && <p className="text-[11px] text-muted-foreground truncate">{m.externalEmail}</p>}
-                      </div>
-                    </div>
-                  </td>
-                  {showKind && <td className="px-4 py-2.5 text-xs text-foreground capitalize">{m.externalKind ?? "—"}</td>}
-                  <td className="px-4 py-2.5 text-sm text-foreground">{m.role || <span className="text-muted-foreground">—</span>}</td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground max-w-xs">{m.responsibilities || <span className="text-muted-foreground/60">—</span>}</td>
-                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                    <button onClick={() => onEdit(m)} className="text-muted-foreground/70 hover:text-primary transition-colors mr-2" title="Edit member"><Pencil size={14} /></button>
-                    <button onClick={() => onDelete(m)} className="text-muted-foreground/70 hover:text-destructive transition-colors" title="Remove member"><Trash2 size={14} /></button>
-                  </td>
-                </tr>
+      {open && (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm table-fixed border-collapse [&_th]:border [&_th]:border-border [&_td]:border [&_td]:border-border">
+          <colgroup>
+            {cols.map(c => <col key={c.key} style={{ width: w[c.key] }} />)}
+          </colgroup>
+          <thead>
+            <tr>
+              {cols.map((c, i) => (
+                i < cols.length - 1
+                  ? <ResizableTh key={c.key} onResize={startResize(c.key)} className="text-left px-2 py-1 text-[10px] font-bold text-muted-foreground uppercase tracking-wide">{c.label}</ResizableTh>
+                  : <th key={c.key} className="px-2 py-1" />
               ))}
-            </tbody>
-          </table>
-        </div>
+            </tr>
+          </thead>
+          <tbody>
+            {members.length === 0 && !draft && (
+              <tr><td colSpan={colCount} className="p-4 text-center text-xs text-muted-foreground">{emptyHint}</td></tr>
+            )}
+
+            {members.map(m => (
+              <tr key={m.id} className="align-top">
+                {/* Member identity */}
+                <td className="px-2 py-0.5">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Avatar m={m} />
+                    {type === "internal" ? (
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-foreground truncate">{memberName(m)}</p>
+                        {memberSub(m) && <p className="text-[11px] text-muted-foreground truncate">{memberSub(m)}</p>}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-1 min-w-[230px]">
+                        <CellInput value={m.externalName ?? ""} placeholder="Name" onSave={v => onUpdateField(m, { externalName: v || null })} />
+                        <CellInput value={m.externalOrg ?? ""} placeholder="Organisation" onSave={v => onUpdateField(m, { externalOrg: v || null })} />
+                        <CellInput value={m.externalEmail ?? ""} placeholder="Email" onSave={v => onUpdateField(m, { externalEmail: v || null })} />
+                      </div>
+                    )}
+                  </div>
+                </td>
+
+                {/* Type (external only) */}
+                {showKind && (
+                  <td className="px-2 py-0.5">
+                    <select
+                      value={m.externalKind ?? "vendor"}
+                      onChange={e => onUpdateField(m, { externalKind: e.target.value })}
+                      className="w-full min-w-0 text-xs border border-border rounded px-1.5 py-0.5 capitalize bg-card"
+                    >
+                      {EXTERNAL_KINDS.map(k => <option key={k} value={k} className="capitalize">{k}</option>)}
+                    </select>
+                  </td>
+                )}
+
+                {/* Role */}
+                <td className="px-2 py-0.5 min-w-[80px]">
+                  <CellInput value={m.role ?? ""} placeholder="e.g. Project Manager" onSave={v => onUpdateField(m, { role: v || null })} />
+                </td>
+
+                {/* Responsibility */}
+                <td className="px-2 py-0.5 min-w-[110px]">
+                  <CellInput multiline value={m.responsibilities ?? ""} placeholder="What they own on this project" onSave={v => onUpdateField(m, { responsibilities: v || null })} />
+                </td>
+
+                {/* Approval */}
+                <td className="px-2 py-0.5">
+                  <ApprovalSelect value={m.approval ?? "pending"} onChange={v => onUpdateField(m, { approval: v })} />
+                </td>
+
+                {/* Actions */}
+                <td className="px-3 py-0.5 text-right whitespace-nowrap">
+                  <button onClick={() => onDelete(m)} className="text-muted-foreground/70 hover:text-destructive transition-colors" title="Remove member"><Trash2 size={14} /></button>
+                </td>
+              </tr>
+            ))}
+
+            {/* Draft (new member) row */}
+            {draft && (
+              <tr className="align-top">
+                <td className="px-2 py-0.5">
+                  {type === "internal" ? (
+                    <select
+                      value={draft.userId}
+                      onChange={e => onDraftChange({ ...draft, userId: e.target.value })}
+                      className="w-full text-xs border border-border rounded px-2 py-0.5 bg-card"
+                      autoFocus
+                    >
+                      <option value="">Select employee…</option>
+                      {usersArr.map(u => <option key={u.id} value={u.id}>{u.name}{u.role ? ` (${u.role})` : ""}</option>)}
+                    </select>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-1 min-w-[230px]">
+                      <input value={draft.externalName} onChange={e => onDraftChange({ ...draft, externalName: e.target.value })} placeholder="Name" autoFocus className="w-full min-w-0 text-xs border border-border rounded px-2 py-0.5 bg-card outline-none" />
+                      <input value={draft.externalOrg} onChange={e => onDraftChange({ ...draft, externalOrg: e.target.value })} placeholder="Organisation" className="w-full min-w-0 text-xs border border-border rounded px-2 py-0.5 bg-card outline-none" />
+                      <input type="email" value={draft.externalEmail} onChange={e => onDraftChange({ ...draft, externalEmail: e.target.value })} placeholder="Email" className="w-full min-w-0 text-xs border border-border rounded px-2 py-0.5 bg-card outline-none" />
+                    </div>
+                  )}
+                </td>
+                {showKind && (
+                  <td className="px-2 py-0.5">
+                    <select
+                      value={draft.externalKind}
+                      onChange={e => onDraftChange({ ...draft, externalKind: e.target.value })}
+                      className="w-full min-w-0 text-xs border border-border rounded px-1.5 py-0.5 capitalize bg-card"
+                    >
+                      {EXTERNAL_KINDS.map(k => <option key={k} value={k} className="capitalize">{k}</option>)}
+                    </select>
+                  </td>
+                )}
+                <td className="px-2 py-0.5 min-w-[80px]">
+                  <input value={draft.role} onChange={e => onDraftChange({ ...draft, role: e.target.value })} placeholder="e.g. Project Manager" className="w-full bg-transparent text-xs px-2 py-0.5 outline-none border-0" />
+                </td>
+                <td className="px-2 py-0.5 min-w-[110px]">
+                  <textarea value={draft.responsibilities} onChange={e => { e.currentTarget.style.height = "auto"; e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`; onDraftChange({ ...draft, responsibilities: e.target.value }); }} placeholder="What they own on this project" rows={1} className="w-full bg-transparent text-xs px-2 py-0.5 outline-none border-0 resize-none leading-snug whitespace-pre-wrap break-words overflow-hidden" />
+                </td>
+                <td className="px-2 py-0.5">
+                  <ApprovalSelect value={draft.approval} onChange={v => onDraftChange({ ...draft, approval: v })} />
+                </td>
+                <td className="px-3 py-0.5 text-right whitespace-nowrap">
+                  <button onClick={onDraftSave} className="text-success hover:opacity-80 transition mr-2" title="Save member"><Check size={16} /></button>
+                  <button onClick={onDraftCancel} className="text-muted-foreground/70 hover:text-destructive transition" title="Cancel"><X size={16} /></button>
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
       )}
     </div>
   );
