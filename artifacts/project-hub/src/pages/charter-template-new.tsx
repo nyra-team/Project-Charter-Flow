@@ -335,7 +335,9 @@ export default function NewCharterTemplate() {
       const saved = s.sectionOrder.filter((id: string) => DEFAULT_SECTION_ORDER.includes(id));
       setSectionOrder([...saved, ...DEFAULT_SECTION_ORDER.filter(id => !saved.includes(id))]);
     }
-  });
+    // Once created (previewId set), stop autosaving so the cleared draft can't be
+    // re-persisted from live state — reopening "Charter + e-NFA" starts blank.
+  }, previewId === null);
 
   // ── dynamic-row helpers ──────────────────────────────────────────────────
   const addMilestone = () => setMilestones(m => [...m, { milestone: "", responsible: "", targetDate: "" }]);

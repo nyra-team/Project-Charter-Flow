@@ -7,11 +7,12 @@ export function useFormDraft<T extends Record<string, unknown>>(
   key: string,
   values: T,
   apply: (saved: Partial<T>) => void,
+  enabled = true,
 ) {
   const restored = useRef(false);
 
   // Restore once, before the first save effect runs.
-  if (!restored.current) {
+  if (enabled && !restored.current) {
     restored.current = true;
     try {
       const raw = localStorage.getItem(key);
@@ -20,11 +21,14 @@ export function useFormDraft<T extends Record<string, unknown>>(
   }
 
   useEffect(() => {
+    // Once disabled (e.g. after the form is submitted + cleared), stop saving so
+    // the debounce can't resurrect a draft that clearFormDraft just removed.
+    if (!enabled) return;
     const t = setTimeout(() => {
       try { localStorage.setItem(key, JSON.stringify(values)); } catch { /* quota / private mode */ }
     }, 600);
     return () => clearTimeout(t);
-  }, [key, values]);
+  }, [key, values, enabled]);
 }
 
 export function clearFormDraft(key: string) {
