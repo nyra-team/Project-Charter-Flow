@@ -25,10 +25,10 @@ import { Plus } from "lucide-react";
 import type { BoardColumn, BoardGroup, BoardRowContext } from "./types";
 
 const CARD_CTX: BoardRowContext = { depth: 0, rollupPct: 0, hasChildren: false, expanded: false };
-const COL_W = 270;
-// Fixed card height so every card on the board is the same size regardless of
-// title length or how many cell chips it carries (overflow is clipped).
-const CARD_H = "h-[132px]";
+const COL_W = 240;
+// Fixed card height so every card on the board is exactly the same size. Sized
+// to fit a two-line title + the cell-chip row without clipping.
+const CARD_H = "h-[124px]";
 
 // Shared sortable transition — a touch longer than dnd-kit's default with a soft
 // ease-out, so cards glide as the board reshuffles around a drag.
@@ -51,29 +51,35 @@ const dropAnimation: DropAnimation = {
 
 // Presentational card — shared by the live draggable card and the drag overlay
 // so the floating copy is a pixel-perfect snapshot of the original.
-function CardInner<R>({ row, columns, getName, getRowId, overlay }: {
-  row: R; columns: BoardColumn<R>[]; getName: (r: R) => React.ReactNode; getRowId: (r: R) => string; overlay?: boolean;
+function CardInner<R>({ row, columns, getName, getRowId, overlay, showIssueKey = true, renderCard }: {
+  row: R; columns: BoardColumn<R>[]; getName: (r: R) => React.ReactNode; getRowId: (r: R) => string; overlay?: boolean; showIssueKey?: boolean;
+  renderCard?: (r: R) => React.ReactNode;
 }) {
+  // Custom card renderer (e.g. the Action-Centre-style project card) brings its
+  // own shell/size/colours — the only chrome we add is the drag-overlay tilt.
+  if (renderCard) return overlay ? <div className="rotate-[2deg] cursor-grabbing">{renderCard(row)}</div> : <>{renderCard(row)}</>;
   const ctx: BoardRowContext = CARD_CTX;
   // Jira-style issue key derived from the row id ("project:42" → "PROJECT-42").
   const issueKey = getRowId(row).replace(":", "-").toUpperCase();
   return (
     <div
-      className={`flex flex-col rounded-[3px] bg-card border border-transparent p-3 transition-shadow ${CARD_H} ${
+      className={`flex flex-col rounded-[3px] bg-card border border-transparent p-2.5 transition-shadow ${CARD_H} ${
         overlay
           ? "shadow-[0_14px_30px_rgba(0,0,0,0.20)] rotate-[2deg] cursor-grabbing"
           : "shadow-[0_1px_2px_rgba(9,30,66,0.25)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.5)] hover:bg-accent/40"
       }`}
     >
-      <div className="text-sm text-foreground leading-snug line-clamp-2">{getName(row)}</div>
-      <div className="mt-2 flex-1 min-h-0 overflow-hidden flex flex-wrap content-start items-center gap-x-3 gap-y-1.5">
+      <div className="text-[13px] text-foreground leading-snug line-clamp-2">{getName(row)}</div>
+      <div className="mt-1.5 flex-1 min-h-0 overflow-hidden flex flex-wrap content-start items-center gap-x-2.5 gap-y-1">
         {columns.filter((c) => c.visible !== false).map((col) => (
           <div key={col.key} className="min-w-0 max-w-full">{col.render(row, ctx)}</div>
         ))}
       </div>
-      <div className="flex items-center justify-between pt-1 shrink-0">
-        <span className="text-[11px] font-medium text-muted-foreground tracking-wide">{issueKey}</span>
-      </div>
+      {showIssueKey && (
+        <div className="flex items-center justify-between pt-1 shrink-0">
+          <span className="text-[11px] font-medium text-muted-foreground tracking-wide">{issueKey}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -83,8 +89,9 @@ function CardInner<R>({ row, columns, getName, getRowId, overlay }: {
 // within / across columns. While dragging, the original becomes a dashed ghost
 // slot (the floating copy lives in the DragOverlay); a click that never crosses
 // the activation threshold opens the card instead of starting a drag.
-function DraggableCard<R>({ row, columns, getRowId, getName, onOpen }: {
-  row: R; columns: BoardColumn<R>[]; getRowId: (r: R) => string; getName: (r: R) => React.ReactNode; onOpen?: (r: R) => void;
+function DraggableCard<R>({ row, columns, getRowId, getName, onOpen, showIssueKey, renderCard }: {
+  row: R; columns: BoardColumn<R>[]; getRowId: (r: R) => string; getName: (r: R) => React.ReactNode; onOpen?: (r: R) => void; showIssueKey?: boolean;
+  renderCard?: (r: R) => React.ReactNode;
 }) {
   const id = getRowId(row);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -103,7 +110,7 @@ function DraggableCard<R>({ row, columns, getRowId, getName, onOpen }: {
       className="relative cursor-grab active:cursor-grabbing touch-none"
     >
       <div className={isDragging ? "opacity-0" : ""}>
-        <CardInner row={row} columns={columns} getName={getName} getRowId={getRowId} />
+        <CardInner row={row} columns={columns} getName={getName} getRowId={getRowId} showIssueKey={showIssueKey} renderCard={renderCard} />
       </div>
       {isDragging && (
         <div className="absolute inset-0 rounded-[3px] border-2 border-dashed border-muted-foreground/30 bg-muted/40" />
@@ -113,7 +120,7 @@ function DraggableCard<R>({ row, columns, getRowId, getName, onOpen }: {
 }
 
 function Column<R>({
-  group, columns, getRowId, getName, onOpen, onAddRow,
+  group, columns, getRowId, getName, onOpen, onAddRow, showIssueKey, renderCard, colW = COL_W, sectionStyle = "tint", tintBody,
 }: {
   group: BoardGroup<R>;
   columns: BoardColumn<R>[];
@@ -121,29 +128,51 @@ function Column<R>({
   getName: (r: R) => React.ReactNode;
   onOpen?: (r: R) => void;
   onAddRow?: (groupKey: string, name: string) => void;
+  showIssueKey?: boolean;
+  renderCard?: (r: R) => React.ReactNode;
+  colW?: number;
+  sectionStyle?: "tint" | "ac";
+  tintBody?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `kcol:${group.key}` });
   const [adding, setAdding] = useState(false);
   const [val, setVal] = useState("");
   const color = group.color ?? "#94A3B8";
+  const ac = sectionStyle === "ac";
+  // AC tints the priority lanes' body with a faint column wash; status/owner stay neutral slate.
+  const acTint = ac && tintBody ? `${color}14` : undefined;
   return (
-    <div className="flex flex-col flex-shrink-0 rounded-lg overflow-hidden" style={{ width: COL_W, background: `${color}26` }}>
-      {/* Status-coloured top rail */}
-      <div className="h-[3px] w-full" style={{ background: color }} />
-      {/* Column header — coloured dot + uppercase label + count */}
-      <div className="px-3 pt-2.5 pb-1 flex items-center gap-1.5">
-        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground truncate">{group.label}</span>
-        <span className="text-[11px] text-muted-foreground">{group.rows.length}</span>
-      </div>
+    <div
+      className={`flex flex-col flex-shrink-0 overflow-hidden ${ac ? "rounded-2xl border border-slate-200/80" : "rounded-lg"}`}
+      style={{ width: colW, ...(ac ? {} : { background: `${color}26` }) }}
+    >
+      {ac ? (
+        // Action Centre section header — neutral slate bar, coloured dot, white count pill.
+        <div className="flex items-center gap-2 px-3.5 h-10 bg-slate-100 border-b border-slate-200/80">
+          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+          <h3 className="text-[13px] font-medium text-slate-700 truncate flex-1 min-w-0" title={group.label}>{group.label}</h3>
+          <span className="text-[11px] font-medium text-slate-500 bg-white border border-slate-200 rounded-md min-w-[20px] text-center px-1.5 flex-shrink-0">{group.rows.length}</span>
+        </div>
+      ) : (
+        <>
+          {/* Status-coloured top rail */}
+          <div className="h-[3px] w-full" style={{ background: color }} />
+          {/* Column header — coloured dot + uppercase label + count */}
+          <div className="px-3 pt-2.5 pb-1 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground truncate">{group.label}</span>
+            <span className="text-[11px] text-muted-foreground">{group.rows.length}</span>
+          </div>
+        </>
+      )}
       <div
         ref={setNodeRef}
-        className="flex-1 space-y-1.5 px-1.5 pb-1.5 min-h-[80px] rounded-b-lg transition-[box-shadow,background-color] duration-200"
-        style={isOver ? { boxShadow: `inset 0 0 0 2px ${color}66`, background: `${color}33` } : undefined}
+        className={`flex-1 space-y-1.5 px-1.5 pb-1.5 min-h-[80px] rounded-b-lg transition-[box-shadow,background-color] duration-200 ${ac ? `pt-1.5 ${acTint ? "" : "bg-slate-50/70"}` : ""}`}
+        style={isOver ? { boxShadow: `inset 0 0 0 2px ${color}66`, background: `${color}33` } : (acTint ? { background: acTint } : undefined)}
       >
         <SortableContext items={group.rows.map((r) => getRowId(r))} strategy={verticalListSortingStrategy}>
           {group.rows.map((r) => (
-            <DraggableCard key={getRowId(r)} row={r} columns={columns} getRowId={getRowId} getName={getName} onOpen={onOpen} />
+            <DraggableCard key={getRowId(r)} row={r} columns={columns} getRowId={getRowId} getName={getName} onOpen={onOpen} showIssueKey={showIssueKey} renderCard={renderCard} />
           ))}
         </SortableContext>
         {group.rows.length === 0 && (
@@ -180,7 +209,7 @@ function Column<R>({
 }
 
 export function KanbanView<R>({
-  groups, columns, getRowId, getName, onOpenRow, onMoveToGroup, onAddRow, onAddGroup,
+  groups, columns, getRowId, getName, onOpenRow, onMoveToGroup, onAddRow, onAddGroup, showIssueKey = true, renderCard, colWidth, sectionStyle, tintBody,
 }: {
   groups: BoardGroup<R>[];
   /** Cells shown on each card (same column config as the table). */
@@ -192,7 +221,20 @@ export function KanbanView<R>({
   onMoveToGroup?: (rowId: string, groupKey: string) => void;
   onAddRow?: (groupKey: string, name: string) => void;
   onAddGroup?: (name: string) => void;
+  /** Footer Jira-style issue key (e.g. "PROJECT-57"). Default true. */
+  showIssueKey?: boolean;
+  /** Override the whole card body (brings its own shell). Falls back to the
+   *  default columns/getName card when omitted. */
+  renderCard?: (r: R) => React.ReactNode;
+  /** Column width in px (default 240). */
+  colWidth?: number;
+  /** "ac" = Action-Centre neutral-slate sections; "tint" (default) = coloured tint. */
+  sectionStyle?: "tint" | "ac";
+  /** AC sections only — wash each column body with a faint tint of its colour
+   *  (matches the Action Centre priority lanes). */
+  tintBody?: boolean;
 }) {
+  const colW = colWidth ?? COL_W;
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
   const [addingGroup, setAddingGroup] = useState(false);
   const [groupName, setGroupName] = useState("");
@@ -287,11 +329,16 @@ export function KanbanView<R>({
             getName={getName}
             onOpen={onOpenRow}
             onAddRow={onAddRow}
+            showIssueKey={showIssueKey}
+            renderCard={renderCard}
+            colW={colW}
+            sectionStyle={sectionStyle}
+            tintBody={tintBody}
           />
         );
       })}
       {onAddGroup && (
-        <div className="flex-shrink-0" style={{ width: COL_W + 10 }}>
+        <div className="flex-shrink-0" style={{ width: colW + 10 }}>
           {addingGroup ? (
             <input
               autoFocus value={groupName} onChange={(e) => setGroupName(e.target.value)}
@@ -327,8 +374,8 @@ export function KanbanView<R>({
       {body}
       <DragOverlay dropAnimation={dropAnimation}>
         {activeRow ? (
-          <div style={{ width: COL_W - 12 }}>
-            <CardInner row={activeRow} columns={columns} getName={getName} getRowId={getRowId} overlay />
+          <div style={{ width: colW - 12 }}>
+            <CardInner row={activeRow} columns={columns} getName={getName} getRowId={getRowId} overlay showIssueKey={showIssueKey} renderCard={renderCard} />
           </div>
         ) : null}
       </DragOverlay>

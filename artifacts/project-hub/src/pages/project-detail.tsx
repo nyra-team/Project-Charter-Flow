@@ -10,7 +10,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/extra-api";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "../lib/format";
-import { Link, useRoute } from "wouter";
+import { useRoute } from "wouter";
+import { useGoBack } from "../lib/back";
 import {
   useGetProject, useListMilestones, useListTasks, useListUsers, useUpdateTask, useCreateTask, useDeleteTask,
 } from "@workspace/api-client-react";
@@ -19,8 +20,8 @@ import { Input } from "@/components/ui/input";
 import {
   Check, ChevronDown, ChevronLeft, Flag, GanttChartSquare,
   ListTree, Search, Table2, Zap, Milestone, MessageSquare, Users,
-  GitBranch, X, Plus, Trash2, LayoutDashboard, FileDown, Loader2, FolderOpen, Upload,
-  LayoutGrid, CalendarDays, Info, AlertTriangle, ShieldAlert,
+  GitBranch, X, Plus, Trash2, Copy, LayoutDashboard, FileDown, Loader2, FolderOpen, Upload,
+  LayoutGrid, CalendarDays, Info, AlertTriangle, ShieldAlert, Group,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { TASK_PRIORITIES, TASK_STATUSES } from "../lib/task-constants";
@@ -29,7 +30,10 @@ import { HoverHint } from "@/components/ui-kit";
 import { MondayGantt, type GanttGroup, type GanttItem } from "@/components/monday-gantt";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExcelGroupTable, type ExcelCol } from "@/components/excel-group-table";
+import { TaskCreateModal } from "@/components/task-create-modal";
 import { KanbanView } from "@/components/monday/KanbanView";
+import { GroupByPill } from "@/components/monday/GroupByPill";
+import { ActionCard } from "@/components/monday/ActionCard";
 import { CalendarView, type CalendarItem } from "@/components/monday/CalendarView";
 import { PriorityCell, OwnerCell, DateCell, type BoardColumn } from "@/components/monday";
 import { RangeCalendar } from "@/components/ui/calendar-rac";
@@ -113,14 +117,35 @@ const TASK_BOARD_COLUMNS: BoardColumn<TaskRow>[] = [
   { key: "due", header: "Due", render: (t) => <DateCell value={t.endDate} /> },
 ];
 
+// Kanban "Group by" axes — mirrors the CXO Action Centre board (Status/Owner/
+// Priority). Status & priority are fixed columns; owner lanes are derived.
+const GROUP_BY_OPTIONS = [
+  { value: "status", label: "Status" },
+  { value: "owner", label: "Owner" },
+  { value: "priority", label: "Priority" },
+  { value: "department", label: "Department" },
+] as const;
+type GroupByAxis = (typeof GROUP_BY_OPTIONS)[number]["value"];
+
+// Action-Centre RAG palette for the Kanban status columns — scoped to the board
+// so the global task palette (task-constants.ts) is untouched. Mirrors the AC
+// STATUS_META hexes: slate / amber / red / light-red (hold) / green.
+const KANBAN_STATUS_COLOR: Record<string, string> = {
+  not_started: "#94A3B8",
+  in_progress: "#F59E0B",
+  delayed: "#DC2626",
+  on_hold: "#F87171",
+  completed: "#16A34A",
+};
+const OWNER_LANE_COLOR = "#3B82F6";   // blue lane dot per owner (AC parity)
+const UNGROUPED_COLOR = "#94A3B8";    // slate — Unassigned / No-priority lanes
+
 // Accent colours cycled across milestone groups (left border + header swatch).
 const MS_COLORS = ["#6366F1", "#0EA5E9", "#10B981", "#F59E0B", "#EC4899", "#8B5CF6", "#14B8A6", "#F97316"];
 const TOTAL_W = COLS.reduce((s, c) => s + c.width, 0);
 // localStorage key for the user's adjusted column widths on this table.
 const TASKS_COLW_KEY = "ph:project-tasks:colw";
 const TASKS_COLORDER_KEY = "ph:project-tasks:colorder";
-// Remembers the last tab inside a project (first open defaults to table).
-const DETAIL_VIEW_KEY = "ph:project-detail:view";
 
 const PRIORITY_CHIPS: { value: string; label: string }[] = [
   { value: "", label: "All" },
@@ -190,43 +215,116 @@ function AddSubtaskRow({ parent, projectId, colSpan, indent, createTask }: {
 // Floating status dropdown — click cell to open, pick a status to save.
 function StatusDropdown({ task, updateTask }: { task: TaskRow; updateTask: ReturnType<typeof useUpdateTask> }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const st = taskStatusOf(task.status);
-
+  // Portal to <body> with fixed coords so the menu isn't clipped by the table's
+  // overflow container or painted under the rows below it. Flips above the cell
+  // when there isn't room below (rows low on screen would otherwise underflow).
+  const place = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const menuH = TASK_STATUSES.length * 28 + 8;
+    const below = window.innerHeight - r.bottom;
+    const top = below < menuH + 8 ? Math.max(8, r.top - menuH - 4) : r.bottom + 4;
+    setPos({ left: r.left + r.width / 2, top });
+  };
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    const onDoc = (e: MouseEvent) => { const t = e.target as Node; if (!btnRef.current?.contains(t) && !menuRef.current?.contains(t)) setOpen(false); };
+    const onScroll = () => setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => { document.removeEventListener("mousedown", onDoc); window.removeEventListener("scroll", onScroll, true); window.removeEventListener("resize", onScroll); };
   }, [open]);
 
   return (
-    <div ref={ref} className="relative w-full h-full">
+    <>
       <button
+        ref={btnRef}
         type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        onClick={(e) => { e.stopPropagation(); if (!open) place(); setOpen((o) => !o); }}
         className="w-full h-full px-2 py-1 text-[10px] font-semibold cursor-pointer"
         style={{ color: st.color }}
       >
         {st.label}
       </button>
-      {open && (
-        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-50 min-w-[120px] rounded-lg bg-white border border-gray-200 shadow-xl py-1 animate-in fade-in-0 zoom-in-95">
+      {open && pos && createPortal(
+        <div ref={menuRef} style={{ position: "fixed", left: pos.left, top: pos.top, transform: "translateX(-50%)" }} className="z-[300] min-w-[104px] rounded-md bg-white border border-gray-200 shadow-xl py-0.5 animate-in fade-in-0 zoom-in-95" onClick={(e) => e.stopPropagation()}>
           {TASK_STATUSES.map((s) => (
             <button
               key={s.value}
               type="button"
               onClick={(e) => { e.stopPropagation(); setOpen(false); if (s.value !== task.status) updateTask.mutate({ id: task.id, data: { status: s.value } as never }); }}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium hover:bg-gray-50 transition-colors"
+              className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium hover:bg-gray-50 transition-colors whitespace-nowrap"
             >
-              <span className="w-3 h-3 rounded-full shrink-0" style={{ background: s.bg }} />
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: s.bg }} />
               <span className="text-gray-700">{s.label}</span>
               {s.value === task.status && <Check size={12} className="ml-auto text-gray-500" />}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
-    </div>
+    </>
+  );
+}
+
+// Priority cell — click to pick P0–P3 from a dropdown (mirrors StatusDropdown).
+function PriorityDropdown({ task, updateTask }: { task: TaskRow; updateTask: ReturnType<typeof useUpdateTask> }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const pr = PRIORITY_BY_VALUE.get(task.priority as never);
+  const place = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const menuH = TASK_PRIORITIES.length * 28 + 8;
+    const below = window.innerHeight - r.bottom;
+    const top = below < menuH + 8 ? Math.max(8, r.top - menuH - 4) : r.bottom + 4;
+    setPos({ left: r.left + r.width / 2, top });
+  };
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { const t = e.target as Node; if (!btnRef.current?.contains(t) && !menuRef.current?.contains(t)) setOpen(false); };
+    const onScroll = () => setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => { document.removeEventListener("mousedown", onDoc); window.removeEventListener("scroll", onScroll, true); window.removeEventListener("resize", onScroll); };
+  }, [open]);
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); if (!open) place(); setOpen((o) => !o); }}
+        className="w-full h-full px-2 py-1 text-[10px] font-semibold cursor-pointer"
+        style={{ color: pr ? pr.color : undefined }}
+      >
+        {pr ? pr.label : <span className="text-[11px] text-gray-400">—</span>}
+      </button>
+      {open && pos && createPortal(
+        <div ref={menuRef} style={{ position: "fixed", left: pos.left, top: pos.top, transform: "translateX(-50%)" }} className="z-[300] min-w-[84px] rounded-md bg-white border border-gray-200 shadow-xl py-0.5 animate-in fade-in-0 zoom-in-95" onClick={(e) => e.stopPropagation()}>
+          {TASK_PRIORITIES.map((p) => (
+            <button
+              key={p.value}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setOpen(false); if (p.value !== task.priority) updateTask.mutate({ id: task.id, data: { priority: p.value } as never }); }}
+              className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium hover:bg-gray-50 transition-colors"
+            >
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.solid }} />
+              <span className="text-gray-700">{p.label}</span>
+              {p.value === task.priority && <Check size={12} className="ml-auto text-gray-500" />}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
@@ -292,43 +390,14 @@ function TimelineEditCell({ task, updateTask }: { task: TaskRow; updateTask: Ret
   );
 }
 
-// Inline progress editor — click to type, blur/Enter to save.
-function ProgressInput({ task, updateTask }: { task: TaskRow; updateTask: ReturnType<typeof useUpdateTask> }) {
+// Progress — read-only display (rolls up from subtasks / status). Not editable.
+// ponytail: updateTask kept in the signature so the call site needn't change.
+function ProgressInput({ task }: { task: TaskRow; updateTask: ReturnType<typeof useUpdateTask> }) {
   const pp = (task as Record<string, unknown>).progressPct as number | undefined;
   const pct = task.status === "completed" ? 100 : Math.max(0, Math.min(100, pp ?? 0));
-  const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState(String(pct));
-
-  function commit() {
-    setEditing(false);
-    const v = Math.max(0, Math.min(100, Number(val) || 0));
-    if (v !== pct) updateTask.mutate({ id: task.id, data: { progressPct: v } as never });
-  }
-
-  if (editing) {
-    return (
-      <input
-        autoFocus
-        type="number"
-        min={0}
-        max={100}
-        value={val}
-        onChange={(e) => setVal(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEditing(false); }}
-        onClick={(e) => e.stopPropagation()}
-        className="w-14 text-center text-xs border border-input bg-background rounded px-1 py-0.5 outline-none focus:ring-2 focus:ring-ring/40"
-      />
-    );
-  }
-
   const barColor = pct >= 100 ? "#10B981" : pct > 0 ? "#F59E0B" : "#E5E7EB";
   return (
-    <span
-      className="inline-flex items-center gap-1 cursor-pointer hover:opacity-80"
-      onClick={(e) => { e.stopPropagation(); setVal(String(pct)); setEditing(true); }}
-      title="Click to edit progress"
-    >
+    <span className="inline-flex items-center gap-1" title={`${pct}% complete`}>
       <span className="w-10 h-1.5 rounded-full bg-gray-200 overflow-hidden">
         <span className="block h-full rounded-full" style={{ width: `${pct}%`, background: barColor }} />
       </span>
@@ -532,6 +601,7 @@ function TaskGanttView({ groups, onOpen, onLink, showCritical, setShowCritical, 
 
 export default function ProjectDetail() {
   const [, params] = useRoute("/projects/:id");
+  const goBack = useGoBack();
   const projectId = Number(params?.id ?? 0);
 
   // Page section — Tasks (default) · Team. Deep-linkable via ?section=team so the
@@ -563,6 +633,73 @@ export default function ProjectDetail() {
   // Clicking a task (row name or Gantt bar) opens the shared Jira-style detail modal.
   const [openTaskId, setOpenTaskId] = useState<number | null>(null);
   const openTask = openTaskId != null ? tasks.find((t) => t.id === openTaskId) ?? null : null;
+
+  // Add-task modal target. "generic" = toolbar add (milestone is pickable);
+  // { milestoneId } = opened from a milestone group header (milestone locked).
+  const [addFor, setAddFor] = useState<{ milestoneId: number | null } | "generic" | null>(null);
+
+  // Clone-ordering overlay (clone id → source id). pmo_tasks has no ordering
+  // column, so the server returns a clone at the end of the list; this renders
+  // it directly under its source row instead. Session-only (resets on reload).
+  const [cloneAfter, setCloneAfter] = useState<Map<number, number>>(() => new Map());
+
+  // Duplicate a task as a new top-level task "… (copy)". Reads the full enriched
+  // row (cast — TaskRow types only the subset the table reads).
+  const cloneTask = (t: TaskRow) => {
+    const r = t as unknown as Record<string, unknown>;
+    const sourceId = t.id;
+    createTask.mutate(
+      { id: projectId, data: {
+        name: `${t.name} (copy)`,
+        description: (r.description as string | null) ?? undefined,
+        milestoneId: t.milestoneId ?? undefined,
+        parentTaskId: t.parentTaskId ?? undefined,
+        assigneeId: t.assigneeId ?? undefined,
+        priority: t.priority ?? "P2",
+        rag: (r.rag as string | null) ?? "green",
+        stage: (r.stage as string | null) ?? undefined,
+        startDate: t.startDate ?? undefined,
+        endDate: t.endDate ?? undefined,
+        estimatedHours: (r.estimatedHours as number | null) ?? undefined,
+        plannedEffortHours: (r.plannedEffortHours as number | null) ?? undefined,
+        cftOwner: (r.cftOwner as number | null) ?? undefined,
+        cftDept: (r.cftDept as string | null) ?? undefined,
+      } } as never,
+      { onSuccess: (nt: unknown) => {
+        const nid = (nt as { id?: number })?.id;
+        if (nid) setCloneAfter((m) => new Map(m).set(nid, sourceId));
+      } },
+    );
+  };
+
+  // Reorder a row list so each clone sits immediately after its source (within
+  // the same milestone group). Recurses for clones-of-clones; no-op when nothing
+  // has been cloned this session.
+  const orderRows = useCallback((rows: TaskRow[]): TaskRow[] => {
+    if (cloneAfter.size === 0) return rows;
+    const byId = new Map(rows.map((r) => [r.id, r] as const));
+    const clonesOf = new Map<number, number[]>();
+    for (const [clone, src] of cloneAfter) {
+      if (byId.has(clone) && byId.has(src)) {
+        const arr = clonesOf.get(src) ?? []; arr.push(clone); clonesOf.set(src, arr);
+      }
+    }
+    if (clonesOf.size === 0) return rows;
+    const placed = new Set<number>();
+    const out: TaskRow[] = [];
+    const append = (r: TaskRow) => {
+      if (placed.has(r.id)) return;
+      out.push(r); placed.add(r.id);
+      for (const cid of clonesOf.get(r.id) ?? []) { const cr = byId.get(cid); if (cr) append(cr); }
+    };
+    for (const r of rows) {
+      const src = cloneAfter.get(r.id);
+      if (src != null && byId.has(src)) continue; // a clone — placed under its source
+      append(r);
+    }
+    for (const r of rows) if (!placed.has(r.id)) out.push(r); // safety net
+    return out;
+  }, [cloneAfter]);
 
   // Map a raw task → the AggTask shape TaskDetailModal consumes. Runtime fields
   // (progressPct, description, predecessorIds, hours, stage) live on the object
@@ -639,13 +776,15 @@ export default function ProjectDetail() {
     [projectMessages],
   );
 
-  // View switcher — Overview · Table · Kanban · Gantt · Calendar. First open
-  // lands on the table; after that we remember the user's last pick (per-browser).
+  // View switcher — Overview · Table · Kanban · Gantt · Calendar. Always opens
+  // on the table, EXCEPT when drilled in from the Projects Gantt (?view=gantt),
+  // which lands on Gantt. We deliberately do NOT restore the last-picked view
+  // from localStorage — every fresh entry defaults to table.
   const [view, setView] = useState<"overview" | "table" | "kanban" | "gantt" | "calendar">(() => {
-    const s = localStorage.getItem(DETAIL_VIEW_KEY);
-    return s === "overview" || s === "gantt" || s === "table" || s === "kanban" || s === "calendar" ? s : "table";
+    const q = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("view") : null;
+    if (q === "overview" || q === "gantt" || q === "table" || q === "kanban" || q === "calendar") return q;
+    return "table";
   });
-  useEffect(() => { try { localStorage.setItem(DETAIL_VIEW_KEY, view); } catch { /* ignore */ } }, [view]);
 
   // Critical-path overlay (Gantt only). Lazy + read-only: hit /schedule (pure
   // CPM, returns criticalTaskIds) rather than /critical-path, which persists
@@ -677,239 +816,294 @@ export default function ProjectDetail() {
   //    always reflects the latest scope/background (from the charter) plus the
   //    live status + timeline (from the project, tasks and milestones).
   const [genBusy, setGenBusy] = useState(false);
+  // Live Project Report — a professional project STATUS report (not a charter).
+  // Sections are limited to those we can populate from stored data: reporting
+  // period, per-dimension RAG health, schedule status (incl. proxy SPI), period
+  // accomplishments/next, RAID (risks + issues), change requests, decisions /
+  // action items, and dependencies & blockers. Cost/EVM is intentionally
+  // omitted — the project stores planned budgets only, no actual spend.
   const generateLiveCharter = async () => {
     setGenBusy(true);
     try {
       const p = (project ?? {}) as Record<string, unknown>;
       const charterId = Number(p.charterId ?? 0);
       let ch: Record<string, unknown> = {};
-      if (charterId > 0) { try { ch = await api.get<Record<string, unknown>>(`/api/charters/${charterId}`); } catch { /* no charter — narrative blank */ } }
+      if (charterId > 0) { try { ch = await api.get<Record<string, unknown>>(`/api/charters/${charterId}`); } catch { /* no charter — dates fall back to the project */ } }
       const cstr = (k: string) => { const v = ch[k]; return typeof v === "string" ? v.trim() : ""; };
-      const cnum = (k: string) => { const v = ch[k]; return v != null && v !== "" && !Number.isNaN(Number(v)) ? Number(v) : null; };
       const pnum = (k: string) => { const v = p[k]; return v != null && v !== "" && !Number.isNaN(Number(v)) ? Number(v) : null; };
+      const pstr = (k: string) => { const v = p[k]; return typeof v === "string" ? v.trim() : ""; };
+      const cnum = (k: string) => { const v = ch[k]; return v != null && v !== "" && !Number.isNaN(Number(v)) ? Number(v) : null; };
       const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
-      const money = (n: number | null) => (n != null ? formatCurrency(n) : "—");
       const cap = (s?: string) => (s ? s.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase()) : "—");
-
+      const money = (n: number | null) => (n != null ? formatCurrency(n) : "—");
       const tags = Array.isArray(ch.strategicAlignmentTags) ? (ch.strategicAlignmentTags as string[]) : [];
       const pcRef = tags.find((t) => t.startsWith("PC_ID:"))?.slice(6) ?? null;
-      const displayTags = tags.filter((t) => !t.startsWith("PC_ID:"));
-      const members = Array.isArray(ch.keyProjectMembers) ? (ch.keyProjectMembers as Array<{ name?: string }>) : [];
-      const kpis = Array.isArray(ch.kpis) ? (ch.kpis as Array<{ kpi?: string; baseline?: string; goal?: string }>) : [];
 
-      // ── AI summary — read the milestones + tasks and explain the project ───
-      let aiSummary = "";
-      try {
-        const topT = tasks.filter((t) => t.parentTaskId == null);
-        const msAll = (rawMilestones ?? []) as Array<{ id: number; name: string; status: string }>;
-        const byMs = new Map<number, typeof topT>();
-        for (const t of topT) { if (t.milestoneId == null) continue; const a = byMs.get(t.milestoneId) ?? []; a.push(t); byMs.set(t.milestoneId, a); }
-        const lines: string[] = [`Project: ${(p.name as string) ?? "Project"}`];
-        if (typeof p.status === "string") lines.push(`Status: ${cap(p.status as string)}`);
-        if (typeof p.description === "string" && (p.description as string).trim()) lines.push(`Description: ${p.description as string}`);
-        if (msAll.length) {
-          lines.push("Milestones and their tasks:");
-          for (const m of msAll) {
-            const ns = byMs.get(m.id)?.map((t) => t.name).filter(Boolean).slice(0, 15) ?? [];
-            lines.push(`- ${m.name} [${cap(m.status)}]: ${ns.join("; ") || "no tasks"}`);
-          }
-        } else if (topT.length) {
-          lines.push(`Tasks: ${topT.map((t) => t.name).filter(Boolean).slice(0, 40).join("; ")}`);
-        }
-        if (topT.length || msAll.length) {
-          const r = await api.post<{ rewritten?: string }>("/api/ai/improve-text", {
-            text: lines.join("\n"),
-            instruction: "The text lists a project's milestones and the tasks under each. Write a clear, plain-English overview (6–10 sentences) explaining what this project is about, its objectives and scope, and how the work is organised across the milestones. Synthesise — do not just restate the list. Do not invent specifics that aren't implied by the tasks.",
-            maxWords: 230,
-          });
-          aiSummary = (r.rewritten ?? "").trim();
-        }
-      } catch { /* AI optional — PDF still generates without the summary */ }
+      // Live feeds: risks live on the charter; issues + change requests on the project.
+      type RiskRow = { title: string; impact: string; likelihood: string; mitigation?: string; status: string; owner?: string };
+      type IssueRow = { title: string; description?: string; status: string; dependencyType?: string; blockingDept?: string; blockingOwnerId?: number | null; originalDeadline?: string | null; proposedRevisedDeadline?: string | null };
+      type CrRow = { title: string; changeType?: string; status: string; scheduleImpactDays?: number; scopeImpactSummary?: string; raisedById?: number | null; createdAt?: string };
+      type RT = { id: number; name: string; status: string; priority?: string; parentTaskId?: number | null; assigneeId?: number | null; assigneeName?: string | null; endDate?: string | null; actualEnd?: string | null; scheduleVarianceDays?: number; predecessorIds?: string; milestoneId?: number | null; estimatedHours?: number | string | null; actualHours?: number | string | null; plannedEffortHours?: number | string | null };
+      const [risks, issues, crs] = await Promise.all([
+        charterId > 0 ? api.get<RiskRow[]>(`/api/charters/${charterId}/risks`).catch(() => [] as RiskRow[]) : Promise.resolve([] as RiskRow[]),
+        api.get<IssueRow[]>(`/api/projects/${projectId}/issues`).catch(() => [] as IssueRow[]),
+        api.get<CrRow[]>(`/api/projects/${projectId}/change-requests`).catch(() => [] as CrRow[]),
+      ]);
+      const nameOf = (id?: number | null) => (id ? (usersById.get(Number(id)) ?? "—") : "—");
 
-      // ── PDF document (pure text layout) ────────────────────────────────────
+      // ── Metrics ──────────────────────────────────────────────────────────
+      const nowMs = Date.now();
+      const allT = (rawTasks ?? []) as unknown as RT[];
+      const taskById = new Map(allT.map((t) => [t.id, t]));
+      const topT = allT.filter((t) => t.parentTaskId == null);
+      const tc = (s: string) => topT.filter((t) => t.status === s).length;
+      const tt = topT.length, tDone = tc("completed"), tProg = tc("in_progress"), tDelay = tc("delayed"), tHold = tc("on_hold");
+      const tNot = Math.max(0, tt - tDone - tProg - tDelay - tHold);
+      // Progress: same subtask-aware unit roll-up as the Project Overview, so the
+      // two surfaces agree. A parent with subtasks is represented by its subtasks
+      // (3/4 done = 75%); a leaf task counts as one all-or-nothing unit.
+      const subsByParent = new Map<number, RT[]>();
+      for (const t of allT) { if (t.parentTaskId != null) { const a = subsByParent.get(t.parentTaskId) ?? []; a.push(t); subsByParent.set(t.parentTaskId, a); } }
+      let unitTotal = 0, unitDone = 0;
+      for (const t of topT) {
+        const subs = subsByParent.get(t.id) ?? [];
+        if (subs.length) { unitTotal += subs.length; unitDone += subs.filter((s) => s.status === "completed").length; }
+        else { unitTotal += 1; if (t.status === "completed") unitDone += 1; }
+      }
+      const actualPct = unitTotal ? Math.round((unitDone / unitTotal) * 100) : (pnum("progress") ?? 0);
+      const pms = (rawMilestones ?? []) as Array<{ id: number; name: string; dueDate?: string | null; status: string }>;
+      const msDone = pms.filter((m) => m.status === "completed").length;
+      const msOverdue = pms.filter((m) => m.status !== "completed" && m.dueDate && new Date(m.dueDate).getTime() < nowMs);
+      const overdueTasks = topT.filter((t) => t.status !== "completed" && t.endDate && new Date(t.endDate).getTime() < nowMs);
+      const varianceDays = allT.reduce((s, t) => s + (Number(t.scheduleVarianceDays) || 0), 0);
+      const startD = cstr("startDate") || pstr("startDate");
+      const endD = cstr("endDate") || pstr("endDate");
+      let plannedPct: number | null = null, spi: number | null = null;
+      if (startD && endD) {
+        const s = new Date(startD).getTime(), e = new Date(endD).getTime();
+        if (e > s) { plannedPct = Math.min(100, Math.max(0, Math.round(((nowMs - s) / (e - s)) * 100))); if (plannedPct > 0) spi = Number((actualPct / plannedPct).toFixed(2)); }
+      }
+      const worst = (...xs: string[]) => (xs.includes("red") ? "red" : xs.includes("amber") ? "amber" : "green");
+      const scheduleRag = (msOverdue.length > 0 || (spi != null && spi < 0.85)) ? "red" : ((spi != null && spi < 0.98) || overdueTasks.length > 0) ? "amber" : "green";
+      const sevRank: Record<string, number> = { low: 1, medium: 2, high: 3 };
+      const openRisks = risks.filter((r) => !["closed", "mitigated", "resolved"].includes((r.status || "").toLowerCase()));
+      const riskScore = (r: RiskRow) => (sevRank[(r.impact || "medium").toLowerCase()] || 2) * (sevRank[(r.likelihood || "medium").toLowerCase()] || 2);
+      const riskRag = openRisks.some((r) => riskScore(r) >= 6) ? "red" : openRisks.some((r) => riskScore(r) >= 4) ? "amber" : "green";
+      const openScopeCrs = crs.filter((c) => (c.status || "").toLowerCase() === "submitted" && ((c.scopeImpactSummary || "").trim() || (c.changeType || "").toLowerCase().includes("scope")));
+      const scopeRag = openScopeCrs.some((c) => (Number(c.scheduleImpactDays) || 0) > 14) ? "red" : openScopeCrs.length > 0 ? "amber" : "green";
+
+      // ── Cost & budget (planned figures from the charter; money actuals are not
+      //    tracked, so spend/burn/CPI use an effort-hours proxy from the tasks).
+      const num = (v: unknown) => (v != null && v !== "" && !Number.isNaN(Number(v)) ? Number(v) : 0);
+      const capexAmt = pnum("capexBudget") ?? cnum("capexAmount");
+      const opexAmt = pnum("opexBudget") ?? cnum("opexAmount");
+      const sumCapOpex = (capexAmt != null || opexAmt != null) ? (capexAmt ?? 0) + (opexAmt ?? 0) : null;
+      const budget = cnum("tentativeBudget") ?? cnum("finalNegotiatedBudget") ?? sumCapOpex;
+      const eac = cnum("leAmount"); // Latest Estimate = EAC
+      const vac = budget != null && eac != null ? budget - eac : null; // Variance at Completion
+      const estHrs = allT.reduce((s, t) => s + (num(t.plannedEffortHours) || num(t.estimatedHours)), 0);
+      const actHrs = allT.reduce((s, t) => s + num(t.actualHours), 0);
+      const doneEst = allT.filter((t) => t.status === "completed").reduce((s, t) => s + (num(t.plannedEffortHours) || num(t.estimatedHours)), 0);
+      const doneAct = allT.filter((t) => t.status === "completed").reduce((s, t) => s + num(t.actualHours), 0);
+      const effortCpi = doneAct > 0 ? Number((doneEst / doneAct).toFixed(2)) : null; // >1 = under effort budget
+      const costRag =
+        (budget != null && eac != null && eac > budget * 1.1) || (effortCpi != null && effortCpi < 0.8) ? "red"
+        : (budget != null && eac != null && eac > budget) || (effortCpi != null && effortCpi < 0.95) ? "amber"
+        : (budget != null || effortCpi != null) ? "green" : "grey";
+
+      const overallRag = worst(scheduleRag, riskRag, scopeRag, costRag === "grey" ? "green" : costRag);
+
+      // Reporting period: trailing 14 days up to today (the project stores no defined period).
+      const periodEnd = new Date(nowMs);
+      const periodStart = new Date(nowMs - 14 * 864e5);
+      const inPeriod = (d?: string | null) => !!d && new Date(d).getTime() >= periodStart.getTime();
+      const accomplishments = topT.filter((t) => t.status === "completed" && (inPeriod(t.actualEnd) || inPeriod(t.endDate))).slice(0, 12);
+      const plannedNext = topT.filter((t) => t.status !== "completed" && t.endDate).sort((a, b) => new Date(a.endDate as string).getTime() - new Date(b.endDate as string).getTime()).slice(0, 12);
+      const actionItems = topT.filter((t) => t.status !== "completed" && t.assigneeId).sort((a, b) => (a.endDate || "9999").localeCompare(b.endDate || "9999")).slice(0, 15);
+      const decisionsCrs = crs.filter((c) => (c.status || "").toLowerCase() === "submitted");
+      const blockers = topT.filter((t) => t.status !== "completed").map((t) => {
+        let preds: number[] = []; try { preds = JSON.parse(t.predecessorIds || "[]"); } catch { preds = []; }
+        const pending = preds.map((id) => taskById.get(id)).filter((d): d is RT => !!d && d.status !== "completed");
+        return { t, pending };
+      }).filter((b) => b.pending.length > 0).slice(0, 15);
+
+      // ── PDF ──────────────────────────────────────────────────────────────
       const doc = new jsPDF({ unit: "pt", format: "a4" });
-      const M = 48;
+      const M = 44;
       const W = doc.internal.pageSize.getWidth();
       const H = doc.internal.pageSize.getHeight();
-      let y = M;
-      const ensure = (h: number) => { if (y + h > H - M) { doc.addPage(); y = M; } };
-      const heading = (t: string) => { ensure(34); y += 6; doc.setFont("helvetica", "bold"); doc.setFontSize(12.5); doc.setTextColor(17); doc.text(t, M, y); y += 6; doc.setDrawColor(210); doc.setLineWidth(0.8); doc.line(M, y, W - M, y); y += 15; };
-      const para = (t: string) => {
-        if (!t || !t.trim()) { ensure(14); doc.setFont("helvetica", "italic"); doc.setFontSize(9.5); doc.setTextColor(150); doc.text("Not specified.", M, y); y += 20; return; }
-        doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(45);
-        for (const ln of doc.splitTextToSize(t, W - M * 2) as string[]) { ensure(14); doc.text(ln, M, y); y += 14; }
-        y += 8;
+      const CW = W - M * 2;
+      const RAG: Record<string, [number, number, number]> = { green: [22, 163, 74], amber: [217, 119, 6], red: [220, 38, 38], grey: [100, 116, 139] };
+      const RAG_TINT: Record<string, [number, number, number]> = { green: [236, 253, 245], amber: [255, 247, 237], red: [254, 242, 242], grey: [241, 245, 249] };
+      const RAG_TEXT: Record<string, string> = { green: "On Track", amber: "At Risk", red: "Off Track", grey: "N/A" };
+      let y = 0;
+      const ensure = (h: number) => { if (y + h > H - 54) { doc.addPage(); y = M; } };
+      const heading = (t: string) => {
+        ensure(34); y += 10;
+        doc.setFillColor(37, 99, 235); doc.rect(M, y - 9, 3.5, 13, "F");
+        doc.setFont("helvetica", "bold"); doc.setFontSize(11.5); doc.setTextColor(15, 23, 42);
+        doc.text(t.toUpperCase(), M + 9, y); y += 7;
+        doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.7); doc.line(M, y, W - M, y); y += 14;
       };
-      const kv = (label: string, value: string) => {
-        const vx = M + 150;
-        doc.setFont("helvetica", "bold"); doc.setFontSize(9.5); doc.setTextColor(75);
+      const kvRow = (label: string, value: string) => {
+        const vx = M + 135; doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(71, 85, 105);
         const vlines = doc.splitTextToSize(value || "—", W - M - vx) as string[];
-        ensure(Math.max(15, vlines.length * 13));
-        doc.text(label, M, y);
-        doc.setFont("helvetica", "normal"); doc.setTextColor(31);
-        doc.text(vlines, vx, y);
-        y += Math.max(15, vlines.length * 13);
+        ensure(Math.max(14, vlines.length * 12));
+        doc.text(label, M, y); doc.setFont("helvetica", "normal"); doc.setTextColor(15, 23, 42); doc.text(vlines, vx, y);
+        y += Math.max(14, vlines.length * 12);
       };
-      const bullet = (t: string) => {
-        doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(45);
-        const x = M + 12;
-        const lines = doc.splitTextToSize(t, W - M - x) as string[];
-        ensure(lines.length * 13 + 2);
-        doc.text("•", M + 2, y); doc.text(lines, x, y); y += lines.length * 13 + 2;
+      const bulletRow = (txt: string) => {
+        doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(55, 65, 81);
+        const lines = doc.splitTextToSize(txt, CW - 14) as string[];
+        ensure(lines.length * 12 + 1); doc.text("•", M + 2, y); doc.text(lines, M + 14, y); y += lines.length * 12 + 1;
+      };
+      const noneRow = (msg: string) => { doc.setFont("helvetica", "italic"); doc.setFontSize(9); doc.setTextColor(148, 163, 184); ensure(15); doc.text(msg, M, y); y += 16; };
+      // Hand-drawn table (no autotable dependency). Column widths should sum to <= CW.
+      const table = (cols: { h: string; w: number }[], rows: string[][]) => {
+        const total = cols.reduce((s, c) => s + c.w, 0);
+        const drawHeader = () => {
+          ensure(20); doc.setFillColor(30, 41, 59); doc.rect(M, y - 10, total, 17, "F");
+          doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
+          let x = M; for (const c of cols) { doc.text((doc.splitTextToSize(c.h.toUpperCase(), c.w - 8) as string[])[0] ?? "", x + 4, y); x += c.w; } y += 11;
+        };
+        drawHeader();
+        rows.forEach((r, ri) => {
+          const cells = r.map((cell, ci) => doc.splitTextToSize(cell || "—", cols[ci].w - 8) as string[]);
+          const rh = Math.max(15, Math.max(...cells.map((l) => l.length)) * 10 + 6);
+          if (y + rh > H - 54) { doc.addPage(); y = M; drawHeader(); }
+          if (ri % 2 === 1) { doc.setFillColor(248, 250, 252); doc.rect(M, y - 10, total, rh, "F"); }
+          doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(31, 41, 55);
+          let x = M; cells.forEach((lines, ci) => { doc.text(lines, x + 4, y); x += cols[ci].w; });
+          y += rh;
+        });
+        doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.5); doc.line(M, y - 9, M + total, y - 9); y += 12;
       };
 
-      // Title
-      doc.setFont("helvetica", "bold"); doc.setFontSize(19); doc.setTextColor(10);
-      doc.text(`${(p.name as string) ?? "Project"} — Project Charter`, M, y); y += 18;
-      doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(120);
-      doc.text([pcRef ? `Ref ${pcRef}` : null, `Status: ${cap(p.status as string)}`, `Generated ${new Date().toLocaleString("en-GB")}`].filter(Boolean).join("    ·    "), M, y); y += 6;
-
-      // ── Project Information (filled from the charter AND the project) ──────
-      const pstr = (k: string) => { const v = p[k]; return typeof v === "string" ? v.trim() : ""; };
-      const ownerName = Number(p.projectOwnerId ?? 0) ? (usersById.get(Number(p.projectOwnerId)) ?? "") : "";
-      heading("Project Information");
-      kv("Project", cstr("title") || (p.name as string) || "—");
-      kv("Status", cap(p.status as string));
-      kv("Progress", `${pnum("progress") ?? 0}%`);
-      kv("Sponsor", cstr("projectSponsor") || "—");
-      kv("Project Manager", cstr("pmName") || (Number(p.projectManagerId ?? 0) ? (usersById.get(Number(p.projectManagerId)) ?? "—") : "—"));
-      if (ownerName) kv("Project Owner", ownerName);
-      kv("Category", cstr("category") || pstr("category") || "—");
-      kv("Department / Function", cstr("department") || pstr("function") || "—");
-      if (pstr("stage")) kv("Lifecycle Stage", cap(pstr("stage")));
-      if (pstr("strategicTheme")) kv("Strategic Theme", pstr("strategicTheme"));
-      if (pstr("siteRegion")) kv("Site / Region", pstr("siteRegion"));
-      if (cstr("entity")) kv("Entity", cstr("entity"));
-      kv("Priority", cap(p.priority as string));
-      kv("Timeline", `${fmt(cstr("startDate") || pstr("startDate"))}   to   ${fmt(cstr("endDate") || pstr("endDate"))}`);
-      if (cstr("internalOrderNumber")) kv("Internal Order No.", cstr("internalOrderNumber"));
-      if (cstr("projectApprovalDate")) kv("Approval Date", fmt(cstr("projectApprovalDate")));
-      if (cstr("lastRevisionDate")) kv("Last Revision", fmt(cstr("lastRevisionDate")));
-
-      // ── AI summary (synthesised from milestones & tasks) ───────────────────
-      if (aiSummary) { heading("Summary"); para(aiSummary); }
-
-      // ── Narrative — the conventional charter sections (only those with content)
-      const sec = (title: string, body: string) => { if (body && body.trim()) { heading(title); para(body); } };
-      sec("Project Description", typeof p.description === "string" ? (p.description as string) : "");
-      sec("Executive Summary", cstr("executiveSummary"));
-      sec("Purpose / Business Justification", cstr("description"));
-      sec("Background", cstr("background"));
-      sec("Current State", cstr("currentState"));
-      sec("Business Drivers", cstr("businessDrivers"));
-      sec("In Scope", cstr("scope"));
-      sec("Out of Scope", cstr("outOfScope"));
-      sec("Scope Limitations", cstr("scopeLimitations"));
-      sec("Deliverables", cstr("deliverables"));
-      sec("Business Outcome / Benefits", cstr("businessOutcome"));
-
-      const benefits = ([
-        ["Top-line improvement", cstr("toplineImprovement")],
-        ["Bottom-line optimisation", cstr("bottomLineOptimization")],
-        ["Compliance benefits", cstr("complianceBenefits")],
-        ["Productivity improvement", cstr("productivityImprovement")],
-      ] as Array<[string, string]>).filter(([, v]) => v);
-      if (benefits.length) { heading("Benefits"); for (const [l, v] of benefits) bullet(`${l}: ${v}`); }
-
-      sec("Solution Comparison", cstr("solutionComparison"));
-      sec("Assumptions", cstr("assumptions"));
-      sec("Constraints", cstr("constraints"));
-      sec("Risks", cstr("risks"));
-
-      // ── Current Status + Timeline (live, from the project's tasks/milestones)
+      // ── Header band ──────────────────────────────────────────────────────
+      doc.setFillColor(15, 23, 42); doc.rect(0, 0, W, 84, "F");
+      doc.setFillColor(37, 99, 235); doc.rect(0, 84, W, 3, "F");
+      doc.setFont("helvetica", "bold"); doc.setFontSize(18); doc.setTextColor(255, 255, 255);
+      doc.text("PROJECT STATUS REPORT", M, 38);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(12); doc.setTextColor(203, 213, 225);
+      doc.text((doc.splitTextToSize(cstr("title") || (p.name as string) || "Project", CW - 150) as string[])[0], M, 58);
+      doc.setFontSize(8.5); doc.setTextColor(148, 163, 184);
+      doc.text([pcRef ? `Ref ${pcRef}` : null, `Report date: ${fmt(periodEnd.toISOString())}`].filter(Boolean).join("    ·    "), M, 74);
       {
-        const topT = tasks.filter((t) => t.parentTaskId == null);
-        const tcnt = (s: string) => topT.filter((t) => t.status === s).length;
-        const tt = topT.length, td = tcnt("completed"), ti = tcnt("in_progress"), tdl = tcnt("delayed"), th = tcnt("on_hold");
-        const tn = Math.max(0, tt - td - ti - tdl - th);
-        const tpc = tt ? Math.round((td / tt) * 100) : (pnum("progress") ?? 0);
-        const pms = (rawMilestones ?? []) as Array<{ name: string; dueDate?: string | null; status: string }>;
-        const nowT = Date.now();
-        const mDone = pms.filter((m) => m.status === "completed").length;
-        const mOver = pms.filter((m) => m.status !== "completed" && m.dueDate && new Date(m.dueDate).getTime() < nowT).length;
+        const oc = RAG[overallRag]; const label = RAG_TEXT[overallRag];
+        doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+        const pw = doc.getTextWidth(label) + 22; doc.setFillColor(oc[0], oc[1], oc[2]); doc.roundedRect(W - M - pw, 30, pw, 18, 9, 9, "F");
+        doc.setTextColor(255, 255, 255); doc.text(label, W - M - pw + 11, 42);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(148, 163, 184); doc.text("OVERALL", W - M - pw, 24);
+      }
+      y = 104;
 
-        heading("Current Status");
-        kv("Overall status", cap(p.status as string));
-        kv("Progress", `${tpc}%   (${td}/${tt} top-level tasks complete)`);
-        kv("Task breakdown", `${td} completed · ${ti} in progress · ${tdl} delayed · ${th} on hold · ${tn} not started`);
-        if (pms.length) kv("Milestones", `${mDone}/${pms.length} complete${mOver ? ` · ${mOver} overdue` : ""}`);
+      // ── Reporting period ─────────────────────────────────────────────────
+      heading("Reporting Period");
+      kvRow("Period", `${fmt(periodStart.toISOString())}  to  ${fmt(periodEnd.toISOString())}`);
+      kvRow("Report date", fmt(periodEnd.toISOString()));
+      kvRow("Project status", cap(p.status as string));
+      kvRow("Overall completion", `${actualPct}%`);
 
-        heading("Timeline");
-        kv("Planned dates", `${fmt(cstr("startDate") || pstr("startDate"))}   to   ${fmt(cstr("endDate") || pstr("endDate"))}`);
-        for (const m of pms) {
-          const overdue = m.status !== "completed" && m.dueDate && new Date(m.dueDate).getTime() < nowT;
-          bullet(`${m.name} — ${fmt(m.dueDate)} (${cap(m.status)})${overdue ? "  · OVERDUE" : ""}`);
-        }
+      // ── RAG health ───────────────────────────────────────────────────────
+      heading("Health Summary (RAG)");
+      {
+        const dims: Array<[string, string, string]> = [
+          ["Scope", scopeRag, openScopeCrs.length ? `${openScopeCrs.length} open scope change(s)` : "No open scope changes"],
+          ["Schedule", scheduleRag, msOverdue.length ? `${msOverdue.length} milestone(s) overdue` : (spi != null ? `SPI ${spi}` : "On plan")],
+          ["Cost", costRag, effortCpi != null ? `Effort CPI ${effortCpi}${eac != null ? ` · LE ${money(eac)}` : ""}` : (budget != null ? `Budget ${money(budget)}` : "No budget data")],
+          ["Risk", riskRag, `${openRisks.length} open risk(s)`],
+        ];
+        const gap = 10; const cw = (CW - gap * 3) / 4; const top = y;
+        dims.forEach((d, i) => {
+          const x = M + i * (cw + gap); const c = RAG[d[1]]; const tint = RAG_TINT[d[1]];
+          doc.setFillColor(tint[0], tint[1], tint[2]); doc.roundedRect(x, top, cw, 50, 5, 5, "F");
+          doc.setFillColor(c[0], c[1], c[2]); doc.circle(x + 11, top + 14, 4, "F");
+          doc.setFont("helvetica", "bold"); doc.setFontSize(8.5); doc.setTextColor(71, 85, 105); doc.text(d[0].toUpperCase(), x + 20, top + 17);
+          doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(c[0], c[1], c[2]); doc.text(RAG_TEXT[d[1]], x + 11, top + 33);
+          doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(100, 116, 139);
+          doc.text(doc.splitTextToSize(d[2], cw - 16) as string[], x + 11, top + 44);
+        });
+        y = top + 50 + 16;
       }
 
-      if (kpis.length) { heading("Success Criteria / KPIs"); for (const k of kpis.filter((k) => k.kpi?.trim())) bullet(`${k.kpi}${(k.baseline || k.goal) ? ` — ${k.baseline || "?"} → ${k.goal || "?"}` : ""}`); }
+      // ── Schedule status ──────────────────────────────────────────────────
+      heading("Schedule Status");
+      kvRow("Planned dates", `${fmt(startD)}  to  ${fmt(endD)}`);
+      kvRow("Progress (actual)", `${actualPct}%   (${unitDone}/${unitTotal} units complete · ${tDone}/${tt} top-level tasks)`);
+      if (plannedPct != null) kvRow("Planned to date", `${plannedPct}%`);
+      kvRow("Schedule variance", varianceDays > 0 ? `${varianceDays} day(s) behind` : varianceDays < 0 ? `${Math.abs(varianceDays)} day(s) ahead` : "On schedule");
+      if (spi != null) kvRow("SPI (proxy)", `${spi}  (${spi >= 1 ? "on/ahead of plan" : "behind plan"})`);
+      kvRow("Milestones", `${msDone}/${pms.length} complete${msOverdue.length ? ` · ${msOverdue.length} overdue` : ""}`);
+      kvRow("Tasks", `${tDone} done · ${tProg} in progress · ${tDelay} delayed · ${tHold} on hold · ${tNot} not started`);
 
-      // ── High-Level Milestones (the charter's own planned milestones) ───────
-      {
-        const cms = Array.isArray(ch.milestones) ? (ch.milestones as Array<{ milestone?: string; responsible?: string; targetDate?: string; status?: string }>) : [];
-        const named = cms.filter((m) => m.milestone?.trim());
-        if (named.length) {
-          heading("High-Level Milestones");
-          for (const m of named) bullet(`${m.milestone}${m.targetDate ? ` — ${fmt(m.targetDate)}` : ""}${m.responsible ? ` · ${m.responsible}` : ""}${m.status ? ` (${cap(m.status)})` : ""}`);
-        }
-      }
+      // ── Cost & budget status (planned + LE/EAC from charter; money actuals
+      //    not tracked → shown as such, with an effort-hours CPI proxy) ───────
+      heading("Cost & Budget Status");
+      kvRow("Approved / tentative budget", money(budget));
+      kvRow("CapEx", money(pnum("capexBudget") ?? cnum("capexAmount")));
+      kvRow("OpEx", money(pnum("opexBudget") ?? cnum("opexAmount")));
+      if (cnum("finalNegotiatedBudget") != null) kvRow("Final negotiated budget", money(cnum("finalNegotiatedBudget")));
+      kvRow("Latest Estimate (LE / EAC)", money(eac));
+      kvRow("Variance at completion", vac != null ? `${money(vac)} (${vac >= 0 ? "under" : "over"} budget)` : "—");
+      kvRow("Actual spend / burn / CPI", "Not tracked — no cost-actuals source");
+      kvRow("Planned vs actual effort", `${estHrs || "—"} h planned · ${actHrs || "—"} h actual`);
+      kvRow("Effort CPI (proxy)", effortCpi != null ? `${effortCpi}  (${effortCpi >= 1 ? "within effort budget" : "over effort budget"})` : "—");
+      if (cnum("roiPerAnnum") != null) kvRow("ROI / annum", money(cnum("roiPerAnnum")));
+      if (cnum("paybackMonths") != null) kvRow("Payback", `${cnum("paybackMonths")} months`);
+      if (cnum("nfaThreshold") != null) kvRow("NFA threshold", money(cnum("nfaThreshold")));
 
-      // ── Budget & Investment ────────────────────────────────────────────────
-      {
-        const rows: Array<[string, string]> = [];
-        const tentative = cnum("tentativeBudget"); if (tentative != null && tentative > 0) rows.push(["Tentative / Approved Budget", money(tentative)]);
-        const capex = pnum("capexBudget") ?? cnum("capexAmount"); if (capex != null && capex > 0) rows.push(["CapEx", money(capex)]);
-        const opex = pnum("opexBudget") ?? cnum("opexAmount"); if (opex != null && opex > 0) rows.push(["OpEx", money(opex)]);
-        if (cnum("finalNegotiatedBudget") != null) rows.push(["Final Negotiated Budget", money(cnum("finalNegotiatedBudget"))]);
-        if (cnum("leAmount") != null) rows.push(["Latest Estimate (LE)", money(cnum("leAmount"))]);
-        if (cnum("potentialAdditionalBudget") != null) rows.push(["Potential Additional Budget", money(cnum("potentialAdditionalBudget"))]);
-        if (cnum("roiPerAnnum") != null) rows.push(["ROI / annum", money(cnum("roiPerAnnum"))]);
-        if (cnum("paybackMonths") != null) rows.push(["Payback", `${cnum("paybackMonths")} months`]);
-        if (cnum("nfaThreshold") != null) rows.push(["NFA Threshold", money(cnum("nfaThreshold"))]);
-        if (rows.length) { heading("Budget & Investment"); for (const [l, v] of rows) kv(l, v); }
-      }
+      // ── Accomplishments / next ───────────────────────────────────────────
+      heading("Accomplishments This Period");
+      if (accomplishments.length) { for (const t of accomplishments) bulletRow(`${t.name}${(t.actualEnd || t.endDate) ? `  (${fmt(t.actualEnd || t.endDate)})` : ""}`); y += 5; }
+      else noneRow("No tasks completed in this period.");
+      heading("Planned Next Period");
+      if (plannedNext.length) { for (const t of plannedNext) bulletRow(`${t.name}  —  due ${fmt(t.endDate)} (${cap(t.status)})`); y += 5; }
+      else noneRow("No upcoming tasks scheduled.");
 
-      // ── Stakeholders ───────────────────────────────────────────────────────
-      heading("Stakeholders");
-      kv("Sponsor", cstr("projectSponsor") || "—");
-      kv("Project Manager", cstr("pmName") || (Number(p.projectManagerId ?? 0) ? (usersById.get(Number(p.projectManagerId)) ?? "—") : "—"));
-      if (members.length) kv("Key Members", members.filter((m) => m.name?.trim()).map((m) => m.name).join(", ") || "—");
+      // ── RAID: risks + issues ─────────────────────────────────────────────
+      heading("Risks Register");
+      if (risks.length) table([{ h: "Risk", w: 150 }, { h: "Impact", w: 55 }, { h: "Likelihood", w: 65 }, { h: "Owner", w: 80 }, { h: "Mitigation", w: 99 }, { h: "Status", w: 58 }],
+        risks.map((r) => [r.title, cap(r.impact), cap(r.likelihood), r.owner || "—", r.mitigation || "—", cap(r.status)]));
+      else noneRow("No risks logged.");
+      heading("Issues Register");
+      if (issues.length) table([{ h: "Issue", w: 200 }, { h: "Type", w: 80 }, { h: "Blocking", w: 120 }, { h: "Status", w: 107 }],
+        issues.map((i) => [i.title, cap(i.dependencyType || "—"), i.blockingDept || nameOf(i.blockingOwnerId), cap(i.status)]));
+      else noneRow("No issues logged.");
 
-      if (displayTags.length) { heading("Strategic Alignment"); bullet(displayTags.join(", ")); }
+      // ── Change requests ──────────────────────────────────────────────────
+      heading("Change Requests");
+      if (crs.length) table([{ h: "Change", w: 175 }, { h: "Type", w: 70 }, { h: "Sched Δ (days)", w: 70 }, { h: "Raised by", w: 95 }, { h: "Status", w: 97 }],
+        crs.map((c) => [c.title, cap(c.changeType || "—"), String(c.scheduleImpactDays ?? 0), nameOf(c.raisedById), cap(c.status)]));
+      else noneRow("No change requests raised.");
 
-      // ── Approvals & Sign-off (from available sponsor / PM / approval date) ──
-      heading("Approvals & Sign-off");
-      kv("Project Sponsor", cstr("projectSponsor") || "—");
-      kv("Project Manager", cstr("pmName") || (Number(p.projectManagerId ?? 0) ? (usersById.get(Number(p.projectManagerId)) ?? "—") : "—"));
-      if (ownerName) kv("Project Owner", ownerName);
-      kv("Approval Date", cstr("projectApprovalDate") ? fmt(cstr("projectApprovalDate")) : "—");
-      y += 6;
-      ensure(46);
-      doc.setFont("helvetica", "normal"); doc.setFontSize(10); doc.setTextColor(45);
-      doc.text("Sponsor: ______________________________      Date: ______________", M, y); y += 24;
-      doc.text("Project Manager: ______________________      Date: ______________", M, y); y += 16;
+      // ── Decisions / action items ─────────────────────────────────────────
+      heading("Decisions Required & Action Items");
+      const decisionRows: string[][] = [
+        ...decisionsCrs.map((c) => [c.title, nameOf(c.raisedById), "—", "Awaiting decision"]),
+        ...actionItems.map((t) => [t.name, nameOf(t.assigneeId), fmt(t.endDate), cap(t.status)]),
+      ];
+      if (decisionRows.length) table([{ h: "Item", w: 210 }, { h: "Owner", w: 110 }, { h: "Due", w: 90 }, { h: "Status", w: 97 }], decisionRows);
+      else noneRow("No open decisions or action items.");
 
-      // ── Document Control (reference / revision / generated) ────────────────
-      heading("Document Control");
-      if (pcRef) kv("Charter Reference", pcRef);
-      kv("Project Status", cap(p.status as string));
-      if (cstr("revision")) kv("Revision", cstr("revision"));
-      if (cstr("lastRevisionDate")) kv("Last Revision", fmt(cstr("lastRevisionDate")));
-      kv("Generated", new Date().toLocaleString("en-GB"));
+      // ── Dependencies & blockers ──────────────────────────────────────────
+      heading("Dependencies & Blockers");
+      if (blockers.length) table([{ h: "Task", w: 200 }, { h: "Waiting on", w: 200 }, { h: "Due", w: 107 }],
+        blockers.map((b) => [b.t.name, b.pending.map((d) => d.name).join(", "), fmt(b.t.endDate)]));
+      else noneRow("No blocking dependencies.");
 
-      // Footer page numbers
+      // ── Footer ───────────────────────────────────────────────────────────
       const pageCount = doc.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i); doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(150);
-        doc.text(`${(p.name as string) ?? "Project"} · Live Charter`, M, H - 24);
-        doc.text(`Page ${i} of ${pageCount}`, W - M, H - 24, { align: "right" });
+        doc.setPage(i); doc.setDrawColor(226, 232, 240); doc.setLineWidth(0.5); doc.line(M, H - 34, W - M, H - 34);
+        doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(148, 163, 184);
+        doc.text(`${(p.name as string) ?? "Project"} · Status Report · Confidential`, M, H - 22);
+        doc.text(`Page ${i} of ${pageCount}`, W - M, H - 22, { align: "right" });
       }
-
-      const safe = `${(p.name as string) ?? "project"} - Live Charter`.replace(/[^\w.\- ]/g, "").trim();
-      doc.save(`${safe || "Live Charter"}.pdf`);
-      toast({ title: "Live Charter generated" });
+      const safe = `${(p.name as string) ?? "project"} - Status Report`.replace(/[^\w.\- ]/g, "").trim();
+      doc.save(`${safe || "Status Report"}.pdf`);
+      toast({ title: "Project status report generated" });
     } catch (e) {
-      toast({ title: (e as Error)?.message || "Could not generate charter", variant: "destructive" });
+      toast({ title: (e as Error)?.message || "Could not generate report", variant: "destructive" });
     } finally {
       setGenBusy(false);
     }
@@ -954,11 +1148,16 @@ export default function ProjectDetail() {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [searchOpen, search]);
-  const [milestone, setMilestone] = useState("");
+  // ?milestone=<id> deep-link (e.g. the task popup's breadcrumb) pre-selects it.
+  const [milestone, setMilestone] = useState(
+    () => (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("milestone") : null) ?? "",
+  );
   const [priority, setPriority] = useState("");
   const [filterOpen, setFilterOpen] = useState(false);
   const [prioOpen, setPrioOpen] = useState(false);
   const [issuesPanelOpen, setIssuesPanelOpen] = useState(false);
+  // Kanban "Group by" axis (Status/Owner/Priority/Department) — Action Centre parity.
+  const [groupBy, setGroupBy] = useState<GroupByAxis>("status");
   const filterRef = useRef<HTMLDivElement | null>(null);
   const prioRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -1035,16 +1234,71 @@ export default function ProjectDetail() {
     for (const ms of (rawMilestones ?? []) as Array<{ id: number; name: string }>) {
       const rows = byKey.get(String(ms.id));
       if (rows && rows.length > 0) {
-        ordered.push({ key: String(ms.id), label: ms.name, color: MS_COLORS[i % MS_COLORS.length]!, rows });
+        ordered.push({ key: String(ms.id), label: ms.name, color: MS_COLORS[i % MS_COLORS.length]!, rows: orderRows(rows) });
         i++;
       }
     }
     const none = byKey.get("__none__");
     if (none && none.length > 0) {
-      ordered.push({ key: "__none__", label: "No Milestone", color: "#94A3B8", rows: none });
+      ordered.push({ key: "__none__", label: "No Milestone", color: "#94A3B8", rows: orderRows(none) });
     }
     return ordered;
-  }, [filtered, rawMilestones]);
+  }, [filtered, rawMilestones, orderRows]);
+
+  // ── Kanban columns by the selected "Group by" axis (Action Centre parity):
+  //    status = the 5 fixed RAG columns; priority = P0–P3 (+ No priority);
+  //    owner = one lane per assignee present, busiest first, Unassigned last.
+  const kanbanGroups = useMemo(() => {
+    if (groupBy === "priority") {
+      const cols = TASK_PRIORITIES.map((p) => ({
+        key: p.value, label: p.label, color: p.solid,
+        rows: filtered.filter((t) => t.priority === p.value),
+      })) as { key: string; label: string; color: string; rows: TaskRow[] }[];
+      const none = filtered.filter((t) => !PRIORITY_BY_VALUE.has(t.priority as never));
+      if (none.length > 0) cols.push({ key: "__none__", label: "No priority", color: UNGROUPED_COLOR, rows: none });
+      return cols;
+    }
+    if (groupBy === "owner") {
+      const byKey = new Map<string, TaskRow[]>();
+      for (const t of filtered) {
+        const k = t.assigneeId != null ? String(t.assigneeId) : "__none__";
+        const arr = byKey.get(k) ?? [];
+        arr.push(t);
+        byKey.set(k, arr);
+      }
+      const lanes = [...byKey.entries()]
+        .filter(([k]) => k !== "__none__")
+        .sort((a, b) => b[1].length - a[1].length)
+        .map(([k, rows]) => ({
+          key: k,
+          label: usersById.get(Number(k)) ?? rows[0]?.assigneeName ?? `User ${k}`,
+          color: OWNER_LANE_COLOR,
+          rows,
+        }));
+      const none = byKey.get("__none__");
+      if (none && none.length > 0) lanes.push({ key: "__none__", label: "Unassigned", color: UNGROUPED_COLOR, rows: none });
+      return lanes;
+    }
+    if (groupBy === "department") {
+      const byKey = new Map<string, TaskRow[]>();
+      for (const t of filtered) {
+        const dept = ((t as Record<string, unknown>).cftDept as string | null | undefined)?.trim() || "__none__";
+        const arr = byKey.get(dept) ?? []; arr.push(t); byKey.set(dept, arr);
+      }
+      const lanes = [...byKey.entries()]
+        .filter(([k]) => k !== "__none__")
+        .sort((a, b) => b[1].length - a[1].length)
+        .map(([k, rows]) => ({ key: k, label: k, color: "#6366F1", rows }));
+      const none = byKey.get("__none__");
+      if (none && none.length > 0) lanes.push({ key: "__none__", label: "No department", color: UNGROUPED_COLOR, rows: none });
+      return lanes;
+    }
+    // status (default)
+    return TASK_STATUSES.map((s) => ({
+      key: s.value, label: s.label, color: KANBAN_STATUS_COLOR[s.value] ?? s.solid,
+      rows: filtered.filter((t) => t.status === s.value),
+    }));
+  }, [groupBy, filtered, usersById]);
 
   // Gantt data — the milestone groups mapped to the shared MondayGantt model.
   // Each task becomes a bar (parent at depth 0, subtasks indented at depth 1);
@@ -1143,21 +1397,30 @@ export default function ProjectDetail() {
           return (
             <td key="name" className="border border-gray-200 px-2 py-0.5 font-medium text-gray-800">
               <span className="flex items-center gap-1 min-w-0" style={{ paddingLeft: depth * 14 }}>
-                {subs.length > 0 ? (
+                {depth === 0 ? (
+                  // Top-level rows are always expandable (to reveal subtasks or the
+                  // "add subtask" row), so show the chevron on every parent — on
+                  // hover when collapsed, persistent when open.
                   <ChevronDown size={12} className={`shrink-0 text-gray-400 transition-all ${open ? "" : "-rotate-90"} ${open ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`} />
-                ) : depth > 0 ? (
-                  <span className="w-3 shrink-0 mr-0.5" />
                 ) : (
-                  <span className="w-3 shrink-0" />
+                  <span className="w-3 shrink-0 mr-0.5" />
                 )}
                 {depth > 0 ? (
                   <span className="group/sub flex items-center gap-1 min-w-0">
                     <button
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setOpenTaskId(t.id); }}
-                      className="truncate text-left font-normal text-gray-700 hover:text-primary hover:underline"
+                      className="whitespace-normal break-words text-left font-normal text-gray-700 hover:text-primary hover:underline"
                       title={t.name}
                     >{t.name}</button>
+                    <button
+                      type="button"
+                      title="Clone task"
+                      onClick={(e) => { e.stopPropagation(); cloneTask(t); }}
+                      className="shrink-0 opacity-0 group-hover/sub:opacity-100 p-0.5 rounded text-gray-400 hover:text-primary hover:bg-blue-50 transition"
+                    >
+                      <Copy size={12} />
+                    </button>
                     <button
                       type="button"
                       title="Delete subtask"
@@ -1171,12 +1434,22 @@ export default function ProjectDetail() {
                     </button>
                   </span>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setOpenTaskId(t.id); }}
-                    className="truncate text-left hover:text-primary hover:underline"
-                    title={t.name}
-                  >{t.name}</button>
+                  <span className="group/top flex items-center gap-1 min-w-0">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setOpenTaskId(t.id); }}
+                      className="whitespace-normal break-words text-left hover:text-primary hover:underline"
+                      title={t.name}
+                    >{t.name}</button>
+                    <button
+                      type="button"
+                      title="Clone task"
+                      onClick={(e) => { e.stopPropagation(); cloneTask(t); }}
+                      className="shrink-0 opacity-0 group-hover/top:opacity-100 p-0.5 rounded text-gray-400 hover:text-primary hover:bg-blue-50 transition"
+                    >
+                      <Copy size={12} />
+                    </button>
+                  </span>
                 )}
               </span>
             </td>
@@ -1191,8 +1464,8 @@ export default function ProjectDetail() {
           );
         case "priority":
           return (
-            <td key="priority" className="border border-gray-200 px-2 py-0.5 text-center text-[10px] font-semibold whitespace-nowrap" style={pr ? { background: pr.bg, color: pr.color } : undefined}>
-              {pr ? pr.label : <span className="text-[11px] text-gray-400">—</span>}
+            <td key="priority" className="border border-gray-200 px-0 py-0 text-center whitespace-nowrap relative" style={pr ? { background: pr.bg, color: pr.color } : undefined}>
+              <PriorityDropdown task={t} updateTask={updateTask} />
             </td>
           );
         case "progress":
@@ -1238,15 +1511,14 @@ export default function ProjectDetail() {
       {/* Header — back to Projects + project identity */}
       <div className="relative flex items-center justify-between gap-3 flex-wrap ph-rise">
         <div className="flex items-center gap-3 min-w-0">
-          <Link href="/projects">
-            <button
-              type="button"
-              title="Back to Projects"
-              className="w-8 h-8 rounded-lg border border-border bg-card/70 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0"
-            >
-              <ChevronLeft size={16} />
-            </button>
-          </Link>
+          <button
+            type="button"
+            onClick={() => goBack("/projects")}
+            title="Back"
+            className="w-8 h-8 rounded-lg border border-border bg-card/70 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors shrink-0"
+          >
+            <ChevronLeft size={16} />
+          </button>
           <div className="min-w-0">
             <div className="font-mono text-[11px] text-muted-foreground">{project ? projectCode(project as { id: number; jiraKey?: string | null }) : ""}</div>
             <h2 className="text-xl font-bold text-foreground truncate">{project?.name ?? (loadingProject ? "…" : "Project")}</h2>
@@ -1339,7 +1611,7 @@ export default function ProjectDetail() {
         )}
 
         {/* View switcher — Overview · Table · Gantt (borderless segmented pills) */}
-        <div className="flex items-center gap-0.5 rounded-lg bg-muted/50 p-0.5">
+        <div className="flex items-center gap-0.5 rounded-lg p-0.5">
           {([
             { key: "overview", label: "Overview", Icon: LayoutDashboard },
             { key: "table", label: "Table", Icon: Table2 },
@@ -1353,13 +1625,24 @@ export default function ProjectDetail() {
               onClick={() => setView(key)}
               title={`${label} view`}
               className={`h-6 px-2 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
-                view === key ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                view === key ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
               }`}
             >
               <Icon size={13} />
               {label}
             </button>
           ))}
+
+          {/* Group by (Kanban only) — Action Centre PillSelect: Status / Owner / Priority / Department */}
+          {view === "kanban" && (
+            <div className="ml-1">
+              <GroupByPill<GroupByAxis>
+                value={groupBy}
+                onChange={setGroupBy}
+                options={GROUP_BY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              />
+            </div>
+          )}
 
           {/* Divider, then the two filters — same grey group as the view tabs */}
           <span className="w-px h-4 bg-border/70 mx-1 self-center" />
@@ -1371,7 +1654,7 @@ export default function ProjectDetail() {
               onClick={() => { setFilterOpen((o) => !o); setPrioOpen(false); }}
               title="Filter tasks by milestone"
               className={`h-6 pl-2 pr-1.5 rounded-md flex items-center gap-1 text-[11px] transition-colors ${
-                milestone ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                milestone ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
               }`}
             >
               <Milestone size={12} />
@@ -1402,7 +1685,7 @@ export default function ProjectDetail() {
               onClick={() => { setPrioOpen((o) => !o); setFilterOpen(false); }}
               title="Filter tasks by priority"
               className={`h-6 pl-2 pr-1.5 rounded-md flex items-center gap-1 text-[11px] transition-colors ${
-                priority ? "bg-background text-primary shadow-sm" : "text-muted-foreground hover:text-foreground"
+                priority ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
               }`}
             >
               <Flag size={12} />
@@ -1483,16 +1766,53 @@ export default function ProjectDetail() {
         />
       ) : view === "kanban" ? (
         <KanbanView<TaskRow>
-          groups={TASK_STATUSES.map((s) => ({ key: s.value, label: s.label, color: s.solid, rows: filtered.filter((t) => t.status === s.value) }))}
+          groups={kanbanGroups}
           columns={TASK_BOARD_COLUMNS}
+          colWidth={320}
+          sectionStyle="ac"
+          tintBody={groupBy === "priority"}
           getRowId={(t) => `task:${t.id}`}
           getName={(t) => <span className="font-medium">{t.name}</span>}
+          renderCard={(t) => {
+            const completed = t.status === "completed";
+            const overdue = !completed && !!t.endDate && new Date(t.endDate).getTime() < new Date().setHours(0, 0, 0, 0);
+            const photo = t.assigneeId != null ? ((users.find((u) => u.id === t.assigneeId) as { photoUrl?: string | null } | undefined)?.photoUrl ?? null) : null;
+            const meta = [taskCode(t), t.milestoneId != null ? msNameById.get(t.milestoneId) : null].filter(Boolean).join(" · ");
+            const pct = (t as Record<string, unknown>).progressPct as number | undefined;
+            return (
+              <ActionCard
+                meta={meta}
+                title={t.name}
+                ownerName={assigneeName(t)}
+                ownerPhoto={photo}
+                priority={t.priority}
+                dueDate={t.endDate}
+                progressPct={pct ?? null}
+                completed={completed}
+                overdue={overdue}
+              />
+            );
+          }}
           onOpenRow={(t) => setOpenTaskId(t.id)}
-          onMoveToGroup={(rowId, status) => {
+          onMoveToGroup={(rowId, groupKey) => {
             const id = Number(rowId.replace("task:", ""));
             if (!Number.isFinite(id)) return;
-            // Gate the status change behind a justification (CXO board parity).
-            setMoveJustify({ id, to: status, toLabel: STATUS_BY_VALUE.get(status as never)?.label ?? status });
+            if (groupBy === "owner") {
+              // Reassign — drop onto an owner lane (or Unassigned).
+              const assigneeId = groupKey === "__none__" ? null : Number(groupKey);
+              updateTask.mutate({ id, data: { assigneeId } as never });
+            } else if (groupBy === "priority") {
+              // Re-prioritise — can't blank a priority, so ignore the No-priority lane.
+              if (groupKey === "__none__") return;
+              updateTask.mutate({ id, data: { priority: groupKey } as never });
+            } else if (groupBy === "department") {
+              // Re-assign the task's CFT department (No-department lane → ignore).
+              if (groupKey === "__none__") return;
+              updateTask.mutate({ id, data: { cftDept: groupKey } as never });
+            } else {
+              // Status move — gated behind a justification (CXO board parity).
+              setMoveJustify({ id, to: groupKey, toLabel: STATUS_BY_VALUE.get(groupKey as never)?.label ?? groupKey });
+            }
           }}
         />
       ) : view === "calendar" ? (
@@ -1510,16 +1830,26 @@ export default function ProjectDetail() {
             return (
               <div key={group.key}>
                 {/* Milestone dropdown header — click to expand/collapse the table */}
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(group.key)}
-                  className="flex items-center gap-2 mb-2 px-0.5 w-full text-left group/header"
-                >
-                  <ChevronDown size={15} className={`text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
-                  <Milestone size={14} className="shrink-0" style={{ color: group.color }} />
-                  <h3 className="text-sm font-semibold text-foreground">{group.label}</h3>
-                  <span className="text-xs text-muted-foreground">({group.rows.length} task{group.rows.length === 1 ? "" : "s"})</span>
-                </button>
+                <div className="flex items-center gap-2 mb-2 px-0.5 group/header">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group.key)}
+                    className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                  >
+                    <ChevronDown size={15} className={`text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
+                    <Milestone size={14} className="shrink-0" style={{ color: group.color }} />
+                    <h3 className="text-sm font-semibold text-foreground">{group.label}</h3>
+                    <span className="text-xs text-muted-foreground">({group.rows.length} task{group.rows.length === 1 ? "" : "s"})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddFor({ milestoneId: group.key === "__none__" ? null : Number(group.key) })}
+                    title={`Add a task to ${group.label}`}
+                    className="inline-flex items-center gap-1 px-2 h-6 rounded-md text-[11px] font-medium text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
+                  >
+                    <Plus size={13} /> Add task
+                  </button>
+                </div>
 
                 {open && (
                   <ExcelGroupTable
@@ -1621,7 +1951,22 @@ export default function ProjectDetail() {
           task={toAgg(openTask)}
           allTasks={tasks.map(toAgg)}
           onClose={() => setOpenTaskId(null)}
+          onOpenTask={(id) => setOpenTaskId(id)}
           onRefresh={() => { void refetchTasks(); }}
+        />
+      )}
+
+      {addFor && (
+        <TaskCreateModal
+          key={addFor === "generic" ? "generic" : `ms-${addFor.milestoneId}`}
+          open
+          onClose={() => setAddFor(null)}
+          projectId={projectId}
+          milestones={(rawMilestones ?? []) as Array<{ id: number; name: string }>}
+          users={users}
+          createTask={createTask}
+          milestonePreset={addFor === "generic" ? undefined : addFor.milestoneId}
+          onCreated={(id) => setOpenTaskId(id)}
         />
       )}
 
@@ -1648,6 +1993,7 @@ export default function ProjectDetail() {
               uploadOpen={docsUploadOpen}
               onUploadOpenChange={setDocsUploadOpen}
               showUploadButton={false}
+              showSearch={false}
             />
           </div>
         </DialogContent>
@@ -1655,14 +2001,14 @@ export default function ProjectDetail() {
 
       {/* Issues — raise + manage this project's issues */}
       <Dialog open={issuesPanelOpen} onOpenChange={(v) => { if (!v) setIssuesPanelOpen(false); }}>
-        <DialogContent className="max-w-5xl w-[92vw] h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
-          <DialogHeader className="px-5 py-3 border-b border-border/60 flex-shrink-0">
-            <DialogTitle className="flex items-center gap-2 tracking-tight text-base pr-10">
-              <AlertTriangle size={16} className="text-primary" />
+        <DialogContent className="max-w-3xl w-[88vw] max-h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
+          <DialogHeader className="px-4 py-2 border-b border-border/60 flex-shrink-0">
+            <DialogTitle className="flex items-center gap-2 tracking-tight text-sm pr-10">
+              <AlertTriangle size={14} className="text-primary" />
               <span className="truncate">Issues · {project?.name ?? "Project"}</span>
             </DialogTitle>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-auto scrollbar-thin p-5 space-y-5">
+          <div className="flex-1 min-h-0 overflow-auto scrollbar-thin p-3 space-y-3">
             <RaiseIssueForm projectId={projectId} />
             <IssuesTab projectId={projectId} />
           </div>

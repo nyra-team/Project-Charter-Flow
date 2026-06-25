@@ -25,6 +25,8 @@ import { JiraImportButton } from "../components/jira-sync";
 import { useUserView } from "../hooks/use-user-view";
 import { type BoardGroup, type BoardColumn, ProgressCell, DateCell } from "@/components/monday";
 import { KanbanView as ProjectsKanbanBoard } from "@/components/monday/KanbanView";
+import { GroupByPill } from "@/components/monday/GroupByPill";
+import { ActionCard } from "@/components/monday/ActionCard";
 import { ProjectCommsDrawer, type ProjectCommsTab } from "@/components/ProjectCommsDrawer";
 import { MoveJustifyModal } from "@/components/MoveJustifyModal";
 import { useUserStore } from "../lib/store";
@@ -343,6 +345,7 @@ const COLS: { key: string; header: string; width: number; align?: "left" | "cent
   { key: "name", header: "Project Name", width: 240, info: "Project title — click a row to open it." },
   { key: "team", header: "Team", width: 130, align: "center", info: "Project owner and manager." },
   { key: "status", header: "Health", width: 116, align: "center" },
+  { key: "priority", header: "Priority", width: 90, align: "center", info: "Project priority (P0–P3) — click to change." },
   { key: "justification", header: "Justification", width: 220, align: "left", info: "Owner's explanation, required when a project is delayed or off-track." },
   { key: "tasks", header: "Tasks", width: 64, align: "center", info: "Completed tasks out of total." },
   { key: "taskStatus", header: "Task Status", width: 170, info: "Breakdown of the project's tasks by status." },
@@ -401,8 +404,6 @@ const PROJECTS_COLORDER_KEY = "ph:projects:colorder";
 // localStorage keys for the user's custom columns + their per-project values.
 const CUSTOM_COLS_KEY = "ph:projects:customcols";
 const CUSTOM_VALS_KEY = "ph:projects:customvals";
-// Remembers the last view the user picked (first open defaults to table).
-const PROJECTS_VIEW_KEY = "ph:projects:view";
 
 const msTime = (s?: string | null) => (s ? new Date(s.slice(0, 10)).getTime() : null);
 
@@ -591,6 +592,110 @@ function HealthHeaderTip() {
 // Priority chip lookup for the card header.
 const PRIORITY_META = new Map(TASK_PRIORITIES.map((p) => [p.value, p]));
 
+// ── Action-Centre kanban card (shared <ActionCard>) — map a project → props. ──
+function ActionCentreProjectCard({ p, ownerName, ownerPhoto, taskAgg }: {
+  p: ProjectRow;
+  ownerName: (p: ProjectRow) => string | null;
+  ownerPhoto: (p: ProjectRow) => string | null;
+  taskAgg: Map<number, TaskAgg>;
+}) {
+  const completed = displayStatusOf(p.status).key === "completed";
+  const overdue = !completed && !!p.endDate && new Date(p.endDate).getTime() < new Date().setHours(0, 0, 0, 0);
+  const agg = taskAgg.get(p.id);
+  const pct = p.progress != null
+    ? p.progress
+    : agg && agg.total ? Math.round((agg.done / agg.total) * 100) : null;
+  return (
+    <ActionCard
+      meta={[projectCode(p), p.function].filter(Boolean).join(" · ")}
+      title={p.name}
+      ownerName={ownerName(p)}
+      ownerPhoto={ownerPhoto(p)}
+      priority={p.priority}
+      dueDate={p.endDate}
+      progressPct={pct}
+      completed={completed}
+      overdue={overdue}
+    />
+  );
+}
+
+// Inline project-priority picker — click the cell to change P0–P3. PATCHes the
+// project and calls onSaved (refetch) so the list reflects the new value.
+function ProjectPriorityDropdown({ projectId, priority, onSaved }: { projectId: number; priority: string; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const pr = PRIORITY_META.get(priority as never);
+  // The menu is portalled to <body> (fixed) so it floats above the table instead
+  // of underflowing behind later rows. Close it on any outside click, scroll, or
+  // resize since a fixed panel can't track the cell once the table moves.
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const dismiss = () => setOpen(false);
+    document.addEventListener("mousedown", close);
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("resize", dismiss);
+    };
+  }, [open]);
+  const toggle = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 4, left: r.left + r.width / 2 });
+    setOpen((o) => !o);
+  };
+  const pick = async (v: string) => {
+    setOpen(false);
+    if (v === priority) return;
+    await fetch(`/api/projects/${projectId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority: v }) });
+    onSaved();
+  };
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); toggle(); }}
+        className="absolute inset-0 w-full h-full flex items-center justify-center text-[9px] font-semibold leading-none cursor-pointer"
+        style={pr ? { color: pr.color } : undefined}
+      >
+        {pr ? pr.label : <span className="text-gray-400">—</span>}
+      </button>
+      {open && pos && createPortal(
+        <div
+          ref={panelRef}
+          style={{ position: "fixed", top: pos.top, left: pos.left, transform: "translateX(-50%)" }}
+          className="z-[300] min-w-[84px] rounded-md bg-white border border-gray-200 shadow-xl py-0.5"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {TASK_PRIORITIES.map((p) => (
+            <button
+              key={p.value}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); void pick(p.value); }}
+              className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium hover:bg-gray-50 transition-colors"
+            >
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: p.solid }} />
+              <span className="text-gray-700">{p.label}</span>
+              {p.value === priority && <Check size={11} className="ml-auto text-gray-500" />}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 // dnd-kit id helpers — namespaced so a column id and a card id never collide.
 const KANBAN_COLORDER_KEY = "ph:projects:kanban:colorder";
 const colId = (k: string) => `col:${k}`;
@@ -637,9 +742,8 @@ function KanbanCardInner({ p, d, ownerName, ownerPhoto, taskAgg, overlay }: {
       style={{ borderLeftWidth: 4, borderLeftColor: sched.color }}
     >
       <div className="p-3 pl-2.5">
-        {/* Header — code + priority */}
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-mono text-[9.5px] tracking-wide text-gray-400">{projectCode(p)}</span>
+        {/* Header — priority */}
+        <div className="flex items-center justify-end gap-2">
           {pr && (
             <span className="inline-flex items-center gap-1 rounded px-1.5 h-[15px] text-[8.5px] font-bold uppercase tracking-wide shrink-0" style={{ background: pr.bg, color: pr.color }}>
               <Flag size={8} />{pr.label}
@@ -648,7 +752,7 @@ function KanbanCardInner({ p, d, ownerName, ownerPhoto, taskAgg, overlay }: {
         </div>
 
         {/* Title */}
-        <div className="mt-1 text-[13px] font-semibold text-gray-800 leading-snug line-clamp-2 group-hover:text-primary transition-colors">{p.name}</div>
+        <div className="mt-1 text-[13px] font-semibold text-gray-800 leading-snug whitespace-normal break-words group-hover:text-primary transition-colors">{p.name}</div>
 
         {/* Meta — department · budget */}
         {(p.function || budget > 0) && (
@@ -1447,14 +1551,12 @@ export default function ProjectsList() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggleGroup = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
 
-  // View switcher — Table · Kanban · Gantt. First open lands on the table; after
-  // that we remember whichever view the user last picked (per-browser).
+  // View switcher — Table · Kanban · Gantt. Always opens on the table; the view
+  // is not persisted, so every fresh entry defaults to table.
   // (Calendar lives on the Tasks view now, not here.)
-  const [view, setView] = useState<"table" | "kanban" | "gantt">(() => {
-    const s = localStorage.getItem(PROJECTS_VIEW_KEY);
-    return s === "kanban" || s === "gantt" || s === "table" ? s : "table";
-  });
-  useEffect(() => { try { localStorage.setItem(PROJECTS_VIEW_KEY, view); } catch { /* ignore */ } }, [view]);
+  const [view, setView] = useState<"table" | "kanban" | "gantt">("table");
+  // Kanban "Group by" axis (Action Centre parity): status · owner · priority · department.
+  const [groupBy, setGroupBy] = useState<"status" | "owner" | "priority" | "department">("status");
 
   // Optional + custom columns are PER status-table (keyed by group.key) so a
   // field added to one table only shows in that table, never the others.
@@ -1599,12 +1701,55 @@ export default function ProjectsList() {
     return m;
   }, [filtered]);
 
-  // Kanban columns (Jira-style board) — one BoardGroup per display status, in
-  // lifecycle order, including empty columns so the board keeps a stable shape.
-  const kanbanGroups = useMemo<BoardGroup<ProjectRow>[]>(
-    () => DISPLAY_STATUSES.map((d) => ({ key: d.key, label: d.label, color: d.color, rows: buckets.get(d.key) ?? [] })),
-    [buckets],
-  );
+  // Resolve a project's owner id (lives on the linked charter, not the project).
+  const ownerIdOf = (p: ProjectRow) => (p.charterId != null ? (ownerByCharter.get(p.charterId) ?? null) : null);
+
+  // Kanban columns by the selected "Group by" axis (Action Centre parity):
+  //   status   = the fixed lifecycle columns (incl. empty, for a stable shape);
+  //   priority = P0–P3 (+ No priority);
+  //   owner    = one lane per owner present, busiest first, No owner last.
+  const kanbanGroups = useMemo<BoardGroup<ProjectRow>[]>(() => {
+    if (groupBy === "priority") {
+      const cols: BoardGroup<ProjectRow>[] = TASK_PRIORITIES.map((p) => ({
+        key: p.value, label: p.label, color: p.solid,
+        rows: filtered.filter((r) => r.priority === p.value),
+      }));
+      const none = filtered.filter((r) => !PRIORITY_META.has(r.priority as never));
+      if (none.length) cols.push({ key: "__noprio__", label: "No priority", color: "#94A3B8", rows: none });
+      return cols;
+    }
+    if (groupBy === "owner") {
+      const byKey = new Map<string, ProjectRow[]>();
+      for (const p of filtered) {
+        const oid = ownerIdOf(p);
+        const k = oid != null ? String(oid) : "__none__";
+        const arr = byKey.get(k) ?? []; arr.push(p); byKey.set(k, arr);
+      }
+      const lanes: BoardGroup<ProjectRow>[] = [...byKey.entries()]
+        .filter(([k]) => k !== "__none__")
+        .sort((a, b) => b[1].length - a[1].length)
+        .map(([k, rows]) => ({ key: k, label: usersById.get(Number(k)) ?? `User ${k}`, color: "#3B82F6", rows }));
+      const none = byKey.get("__none__");
+      if (none && none.length) lanes.push({ key: "__none__", label: "No owner", color: "#94A3B8", rows: none });
+      return lanes;
+    }
+    if (groupBy === "department") {
+      const byKey = new Map<string, ProjectRow[]>();
+      for (const p of filtered) {
+        const k = p.function?.trim() || "__none__";
+        const arr = byKey.get(k) ?? []; arr.push(p); byKey.set(k, arr);
+      }
+      const lanes: BoardGroup<ProjectRow>[] = [...byKey.entries()]
+        .filter(([k]) => k !== "__none__")
+        .sort((a, b) => b[1].length - a[1].length)
+        .map(([k, rows]) => ({ key: k, label: k, color: "#6366F1", rows }));
+      const none = byKey.get("__none__");
+      if (none && none.length) lanes.push({ key: "__none__", label: "No department", color: "#94A3B8", rows: none });
+      return lanes;
+    }
+    return DISPLAY_STATUSES.map((d) => ({ key: d.key, label: d.label, color: d.color, rows: buckets.get(d.key) ?? [] }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupBy, filtered, buckets, ownerByCharter, usersById]);
 
   return (
     <div className="space-y-2 pt-1.5">
@@ -1665,6 +1810,22 @@ export default function ProjectsList() {
             </button>
           ))}
         </div>
+
+        {/* Group by — kanban only; Action Centre PillSelect (status · owner · priority · department) */}
+        {view === "kanban" && (
+          <div className="mr-0.5 pr-1 border-r border-border/60">
+            <GroupByPill<"status" | "owner" | "priority" | "department">
+              value={groupBy}
+              onChange={setGroupBy}
+              options={[
+                { value: "status", label: "Status" },
+                { value: "owner", label: "Owner" },
+                { value: "priority", label: "Priority" },
+                { value: "department", label: "Department" },
+              ]}
+            />
+          </div>
+        )}
 
         {/* Filter — icon only; opens the status dropdown */}
         <div className="relative" ref={filterRef}>
@@ -1779,13 +1940,37 @@ export default function ProjectsList() {
           <ProjectsKanbanBoard<ProjectRow>
             groups={kanbanGroups}
             columns={PROJECT_COLUMNS}
+            showIssueKey={false}
             getRowId={(p) => `project:${p.id}`}
             getName={(p) => <span className="font-medium">{p.name}</span>}
+            renderCard={(p) => <ActionCentreProjectCard p={p} ownerName={ownerName} ownerPhoto={ownerPhoto} taskAgg={taskAgg} />}
+            colWidth={320}
+            sectionStyle="ac"
+            tintBody={groupBy === "priority"}
             onOpenRow={(p) => setLocation(`/projects/${p.id}`)}
             onMoveToGroup={(rowId, groupKey) => {
               const id = Number(rowId.replace("project:", ""));
               if (!Number.isFinite(id)) return;
-              // Gate the status change behind a justification (CXO board parity).
+              if (groupBy === "priority") {
+                // Re-prioritise on drop (No-priority lane can't be set → ignore).
+                if (groupKey === "__noprio__") return;
+                void fetch(`/api/projects/${id}`, {
+                  method: "PATCH", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ priority: groupKey }),
+                }).then(() => refetch());
+                return;
+              }
+              if (groupBy === "department") {
+                // Re-assign the project's function/department (No-department lane → ignore).
+                if (groupKey === "__none__") return;
+                void fetch(`/api/projects/${id}`, {
+                  method: "PATCH", headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ function: groupKey }),
+                }).then(() => refetch());
+                return;
+              }
+              if (groupBy === "owner") return; // owner lives on the charter — owner lanes are view-only
+              // Status — gate the change behind a justification (CXO board parity).
               setMoveJustify({ id, to: groupKey, toLabel: DISPLAY_BY_KEY.get(groupKey)?.label ?? groupKey });
             }}
           />
@@ -1803,7 +1988,7 @@ export default function ProjectsList() {
                 </HoverHint>
               ))}
             </div>
-            <GanttView rows={filtered} ownerName={ownerName} managerName={managerName} ownerPhoto={ownerPhoto} managerPhoto={managerPhoto} taskAgg={taskAgg} onOpen={(id) => setLocation(`/projects/${id}`)} />
+            <GanttView rows={filtered} ownerName={ownerName} managerName={managerName} ownerPhoto={ownerPhoto} managerPhoto={managerPhoto} taskAgg={taskAgg} onOpen={(id) => setLocation(`/projects/${id}?view=gantt`)} />
           </div>
         ) : (
         <div className="space-y-5">
@@ -1901,8 +2086,8 @@ export default function ProjectsList() {
                           onMouseDown={(e) => e.stopPropagation()}
                           onClick={(e) => e.stopPropagation()}
                           placeholder="Field name"
-                          title="Rename field"
-                          className="pointer-events-auto w-full bg-transparent text-[9px] uppercase tracking-wider font-semibold text-gray-500 outline-none rounded px-0.5 -mx-0.5 cursor-text hover:bg-white focus:bg-white focus:ring-1 focus:ring-primary/40"
+                          title="Click to rename this field"
+                          className="pointer-events-auto w-full bg-white/70 border border-dashed border-gray-300 text-[9px] uppercase tracking-wider font-semibold text-gray-600 outline-none rounded px-1 py-0.5 cursor-text hover:bg-white hover:border-gray-400 focus:bg-white focus:border-solid focus:ring-1 focus:ring-primary/40"
                         />
                       );
                     }
@@ -1913,7 +2098,7 @@ export default function ProjectsList() {
                     const cell = (key: string, p: ProjectRow) => {
                       switch (key) {
                         case "code": return <td key="code" className="border border-gray-200 px-2 py-0.5 font-mono text-[11px] font-semibold text-gray-800 whitespace-nowrap">{projectCode(p)}</td>;
-                        case "name": return <td key="name" className="border border-gray-200 px-2 py-0.5 font-medium text-gray-800 truncate" title={p.name}>{p.name}</td>;
+                        case "name": return <td key="name" className="border border-gray-200 px-2 py-0.5 font-medium text-gray-800 whitespace-normal break-words" title={p.name}>{p.name}</td>;
                         case "team": return (
                           <td key="team" className="border border-gray-200 px-2 py-0.5 text-center">
                             <div className="flex justify-center">
@@ -1927,6 +2112,14 @@ export default function ProjectsList() {
                           </td>
                         );
                         case "status": return <HealthCell key="status" health={scheduleHealth(p, taskAgg.get(p.id))} align="center" />;
+                        case "priority": {
+                          const pm = PRIORITY_META.get(p.priority as never);
+                          return (
+                            <td key="priority" className="border border-gray-200 p-0 text-center whitespace-nowrap relative" style={pm ? { background: pm.bg } : undefined}>
+                              <ProjectPriorityDropdown projectId={p.id} priority={p.priority} onSaved={refetch} />
+                            </td>
+                          );
+                        }
                         case "justification": {
                           const j = justByProject.get(p.id);
                           const hk = scheduleHealth(p, taskAgg.get(p.id)).key;
