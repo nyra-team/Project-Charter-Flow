@@ -72,7 +72,7 @@ export function MyWorkBoard() {
         onOpenRow={(t) => setOpen(t)}
       />
       {open && (
-        <TaskDetailModal task={open} allTasks={(allTasks ?? []) as AggTask[]} onClose={() => setOpen(null)} onRefresh={refresh} />
+        <TaskDetailModal task={open} allTasks={(allTasks ?? []) as AggTask[]} onClose={() => setOpen(null)} onOpenTask={(id) => setOpen(((allTasks ?? []) as AggTask[]).find((t) => t.id === id) ?? null)} onRefresh={refresh} />
       )}
     </div>
   );

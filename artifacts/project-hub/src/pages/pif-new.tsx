@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useGoBack } from "../lib/back";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -50,6 +51,7 @@ export default function PifNew() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [, navigate] = useLocation();
+  const goBack = useGoBack();
 
   // ── State ──────────────────────────────────────────────────────────────
   const [ideaText, setIdeaText] = useState("");
@@ -125,11 +127,11 @@ export default function PifNew() {
     <div className="space-y-6">
       {/* Back button */}
       <button
-        onClick={() => navigate("/pifs")}
+        onClick={() => goBack("/pifs")}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ChevronLeft size={14} />
-        Back to PIFs
+        Back
       </button>
 
       <h1 className="text-3xl font-bold tracking-tight text-foreground">New Project Initiation Form</h1>

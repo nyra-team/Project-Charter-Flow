@@ -83,12 +83,14 @@
   --font-display: var(--app-font-display);
   --font-heading: var(--app-font-display);
 
-  /* Split radii — tight for controls/badges (Command Center), softer for cards (Atelier) */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
-  --radius-2xl: 18px;
+  /* Radii — aligned EXACTLY to the suite / OHC scale (base --radius 0.75rem):
+     shadcn derives sm = radius-4px, md = radius-2px, lg = radius; xl/2xl are the
+     Tailwind defaults OHC renders from. Keeps PMO rounding consistent with OHC. */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -174,7 +176,7 @@
   --app-font-display: 'Plus Jakarta Sans', 'Inter', sans-serif;
   --app-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
 
-  --radius: 0.375rem; /* 6px — tactical Command Center base */
+  --radius: 0.75rem; /* 12px — suite / OHC base radius (was 6px tactical) */
 
   --shadow-2xs: 0px 1px 2px rgba(15, 23, 42, 0.04);
   --shadow-xs: 0px 1px 3px rgba(15, 23, 42, 0.05);
@@ -851,6 +853,15 @@
 .dropdown-item-active {
   background-color: hsl(var(--primary) / 0.1) !important;
   color: hsl(var(--primary)) !important;
+}
+
+/* Sidebar nav: keep the active item's TEXT the same colour as the rest — only
+   the pill background/ring marks the selection. The shared CollapsibleSidebar
+   active class is `text-primary` (blue) in light mode; neutralise just that to
+   the idle text colour so selecting a section doesn't recolour the words. */
+.pmo-sidebar a.text-primary,
+.pmo-sidebar button.text-primary {
+  color: hsl(var(--muted-foreground)) !important;
 }
 
 /* RAG zone bands for status/threshold bars — same hex SSOT as OHC's

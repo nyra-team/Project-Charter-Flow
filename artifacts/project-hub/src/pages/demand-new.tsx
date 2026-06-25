@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation, Link } from "wouter";
+import { useGoBack } from "../lib/back";
 import { useCreateProject, useCreateProjectStage } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, ChevronLeft, Sparkles } from "lucide-react";
@@ -19,6 +20,7 @@ function SectionCard({ title, subtitle, children }: { title: string; subtitle?: 
 
 export default function NewDemand() {
   const [, navigate] = useLocation();
+  const goBack = useGoBack();
   const { toast } = useToast();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -61,9 +63,9 @@ export default function NewDemand() {
   return (
     <div className="min-h-full px-6 lg:px-10 py-8 max-w-4xl mx-auto space-y-6">
       <div>
-        <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3">
-          <ChevronLeft size={14} /> Back to Dashboard
-        </Link>
+        <button onClick={() => goBack("/")} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3">
+          <ChevronLeft size={14} /> Back
+        </button>
         <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground">
           Stage 1 of 9 · Initiation
         </p>

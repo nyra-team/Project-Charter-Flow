@@ -75,6 +75,7 @@ router.get("/users", async (_req, res): Promise<void> => {
   // Enrich each user with their master-DB profile photo (matched by email).
   // Best-effort: if the master DB is unavailable, return users without photos.
   const photoByEmail = new Map<string, string>();
+  const designationByEmail = new Map<string, string>();
   const emails = users.map((u) => u.email?.toLowerCase()).filter((e): e is string => !!e);
   if (emails.length) {
     try {
@@ -84,14 +85,24 @@ router.get("/users", async (_req, res): Promise<void> => {
       const orFilter = emails.map((e) => `office_email.ilike.${e}`).join(",");
       const { data } = await masterDb
         .from("employees")
-        .select("office_email, photo_url")
+        .select("office_email, photo_url, designation_text")
         .or(orFilter);
-      for (const row of (data ?? []) as Array<{ office_email: string | null; photo_url: string | null }>) {
-        if (row.office_email && row.photo_url) photoByEmail.set(row.office_email.toLowerCase(), row.photo_url);
+      for (const row of (data ?? []) as Array<{ office_email: string | null; photo_url: string | null; designation_text: string | null }>) {
+        const key = row.office_email?.toLowerCase();
+        if (!key) continue;
+        if (row.photo_url) photoByEmail.set(key, row.photo_url);
+        if (row.designation_text) designationByEmail.set(key, row.designation_text);
       }
-    } catch { /* master DB unavailable — fall back to no photos */ }
+    } catch { /* master DB unavailable — fall back to no photos / designations */ }
   }
-  res.json(users.map((u) => ({ ...serializeUser(u), photoUrl: (u.email && photoByEmail.get(u.email.toLowerCase())) ?? null })));
+  res.json(users.map((u) => {
+    const key = u.email?.toLowerCase();
+    return {
+      ...serializeUser(u),
+      photoUrl: (key && photoByEmail.get(key)) ?? null,
+      designation: (key && designationByEmail.get(key)) ?? null,
+    };
+  }));
 });
 
 // GET /api/departments — every department (master-DB employees.function),
@@ -112,6 +123,43 @@ router.get("/departments", async (_req, res): Promise<void> => {
       if (f) set.add(f);
     }
     res.json([...set].sort((a, b) => a.localeCompare(b)));
+  } catch {
+    res.json([]);
+  }
+});
+
+// GET /api/employees/search?q= — typeahead over the FULL master employee
+// directory (~12k). Every employee is reachable by name/email; capped at 50
+// rows per keystroke so the dropdown never loads the whole directory.
+router.get("/employees/search", async (req, res): Promise<void> => {
+  const raw = String(req.query.q ?? "").trim();
+  try {
+    const masterDb = getMasterDb();
+    let query = masterDb
+      .from("employees")
+      .select("employee_code, first_name, middle_name, last_name, office_email, designation_text")
+      .order("first_name", { ascending: true })
+      .limit(50);
+    // Each whitespace token must match some name/email field (AND across
+    // tokens via repeated .or(), OR within a token) — so "sony nalla" finds
+    // first=Sony last=Nalla. Strip PostgREST filter metachars from tokens.
+    const tokens = raw.split(/\s+/).map((t) => t.replace(/[,()%*]/g, "")).filter(Boolean);
+    for (const tok of tokens) {
+      query = query.or(
+        `first_name.ilike.%${tok}%,middle_name.ilike.%${tok}%,last_name.ilike.%${tok}%,office_email.ilike.%${tok}%`,
+      );
+    }
+    const { data, error } = await query;
+    if (error) throw error;
+    const rows = (data ?? [])
+      .map((r: { employee_code: string | null; first_name: string | null; middle_name: string | null; last_name: string | null; office_email: string | null; designation_text: string | null }) => ({
+        code: r.employee_code,
+        name: [r.first_name, r.middle_name, r.last_name].filter(Boolean).join(" ").replace(/\s+/g, " ").trim(),
+        email: r.office_email ?? null,
+        designation: r.designation_text ?? null,
+      }))
+      .filter((r) => r.name);
+    res.json(rows);
   } catch {
     res.json([]);
   }

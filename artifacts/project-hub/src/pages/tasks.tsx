@@ -45,7 +45,7 @@ export default function TasksPage() {
   const { data: allMilestones } = useQuery({ queryKey: ["/api/milestones"], queryFn: () => api.get<AggMilestone[]>("/api/milestones") });
   const { data: projects } = useListProjects();
 
-  const [view, setView] = useState<View>("tree");
+  const [view, setView] = useState<View>("table");
   const [groupBy, setGroupBy] = useState<GroupBy>("status");
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
   const [ownerFilter, setOwnerFilter] = useState("");
@@ -155,7 +155,7 @@ export default function TasksPage() {
       )}
 
       {openTask && (
-        <TaskDetailModal task={openTask} allTasks={(tasks ?? []) as AggTask[]} onClose={() => setOpenTask(null)} onRefresh={refresh} />
+        <TaskDetailModal task={openTask} allTasks={(tasks ?? []) as AggTask[]} onClose={() => setOpenTask(null)} onOpenTask={(id) => setOpenTask(((tasks ?? []) as AggTask[]).find((t) => t.id === id) ?? null)} onRefresh={refresh} />
       )}
     </div>
   );

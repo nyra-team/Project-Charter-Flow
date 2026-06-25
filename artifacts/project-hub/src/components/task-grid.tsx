@@ -1004,7 +1004,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
               />
             ) : (
               <span
-                className="font-medium text-foreground truncate cursor-text"
+                className="font-medium text-foreground whitespace-normal break-words cursor-text"
                 title={`${task.name} — double-click to rename`}
                 onDoubleClick={() => setEditingNameId(task.id)}
               >

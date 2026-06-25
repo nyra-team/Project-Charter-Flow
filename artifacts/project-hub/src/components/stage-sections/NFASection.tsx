@@ -94,6 +94,18 @@ export function NFASection({ projectId }: { projectId: number }) {
  />
  </div>
 
+ {/* Once the e-NFA is created (a saved NFA number), surface that the RFP is
+     being auto-generated for the downstream vendor-selection stage. */}
+ {saved.nfaNumber?.trim() && (
+ <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] font-medium text-primary">
+ <span className="relative inline-flex h-2 w-2 shrink-0">
+ <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+ <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+ </span>
+ <span><b>e-NFA created</b> — an RFP is being automatically generated for vendor selection.</span>
+ </div>
+ )}
+
  <div className="grid grid-cols-2 gap-2">
  <div>
  <label className="text-[11px] font-semibold text-foreground block mb-1">NFA Number</label>

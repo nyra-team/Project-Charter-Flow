@@ -76,7 +76,9 @@ export function ReferenceDocUpload({ onText }: { onText: (text: string) => void 
   const busy = uploading || extracting;
 
   return (
-    <div>
+    // items-end pins the button to the right edge so it doesn't shift when the
+    // success pill appears below it or when the label width changes mid-upload.
+    <div className="flex flex-col items-end">
       <button
         type="button"
         disabled={busy}

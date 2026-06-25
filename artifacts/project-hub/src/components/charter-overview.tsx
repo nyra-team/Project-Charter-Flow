@@ -2,11 +2,11 @@
 // project: a title block, an at-a-glance info table (filled from the charter AND
 // the project's own fields), a lead summary, a delivery summary of milestones &
 // tasks, and the conventional charter sections. Plain text (no boxes).
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Download, FileText } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { FileText, Info } from "lucide-react";
+import { HoverHint } from "./ui-kit/HoverHint";
 import { api } from "@/lib/extra-api";
 import { formatCurrency } from "../lib/format";
 import { getStatusMeta } from "../lib/task-constants";
@@ -23,27 +23,50 @@ const cap = (s?: string) => (s ? s.replace(/_/g, " ").replace(/\b\w/g, (m) => m.
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-6 first:mt-0">
-      <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-primary mb-2 flex items-center gap-2">
-        <span className="inline-block w-4 h-px bg-primary/50" />{title}
-      </h3>
+      <h3 className="mb-2.5 text-[16px] font-bold tracking-tight text-foreground">{title}</h3>
       {children}
     </section>
   );
 }
-const Para = ({ children }: { children: React.ReactNode }) => (
-  <p className="text-[13.5px] leading-7 text-foreground/85 whitespace-pre-wrap break-words">{children}</p>
-);
+// Clamps to 4 lines; shows a Show more/less toggle only when the text overflows.
+const Para = ({ children }: { children: React.ReactNode }) => {
+  const ref = useRef<HTMLParagraphElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) setOverflows(el.scrollHeight > el.clientHeight + 1);
+  }, [children]); // ponytail: measures once per content change; clamped height is stable
+  return (
+    <>
+      <p ref={ref} className={`text-[13px] leading-[1.65] text-foreground/80 whitespace-pre-wrap break-words ${expanded ? "" : "line-clamp-4"}`}>{children}</p>
+      {(overflows || expanded) && (
+        <button type="button" onClick={() => setExpanded((v) => !v)} className="mt-1 text-[12px] font-semibold text-primary hover:underline">
+          {expanded ? "Show less" : "Show more"}
+        </button>
+      )}
+    </>
+  );
+};
 function FactList({ rows }: { rows: Array<[string, React.ReactNode] | null> }) {
   const items = rows.filter(Boolean) as Array<[string, React.ReactNode]>;
   return (
-    <dl className="grid grid-cols-[150px_1fr] sm:grid-cols-[180px_1fr] gap-x-5 gap-y-1.5">
+    <dl className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
       {items.map(([label, value], i) => (
-        <div key={i} className="contents">
-          <dt className="text-[12px] font-medium text-muted-foreground pt-0.5">{label}</dt>
-          <dd className="text-[13px] text-foreground/90 break-words">{value}</dd>
+        <div key={i} className="grid grid-cols-[118px_1fr] gap-3 px-3 py-[7px] transition-colors hover:bg-accent/40 sm:grid-cols-[158px_1fr]">
+          <dt className="self-center text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+          <dd className="self-center break-words text-[12.5px] text-foreground/90">{value}</dd>
         </div>
       ))}
     </dl>
+  );
+}
+function StatTile({ label, value, color, valueClass }: { label: string; value: React.ReactNode; color?: string; valueClass?: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm">
+      <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-[17px] font-bold leading-none tabular-nums ${valueClass ?? "text-foreground"}`} style={color ? { color } : undefined}>{value}</p>
+    </div>
   );
 }
 
@@ -83,6 +106,26 @@ function TaskUpdate({ t, subs }: { t: TaskLite; subs: TaskLite[] }) {
   );
 }
 
+// Task Updates list — caps at 5 with a "View all" toggle to expand the rest.
+function TaskUpdatesSection({ top, subsByParent }: { top: TaskLite[]; subsByParent: Map<number, TaskLite[]> }) {
+  const [showAll, setShowAll] = useState(false);
+  const rows = showAll ? top : top.slice(0, 5);
+  return (
+    <Section title="Task Updates">
+      <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card px-3 [&>li]:py-2">
+        {rows.map((t) => (
+          <TaskUpdate key={t.id} t={t} subs={(t.id != null ? subsByParent.get(t.id) : undefined) ?? []} />
+        ))}
+      </ul>
+      {top.length > 5 && (
+        <button type="button" onClick={() => setShowAll((v) => !v)} className="mt-2 text-[12px] font-semibold text-primary hover:underline">
+          {showAll ? "Show less" : `View all (${top.length})`}
+        </button>
+      )}
+    </Section>
+  );
+}
+
 export function CharterOverview({
   project, projectName, pmName, ownerName, tasks = [], milestones = [],
 }: {
@@ -104,7 +147,6 @@ export function CharterOverview({
   const hasCharter = charterId > 0 && !!charter;
   // The left half shows only the core charter fields; the rest of the document
   // is revealed by the "show the detailed view" button at the bottom.
-  const [detailedOpen, setDetailedOpen] = useState(false);
 
   const title = str(c, "title") || projectName || "Project";
   const status = str(c, "status") || str(p, "status");
@@ -125,7 +167,6 @@ export function CharterOverview({
   const total = top.length;
   const tdone = tcnt("completed"), tinprog = tcnt("in_progress"), tdelayed = tcnt("delayed"), tonhold = tcnt("on_hold");
   const tnot = Math.max(0, total - tdone - tinprog - tdelayed - tonhold);
-  const tpct = total ? Math.round((tdone / total) * 100) : (pnum("progress") ?? 0);
   const now = Date.now();
   const msDone = milestones.filter((m) => m.status === "completed").length;
   const msOverdue = milestones.filter((m) => m.status !== "completed" && m.dueDate && new Date(m.dueDate).getTime() < now).length;
@@ -159,13 +200,41 @@ export function CharterOverview({
     if (open > 0 && (!bottleneck || open > bottleneck.open)) bottleneck = { name: m.name, open };
   }
 
-  // RAG health for the right-hand blinking indicator.
-  const rag = (str(p, "ragStatus") || "green").toLowerCase();
+  // RAG health for the right-hand blinking indicator. Projects rarely carry an
+  // explicit ragStatus, so we compute it from schedule (same rule as the
+  // portfolio Delivery health) and let a manually-set ragStatus win if present.
+  const startMs = (() => { const s = str(p, "startDate"); return s ? new Date(s.slice(0, 10)).getTime() : null; })();
+  const endMs = (() => { const e = str(p, "endDate"); return e ? new Date(e.slice(0, 10)).getTime() : null; })();
+  const computedRag = (() => {
+    // Use the PROJECT's own status (not the charter-preferring `status` above,
+    // which can be a charter workflow state like "approved" that masks a
+    // delayed project).
+    const st = (str(p, "status") || status).toLowerCase();
+    if (st === "cancelled" || st === "postponed" || st === "paused" || st === "deferred") return "grey";
+    if (st === "completed" || st === "closed") return "green";
+    if (st === "delayed" || st === "stuck") return "red"; // explicitly flagged delayed
+    if (st === "on_hold") return "amber";
+    if (endMs != null && endMs < now) return "red"; // past planned end date, not done
+    let expected = 0; // % of timeline elapsed
+    if (startMs != null && endMs != null && endMs > startMs)
+      expected = Math.min(100, Math.max(0, ((now - startMs) / (endMs - startMs)) * 100));
+    if (expected - rollupPct > 15 || msOverdue > 0) return "amber"; // behind pace / overdue milestone
+    return "green";
+  })();
+  // computedRag (schedule + status) is authoritative — it matches how the
+  // portfolio marks projects delayed/off-track. A stored ragStatus may only
+  // ESCALATE a green (a manual flag), never downgrade a detected red/amber back
+  // to green (which was masking delayed projects with a stale "green" flag).
+  const storedRag = str(p, "ragStatus").toLowerCase();
+  const rag = computedRag === "green" && (storedRag === "amber" || storedRag === "red")
+    ? storedRag
+    : computedRag;
   const RAG_UI: Record<string, { c: string; label: string }> = {
     green:  { c: "#16a34a", label: "Green" },
     amber:  { c: "#f59e0b", label: "Amber" },
     yellow: { c: "#f59e0b", label: "Amber" },
     red:    { c: "#dc2626", label: "Red" },
+    grey:   { c: "#94a3b8", label: "N/A" },
   };
   const ragUi = RAG_UI[rag] ?? RAG_UI.green;
 
@@ -182,60 +251,6 @@ export function CharterOverview({
   // ── AI summary — reads the milestones + tasks and explains the project ────
   const projId = Number(p.id ?? 0);
 
-  // ── e-NFAs for this project — kept here so they can be downloaded (.docx)
-  //    from the overview. "Draft demo e-NFA" seeds one (with a vendor-evaluation
-  //    checkpoint) linked to this project so the flow can be demoed end-to-end.
-  const { toast } = useToast();
-  const { data: nfas = [], refetch: refetchNfas } = useQuery({
-    queryKey: ["project-nfas", projId],
-    queryFn: () => api.get<Array<{ id: number; noteNo: string; subject: string; status: string }>>(`/api/nfas?projectId=${projId}`),
-    enabled: projId > 0,
-  });
-  // Download via fetch (the global interceptor attaches the bearer the .docx
-  // route requires) → blob → save. A plain <a href> would 401 (no bearer).
-  async function downloadNfaDocx(id: number, name: string) {
-    try {
-      const res = await fetch(`/api/nfas/${id}/docx`);
-      if (!res.ok) throw new Error(String(res.status));
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${(name || "e-nfa").replace(/[^\w.-]+/g, "_")}.docx`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      toast({ title: "Download failed", variant: "destructive" });
-    }
-  }
-
-  const [demoBusy, setDemoBusy] = useState(false);
-  async function draftDemoNfa() {
-    if (!projId) return;
-    setDemoBusy(true);
-    try {
-      await api.post("/api/nfas", {
-        projectId: projId,
-        subject: `${projectName || str(p, "name") || "Project"} — Vendor Procurement Approval (Demo)`,
-        department: str(p, "function"),
-        functionDept: str(p, "function"),
-        background: "Demo e-NFA generated for this project to seek approval for vendor procurement, ahead of floating an RFP.",
-        requirements: "Procure the systems / services scoped in the project charter.",
-        justification: "Required to deliver the project objectives within the approved timeline and budget.",
-        vendorDetails: "Vendor evaluation checkpoint — RFP to be floated to vendors; the comparison matrix will be filled from the vendors' submitted data via the RFP evaluation.",
-        modeOfProcurement: "RFP / competitive bidding",
-        financialImplication: "As per the approved project budget.",
-        recommendation: "Recommended for approval to proceed with the RFP for vendor selection.",
-        signatories: [],
-      });
-      toast({ title: "Demo e-NFA drafted", description: "Download it below or open to edit." });
-      void refetchNfas();
-    } catch {
-      toast({ title: "Could not draft demo e-NFA", variant: "destructive" });
-    } finally {
-      setDemoBusy(false);
-    }
-  }
   const aiInput = (() => {
     const lines: string[] = [`Project: ${str(c, "title") || projectName || "Project"}`];
     if (str(p, "status")) lines.push(`Status: ${cap(str(p, "status"))}`);
@@ -317,7 +332,7 @@ export function CharterOverview({
 
   const infoRows: Array<[string, React.ReactNode] | null> = [
     ["Status", cap(status)],
-    ["Progress", `${tpct}%`],
+    ["Progress", `${rollupPct}%`],
     ["Sponsor", str(c, "projectSponsor") || "—"],
     ["Project Manager", pm || "—"],
     ownerName ? ["Project Owner", <span className="inline-flex items-center rounded px-1.5 py-0.5 bg-primary/10 text-primary font-semibold">{ownerName}</span>] : null,
@@ -378,19 +393,25 @@ export function CharterOverview({
     : (deliverablesText || null);
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start mt-4">
     {/* ── LEFT half — the complete project overview document ─────────────── */}
     <article className="w-full max-w-none min-w-0">
       {/* Title block */}
       <header>
-        <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground">Project Charter · Overview</p>
-        <h2 className="mt-0.5 text-[26px] font-bold text-foreground tracking-tight leading-tight">{title}</h2>
-        <div className="mt-1.5 flex items-center gap-2 flex-wrap text-[11px]">
-          {pcRef && <span className="font-mono font-semibold text-primary">{pcRef}</span>}
-          {category && <span className="text-muted-foreground">{category}</span>}
-          {hasCharter && <Link href={`/charters/${charterId}`} className="text-primary hover:underline ml-auto">Open full charter →</Link>}
+        <div className="flex min-h-[26px] flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-primary">
+            <span className="h-1 w-1 rounded-full bg-primary" />Charter Overview
+          </span>
+          {pcRef && <span className="font-mono text-[10.5px] font-semibold text-muted-foreground">{pcRef}</span>}
+          {hasCharter && (
+            <Link href={`/charters/${charterId}`} className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90">
+              <FileText size={12} /> View Charter
+            </Link>
+          )}
         </div>
-        <div className="mt-3 h-px w-full bg-gradient-to-r from-primary/40 via-border to-transparent" />
+        <h2 className="mt-2.5 text-[25px] font-bold leading-[1.1] tracking-tight text-foreground">{title}</h2>
+        <p className="mt-1 text-[12px] text-muted-foreground">{category || " "}</p>
+        <div className="mt-3.5 h-px w-full bg-border" />
       </header>
 
       {/* ── Core overview — Project Name (above) · Description · Scope ·
@@ -400,10 +421,10 @@ export function CharterOverview({
       {coreSec("Business Case", businessCase)}
       {coreSec("Project Deliverables", deliverablesNode)}
 
-      {/* ── Detailed view — the full charter, revealed by the button below ── */}
-      {detailedOpen && (<>
+      {/* ── Detailed view — the full charter ── */}
+      {(<>
       {/* Lead summary */}
-      {lead && <p className="mt-4 text-[15px] leading-7 text-foreground/90 font-medium">{lead}</p>}
+      {lead && <p className="mt-3 text-[12.5px] leading-6 text-foreground/80 line-clamp-2">{lead}</p>}
 
       {/* AI-generated summary — synthesised from the milestones & tasks */}
       {(summaryQ.isLoading || summaryQ.data) && (
@@ -423,9 +444,9 @@ export function CharterOverview({
         <Section title="Milestones & Tasks">
           {milestones.length > 0 ? (
             <ul className="space-y-1.5">
-              {milestones.slice(0, 10).map((m) => {
+              {milestones.slice(0, 6).map((m) => {
                 const all = (tasksByMs.get(m.id) ?? []).map((t) => t.name?.trim()).filter(Boolean) as string[];
-                const shown = all.slice(0, 4);
+                const shown = all.slice(0, 3);
                 return (
                   <li key={m.id} className="text-[13px] leading-6 text-foreground/90">
                     <span className="font-semibold text-foreground">{m.name}</span>
@@ -433,12 +454,12 @@ export function CharterOverview({
                   </li>
                 );
               })}
-              {milestones.length > 10 && <li className="text-[12.5px] text-muted-foreground italic">…and more milestones</li>}
+              {milestones.length > 6 && <li className="text-[12.5px] text-muted-foreground italic">…and {milestones.length - 6} more milestones</li>}
             </ul>
           ) : total > 0 ? (
             <ul className="space-y-1">
-              {(top.map((t) => t.name?.trim()).filter(Boolean) as string[]).slice(0, 10).map((n, i) => <li key={i} className="text-[13px] leading-6 text-foreground/90">{n}</li>)}
-              {top.length > 10 && <li className="text-[12.5px] text-muted-foreground italic">…and more tasks</li>}
+              {(top.map((t) => t.name?.trim()).filter(Boolean) as string[]).slice(0, 6).map((n, i) => <li key={i} className="text-[13px] leading-6 text-foreground/90">{n}</li>)}
+              {top.length > 6 && <li className="text-[12.5px] text-muted-foreground italic">…and {top.length - 6} more tasks</li>}
             </ul>
           ) : (
             <Para>No tasks defined yet.</Para>
@@ -496,51 +517,71 @@ export function CharterOverview({
       )}
       </>)}
 
-      {/* Show / hide the full detailed charter */}
-      <button
-        type="button"
-        onClick={() => setDetailedOpen((o) => !o)}
-        className="mt-6 inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-4 py-2 text-[13px] font-semibold text-primary hover:bg-primary/10 hover:border-primary/60 transition-colors"
-      >
-        {detailedOpen ? "Hide the detailed view" : "Click to show the detailed view"}
-      </button>
     </article>
 
     {/* ── RIGHT half — the SAME fields as the overview, but the content is the
         project's current status. ─────────────────────────────────────────── */}
     <aside className="w-full max-w-none min-w-0 lg:border-l lg:border-border lg:pl-8">
       <header>
-        <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground">Project Charter · Current Status</p>
-        <h2 className="mt-0.5 text-[26px] font-bold text-foreground tracking-tight leading-tight">Current Status</h2>
-        {/* Blinking RAG health — does not alter the fields below */}
-        <div className="mt-1.5 flex items-center gap-1.5 text-[12px]">
-          <span className="relative inline-flex h-2.5 w-2.5 items-center justify-center">
-            <span className="absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping" style={{ background: ragUi.c }} />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full" style={{ background: ragUi.c }} />
+        <div className="flex min-h-[26px] flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-primary">
+            <span className="h-1 w-1 rounded-full bg-primary" />Current Status
           </span>
-          <span className="font-semibold" style={{ color: ragUi.c }}>{ragUi.label} RAG</span>
+          {/* Live RAG health pill */}
+          <span className="ml-auto inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: `${ragUi.c}1a`, color: ragUi.c }}>
+            <span className="relative inline-flex h-2 w-2 items-center justify-center">
+              <span className="absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping" style={{ background: ragUi.c }} />
+              <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: ragUi.c }} />
+            </span>
+            {ragUi.label}
+          </span>
         </div>
-        <div className="mt-3 h-px w-full bg-gradient-to-r from-primary/40 via-border to-transparent" />
+        <h2 className="mt-2.5 text-[25px] font-bold leading-[1.1] tracking-tight text-foreground">Current Status</h2>
+        <p className="mt-1 text-[12px] text-muted-foreground">Live delivery snapshot</p>
+        <div className="mt-3.5 h-px w-full bg-border" />
+        {/* KPI stat strip — the at-a-glance scorecard */}
+        <div className="mt-3.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <StatTile label="Progress" value={`${rollupPct}%`} valueClass="text-primary" />
+          <StatTile label="Tasks" value={`${tdone}/${total}`} />
+          <StatTile label="Milestones" value={`${msDone}/${milestones.length}`} />
+          <StatTile label="Health" value={ragUi.label} color={ragUi.c} />
+        </div>
+        <div className="mt-3.5 h-px w-full bg-border" />
       </header>
 
       {/* Task & subtask insights — analysis, not a per-task list */}
       <Section title="Task & Subtask Insights">
         {/* Summary — overall progress + status counts + milestone roll-up */}
-        <div className="rounded-lg border border-border/60 bg-card/50 p-2.5 mb-3">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-              <div className="h-full rounded-full bg-primary transition-[width] duration-500" style={{ width: `${rollupPct}%` }} />
+        <div className="mb-3 rounded-xl border border-border bg-card p-3">
+          <div className="mb-2.5 flex items-center gap-2">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+              <div className="h-full rounded-full bg-primary transition-[width] duration-700" style={{ width: `${rollupPct}%` }} />
             </div>
             <span className="text-[12px] font-bold tabular-nums text-foreground">{rollupPct}%</span>
+            <HoverHint
+              className="!max-w-[170px]"
+              title="Progress formula"
+              rows={[
+                { label: "Done units", value: "÷ total units" },
+                { label: "Leaf", value: "1 unit" },
+                { label: "Has subtasks", value: "subtasks = units" },
+                { label: "Here", value: `${unitDone}/${unitTotal} = ${rollupPct}%` },
+              ]}
+              footer="Counts below = top-level tasks only."
+            >
+              <button type="button" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="How progress is calculated">
+                <Info size={12} />
+              </button>
+            </HoverHint>
           </div>
-          <div className="flex flex-wrap gap-x-2.5 gap-y-1 text-[10.5px]">
-            <span className="inline-flex items-center gap-1"><span className="text-muted-foreground">Total</span><b className="text-foreground tabular-nums">{total}</b></span>
+          <div className="flex flex-wrap gap-1.5">
+            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[10.5px]"><span className="text-muted-foreground">Total</span><b className="tabular-nums text-foreground">{total}</b></span>
             {([["Done", tdone, "completed"], ["In Progress", tinprog, "in_progress"], ["Delayed", tdelayed, "delayed"], ["On Hold", tonhold, "on_hold"], ["Not Started", tnot, "not_started"]] as const).map(([l, v, st]) => (
-              <span key={l} className="inline-flex items-center gap-1"><StatusDot status={st} size={7} /><span className="text-muted-foreground">{l}</span><b className="text-foreground tabular-nums">{v}</b></span>
+              <span key={l} className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[10.5px]"><StatusDot status={st} size={7} /><span className="text-muted-foreground">{l}</span><b className="tabular-nums text-foreground">{v}</b></span>
             ))}
           </div>
-          <div className="mt-1.5 pt-1.5 border-t border-border/50 text-[10.5px] text-muted-foreground">
-            <b className="text-foreground tabular-nums">{milestones.length}</b> milestone{milestones.length === 1 ? "" : "s"}
+          <div className="mt-2 border-t border-border/50 pt-2 text-[10.5px] text-muted-foreground">
+            <b className="tabular-nums text-foreground">{milestones.length}</b> milestone{milestones.length === 1 ? "" : "s"}
             {" · "}<b className="tabular-nums" style={{ color: "#16A34A" }}>{msDone}</b> done
             {" · "}<b className="tabular-nums" style={{ color: msOverdue ? "#DC2626" : undefined }}>{msOverdue}</b> overdue
           </div>
@@ -565,7 +606,7 @@ export function CharterOverview({
           if (bottleneck) s.push(`Most of the remaining work is in “${bottleneck.name}” (${bottleneck.open} open).`);
           if (nextMs) s.push(`The next milestone is “${nextMs.name}”${nextMs.dueDate ? `, due ${fmtDate(nextMs.dueDate)}` : ""}.`);
           return (
-            <div className="rounded-lg border border-border/60 bg-card/40 p-3">
+            <div className="rounded-xl border border-border bg-card p-3">
               <p className="mb-1.5 inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide" style={{ color: verdictTone }}>
                 <span className="w-2 h-2 rounded-full" style={{ background: verdictTone }} />
                 Overall {verdict}
@@ -589,31 +630,27 @@ export function CharterOverview({
         ]} />
       </Section>
 
-      {/* Approval Notes (e-NFA) — this project's notes, downloadable as .docx */}
-      <Section title="Approval Notes (e-NFA)">
-        {nfas.length === 0 ? (
-          <p className="text-[12px] text-muted-foreground">No e-NFA for this project yet.</p>
-        ) : (
-          <div className="space-y-1.5">
-            {nfas.map((n) => (
-              <div key={n.id} className="flex items-center justify-between gap-2">
-                <Link href={`/nfas/${n.id}`}>
-                  <span className="inline-flex items-center gap-1.5 text-[12px] text-foreground hover:text-primary truncate cursor-pointer">
-                    <FileText size={12} className="text-primary shrink-0" />
-                    {n.subject || n.noteNo}
-                  </span>
-                </Link>
-                <button onClick={() => downloadNfaDocx(n.id, n.subject || n.noteNo)} className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline" title="Download .docx">
-                  <Download size={11} /> .docx
-                </button>
-              </div>
-            ))}
+      {milestones.length > 0 && (
+        <Section title="Milestones">
+          <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+            {milestones.slice(0, 5).map((m) => {
+              const overdue = m.status !== "completed" && !!m.dueDate && new Date(m.dueDate).getTime() < now;
+              return (
+                <div key={m.id} className="flex items-center gap-2 px-3 py-2">
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground/90">{m.name}</span>
+                  <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{m.dueDate ? fmtDate(m.dueDate) : "—"}</span>
+                  {overdue && <span className="shrink-0 text-[10px] font-semibold" style={{ color: "#DC2626" }}>OVERDUE</span>}
+                  <StatusPill status={m.status} />
+                </div>
+              );
+            })}
+            {milestones.length > 5 && <div className="px-3 py-1.5 text-[11px] italic text-muted-foreground">…and {milestones.length - 5} more</div>}
           </div>
-        )}
-        <button onClick={draftDemoNfa} disabled={demoBusy || !projId} className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline disabled:opacity-50 disabled:cursor-not-allowed">
-          {demoBusy ? "Drafting…" : "+ Draft demo e-NFA"}
-        </button>
-      </Section>
+        </Section>
+      )}
+
+      {top.length > 0 && <TaskUpdatesSection top={top} subsByParent={subsByParent} />}
+
     </aside>
     </div>
   );

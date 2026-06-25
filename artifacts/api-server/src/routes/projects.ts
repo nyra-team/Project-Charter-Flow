@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable, squadMembersTable, budgetLinesTable, approvalsTable, timelogsTable, scoringCriteriaTable, projectScoresTable, notificationsTable, activityTable } from "@workspace/db";
-import { eq, desc, inArray, and, or, sql } from "drizzle-orm";
+import { eq, desc, inArray, and, or, sql, isNull } from "drizzle-orm";
 import {
   CreateProjectBody,
   GetProjectParams,
@@ -422,6 +422,63 @@ router.post("/projects/:id/tasks", requireRole(...WRITE_ROLES), async (req, res)
     relatedEntityId: task.id,
     banner: { emoji: "🆕", title: "Task added", color: "blue" },
   });
+});
+
+// Clone a task — an exact copy that lands immediately BELOW the original in the
+// table. Tasks all share order=0 by default (ties), so a plain insert would sort
+// to the bottom; we renumber the sibling set (same parent) so the copy sits right
+// after its source. Subtasks/dependencies/Jira links are NOT copied.
+router.post("/tasks/:id/clone", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid task id" }); return; }
+  const [src] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  if (!src) { res.status(404).json({ error: "Task not found" }); return; }
+  const [projT] = await db.select({ status: projectsTable.status, name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, src.projectId));
+  if (projT?.status === "closed") { res.status(409).json({ error: "Project is closed. Tasks cannot be added." }); return; }
+
+  // Sibling set in current display order (parentTaskId null for top-level tasks).
+  const siblings = await db.select({ id: tasksTable.id }).from(tasksTable).where(and(
+    eq(tasksTable.projectId, src.projectId),
+    src.parentTaskId == null ? isNull(tasksTable.parentTaskId) : eq(tasksTable.parentTaskId, src.parentTaskId),
+  )).orderBy(tasksTable.order, tasksTable.id);
+
+  const [clone] = await db.insert(tasksTable).values({
+    projectId: src.projectId,
+    milestoneId: src.milestoneId,
+    workstreamId: src.workstreamId,
+    parentTaskId: src.parentTaskId,
+    managerId: src.managerId,
+    name: `${src.name} (copy)`,
+    description: src.description,
+    assigneeId: src.assigneeId,
+    cftOwner: src.cftOwner,
+    cftDept: src.cftDept,
+    status: src.status,
+    priority: src.priority,
+    rag: src.rag,
+    stage: src.stage,
+    progressPct: src.progressPct,
+    startDate: src.startDate,
+    endDate: src.endDate,
+    estimatedHours: src.estimatedHours,
+    plannedEffortHours: src.plannedEffortHours,
+    scheduleVarianceDays: src.scheduleVarianceDays,
+    predecessorIds: src.predecessorIds,
+    crossProjectPredecessors: src.crossProjectPredecessors,
+    isCritical: src.isCritical,
+    order: src.order,
+  }).returning();
+
+  // Renumber siblings 0..n with the clone slotted right after its source.
+  const seq: number[] = [];
+  for (const s of siblings) { seq.push(s.id); if (s.id === src.id) seq.push(clone!.id); }
+  for (let i = 0; i < seq.length; i++) {
+    await db.update(tasksTable).set({ order: i }).where(eq(tasksTable.id, seq[i]!));
+  }
+
+  const [enriched] = await enrichTasks([{ ...clone, order: seq.indexOf(clone!.id) } as unknown as Record<string, unknown>]);
+  await rollup(src.projectId);
+  res.status(201).json(enriched);
 });
 
 // Merge/upsert tasks for a project from an uploaded .xlsx (base64 in JSON).

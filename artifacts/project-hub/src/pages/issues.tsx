@@ -28,18 +28,15 @@ export default function IssuesList() {
   const projName = (id: number) => projectsArr.find(p => p.id === id)?.name ?? `Project #${id}`;
 
   const { data: issues = [], refetch, isLoading } = useQuery({
-    queryKey: ["all-issues", projectsArr.map(p => p.id).join(",")],
-    enabled: projectsArr.length > 0,
+    queryKey: ["all-issues"],
     // Always pull fresh so issues registered elsewhere (project Issues popup,
     // task grid) appear the moment this page is opened.
     staleTime: 0,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
     queryFn: async () => {
-      const lists = await Promise.all(projectsArr.map(p =>
-        fetch(`/api/projects/${p.id}/issues`, { credentials: "include" }).then(r => (r.ok ? r.json() : [])),
-      ));
-      return (lists.flat() as Issue[]).sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+      const r = await fetch("/api/all-issues", { credentials: "include" });
+      return r.ok ? (await r.json() as Issue[]) : [];
     },
   });
 

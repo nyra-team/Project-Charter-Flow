@@ -6,15 +6,16 @@
 // panel, and the "Details" panel (Assignee, Priority, Parent, Due date, Labels,
 // Team, Start date, Development, Reporter). Wired to pmo_tasks + pmo_messages.
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useListUsers, useCreateTask } from "@workspace/api-client-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Link } from "wouter";
 import {
-  Paperclip, X, ChevronUp, ChevronDown, Plus, Pencil,
+  Paperclip, X, ChevronUp, ChevronDown, Plus, Pencil, Copy,
   CheckSquare, MoreHorizontal, Eye, Share2,
   Bold, Italic, List, ListOrdered, ListChecks, Table,
-  AtSign, Smile,
+  AtSign, Smile, Check, FolderKanban, Flag, CornerDownRight,
 } from "lucide-react";
 import { api } from "@/lib/extra-api";
 import { useToast } from "@/hooks/use-toast";
@@ -57,6 +58,62 @@ function SidebarRow({ label, children }: { label: string; children: React.ReactN
       <span className="text-[12px] text-[#626f86] pt-0.5">{label}</span>
       <div className="min-w-0 text-[12px] text-[#172b4d]">{children}</div>
     </div>
+  );
+}
+
+// Searchable assignee popup — used for the task's Assignee and each subtask's
+// assignee. Portals to <body> with fixed coords so it isn't clipped by the
+// dialog's overflow; closes on outside-click / scroll. `children` is the trigger.
+function AssigneePicker({ value, people, onPick, children, title = "Assign" }: {
+  value: number | null | undefined;
+  people: Array<{ id: number; name: string }>;
+  onPick: (id: number | null) => void;
+  children: React.ReactNode;
+  title?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const place = () => { const r = btnRef.current?.getBoundingClientRect(); if (r) setPos({ left: r.left, top: r.bottom + 4 }); };
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { const t = e.target as Node; if (!btnRef.current?.contains(t) && !menuRef.current?.contains(t)) setOpen(false); };
+    const onScroll = () => setOpen(false);
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => { document.removeEventListener("mousedown", onDoc); window.removeEventListener("scroll", onScroll, true); window.removeEventListener("resize", onScroll); };
+  }, [open]);
+  const needle = q.trim().toLowerCase();
+  const list = needle ? people.filter((u) => u.name?.toLowerCase().includes(needle)) : people;
+  const pick = (id: number | null) => { setOpen(false); setQ(""); if (id !== (value ?? null)) onPick(id); };
+  return (
+    <>
+      <button ref={btnRef} type="button" title={title} onClick={(e) => { e.stopPropagation(); if (!open) place(); setOpen((o) => !o); }} className="inline-flex items-center gap-2 min-w-0 cursor-pointer hover:opacity-80">
+        {children}
+      </button>
+      {open && pos && createPortal(
+        <div ref={menuRef} style={{ position: "fixed", left: pos.left, top: pos.top }} className="z-[400] w-56 rounded-lg bg-white border border-[#dfe1e6] shadow-xl py-1" onClick={(e) => e.stopPropagation()}>
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search people…" className="w-[calc(100%-12px)] mx-1.5 mb-1 px-2 py-1 text-xs border border-[#c1c7d0] rounded outline-none focus:border-[#1868db]" />
+          <div className="max-h-56 overflow-y-auto">
+            <button type="button" onClick={() => pick(null)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-[#f1f2f4] text-[#626f86]">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[9px] bg-gray-100 text-gray-400 border border-gray-200">—</span> Unassigned
+            </button>
+            {list.map((u) => (
+              <button key={u.id} type="button" onClick={() => pick(u.id)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-[#f1f2f4]">
+                <PersonAvatar id={u.id} name={u.name} size={20} />
+                <span className="text-[#172b4d] truncate">{u.name}</span>
+                {u.id === value && <Check size={12} className="ml-auto text-[#626f86]" />}
+              </button>
+            ))}
+            {list.length === 0 && <div className="px-3 py-2 text-xs text-gray-400">No matches</div>}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
@@ -226,12 +283,14 @@ function RichEditor({
 }
 
 export function TaskDetailModal({
-  task, allTasks, onClose, onRefresh,
+  task, allTasks, onClose, onRefresh, onOpenTask,
 }: {
   task: AggTask;
   allTasks: AggTask[];
   onClose: () => void;
   onRefresh: () => void;
+  /** Switch the modal to another task (used by the breadcrumb's parent-task link). */
+  onOpenTask?: (id: number) => void;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -280,7 +339,6 @@ export function TaskDetailModal({
   const deps = Array.isArray(task.predecessorIds) ? task.predecessorIds : [];
   const depTasks = allTasks.filter((t) => deps.includes(t.id));
   const parent = task.parentTaskId != null ? allTasks.find((t) => t.id === task.parentTaskId) : null;
-  const code = codeOf(task.id);
 
   const comments = useQuery({
     queryKey: [`/api/tasks/${task.id}/comments`],
@@ -335,6 +393,39 @@ export function TaskDetailModal({
     );
   }
 
+  // Rename — inline-editable title, saved via the same PATCH used everywhere.
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(task.name);
+  useEffect(() => { setNameDraft(task.name); }, [task.name]);
+  const saveName = () => {
+    const n = nameDraft.trim();
+    setEditingName(false);
+    if (n && n !== task.name) patch.mutate({ name: n });
+    else setNameDraft(task.name);
+  };
+
+  // Clone — duplicate this task as a new "… (copy)", then close and refresh.
+  function cloneTask() {
+    const preds = Array.isArray(task.predecessorIds) ? task.predecessorIds : [];
+    createTask.mutate(
+      { id: task.projectId, data: {
+        name: `${task.name} (copy)`,
+        description: task.description ?? undefined,
+        milestoneId: task.milestoneId ?? undefined,
+        parentTaskId: task.parentTaskId ?? undefined,
+        assigneeId: task.assigneeId ?? undefined,
+        priority: task.priority ?? "P2",
+        rag: task.rag ?? "green",
+        stage: task.stage ?? undefined,
+        startDate: task.startDate ?? undefined,
+        endDate: task.endDate ?? undefined,
+        estimatedHours: task.estimatedHours ?? undefined,
+        predecessorIds: preds,
+      } } as never,
+      { onSuccess: () => { toast({ title: "Task cloned" }); onRefresh(); onClose(); } },
+    );
+  }
+
   const logged = task.actualHours ?? 0;
   const est = task.estimatedHours ?? 0;
   const timePct = est > 0 ? Math.min(100, Math.round((logged / est) * 100)) : (logged > 0 ? 100 : 0);
@@ -345,18 +436,55 @@ export function TaskDetailModal({
       <DialogContent className="w-[95vw] max-w-[1240px] max-h-[92vh] p-0 gap-0 overflow-hidden flex flex-col bg-white">
         {/* Top bar — Add epic / code  +  right-side icon cluster */}
         <div className="flex items-center justify-between pl-5 pr-12 py-1.5 border-b border-[#dfe1e6] shrink-0">
-          <div className="flex items-center gap-2 text-[12px] text-[#626f86] min-w-0">
-            <Link href={`/projects/${task.projectId}?tab=grid`}>
-              <span className="inline-flex items-center gap-1 hover:underline cursor-pointer truncate">
-                <Pencil size={13} /> {task.projectName ? task.projectName : "Add epic"}
+          {/* Breadcrumb — Project / Milestone / Task[ / Subtask], each navigable.
+              Full names wrap to the next line rather than truncating. */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px] text-[#626f86] min-w-0 flex-1">
+            <Link href={`/projects/${task.projectId}?view=table`}>
+              <span onClick={() => onClose()} className="inline-flex items-center gap-1 hover:underline cursor-pointer break-words">
+                <FolderKanban size={13} className="text-[#8270db] shrink-0" /> {task.projectName || "Project"}
               </span>
             </Link>
+            {task.milestoneId != null && (
+              <>
+                <span>/</span>
+                <Link href={`/projects/${task.projectId}?view=table&milestone=${task.milestoneId}`}>
+                  <span onClick={() => onClose()} className="inline-flex items-center gap-1 hover:underline cursor-pointer break-words">
+                    <Flag size={12} className="text-[#e2750c] shrink-0" /> {task.milestoneName || "Milestone"}
+                  </span>
+                </Link>
+              </>
+            )}
             <span>/</span>
-            <span className="inline-flex items-center gap-1 font-medium text-[#44546f]">
-              <CheckSquare size={14} className="text-[#1868db]" /> {code}
-            </span>
+            {parent ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onOpenTask?.(parent.id)}
+                  className="inline-flex items-center gap-1 hover:underline cursor-pointer text-left break-words"
+                >
+                  <CheckSquare size={13} className="text-[#1868db] shrink-0" /> {parent.name}
+                </button>
+                <span>/</span>
+                <span className="inline-flex items-center gap-1 font-medium text-[#44546f] break-words">
+                  <CornerDownRight size={13} className="text-[#4688ec] shrink-0" /> {task.name}
+                </span>
+              </>
+            ) : (
+              <span className="inline-flex items-center gap-1 font-medium text-[#44546f] break-words">
+                <CheckSquare size={14} className="text-[#1868db] shrink-0" /> {task.name}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2.5 text-[#626f86] shrink-0">
+            <button
+              type="button"
+              onClick={cloneTask}
+              disabled={createTask.isPending}
+              title="Clone this task"
+              className="inline-flex items-center gap-1 px-1.5 h-7 rounded border border-[#dfe1e6] hover:border-[#1868db] hover:text-[#1868db] disabled:opacity-50 transition-colors"
+            >
+              <Copy size={14} /> Clone
+            </button>
             <span className="inline-flex items-center gap-1 px-1.5 h-7 rounded border border-[#1868db] text-[#1868db]"><Eye size={15} />1</span>
             <Share2 size={16} />
           </div>
@@ -366,7 +494,28 @@ export function TaskDetailModal({
         <div className="flex-1 min-h-0 flex">
           {/* ── LEFT (main) — narrower ── */}
           <div className="w-[42%] shrink-0 min-w-0 px-5 pt-3 pb-4 overflow-y-auto">
-            <h1 className="w-full text-[17px] font-semibold text-[#172b4d] leading-tight mb-3 px-1 -ml-1">{task.name}</h1>
+            {editingName ? (
+              <input
+                autoFocus
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onBlur={saveName}
+                onKeyDown={(e) => { if (e.key === "Enter") saveName(); if (e.key === "Escape") { setNameDraft(task.name); setEditingName(false); } }}
+                className="w-full text-[17px] font-semibold text-[#172b4d] leading-tight mb-3 px-1 -ml-1 border border-[#1868db] rounded outline-none"
+              />
+            ) : (
+              <h1 className="group/title w-full flex items-center gap-1.5 text-[17px] font-semibold text-[#172b4d] leading-tight mb-3 px-1 -ml-1">
+                <span className="min-w-0">{task.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setEditingName(true)}
+                  title="Rename task"
+                  className="shrink-0 opacity-0 group-hover/title:opacity-100 p-0.5 rounded text-[#626f86] hover:text-[#1868db] hover:bg-blue-50 transition"
+                >
+                  <Pencil size={14} />
+                </button>
+              </h1>
+            )}
 
             {/* Description — click to reveal the Atlassian-style rich-text editor */}
             <div className="mb-3">
@@ -548,8 +697,10 @@ export function TaskDetailModal({
                       <div key={s.id} className="flex items-center gap-2 text-[12px] py-2 px-1 border-t border-[#f1f2f4] first:border-t-0">
                         <CheckSquare size={15} className="text-[#1868db] shrink-0" />
                         <span className="font-medium text-[#1868db] shrink-0 hover:underline cursor-default">{codeOf(s.id)}</span>
-                        <span className="flex-1 truncate text-[#172b4d]">{s.name}</span>
-                        <PersonAvatar id={s.assigneeId} name={s.assigneeName ?? "Unassigned"} size={22} />
+                        <span className="flex-1 whitespace-normal break-words text-[#172b4d]">{s.name}</span>
+                        <AssigneePicker value={s.assigneeId} people={people} onPick={(id) => api.patch(`/api/tasks/${s.id}`, { assigneeId: id }).then(onRefresh)} title="Assign subtask">
+                          <PersonAvatar id={s.assigneeId} name={s.assigneeName ?? "Unassigned"} size={22} />
+                        </AssigneePicker>
                         <div className="h-7 w-24 shrink-0 rounded overflow-hidden border border-[#dfe1e6]">
                           <StatusSelect value={s.status} onChange={(v) => api.patch(`/api/tasks/${s.id}`, { status: v }).then(onRefresh)} />
                         </div>
@@ -612,17 +763,10 @@ export function TaskDetailModal({
               {detailsOpen && (
                 <div className="px-4 pb-3 pt-1 border-t border-[#dfe1e6]">
                   <SidebarRow label="Assignee">
-                    <div className="flex items-center gap-2 min-w-0">
+                    <AssigneePicker value={task.assigneeId} people={people} onPick={(id) => patch.mutate({ assigneeId: id })} title="Assign">
                       <PersonAvatar id={task.assigneeId} name={task.assigneeName ?? "Unassigned"} size={24} />
-                      <select
-                        value={task.assigneeId ?? ""}
-                        onChange={(e) => { const v = e.target.value; patch.mutate({ assigneeId: v ? Number(v) : null }); }}
-                        className="flex-1 min-w-0 truncate text-[12px] bg-transparent border border-transparent hover:bg-[#f1f2f4] rounded pl-1 pr-5 py-0.5 outline-none cursor-pointer"
-                      >
-                        <option value="">Unassigned</option>
-                        {people.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-                      </select>
-                    </div>
+                      <span className="flex-1 min-w-0 truncate text-[12px] text-[#172b4d] hover:bg-[#f1f2f4] rounded px-1 py-0.5">{task.assigneeName ?? "Unassigned"}</span>
+                    </AssigneePicker>
                     {task.assigneeId == null && (
                       <button type="button" onClick={() => patch.mutate({ assigneeId: userId })} className="text-[12px] text-[#1868db] hover:underline mt-1 ml-8">Assign to me</button>
                     )}

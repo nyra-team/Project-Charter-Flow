@@ -138,7 +138,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Page Content */}
-        <div className="relative flex-1 overflow-y-auto scrollbar-thin bg-background">
+        <div id="ph-content" className="relative flex-1 overflow-y-auto scrollbar-thin bg-background">
           <div className="page-ambient" />
           <div key={location} className="relative w-full px-4 sm:px-6 lg:px-8 pt-3 pb-6 lg:pb-8 ph-rise">
             {children}

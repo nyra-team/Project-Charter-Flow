@@ -1,4 +1,6 @@
-import { Switch, Route, Redirect, Router as WouterRouter } from "wouter";
+import { Switch, Route, Redirect, Router as WouterRouter, useLocation } from "wouter";
+import { useEffect, useRef } from "react";
+import { noteNav } from "./lib/back";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,6 +11,7 @@ import { JustificationRequiredModal } from "./components/JustificationRequiredMo
 import { AskNyra } from "./components/AskNyra";
 import { TitleTooltip } from "./components/ui-kit/TitleTooltip";
 import NewCharterTemplate from "./pages/charter-template-new";
+import CharterNfaNew from "./pages/charter-nfa-new";
 import NewDemand from "./pages/demand-new";
 import CharterNfaSelect from "./pages/charter-nfa-select";
 import DemandsList from "./pages/demands";
@@ -24,6 +27,8 @@ import PortfolioView from "./pages/portfolio";
 import PortfolioOverview from "./pages/portfolio-overview";
 import ProjectsTreeView from "./pages/projects-tree";
 import MyTasksPage from "./pages/my-tasks";
+import MyTeamActions from "./pages/my-team-actions";
+import ResourceManagement from "./pages/resource-management";
 import TasksPage from "./pages/tasks";
 import AdminScoring from "./pages/admin-scoring";
 import AdminStageSlas from "./pages/admin-stage-slas";
@@ -38,9 +43,6 @@ import TemplatesPage from "./pages/templates";
 import PifsList from "./pages/pifs";
 import PifNew from "./pages/pif-new";
 import PifDetail from "./pages/pif-detail";
-import NfaNew from "./pages/nfa-new";
-import NfaDetail from "./pages/nfa-detail";
-import NfasList from "./pages/nfas";
 import NudgesPage from "./pages/nudges";
 import AdminIntegrationsPage from "./pages/admin-integrations";
 import VendorsPage from "./pages/vendors";
@@ -74,10 +76,21 @@ const queryClient = new QueryClient({
 });
 
 function Router() {
+  // Count real in-app route changes so every Back button (useGoBack) knows
+  // there's an in-app page to return to vs. a fresh deep-link. Skips the initial
+  // mount so a deep-landed page still falls back instead of leaving the app.
+  const [location] = useLocation();
+  const prevLoc = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevLoc.current !== null && prevLoc.current !== location) noteNav();
+    prevLoc.current = location;
+  }, [location]);
+
   return (
     <Layout>
       <Switch>
         <Route path="/"><Redirect to="/portfolio" /></Route>
+        <Route path="/charters/nfa-new" component={CharterNfaNew} />
         <Route path="/charters/new" component={NewCharterTemplate} />
         <Route path="/charters" component={ChartersList} />
         <Route path="/charter-nfa" component={CharterNfaSelect} />
@@ -87,6 +100,7 @@ function Router() {
         <Route path="/issues" component={IssuesList} />
         <Route path="/charters/:id" component={CharterDetail} />
         <Route path="/approvals" component={ApprovalsList} />
+        <Route path="/my-team-actions" component={MyTeamActions} />
         <Route path="/projects" component={ProjectsList} />
         <Route path="/projects/tree" component={ProjectsTreeView} />
         <Route path="/projects/:id/tasks/new" component={NewTask} />
@@ -94,6 +108,7 @@ function Router() {
         <Route path="/portfolio" component={PortfolioOverview} />
         <Route path="/portfolio-legacy" component={PortfolioView} />
         <Route path="/my-tasks" component={MyTasksPage} />
+        <Route path="/resources" component={ResourceManagement} />
         <Route path="/tasks" component={TasksPage} />
         <Route path="/admin/scoring" component={AdminScoring} />
         <Route path="/admin/stage-slas" component={AdminStageSlas} />
@@ -109,9 +124,6 @@ function Router() {
         <Route path="/pifs/new" component={PifNew} />
         <Route path="/pifs/:id" component={PifDetail} />
         <Route path="/pifs" component={PifsList} />
-        <Route path="/nfas/new" component={NfaNew} />
-        <Route path="/nfas/:id" component={NfaDetail} />
-        <Route path="/nfas" component={NfasList} />
         <Route path="/nudges" component={NudgesPage} />
         <Route path="/automations" component={AutomationsPage} />
         <Route path="/activity" component={ActivityPage} />

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<!-- Digitized CAPEX / NFA — blank template. Field structure from
+     NFA_CT_20260619063540.241_X.pdf; theme mirrors the PMO e-NFA form
+     (apps/pmo .../pages/charter-template-new.tsx) for later integration.
+     ponytail: single static file, native inputs, localStorage autosave, print-to-PDF. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Note for Approval (NFA) · CAPEX</title>
+<style>
+  /* PMO e-NFA palette (Tailwind: primary blue-600, slate-200 panels, blue focus). */
+  :root {
+    --primary:#2563eb; --primary-hover:#1d4ed8;
+    --fg:#0f172a; --muted:#64748b; --destructive:#dc2626;
+    --slate:#e2e8f0; --panel:#e2e8f0; --page:#f1f5f9; --soft:#f8fafc;
+    --focus-border:#93c5fd; --focus-ring:rgba(191,219,254,.55); --focus-bg:#eff6ff;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--page); color:var(--fg); font:13px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif; }
+  .wrap { max-width:1000px; margin:0 auto; padding:0 16px 32px; }
+  .toolbar { position:sticky; top:0; z-index:5; display:flex; gap:8px; align-items:center; padding:12px 0; background:var(--page); }
+  .toolbar h1 { font-size:14px; font-weight:700; margin:0 auto 0 0; letter-spacing:-.01em; }
+  button { font:inherit; font-weight:600; padding:7px 15px; border:1px solid var(--primary); background:var(--primary); color:#fff; border-radius:8px; cursor:pointer; box-shadow:0 1px 2px rgba(16,24,40,.06); }
+  button:hover { background:var(--primary-hover); }
+  button.secondary { background:#fff; color:var(--primary); border-color:var(--slate); }
+  button.secondary:hover { background:var(--soft); }
+  /* Header */
+  .head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin:4px 0 14px; }
+  .head h2 { font-size:18px; font-weight:700; letter-spacing:-.01em; margin:0; }
+  .head h2 span { font-size:13px; font-weight:400; color:var(--muted); }
+  .head p { font-size:11px; color:var(--muted); margin:3px 0 0; }
+  .chip { display:inline-flex; align-items:center; gap:7px; padding:0 12px; height:28px; border-radius:999px; background:var(--primary); color:#fff; font-size:12px; font-weight:600; white-space:nowrap; }
+  .chip .n { display:inline-flex; width:16px; height:16px; border-radius:999px; background:rgba(255,255,255,.25); align-items:center; justify-content:center; font-size:10px; }
+  /* Panel + cards */
+  .panel { background:var(--panel); border:1px solid var(--slate); border-radius:12px; padding:14px; }
+  .card { background:#fff; border:1px solid var(--slate); border-radius:10px; padding:14px 16px; margin-bottom:12px; }
+  .card:last-child { margin-bottom:0; }
+  .card > h3 { margin:0 0 10px; font-size:14px; font-weight:600; letter-spacing:-.01em; color:var(--fg); }
+  .card > h3 .sub { font-size:11px; font-weight:400; color:var(--muted); margin-left:8px; }
+  /* Fields */
+  .fgrid { display:grid; gap:10px 12px; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); }
+  .field { min-width:0; }
+  .field.full { grid-column:1/-1; }
+  .field > label { display:block; font-size:11px; font-weight:500; color:var(--fg); margin-bottom:3px; }
+  .req { color:var(--destructive); margin-left:2px; }
+  input, textarea, select { width:100%; height:32px; border:1px solid var(--slate); border-radius:6px; background:#fff; padding:0 8px; font:inherit; color:var(--fg); }
+  textarea { height:auto; min-height:36px; padding:6px 8px; resize:vertical; }
+  input:focus, textarea:focus, select:focus { outline:0; border-color:var(--focus-border); box-shadow:0 0 0 3px var(--focus-ring); background:var(--focus-bg); }
+  /* Checkbox grid */
+  .checks { display:grid; grid-template-columns:1fr 1fr; gap:7px 18px; }
+  .checks label { display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:500; }
+  .checks input { width:auto; height:auto; accent-color:var(--primary); }
+  /* Tables */
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
+  th, td { border:1px solid var(--slate); padding:0; vertical-align:middle; }
+  th { background:var(--soft); color:var(--muted); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.3px; text-align:left; padding:6px 8px; }
+  td { padding:0; }
+  td input, td textarea { border:0; border-radius:0; height:34px; background:transparent; }
+  td textarea { height:34px; min-height:34px; padding:7px 8px; }
+  td input:focus, td textarea:focus { box-shadow:none; background:var(--focus-bg); }
+  td.lblcell { padding:6px 8px; color:var(--fg); }
+  td.uomcell { padding:6px 8px; color:var(--muted); }
+  td.snocell { padding:6px 8px; text-align:center; color:var(--muted); width:54px; }
+  .num input, td.num { text-align:right; }
+  tr.band td { background:var(--soft); font-weight:700; color:var(--fg); padding:6px 8px; }
+  tr.tot td { background:var(--focus-bg); font-weight:700; }
+  /* Signatory grid */
+  .sign { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .sign .cell { border:1px solid var(--slate); border-radius:8px; padding:9px 11px; background:#fff; }
+  .sign .cell small { display:block; color:var(--muted); font-size:10.5px; text-transform:uppercase; letter-spacing:.3px; margin-bottom:5px; font-weight:600; }
+  .sign .cell input { border:1px solid var(--slate); }
+  .note { font-size:11px; color:var(--muted); margin:8px 2px 0; }
+  #saved { color:#16a34a; font-weight:600; font-size:11px; }
+  @media print {
+    body { background:#fff; } .toolbar { display:none; }
+    .panel { background:#fff; border:0; padding:0; }
+    .wrap { max-width:none; padding:0; }
+    input, textarea, select { background:transparent !important; box-shadow:none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div>
+      <h2>Capital Expenditure · e-NFA <span>— Note for Approval</span></h2>
+      <p>Your progress autosaves on this device — you can safely leave and come back.</p>
+    </div>
+    <div><span class="chip"><span class="n">1</span> CAPEX Note</span></div>
+  </div>
+
+  <form id="nfa">
+  <div class="panel">
+
+    <!-- ===================== CAPITAL EXPENDITURE ===================== -->
+    <div class="card">
+      <h3>Granules India Ltd — Capital Expenditure</h3>
+      <div class="fgrid">
+        <div class="field"><label>Location</label><input name="location"></div>
+        <div class="field"><label>CO / Div. Control No</label><input name="control_no"></div>
+        <div class="field"><label>Requested By</label><input name="requested_by"></div>
+        <div class="field"><label>Amount Requested Rs</label><input name="amount_requested"></div>
+        <div class="field"><label>Department</label><input name="department"></div>
+        <div class="field"><label>Date of Proposal</label><input name="date_of_proposal" placeholder="DD-MM-YYYY"></div>
+        <div class="field"><label>Financial Year</label><input name="financial_year"></div>
+        <div class="field full"><label>Name of Project</label><input name="name_of_project"></div>
+        <div class="field full"><label>Purpose of Capex</label><textarea name="purpose" rows="3"></textarea></div>
+      </div>
+    </div>
+
+    <!-- ===================== PROJECT TYPE ===================== -->
+    <div class="card">
+      <h3>Project Type</h3>
+      <div class="checks">
+        <label><input type="checkbox" name="pt_increased_production"> Increased Production</label>
+        <label><input type="checkbox" name="pt_cost_reduction"> Cost reduction / OE</label>
+        <label><input type="checkbox" name="pt_quality_safety"> Quality / Safety Improvement</label>
+        <label><input type="checkbox" name="pt_project_revision"> Project revision</label>
+        <label><input type="checkbox" name="pt_compliance"> Compliance / Regulatory / customer requirement</label>
+        <label><input type="checkbox" name="pt_environmental"> Environmental matters</label>
+        <label><input type="checkbox" name="pt_replacement"> Replacement of equipment</label>
+        <label><input type="checkbox" name="pt_others"> Others</label>
+      </div>
+    </div>
+
+    <!-- ===================== DETAILS ===================== -->
+    <div class="card">
+      <h3>Project Details</h3>
+      <div class="fgrid">
+        <div class="field full"><label>Project Description</label><textarea name="project_description" rows="2"></textarea></div>
+        <div class="field"><label>Detail proposal can be annexed</label><input name="detail_proposal"></div>
+        <div class="field"><label>Current Process</label><input name="current_process"></div>
+        <div class="field full"><label>Justification for the Capex proposed</label><input name="justification"></div>
+        <div class="field full"><label>Similar activity if already executed — the working experience</label><input name="similar_activity"></div>
+      </div>
+    </div>
+
+    <!-- ===================== SUPPORT ATTACHED ===================== -->
+    <div class="card">
+      <h3>Support Attached</h3>
+      <div class="checks">
+        <label><input type="checkbox" name="sa_market_evaluation"> Market evaluation</label>
+        <label><input type="checkbox" name="sa_layouts"> Layouts</label>
+        <label><input type="checkbox" name="sa_catalogues"> Catalogues / Technical details</label>
+        <label><input type="checkbox" name="sa_technical_comparison"> Technical comparison</label>
+        <label><input type="checkbox" name="sa_quotations"> Quotations from vendors</label>
+        <label><input type="checkbox" name="sa_regulatory"> Regulatory / Audit Observation</label>
+        <label><input type="checkbox" name="sa_finance_evaluation"> Finance evaluation comparison</label>
+        <label><input type="checkbox" name="sa_detail_justification"> Detail Justification</label>
+        <label><input type="checkbox" name="sa_key_contract"> Key contract terms comparison</label>
+        <label><input type="checkbox" name="sa_executive_summary"> Executive Summary</label>
+        <label><input type="checkbox" name="sa_comments"> Comments</label>
+        <label><input type="checkbox" name="sa_others"> Others</label>
+      </div>
+      <div class="fgrid" style="margin-top:10px">
+        <div class="field"><label>Project Duration, Expected Time Lines</label><input name="project_duration"></div>
+        <div class="field"><label>Required By Date</label><input name="required_by_date"></div>
+      </div>
+    </div>
+
+    <!-- ===================== ECONOMIC EVALUATION ===================== -->
+    <div class="card">
+      <h3>Economic Evaluation</h3>
+      <div class="fgrid">
+        <div class="field"><label>Capex Amount</label><input name="ee_capex_amount"></div>
+        <div class="field"><label>Timelines</label><input name="ee_timelines"></div>
+        <div class="field"><label>Payback Period</label><input name="ee_payback_period"></div>
+        <div class="field"><label>Machinery cost</label><input name="ee_machinery_cost"></div>
+        <div class="field"><label>Detailed working of payback</label><input name="ee_detailed_payback"></div>
+        <div class="field"><label>Installation</label><input name="ee_installation"></div>
+        <div class="field"><label>NPV of payback</label><input name="ee_npv"></div>
+        <div class="field"><label>Other Break down</label><input name="ee_other_breakdown"></div>
+      </div>
+      <p class="note">(Working in excel of the expected cash flows by this project is to be vetted from F&amp;A)</p>
+    </div>
+
+    <!-- ===================== REQUIRED APPROVALS ===================== -->
+    <div class="card">
+      <h3>Required Approvals <span class="sub">Per Authorization matrix · name, designation, dept. &amp; date</span></h3>
+      <div class="sign">
+        <div class="cell"><small>Project Manager / User dept. HOD · Date</small><input name="ap_pm"></div>
+        <div class="cell"><small>President - operations · Date</small><input name="ap_president"></div>
+        <div class="cell"><small>Plant Head · Date</small><input name="ap_plant_head"></div>
+        <div class="cell"><small>Chief Financial Officer · Date</small><input name="ap_cfo"></div>
+        <div class="cell"><small>CAPEX SCM Head · Date</small><input name="ap_scm_head"></div>
+        <div class="cell"><small>CEO &amp; JMD · Date</small><input name="ap_ceo"></div>
+        <div class="cell" style="grid-column:1/-1"><small>Chairman &amp; Managing Director · Date</small><input name="ap_cmd"></div>
+      </div>
+      <div class="fgrid" style="margin-top:10px">
+        <div class="field"><label>SAP-Internal Order No</label><input name="sap_io_no"></div>
+        <div class="field"><label>Created On</label><input name="created_on"></div>
+        <div class="field"><label>Due Date of Completion</label><input name="due_date_completion"></div>
+      </div>
+    </div>
+
+    <!-- ===================== BUDGET ===================== -->
+    <div class="card">
+      <h3>Budget</h3>
+      <table id="budget">
+        <thead><tr><th>Description of Material</th><th style="width:70px">Qty</th><th style="width:100px">UOM</th><th style="width:120px">Rate in INR</th><th style="width:130px">Amount In INR</th></tr></thead>
+        <tbody></tbody>
+        <tfoot><tr class="tot"><td class="num" colspan="4" style="padding:6px 8px">Total INR</td><td class="num"><input name="budget_total"></td></tr></tfoot>
+      </table>
+    </div>
+
+    <!-- ===================== PROJECT CHARTER ===================== -->
+    <div class="card">
+      <h3>Project Charter</h3>
+      <div class="field full" style="margin-bottom:10px"><label>Project Name</label><input name="charter_project_name"></div>
+      <table id="charter">
+        <thead><tr><th style="width:54px">S. No</th><th>Project Task</th><th style="width:150px">FPR</th><th style="width:150px">TCD</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="fgrid" style="margin-top:10px">
+        <div class="field full"><label>Responsibility</label><textarea name="charter_responsibility" rows="2"></textarea></div>
+        <div class="field full"><label>Accountability</label><input name="charter_accountability"></div>
+      </div>
+    </div>
+
+    <!-- ===================== JUSTIFICATION NOTE ===================== -->
+    <div class="card">
+      <h3>Justification Note for Approvals</h3>
+      <div class="fgrid">
+        <div class="field full"><label>Name of the Project</label><textarea name="jn_project_name" rows="2"></textarea></div>
+        <div class="field full"><label>Background</label><textarea name="jn_background" rows="2"></textarea></div>
+        <div class="field full"><label>Problem Statement</label><textarea name="jn_problem" rows="2"></textarea></div>
+        <div class="field full"><label>Proposed Solution</label><textarea name="jn_solution" rows="2"></textarea></div>
+        <div class="field full"><label>Benefits of the Proposed Upgrade</label><textarea name="jn_benefits" rows="5"></textarea></div>
+        <div class="field full"><label>Financial Implications</label><textarea name="jn_financial" rows="2"></textarea></div>
+        <div class="field"><label>Prepared By</label><input name="jn_prepared_by"></div>
+        <div class="field"><label>Reviewed By</label><input name="jn_reviewed_by"></div>
+      </div>
+    </div>
+
+    <!-- ===================== DETAILED ECONOMIC EVALUATION ===================== -->
+    <div class="card">
+      <h3>Detailed Economic Evaluation</h3>
+      <table id="roi">
+        <thead><tr><th style="width:54px">S. No</th><th>Description</th><th style="width:160px">Value</th><th style="width:240px">Uom</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <h3 style="margin:16px 0 10px">ROI</h3>
+      <table id="roi2">
+        <thead><tr><th style="width:54px">S. No</th><th>Description</th><th style="width:70px">Uom</th><th style="width:150px">Bridge Things</th><th style="width:150px">MWTS</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+  </div>
+  </form>
+</div>
+
+<script>
+const KEY = "nfa_capex_blank";
+
+// Blank budget / charter rows (free data entry).
+const BUDGET_ROWS = Array.from({length:5}, ()=>["","","","",""]);
+const CHARTER_ROWS = Array.from({length:5}, ()=>["","","",""]);
+
+// Blank worksheets — no predefined rows; the user fills every column themselves.
+const ROI_ROWS = Array.from({length:12}, ()=>null);
+const ROI2_ROWS = Array.from({length:8}, ()=>null);
+
+const inp = (name, cls) => `<input name="${name}" class="${cls||''}">`;
+
+function buildDynamic(){
+  document.querySelector("#budget tbody").innerHTML = BUDGET_ROWS.map((_,i)=>
+    `<tr><td>${inp("b_desc_"+i)}</td><td>${inp("b_qty_"+i)}</td><td>${inp("b_uom_"+i)}</td><td class="num">${inp("b_rate_"+i)}</td><td class="num">${inp("b_amt_"+i)}</td></tr>`).join("");
+  document.querySelector("#charter tbody").innerHTML = CHARTER_ROWS.map((_,i)=>
+    `<tr><td>${inp("c_sno_"+i)}</td><td>${inp("c_task_"+i)}</td><td>${inp("c_fpr_"+i)}</td><td>${inp("c_tcd_"+i)}</td></tr>`).join("");
+  document.querySelector("#roi tbody").innerHTML = ROI_ROWS.map((_,i)=>
+    `<tr><td class="snocell">${inp("r_sno_"+i)}</td><td>${inp("r_desc_"+i)}</td><td class="num">${inp("r_val_"+i)}</td><td>${inp("r_uom_"+i)}</td></tr>`).join("");
+  document.querySelector("#roi2 tbody").innerHTML = ROI2_ROWS.map((_,i)=>
+    `<tr><td class="snocell">${inp("r2_sno_"+i)}</td><td>${inp("r2_desc_"+i)}</td><td>${inp("r2_uom_"+i)}</td><td class="num">${inp("r2_bt_"+i)}</td><td class="num">${inp("r2_mwts_"+i)}</td></tr>`).join("");
+}
+
+function collect(){ const o={}; document.querySelectorAll("#nfa [name]").forEach(el=>{ o[el.name]=el.type==="checkbox"?el.checked:el.value; }); return o; }
+function restore(o){ document.querySelectorAll("#nfa [name]").forEach(el=>{ if(!(el.name in o))return; if(el.type==="checkbox")el.checked=o[el.name]; else el.value=o[el.name]; }); }
+
+function save(){
+  localStorage.setItem(KEY, JSON.stringify(collect()));
+  const s=document.getElementById("saved"); if(!s) return;
+  s.textContent="saved ✓";
+  clearTimeout(save._t); save._t=setTimeout(()=>s.textContent="",1200);
+}
+function resetForm(){
+  if(!confirm("Clear all fields?")) return;
+  localStorage.removeItem(KEY); buildDynamic();
+  document.querySelectorAll("#nfa [name]").forEach(el=>{ if(el.type==="checkbox")el.checked=false; else el.value=""; });
+}
+
+buildDynamic();
+const stored = localStorage.getItem(KEY);
+if (stored) { try { restore(JSON.parse(stored)); } catch {} }
+document.getElementById("nfa").addEventListener("input", save);
+</script>
+</body>
+</html>

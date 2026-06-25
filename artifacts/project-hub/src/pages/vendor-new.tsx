@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useGoBack } from "../lib/back";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/extra-api";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ type VendorBody = {
 
 export default function VendorNewPage() {
   const [, navigate] = useLocation();
+  const goBack = useGoBack();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [form, setForm] = useState<VendorBody>({ name: "", country: "IN", segment: "provisional" });
@@ -48,8 +50,8 @@ export default function VendorNewPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">
-      <Button variant="ghost" size="sm" onClick={() => navigate("/vendors")} className="text-muted-foreground">
-        <ArrowLeft size={14} className="mr-1" /> Back to vendors
+      <Button variant="ghost" size="sm" onClick={() => goBack("/vendors")} className="text-muted-foreground">
+        <ArrowLeft size={14} className="mr-1" /> Back
       </Button>
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Register vendor</h1>

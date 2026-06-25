@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Link, useLocation } from "wouter";
+import { useGoBack } from "../lib/back";
+import { WorkflowSwitch, CapexWorkflow } from "../components/CapexWorkflow";
 import { useUserStore } from "../lib/store";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
@@ -8,14 +10,16 @@ import { useListUsers } from "@workspace/api-client-react";
 import { FUNCTIONS_LIST } from "../lib/lifecycle-config";
 import { useAiStatus } from "../components/ai-button";
 import { RephraseField } from "@/components/ui-kit";
+import { ContentOverlay } from "@/components/ContentOverlay";
 import { ReferenceDocUpload } from "../components/ReferenceDocUpload";
+import { EmployeeCombobox } from "../components/employee-combobox";
 import { CustomFieldsEditor, type CustomField } from "../components/CustomFieldsEditor";
 import { useFormDraft, clearFormDraft } from "../lib/useFormDraft";
 import { ExpandingTextarea } from "../components/ExpandingTextarea";
 import {
   ChevronLeft, Loader2, Plus, Trash2, FileText, Users, Target, TrendingUp,
   ShieldAlert, Coins, Table as TableIcon, ClipboardList, Sparkles, ListPlus,
-  Download, X, ExternalLink, GripVertical,
+  Download, X, ExternalLink, GripVertical, RotateCcw, ChevronRight, ChevronUp, ChevronDown,
 } from "lucide-react";
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor, useSensor, useSensors,
@@ -40,7 +44,7 @@ const PM_TYPES = ["IT PM", "Business PM"] as const;
 
 type Milestone = { milestone: string; responsible: string; targetDate: string };
 type Kpi = { kpi: string; baseline: string; goal: string };
-type Member = { name: string };
+type Member = { name: string; email?: string | null; designation?: string | null };
 type VendorMatrix = { columns: string[]; rows: string[][] };
 
 function Section({ title, subtitle, required, dense, children }: {
@@ -170,8 +174,8 @@ function CharterNfaPreview({ charterId, title, onClose, onOpenCharter }: {
   }
 
   return (
-    <div className="fixed inset-0 z-[200] flex bg-black/50 backdrop-blur-sm p-4">
-      <div className="m-auto w-[min(920px,94vw)] h-[90vh] bg-card rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+    <ContentOverlay z={200} className="bg-black/50 backdrop-blur-sm p-4">
+      <div className="m-auto w-[min(920px,94%)] h-full max-h-[90vh] bg-card rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         <div className="flex items-center gap-2 px-5 py-3 border-b border-border flex-shrink-0">
           <FileText size={16} className="text-primary" />
           <span className="text-sm font-semibold text-foreground truncate">Project Charter &amp; Note for Approval (NFA)</span>
@@ -205,12 +209,13 @@ function CharterNfaPreview({ charterId, title, onClose, onOpenCharter }: {
           <div ref={ref} className={status === "ready" ? "flex justify-center py-4" : "hidden"} />
         </div>
       </div>
-    </div>
+    </ContentOverlay>
   );
 }
 
 export default function NewCharterTemplate() {
   const [, setLocation] = useLocation();
+  const goBack = useGoBack();
   const { toast } = useToast();
   const { userId } = useUserStore();
   const aiStatus = useAiStatus();
@@ -224,6 +229,8 @@ export default function NewCharterTemplate() {
   // Two-step flow: 1 = mandatory basics, 2 = AI-drafted narrative (editable +
   // per-field "Rephrase with AI"). Continue from step 1 auto-drafts step 2.
   const [step, setStep] = useState<1 | 2>(1);
+  // CapEx vs the standard charter+e-NFA workflow.
+  const [mode, setMode] = useState<"standard" | "capex">("standard");
   // Created charter id — opens the Charter+e-NFA preview overlay after submit.
   const [previewId, setPreviewId] = useState<number | null>(null);
 
@@ -244,6 +251,12 @@ export default function NewCharterTemplate() {
     const names = (usersData as Array<{ name?: string }>).map(u => u.name).filter((n): n is string => !!n && n.trim().length > 0);
     return Array.from(new Set([...names, ...members.map(m => m.name).filter(n => n.trim().length > 0)]));
   })();
+  // name → { email, designation } from the directory (drives the member detail line + PM pick).
+  const empByName = new Map<string, { email: string | null; designation: string | null }>(
+    (usersData as Array<{ name?: string; email?: string | null; designation?: string | null }>)
+      .filter(u => !!u.name && u.name.trim().length > 0)
+      .map(u => [u.name as string, { email: u.email ?? null, designation: u.designation ?? null }]),
+  );
 
   // Mandatory project description (Basics step) — also seeds the charter
   // `description` payload. Has its own AI "Draft" + "Rephrase" actions.
@@ -348,6 +361,16 @@ export default function NewCharterTemplate() {
   const addVendorRow = () => setVendor(v => ({ ...v, rows: [...v.rows, v.columns.map(() => "")] }));
   const removeVendorColumn = (ci: number) => setVendor(v => v.columns.length <= 1 ? v : ({ columns: v.columns.filter((_, i) => i !== ci), rows: v.rows.map(r => r.filter((_, i) => i !== ci)) }));
   const removeVendorRow = (ri: number) => setVendor(v => ({ ...v, rows: v.rows.filter((_, i) => i !== ri) }));
+  // Reorder columns / rows (parameters & vendors are rearrangeable).
+  const moveVendorColumn = (ci: number, dir: -1 | 1) => setVendor(v => {
+    const j = ci + dir; if (j < 0 || j >= v.columns.length) return v;
+    const swap = <T,>(a: T[]) => { const b = [...a]; [b[ci], b[j]] = [b[j], b[ci]]; return b; };
+    return { columns: swap(v.columns), rows: v.rows.map(r => swap(r)) };
+  });
+  const moveVendorRow = (ri: number, dir: -1 | 1) => setVendor(v => {
+    const j = ri + dir; if (j < 0 || j >= v.rows.length) return v;
+    const rows = [...v.rows]; [rows[ri], rows[j]] = [rows[j], rows[ri]]; return { ...v, rows };
+  });
 
   // ── section drag-to-reorder ──────────────────────────────────────────────
   const sectionSensors = useSensors(
@@ -559,7 +582,7 @@ export default function NewCharterTemplate() {
         roiPerAnnum: Number(roiPerAnnum) || undefined,
         milestones: milestones.filter(m => m.milestone.trim()).map(m => ({ milestone: m.milestone, responsible: m.responsible, targetDate: m.targetDate, status: "pending" })),
         kpis: kpis.filter(k => k.kpi.trim()),
-        keyProjectMembers: members.filter(m => m.name.trim()).map(m => ({ role: "Member", name: m.name })),
+        keyProjectMembers: members.filter(m => m.name.trim()).map(m => ({ role: "Member", name: m.name, email: m.email ?? null, designation: m.designation ?? null })),
         // new template columns
         projectSponsor,
         pmType,
@@ -633,14 +656,33 @@ export default function NewCharterTemplate() {
     }
   }
 
+  // CapEx workflow — its own self-contained NFA form (sourced from nfa-digital).
+  if (mode === "capex") {
+    return (
+      <div className="w-full pb-4 [&_input]:shadow-none [&_input]:rounded-md [&_input]:border [&_input]:border-slate-200 [&_input]:bg-white [&_textarea]:shadow-none [&_textarea]:rounded-md [&_textarea]:border [&_textarea]:border-slate-200 [&_textarea]:bg-white [&_input:focus]:border-blue-300 [&_input:focus-visible]:border-blue-300 [&_input:focus-visible]:ring-blue-200 [&_textarea:focus]:border-blue-300 [&_textarea:focus]:outline-none [&_textarea:focus]:ring-1 [&_textarea:focus]:ring-blue-200">
+        <div className="mb-1">
+          <button onClick={() => goBack("/")} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <ChevronLeft size={15} /> Back
+          </button>
+        </div>
+        <div className="flex items-start justify-between gap-4 mb-1.5">
+          <div>
+            <h2 className="text-lg font-bold text-foreground tracking-tight">Capital Expenditure · e-NFA <span className="text-sm font-normal text-muted-foreground">— Note for Approval</span></h2>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Your progress autosaves on this device — you can safely leave and come back.</p>
+          </div>
+          <WorkflowSwitch mode={mode} onChange={setMode} />
+        </div>
+        <CapexWorkflow />
+      </div>
+    );
+  }
+
   return (
     <div className="w-full pb-4 [&_input]:shadow-none [&_input]:rounded-md [&_input]:border [&_input]:border-slate-200 [&_input]:bg-white [&_textarea]:shadow-none [&_textarea]:rounded-md [&_textarea]:border [&_textarea]:border-slate-200 [&_textarea]:bg-white [&_[role=combobox]]:rounded-md [&_[role=combobox]]:bg-white [&_[role=combobox]]:border [&_[role=combobox]]:border-slate-200 [&_[role=combobox]]:font-normal [&_[role=combobox]]:shadow-none [&_[role=combobox]:focus]:ring-0 [&_input:focus]:border-blue-300 [&_input:focus-visible]:border-blue-300 [&_input:focus-visible]:ring-blue-200 [&_textarea:focus]:border-blue-300 [&_textarea:focus]:outline-none [&_textarea:focus]:ring-1 [&_textarea:focus]:ring-blue-200 [&_[role=combobox]:focus]:border-blue-300">
       <div className="mb-1">
-        <Link href="/">
-          <button className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            <ChevronLeft size={15} /> Back to Dashboard
-          </button>
-        </Link>
+        <button onClick={() => goBack("/")} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ChevronLeft size={15} /> Back
+        </button>
       </div>
 
       {/* Title + step indicator on one row */}
@@ -650,6 +692,12 @@ export default function NewCharterTemplate() {
           <p className="text-[11px] text-muted-foreground mt-0.5">Your progress autosaves on this device — you can safely leave and come back.</p>
         </div>
         <div className="flex items-center gap-2 text-xs font-semibold flex-shrink-0">
+        <WorkflowSwitch mode={mode} onChange={setMode} />
+        </div>
+      </div>
+
+      {/* Step indicator — its own row, below the title */}
+      <div className="flex items-center gap-2 text-xs font-semibold mb-2">
         <span className={`inline-flex items-center gap-1.5 px-3 h-7 rounded-full ${step === 1 ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary"}`}>
           <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/25 text-[10px]">1</span> Basics
         </span>
@@ -657,11 +705,18 @@ export default function NewCharterTemplate() {
         <span className={`inline-flex items-center gap-1.5 px-3 h-7 rounded-full ${step === 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
           <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/25 text-[10px]">2</span> AI Charter Narrative
         </span>
-        </div>
       </div>
 
       <div className="relative rounded-lg border border-slate-200 bg-slate-200 p-4 sm:p-5">
-      <div className="absolute top-3 right-3 z-10">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <button
+          type="button"
+          onClick={() => { if (window.confirm("Clear all charter fields? This cannot be undone.")) { clearFormDraft("pmo:charter-draft"); window.location.reload(); } }}
+          className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-destructive transition-colors"
+          title="Clear every field and start a fresh charter"
+        >
+          <RotateCcw size={14} /> Reset fields
+        </button>
         <ReferenceDocUpload onText={(t) => { setRefText(t); autofillFromDoc(t); }} />
       </div>
       {step === 1 ? (
@@ -671,7 +726,7 @@ export default function NewCharterTemplate() {
             <Field label="Project Name" required>
               <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. ERP System Upgrade 2026" className="h-8" />
             </Field>
-            <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 lg:grid-cols-7">
+            <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))" }}>
               <Field label="Project Sponsor" required>
                 <Select value={projectSponsor} onValueChange={setProjectSponsor}>
                   <SelectTrigger className="h-8"><SelectValue placeholder="Sponsor" /></SelectTrigger>
@@ -697,7 +752,12 @@ export default function NewCharterTemplate() {
                 </Select>
               </Field>
               <Field label="Project Manager">
-                <Input value={pmName} onChange={e => setPmName(e.target.value)} placeholder="Name" className="h-8" />
+                <Select value={pmName || undefined} onValueChange={setPmName}>
+                  <SelectTrigger className="h-8"><SelectValue placeholder="Select project manager…" /></SelectTrigger>
+                  <SelectContent>
+                    {Array.from(new Set([...(pmName ? [pmName] : []), ...memberOptions])).map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </Field>
               <Field label="Approval Date" required>
                 <Input type="date" value={projectApprovalDate} onChange={e => setProjectApprovalDate(e.target.value)} className="h-8 px-2" />
@@ -727,19 +787,28 @@ export default function NewCharterTemplate() {
             <Section dense title="Key Project Members" subtitle="Core project team" icon={<Users size={16} />}>
               <label className="text-xs font-medium text-foreground">Member name</label>
               <div className="space-y-1.5">
-                {members.map((m, i) => (
-                  <div key={i} className="flex gap-2">
-                    <Select value={m.name || undefined} onValueChange={val => setMembers(arr => arr.map((x, j) => j === i ? { name: val } : x))}>
-                      <SelectTrigger className="h-9 flex-1"><SelectValue placeholder="Select member…" /></SelectTrigger>
-                      <SelectContent>
-                        {memberOptions.map(name => <SelectItem key={name} value={name}>{name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    {members.length > 1 && (
-                      <button type="button" onClick={() => setMembers(arr => arr.filter((_, j) => j !== i))} className="w-9 h-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={14} /></button>
+                {members.map((m, i) => {
+                  // Fall back to the directory so names from saved state / AI draft still show email + designation.
+                  const dir = empByName.get(m.name);
+                  const designation = m.designation ?? dir?.designation ?? null;
+                  const email = m.email ?? dir?.email ?? null;
+                  return (
+                  <div key={i} className="space-y-0.5">
+                    <div className="flex gap-2">
+                      <EmployeeCombobox
+                        value={m.name || undefined}
+                        onSelect={hit => setMembers(arr => arr.map((x, j) => j === i ? { name: hit.name, email: hit.email, designation: hit.designation } : x))}
+                      />
+                      {members.length > 1 && (
+                        <button type="button" onClick={() => setMembers(arr => arr.filter((_, j) => j !== i))} className="w-9 h-9 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"><Trash2 size={14} /></button>
+                      )}
+                    </div>
+                    {(designation || email) && (
+                      <p className="text-[10.5px] text-muted-foreground pl-0.5 truncate">{[designation, email].filter(Boolean).join(" · ")}</p>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
               <button type="button" onClick={addMember} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80"><Plus size={13} /> Add member</button>
             </Section>
@@ -747,11 +816,11 @@ export default function NewCharterTemplate() {
             {/* ── Budget envelope (drives the AI draft + DOA routing) ───────── */}
             <Section dense title="Budget" icon={<Coins size={16} />}>
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Approved Budget" hint="₹">
+                <Field label="Tentative Budget" hint="₹">
                   <ExpandingTextarea value={approvedBudget} onChange={setApprovedBudget} placeholder="e.g. ₹50,00,000 — capex + opex, phased over FY26" className="text-sm px-3 py-1 leading-tight placeholder:text-xs" minPx={36} />
                 </Field>
-                <Field label="LE Budget" hint="Latest Estimate, ₹">
-                  <ExpandingTextarea value={leBudget} onChange={setLeBudget} placeholder="e.g. ₹48,00,000 — latest estimate at completion" className="text-sm px-3 py-1 leading-tight placeholder:text-xs" minPx={36} />
+                <Field label="Budget" hint="₹">
+                  <ExpandingTextarea value={leBudget} onChange={setLeBudget} placeholder="e.g. ₹48,00,000" className="text-sm px-3 py-1 leading-tight placeholder:text-xs" minPx={36} />
                 </Field>
               </div>
             </Section>
@@ -863,14 +932,16 @@ export default function NewCharterTemplate() {
                           {vendor.columns.map((c, ci) => (
                             <th key={ci} className="p-1 min-w-[140px]">
                               <div className="flex items-center gap-1">
+                                <button type="button" onClick={() => moveVendorColumn(ci, -1)} disabled={ci === 0} title="Move left" className="text-muted-foreground hover:text-primary disabled:opacity-30 shrink-0"><ChevronLeft size={13} /></button>
                                 <Input value={c} onChange={e => setVendor(v => ({ ...v, columns: v.columns.map((x, j) => j === ci ? e.target.value : x) }))} className="h-8 font-semibold" />
+                                <button type="button" onClick={() => moveVendorColumn(ci, 1)} disabled={ci === vendor.columns.length - 1} title="Move right" className="text-muted-foreground hover:text-primary disabled:opacity-30 shrink-0"><ChevronRight size={13} /></button>
                                 {vendor.columns.length > 1 && (
                                   <button type="button" onClick={() => removeVendorColumn(ci)} title="Remove column" className="text-muted-foreground hover:text-destructive shrink-0"><Trash2 size={13} /></button>
                                 )}
                               </div>
                             </th>
                           ))}
-                          <th className="w-10" />
+                          <th className="w-24" />
                         </tr>
                       </thead>
                       <tbody>
@@ -882,7 +953,11 @@ export default function NewCharterTemplate() {
                               </td>
                             ))}
                             <td className="p-1">
-                              <button type="button" onClick={() => removeVendorRow(ri)} title="Remove row" className="w-9 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10"><Trash2 size={14} /></button>
+                              <div className="flex items-center gap-0.5">
+                                <button type="button" onClick={() => moveVendorRow(ri, -1)} disabled={ri === 0} title="Move up" className="text-muted-foreground hover:text-primary disabled:opacity-30"><ChevronUp size={14} /></button>
+                                <button type="button" onClick={() => moveVendorRow(ri, 1)} disabled={ri === vendor.rows.length - 1} title="Move down" className="text-muted-foreground hover:text-primary disabled:opacity-30"><ChevronDown size={14} /></button>
+                                <button type="button" onClick={() => removeVendorRow(ri)} title="Remove row" className="w-7 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10"><Trash2 size={14} /></button>
+                              </div>
                             </td>
                           </tr>
                         ))}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { ContentOverlay } from "@/components/ContentOverlay";
 
 // Justification gate for kanban status moves — mirrors the CXO Action Centre
 // board, which asks for a reason before a drag changes an item's status. Used
@@ -13,9 +14,9 @@ export function MoveJustifyModal({ toLabel, pending, onCancel, onConfirm }: {
 }) {
   const [reason, setReason] = useState("");
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center">
+    <ContentOverlay z={120}>
       <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
-      <div className="relative z-10 w-[460px] max-w-[92vw] rounded-xl border border-gray-200 bg-white shadow-2xl">
+      <div className="relative z-10 w-[460px] max-w-[92%] rounded-xl border border-gray-200 bg-white shadow-2xl">
         <div className="flex items-center gap-2 px-5 pt-4 pb-1">
           <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
           <h3 className="text-[15px] font-semibold text-gray-900">Reason for moving to {toLabel}</h3>
@@ -45,6 +46,6 @@ export function MoveJustifyModal({ toLabel, pending, onCancel, onConfirm }: {
           </button>
         </div>
       </div>
-    </div>
+    </ContentOverlay>
   );
 }

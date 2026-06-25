@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useRoute, Link } from "wouter";
+import { useRoute } from "wouter";
+import { useGoBack } from "../lib/back";
 import {
   useGetCharter, useListCharterVendors, useListCharterRisks, useListCharterSquad,
   useListApprovals, useSubmitCharter, useListUsers, useScmNegotiate,
@@ -75,6 +76,7 @@ function BenefitTag({ label, value, color }: { label: string; value?: string | n
 
 export default function CharterDetail() {
   const [, params] = useRoute("/charters/:id");
+  const goBack = useGoBack();
   const charterId = parseInt(params?.id || "0");
   const { role, userId } = useUserStore();
   const { toast } = useToast();
@@ -168,12 +170,10 @@ export default function CharterDetail() {
   return (
     <div className="space-y-5">
       {/* Back */}
-      <Link href="/charters">
-        <button className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
-          <ChevronLeft size={15} />
-          Back to Charters
-        </button>
-      </Link>
+      <button onClick={() => goBack("/charters")} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+        <ChevronLeft size={15} />
+        Back
+      </button>
 
       {/* Header card */}
       <div

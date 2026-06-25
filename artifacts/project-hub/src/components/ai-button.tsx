@@ -3,20 +3,24 @@ import { Sparkles, Loader2, AlertCircle } from "lucide-react";
 import { api, getAiStatus, type AiStatus } from "../lib/extra-api";
 
 let cached: AiStatus | null = null;
-let pending: Promise<AiStatus> | null = null;
-async function fetchStatus(): Promise<AiStatus> {
+let pending: Promise<AiStatus | null> | null = null;
+async function fetchStatus(): Promise<AiStatus | null> {
   if (cached) return cached;
   if (pending) return pending;
   pending = getAiStatus().then(s => { cached = s; pending = null; return s; }).catch(() => {
+    // Transient blip (401 during a backend bounce, network drop, early call
+    // before the session token is ready). Leave status UNKNOWN — don't cache a
+    // negative — so AI controls stay shown and the next mount retries. Only an
+    // explicit 200 `{configured:false}` from the server hides them.
     pending = null;
-    return { configured: false, provider: "anthropic", model: "" };
+    return null;
   });
   return pending;
 }
 
 export function useAiStatus() {
   const [status, setStatus] = useState<AiStatus | null>(cached);
-  useEffect(() => { void fetchStatus().then(setStatus); }, []);
+  useEffect(() => { void fetchStatus().then(s => { if (s) setStatus(s); }); }, []);
   return status;
 }
 

@@ -7,6 +7,13 @@ const router: IRouter = Router();
 
 const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
 
+// GET /api/all-issues — every issue across all projects, one query.
+// ponytail: replaces the Issues page's N+1 (one fetch per project).
+router.get("/all-issues", async (_req, res): Promise<void> => {
+  const issues = await db.select().from(issuesTable).orderBy(desc(issuesTable.createdAt));
+  res.json(issues);
+});
+
 router.get("/projects/:id/issues", async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }

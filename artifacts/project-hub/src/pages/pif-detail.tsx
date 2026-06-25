@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useRoute, useLocation, Link } from "wouter";
+import { useGoBack } from "../lib/back";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useUserStore } from "../lib/store";
@@ -63,6 +64,7 @@ export default function PifDetail() {
   const [, params] = useRoute<{ id: string }>("/pifs/:id");
   const pifId = params?.id ? parseInt(params.id) : NaN;
   const [, navigate] = useLocation();
+  const goBack = useGoBack();
   const { toast } = useToast();
   const qc = useQueryClient();
   const { role } = useUserStore();
@@ -131,11 +133,11 @@ export default function PifDetail() {
   return (
     <div className="space-y-6">
       <button
-        onClick={() => navigate("/pifs")}
+        onClick={() => goBack("/pifs")}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ChevronLeft size={14} />
-        Back to PIFs
+        Back
       </button>
 
       {/* Header */}

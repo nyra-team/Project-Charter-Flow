@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Link, useParams } from "wouter";
+import { useParams } from "wouter";
+import { useGoBack } from "../lib/back";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/extra-api";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ const RISK_TONE: Record<string, string> = {
 
 export default function VendorDetailPage() {
   const params = useParams<{ id: string }>();
+  const goBack = useGoBack();
   const id = Number(params.id);
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -65,9 +67,9 @@ export default function VendorDetailPage() {
   const v = data.vendor;
   return (
     <div className="p-6 space-y-5">
-      <Link href="/vendors" className="text-sm text-muted-foreground inline-flex items-center gap-1 hover:underline">
-        <ArrowLeft size={12} /> Back to vendors
-      </Link>
+      <button onClick={() => goBack("/vendors")} className="text-sm text-muted-foreground inline-flex items-center gap-1 hover:underline">
+        <ArrowLeft size={12} /> Back
+      </button>
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{v.name}</h1>

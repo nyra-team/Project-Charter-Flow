@@ -9,6 +9,26 @@ import { db, nfasTable, projectsTable, notificationsTable } from "@workspace/db"
 import { eq, desc, and } from "drizzle-orm";
 import { logActivity } from "./activity";
 import { requireRole } from "../lib/guard";
+import { matchBand } from "../lib/doa-resolver";
+
+// CAPEX DOA defaults — the seeded matrix is keyed Category="Capex",
+// Kind="Capex Material & Services" (see scripts/seed-capex-doa.sql).
+const CAPEX_CATEGORY = "Capex";
+const CAPEX_KIND = "Capex Material & Services";
+
+// Build a signatory grid from a resolved DOA approver chain. The seeded matrix
+// stores each step as { designation, email }; older bands store plain role
+// strings — handle both. Returns [] when nothing resolved (caller keeps the
+// note's existing signatories / manual grid).
+function signatoriesFromChain(chain: unknown[]): Array<{ role: string; name: string; status: "pending" }> {
+  return (chain ?? []).map((c) => {
+    if (c && typeof c === "object") {
+      const o = c as { designation?: string; email?: string; role?: string; name?: string };
+      return { role: o.designation || o.role || "", name: o.email || o.name || "", status: "pending" as const };
+    }
+    return { role: String(c), name: "", status: "pending" as const };
+  }).filter((s) => s.role || s.name);
+}
 
 const router: IRouter = Router();
 
@@ -26,6 +46,7 @@ const Signatory = z.object({
   role: z.string().default(""),
   name: z.string().default(""),
   empCode: z.string().optional(),
+  designation: z.string().optional(),
   status: z.enum(["pending", "approved", "rejected"]).default("pending"),
   comment: z.string().optional(),
   decidedAt: z.string().optional(),
@@ -195,18 +216,37 @@ router.post("/nfas/:id/submit", requireRole(...WRITE_ROLES), async (req, res): P
     res.status(409).json({ error: `NFA is ${nfa.status}; only drafts can be submitted.` });
     return;
   }
-  const sigs = (nfa.signatories as Array<{ role: string }>) ?? [];
+  let sigs = (nfa.signatories as Array<{ role: string }>) ?? [];
+  let doaLabel: string | null = null;
+
+  // Auto-route via the DOA matrix when no manual signatory grid was set:
+  // resolve the CAPEX approver chain from (location, amount) and use it.
   if (sigs.length === 0) {
-    res.status(400).json({ error: "Add at least one signatory before submitting for approval." });
+    const amount = Number(nfa.financialAmount ?? 0) || Number(String(nfa.totalInr ?? "").replace(/[^\d.]/g, "")) || 0;
+    const match = await matchBand({
+      entity: nfa.location ?? "",
+      category: CAPEX_CATEGORY,
+      kind: CAPEX_KIND,
+      amountInr: amount,
+    });
+    const resolved = match ? signatoriesFromChain(match.approverRoles as unknown[]) : [];
+    if (resolved.length > 0) {
+      sigs = resolved;
+      doaLabel = match!.label;
+    }
+  }
+
+  if (sigs.length === 0) {
+    res.status(400).json({ error: "No DOA band matched (check the note's location & amount) and no signatory was added. Add a signatory or configure the DOA matrix." });
     return;
   }
 
   const [updated] = await db
     .update(nfasTable)
-    .set({ status: "pending_approval" })
+    .set({ status: "pending_approval", signatories: sigs } as never)
     .where(eq(nfasTable.id, id))
     .returning();
-  await logActivity("nfa_submitted", `NFA "${nfa.subject || nfa.noteNo}" submitted for approval`, nfa.id, "nfa");
+  await logActivity("nfa_submitted", `NFA "${nfa.subject || nfa.noteNo}" submitted for approval${doaLabel ? ` (DOA: ${doaLabel}, ${sigs.length} approvers)` : ""}`, nfa.id, "nfa");
   res.json(updated);
 });
 

@@ -440,31 +440,32 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
 
   // All tasks across projects — drives the Delivery bar's completion % and the
   // hover-card breakdown (same source the 5191 portfolio board uses).
-  const { data: allTasks = [] } = useQuery({
-    queryKey: ["/api/tasks", "all"],
+  const { data: taskStats = [] } = useQuery({
+    queryKey: ["/api/task-stats"],
     queryFn: async () => {
-      const r = await fetch("/api/tasks");
-      if (!r.ok) return [] as Array<{ projectId?: number | null; status?: string | null }>;
-      return r.json() as Promise<Array<{ projectId?: number | null; status?: string | null }>>;
+      const r = await fetch("/api/task-stats");
+      if (!r.ok) return [] as Array<{ projectId?: number | null; status?: string | null; n: number }>;
+      return r.json() as Promise<Array<{ projectId?: number | null; status?: string | null; n: number }>>;
     },
   });
   const taskAgg = useMemo(() => {
     const m = new Map<number, TaskAgg>();
-    for (const t of allTasks as Array<{ projectId?: number | null; status?: string | null }>) {
+    for (const t of taskStats) {
       if (t.projectId == null) continue;
       const a = m.get(t.projectId) ?? { total: 0, done: 0, in_progress: 0, delayed: 0, on_hold: 0, not_started: 0 };
-      a.total++;
+      const n = t.n ?? 0;
+      a.total += n;
       switch (t.status) {
-        case "completed": a.done++; break;
-        case "in_progress": a.in_progress++; break;
-        case "delayed": a.delayed++; break;
-        case "on_hold": a.on_hold++; break;
-        default: a.not_started++; break;
+        case "completed": a.done += n; break;
+        case "in_progress": a.in_progress += n; break;
+        case "delayed": a.delayed += n; break;
+        case "on_hold": a.on_hold += n; break;
+        default: a.not_started += n; break;
       }
       m.set(t.projectId, a);
     }
     return m;
-  }, [allTasks]);
+  }, [taskStats]);
 
   const [filters, setFilters] = useState<Record<string, string>>({});
   const handleFilter = (k: string, v: string) => setFilters(f => ({ ...f, [k]: v }));

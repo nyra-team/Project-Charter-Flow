@@ -8,6 +8,7 @@ import {
   ShoppingCart,
   CheckSquare,
   UserCheck,
+  Network,
   ScrollText,
   Building2,
   Activity,
@@ -66,6 +67,8 @@ const BUSINESS_CASE: Item = {
     "!text-[13px] !font-semibold [&_svg]:!w-3.5 [&_svg]:!h-3.5",
 };
 const MY_TASKS: Item = { icon: UserCheck, label: "My Tasks", href: "/my-tasks" };
+const MY_TEAM: Item = { icon: Network, label: "My Team Actions", href: "/my-team-actions" };
+const RESOURCES: Item = { icon: Users, label: "Resource Management", href: "/resources" };
 const APPROVALS: Item = { icon: CheckSquare, label: "Approvals", href: "/approvals" };
 const RISKS_ISSUES: Item = { icon: AlertTriangle, label: "Risks / Issues", href: "/issues" };
 const VENDOR_ITEMS: Item[] = [
@@ -161,7 +164,7 @@ export default function PmoSidebar({
     // Collapsed rail: leaf icons + ONE representative icon per dropdown group
     // (Vendor / Workspace / Admin / Roles) — the group's own icon, no chevron.
     // Each navigates to its first destination.
-    sections = [{ items: [PORTFOLIO, PROJECTS, CHARTER, MY_TASKS, APPROVALS, RISKS_ISSUES] }];
+    sections = [{ items: [PORTFOLIO, PROJECTS, CHARTER, MY_TASKS, MY_TEAM, APPROVALS, RISKS_ISSUES, RESOURCES] }];
     sections.push({ items: [
       { icon: ShoppingCart, label: "Vendor Evaluation", href: VENDOR_ITEMS[0]!.href },
       { icon: LayoutGrid, label: "Workspace", href: WORKSPACE_ITEMS[0]!.href },
@@ -173,9 +176,9 @@ export default function PmoSidebar({
     ] });
   } else {
     sections = [
-      { items: [BUSINESS_CASE, PORTFOLIO, PROJECTS, CHARTER, MY_TASKS] },
+      { items: [BUSINESS_CASE, PORTFOLIO, PROJECTS, CHARTER, MY_TASKS, MY_TEAM] },
       { title: "Vendor Evaluation", icon: ShoppingCart, collapsible: true, items: VENDOR_ITEMS },
-      { items: [APPROVALS, RISKS_ISSUES] },
+      { items: [APPROVALS, RISKS_ISSUES, RESOURCES] },
       { title: "Workspace", icon: LayoutGrid, collapsible: true, items: WORKSPACE_ITEMS },
     ];
     if (isAdmin) sections.push({ title: "Admin", icon: Wrench, items: ADMIN_ITEMS });
@@ -200,6 +203,7 @@ export default function PmoSidebar({
   return (
     <CollapsibleSidebar
       key={remountKey}
+      className="pmo-sidebar"
       logoSrc="/Granules-logo.png"
       iconSrc="/icon-32x32.png"
       appName="Project Hub"

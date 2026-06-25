@@ -11,7 +11,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 import { Router, type IRouter } from "express";
 import { db, projectsTable, milestonesTable, tasksTable, usersTable, messagesTable } from "@workspace/db";
-import { eq, ne, inArray, desc } from "drizzle-orm";
+import { eq, ne, inArray, desc, sql } from "drizzle-orm";
 import { computeStageCriticalPath, type CriticalPath } from "../lib/critical-path";
 import { generateGateMilestones } from "../lib/gate-milestones";
 import { logActivity } from "./activity";
@@ -96,10 +96,12 @@ async function aggregateTasks(q: Record<string, string | undefined>) {
   // Derived gate info per project (only compute for projects that actually have rows).
   const cpCache = new Map<number, Map<string, GateInfo>>();
   const presentProjects = [...new Set(rows.map((t) => t.projectId))];
-  for (const pid of presentProjects) {
+  // ponytail: per-project critical-path is independent — run concurrently, not N sequential awaits.
+  // If still slow, the next rung is a short-TTL cache on computeStageCriticalPath (SLA+users queries repeat per project).
+  await Promise.all(presentProjects.map(async (pid) => {
     try { cpCache.set(pid, gateMapFromCp(await computeStageCriticalPath(pid))); }
     catch { cpCache.set(pid, new Map()); }
-  }
+  }));
 
   let enriched = rows.map((t) => {
     const stage = (t.stage as string | null) ?? (t.milestoneId != null ? msStage.get(t.milestoneId) ?? null : null);
@@ -138,6 +140,21 @@ async function aggregateTasks(q: Record<string, string | undefined>) {
 router.get("/tasks", async (req, res): Promise<void> => {
   const q = req.query as Record<string, string | undefined>;
   res.json(await aggregateTasks(q));
+});
+
+// GET /api/task-stats — per-project status counts, computed in SQL.
+// The portfolio board only needs counts per project, not full task objects.
+// ponytail: replaces a 1.3MB /api/tasks fetch + client-side loop that took ~4s.
+router.get("/task-stats", async (_req, res): Promise<void> => {
+  const rows = await db
+    .select({
+      projectId: tasksTable.projectId,
+      status: tasksTable.status,
+      n: sql<number>`count(*)::int`,
+    })
+    .from(tasksTable)
+    .groupBy(tasksTable.projectId, tasksTable.status);
+  res.json(rows);
 });
 
 // GET /api/me/tasks — the current user's tasks, bucketed Monday-style.
@@ -182,9 +199,10 @@ router.get("/milestones", async (req, res): Promise<void> => {
 
   // Derived gate info per project for the milestone's stage.
   const cpCache = new Map<number, Map<string, GateInfo>>();
-  for (const pid of [...new Set(milestones.map((m) => m.projectId))]) {
+  // ponytail: same fix as aggregateTasks — independent per project, run concurrently.
+  await Promise.all([...new Set(milestones.map((m) => m.projectId))].map(async (pid) => {
     try { cpCache.set(pid, gateMapFromCp(await computeStageCriticalPath(pid))); } catch { cpCache.set(pid, new Map()); }
-  }
+  }));
 
   let enriched = milestones.map((m) => {
     const roll = byMs.get(m.id);

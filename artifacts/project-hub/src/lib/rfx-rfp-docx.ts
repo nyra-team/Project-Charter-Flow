@@ -1,11 +1,12 @@
 // ---------------------------------------------------------------------------
 // RFx event → RFP .docx builder.
 //
-// Renders an RFx event in the SAME format it is defined in the "New RFx event"
-// wizard: the event fields (Type, Currency, Title, One-line summary, Brief,
-// Closes at, Commercial threshold, and the Surrogate bidding / Alternative
-// bids flags) plus the Questions and Scoring dimensions the user
-// added. No URS, no AI — what you defined is what gets generated.
+// Renders the RFx event in the SAME numbered-section format as the canonical
+// RFP (RFPTemplate.tsx: Introduction, Scope of Work, Requirements, Proposal
+// Requirements, Evaluation Criteria, Submission Deadline, Terms & Conditions).
+// The RFx-specific Questions and Scoring dimensions are kept inside the
+// sections they belong to (Requirements / Evaluation) so nothing is lost.
+// What you defined in the wizard is what populates the sections — no AI.
 // ---------------------------------------------------------------------------
 import {
   Document,
@@ -35,74 +36,93 @@ export type RfxRfpData = {
 
 const TYPE_LABEL: Record<string, string> = { rfi: "Request for Information", rfp: "Request for Proposal", rfq: "Request for Quotation", eauction: "E-Auction" };
 
-function fieldRow(label: string, value: string): TableRow {
-  return new TableRow({
-    children: [
-      new TableCell({ width: { size: 32, type: WidthType.PERCENTAGE }, children: [new Paragraph({ children: [new TextRun({ text: label, bold: true })] })] }),
-      new TableCell({ width: { size: 68, type: WidthType.PERCENTAGE }, children: [new Paragraph(value || "—")] }),
+// One numbered section: bold heading + body paragraphs (split on newlines).
+function section(num: number, title: string, body: string): Array<Paragraph> {
+  const heading = new Paragraph({ heading: HeadingLevel.HEADING_2, children: [new TextRun({ text: `${num}. ${title}` })] });
+  const lines = body ? body.split("\n") : ["—"];
+  return [heading, ...lines.map((l) => new Paragraph(l))];
+}
+
+function questionsTable(qs: Array<{ label: string; kind: string; weight: number; required: boolean }>): Table {
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [
+      new TableRow({ children: ["Question", "Type", "Weight", "Required"].map((h) => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })] })) }),
+      ...qs.map((q) => new TableRow({ children: [q.label, q.kind, String(q.weight), q.required ? "Yes" : "No"].map((c) => new TableCell({ children: [new Paragraph(c)] })) })),
     ],
   });
 }
 
 export async function buildRfxRfpDocx(d: RfxRfpData): Promise<Blob> {
   const yesNo = (b: boolean) => (b ? "Yes" : "No");
-  const closes = d.closesAt ? new Date(d.closesAt).toLocaleString() : "—";
+  const closes = d.closesAt ? new Date(d.closesAt).toLocaleString() : "to be communicated separately";
+  const docType = TYPE_LABEL[d.type] ?? "Request for Proposal";
+  const generated = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+
+  // Requirements questions (qualification + technical) vs commercial questions.
+  const reqQs = d.questions.filter((q) => q.section === "qualification" || q.section === "technical").sort((a, b) => a.order - b.order);
+  const commQs = d.questions.filter((q) => q.section === "commercial").sort((a, b) => a.order - b.order);
 
   const body: Array<Paragraph | Table> = [
-    new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: (TYPE_LABEL[d.type] ?? "Request for Proposal").toUpperCase() })] }),
-    new Paragraph({ heading: HeadingLevel.HEADING_2, text: d.title }),
+    // Header band equivalent.
+    new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun({ text: docType.toUpperCase() })] }),
+    new Paragraph({ children: [new TextRun({ text: `Generated: ${generated}`, italics: true, size: 18 })] }),
+    new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun({ text: d.title })] }),
+    ...(d.summary ? [new Paragraph({ children: [new TextRun({ text: d.summary, italics: true })] })] : []),
+    new Paragraph(""),
 
-    // Event definition — same fields as the create wizard, in the same order.
-    new Table({
-      width: { size: 100, type: WidthType.PERCENTAGE },
-      rows: [
-        fieldRow("Type", TYPE_LABEL[d.type] ?? d.type.toUpperCase()),
-        fieldRow("Currency", d.currency),
-        fieldRow("Title", d.title),
-        fieldRow("One-line summary", d.summary ?? ""),
-        fieldRow("Closes at", closes),
-        fieldRow("Commercial threshold (%)", String(d.evaluationThresholdPct)),
-        fieldRow("Surrogate bidding", yesNo(d.surrogateBiddingAllowed)),
-        fieldRow("Alternative bids", yesNo(d.alternativeBidsAllowed)),
-      ],
-    }),
+    // 1. Introduction & Background
+    ...section(1, "Introduction & Background",
+      `This ${docType} is issued for "${d.title}". Vendors are invited to submit proposals for the provision of goods and services as detailed herein.${d.summary ? `\n\n${d.summary}` : ""}`),
+    new Paragraph(""),
 
-    new Paragraph({ heading: HeadingLevel.HEADING_2, text: "Brief" }),
-    ...(d.brief ? d.brief.split("\n").map((line) => new Paragraph(line)) : [new Paragraph("—")]),
+    // 2. Scope of Work — the wizard's "Brief" field is the scope.
+    ...section(2, "Scope of Work",
+      d.brief
+        ? d.brief
+        : "Vendor must address all functional, technical, quality and regulatory requirements documented in this RFP. The scope covers end-to-end delivery including supply, delivery, quality assurance and ongoing support."),
+    new Paragraph(""),
   ];
 
-  // Questions, grouped by section in the same three buckets the form uses.
-  if (d.questions.length) {
-    body.push(new Paragraph({ heading: HeadingLevel.HEADING_2, text: "Questions" }));
-    for (const section of ["qualification", "technical", "commercial"]) {
-      const qs = d.questions.filter((q) => q.section === section).sort((a, b) => a.order - b.order);
-      if (!qs.length) continue;
-      body.push(new Paragraph({ heading: HeadingLevel.HEADING_3, text: section.charAt(0).toUpperCase() + section.slice(1) }));
-      body.push(
-        new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          rows: [
-            new TableRow({ children: ["Question", "Type", "Weight", "Required"].map((h) => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })] })) }),
-            ...qs.map((q) => new TableRow({ children: [q.label, q.kind, String(q.weight), q.required ? "Yes" : "No"].map((c) => new TableCell({ children: [new Paragraph(c)] })) })),
-          ],
-        }),
-      );
-    }
-  }
+  // 3. Requirements & Questions — qualification + technical questions vendors must answer.
+  body.push(...section(3, "Requirements & Questions",
+    reqQs.length
+      ? "Vendors must respond to each requirement below. Weights indicate relative importance during evaluation."
+      : "As detailed in the Scope of Work above. Vendors must provide a compliance statement against each requirement."));
+  if (reqQs.length) { body.push(questionsTable(reqQs)); }
+  body.push(new Paragraph(""));
 
-  // Scoring dimensions.
+  // 4. Proposal Requirements
+  body.push(...section(4, "Proposal Requirements",
+    "Proposals must include: (a) Executive Summary, (b) Technical Approach, (c) Implementation/Delivery Timeline with milestones, (d) Itemised Pricing breakdown, (e) Support, Maintenance and Warranty terms, (f) References from at least two comparable engagements."));
+  body.push(new Paragraph(""));
+
+  // 5. Evaluation Criteria — scoring dimensions + commercial threshold + commercial questions.
+  body.push(...section(5, "Evaluation Criteria",
+    `Proposals will be evaluated against the scoring dimensions below. The commercial component is weighted at ${d.evaluationThresholdPct}%. Surrogate bidding: ${yesNo(d.surrogateBiddingAllowed)}. Alternative bids: ${yesNo(d.alternativeBidsAllowed)}.`));
   if (d.dimensions.length) {
-    body.push(new Paragraph({ heading: HeadingLevel.HEADING_2, text: "Scoring dimensions" }));
-    body.push(
-      new Table({
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        rows: [
-          new TableRow({ children: ["Dimension", "Kind", "Weight"].map((h) => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })] })) }),
-          ...d.dimensions.map((dim) => new TableRow({ children: [dim.label, dim.kind, String(dim.weight)].map((c) => new TableCell({ children: [new Paragraph(c)] })) })),
-        ],
-      }),
-    );
+    body.push(new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [
+        new TableRow({ children: ["Dimension", "Kind", "Weight"].map((h) => new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: h, bold: true })] })] })) }),
+        ...d.dimensions.map((dim) => new TableRow({ children: [dim.label, dim.kind, String(dim.weight)].map((c) => new TableCell({ children: [new Paragraph(c)] })) })),
+      ],
+    }));
   }
+  if (commQs.length) {
+    body.push(new Paragraph({ children: [new TextRun({ text: "Commercial questions", bold: true })] }));
+    body.push(questionsTable(commQs));
+  }
+  body.push(new Paragraph(""));
+
+  // 6. Submission Deadline
+  body.push(...section(6, "Submission Deadline",
+    `Proposals must be submitted electronically by ${closes}. All amounts are to be quoted in ${d.currency}. Late submissions will not be evaluated.`));
+  body.push(new Paragraph(""));
+
+  // 7. Terms & Conditions
+  body.push(...section(7, "Terms & Conditions",
+    "This RFP does not constitute a commitment to award a contract. The issuing organisation reserves the right to accept or reject any proposal in whole or in part. All proposal materials become property of the issuer upon submission."));
 
   return Packer.toBlob(new Document({ sections: [{ children: body }] }));
 }

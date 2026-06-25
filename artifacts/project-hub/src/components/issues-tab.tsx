@@ -73,9 +73,9 @@ export function IssuesTab({ projectId }: { projectId: number }) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-2.5">
       {/* Summary tiles */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-4 gap-2">
         {[
           { key: "open", label: "Open", count: grouped.open ?? 0 },
           { key: "in_progress", label: "In Progress", count: grouped.in_progress ?? 0 },
@@ -87,61 +87,61 @@ export function IssuesTab({ projectId }: { projectId: number }) {
             <button
               key={s.key}
               onClick={() => setStatusFilter(statusFilter === s.key ? "" : s.key)}
-              className="glass-surface lift-card ph-rise rounded-2xl p-4 text-left transition-all"
+              className="glass-surface lift-card ph-rise rounded-lg px-2.5 py-1.5 text-left transition-all"
               style={{ border: `1px solid ${statusFilter === s.key ? m.color : "hsl(var(--border))"}` }}
             >
-              <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: m.color }}>{s.label}</p>
-              <p className="text-2xl font-bold mt-1" style={{ color: m.color }}>{s.count}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: m.color }}>{s.label}</p>
+              <p className="text-lg font-bold leading-tight" style={{ color: m.color }}>{s.count}</p>
             </button>
           );
         })}
       </div>
 
       {/* Filters */}
-      <div className="glass-surface lift-card ph-rise rounded-2xl p-4 flex flex-wrap gap-3 items-center">
-        <span className="text-xs font-semibold text-muted-foreground">FILTERS:</span>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="text-sm border border-border rounded-lg px-3 py-1.5">
+      <div className="glass-surface lift-card ph-rise rounded-lg p-2 flex flex-wrap gap-2 items-center">
+        <span className="text-[10px] font-semibold text-muted-foreground">FILTERS:</span>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="text-xs border border-border rounded-md px-2 py-1">
           <option value="">All statuses</option>
           {Object.keys(STATUS_META).map(s => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
         </select>
-        <select value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)} className="text-sm border border-border rounded-lg px-3 py-1.5">
+        <select value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)} className="text-xs border border-border rounded-md px-2 py-1">
           <option value="">All blocking owners</option>
           {usersArr.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
-        <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="text-sm border border-border rounded-lg px-3 py-1.5">
+        <select value={deptFilter} onChange={e => setDeptFilter(e.target.value)} className="text-xs border border-border rounded-md px-2 py-1">
           <option value="">All blocking depts</option>
           {depts.map(d => <option key={d} value={d}>{d}</option>)}
         </select>
-        <span className="ml-auto text-xs text-muted-foreground">{filtered.length} of {issuesArr.length}</span>
+        <span className="ml-auto text-[10px] text-muted-foreground">{filtered.length} of {issuesArr.length}</span>
       </div>
 
       {/* List */}
       {filtered.length === 0 ? (
-        <div className="glass-surface lift-card ph-rise rounded-2xl p-10 text-center text-sm text-muted-foreground">
+        <div className="glass-surface lift-card ph-rise rounded-lg p-5 text-center text-xs text-muted-foreground">
           {issuesArr.length === 0 ? "No issues raised on this project." : "No issues match your filters."}
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           {filtered.map(i => {
             const meta = STATUS_META[i.status] ?? STATUS_META.open;
             const Icon = meta.icon;
             const taskLabel = taskTitle(i.taskId);
             const msLabel = msTitle(i.milestoneId);
             return (
-              <div key={i.id} className="glass-surface lift-card ph-rise rounded-2xl p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: meta.bg }}>
-                    <Icon size={15} style={{ color: meta.color }} />
+              <div key={i.id} className="glass-surface lift-card ph-rise rounded-lg p-2.5">
+                <div className="flex items-start gap-2">
+                  <div className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0" style={{ background: meta.bg }}>
+                    <Icon size={13} style={{ color: meta.color }} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-mono text-muted-foreground">I-{i.id}</span>
-                      <p className="text-sm font-semibold text-foreground">{i.title}</p>
-                      <span className="text-xs font-bold px-2 py-0.5 rounded" style={{ background: meta.bg, color: meta.color }}>{i.status.replace("_", " ")}</span>
-                      {i.dependencyType && <span className="text-xs px-2 py-0.5 rounded bg-muted text-foreground">{i.dependencyType}</span>}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] font-mono text-muted-foreground">I-{i.id}</span>
+                      <p className="text-xs font-semibold text-foreground">{i.title}</p>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: meta.bg, color: meta.color }}>{i.status.replace("_", " ")}</span>
+                      {i.dependencyType && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground">{i.dependencyType}</span>}
                     </div>
-                    {i.description && <p className="text-xs text-muted-foreground mt-1">{i.description}</p>}
-                    <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
+                    {i.description && <p className="text-[11px] text-muted-foreground mt-0.5">{i.description}</p>}
+                    <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground flex-wrap">
                       {taskLabel && <span>↳ Task: <b>{taskLabel}</b></span>}
                       {msLabel && <span>↳ Milestone: <b>{msLabel}</b></span>}
                       {i.blockingOwnerId && <span>Blocking: <b>{userName(i.blockingOwnerId)}</b></span>}
@@ -155,12 +155,12 @@ export function IssuesTab({ projectId }: { projectId: number }) {
                     <select
                       value={i.status}
                       onChange={e => changeStatus(i.id, e.target.value)}
-                      className="text-xs border border-border rounded px-2 py-1"
+                      className="text-[10px] border border-border rounded px-1.5 py-0.5"
                     >
                       {Object.keys(STATUS_META).map(s => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
                     </select>
-                    <button onClick={() => handleDelete(i.id)} className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-destructive" title="Delete">
-                      <Trash2 size={13} />
+                    <button onClick={() => handleDelete(i.id)} className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-destructive" title="Delete">
+                      <Trash2 size={12} />
                     </button>
                   </div>
                 </div>

@@ -86,7 +86,7 @@ export default function MyTasksPage() {
         </>
       )}
 
-      {openTask && <TaskDetailModal task={openTask} allTasks={allTasks ?? []} onClose={() => setOpenTask(null)} onRefresh={refresh} />}
+      {openTask && <TaskDetailModal task={openTask} allTasks={allTasks ?? []} onClose={() => setOpenTask(null)} onOpenTask={(id) => setOpenTask((allTasks ?? []).find((t) => t.id === id) ?? null)} onRefresh={refresh} />}
     </div>
   );
 }

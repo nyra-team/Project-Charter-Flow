@@ -11,7 +11,7 @@ const OPTIONS = [
       "Build a full Project Charter merged with the e-NFA note — business case, scope, benefits, strategic scoring, investment detail and governance sign-off.",
   },
   {
-    href: "/nfas/new",
+    href: "/charters/nfa-new",
     icon: FileText,
     title: "e-NFA for non projects",
     subtitle: "Select this workflow for non-projects",

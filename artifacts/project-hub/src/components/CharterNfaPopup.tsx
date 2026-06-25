@@ -5,7 +5,7 @@
  * nav item open this popup instead of navigating to a page. The two buttons
  * route the user into the right wizard:
  *   - Project Charter / e-NFA (for Projects)   → /charters/new
- *   - e-NFA (for non-projects)                  → /nfas/new
+ *   - e-NFA (for non-projects)                  → /charters/nfa-new
  */
 
 import { useEffect, Fragment } from "react";
@@ -22,7 +22,7 @@ const OPTIONS = [
       "Build a full Project Charter merged with the e-NFA note — business case, scope, benefits, strategic scoring, investment detail and governance sign-off.",
   },
   {
-    href: "/nfas/new",
+    href: "/charters/nfa-new",
     icon: FileText,
     title: "e-NFA for non projects",
     subtitle: "Select this workflow for non-projects",

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useGoBack } from "../lib/back";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "../lib/extra-api";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ type CreateBody = {
 
 export default function RfxNewPage() {
   const [, navigate] = useLocation();
+  const goBack = useGoBack();
   const { toast } = useToast();
   const [form, setForm] = useState<CreateBody>({
     type: "rfp", title: "", summary: "", brief: "", currency: "INR",
@@ -38,8 +40,8 @@ export default function RfxNewPage() {
   const valid = form.title.trim().length >= 3 && form.closesAt;
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">
-      <Button variant="ghost" size="sm" onClick={() => navigate("/rfx")} className="text-muted-foreground">
-        <ArrowLeft size={14} className="mr-1" /> Back to RFx
+      <Button variant="ghost" size="sm" onClick={() => goBack("/rfx")} className="text-muted-foreground">
+        <ArrowLeft size={14} className="mr-1" /> Back
       </Button>
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">New RFx event</h1>

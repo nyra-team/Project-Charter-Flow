@@ -47,6 +47,27 @@ type AuditEntry = {
 
 const AUTO = "__auto__"; // Radix Select can't carry an empty-string value
 
+// DOA matrix row — an approval workflow keyed by (entity, category, kind, band).
+// approverRoles is the ordered chain: seeded CAPEX rows store { designation,
+// email } objects; older bands store plain role strings.
+type DoaRow = {
+  id: number; entity: string; category: string; kind: string;
+  minInr: string | number; maxInr: string | number | null;
+  approverRoles: Array<{ designation?: string; email?: string } | string>;
+  active: boolean; label: string;
+};
+
+function fmtBand(min: string | number, max: string | number | null): string {
+  const f = (n: number) => n >= 10000000 ? `${(n / 10000000).toFixed(2).replace(/\.00$/, "")} Cr`
+    : n >= 100000 ? `${(n / 100000).toFixed(2).replace(/\.00$/, "")} L` : n.toLocaleString("en-IN");
+  const lo = f(Number(min) || 0);
+  return max == null ? `≥ ₹${lo}` : `₹${lo} – ₹${f(Number(max))}`;
+}
+function chainStep(a: { designation?: string; email?: string } | string): { role: string; who: string } {
+  if (typeof a === "string") return { role: a, who: "" };
+  return { role: a.designation || "", who: a.email || "" };
+}
+
 function roleLabel(role: string): string {
   if (role === "pmo") return "PMO";
   if (role === "cfo") return "CFO";
@@ -121,6 +142,17 @@ export default function AdminRoles() {
     enabled: isSuperAdmin,
   });
 
+  // Approval workflows — the DOA matrix (plant + value band → ordered approver chain).
+  const { data: workflows = [], isLoading: wfLoading } = useQuery({
+    queryKey: ["/api/doa-matrix"],
+    queryFn: async () => {
+      const r = await fetch("/api/doa-matrix");
+      if (!r.ok) throw new Error("Failed to load approval workflows");
+      return r.json() as Promise<DoaRow[]>;
+    },
+    enabled: isSuperAdmin,
+  });
+
   const save = useMutation({
     mutationFn: async ({ employeeCode, patch }: { employeeCode: string; patch: { pmoRole?: string | null; accessPmo?: boolean } }) => {
       const r = await fetch(`/api/admin/roles/${encodeURIComponent(employeeCode)}`, {
@@ -156,6 +188,66 @@ export default function AdminRoles() {
   const total = data?.total ?? 0;
   const roles = data?.roles ?? [];
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // Role-assignment views stay hidden for now; this page shows the approval
+  // workflows (DOA matrix). ponytail: remove this block to restore the role grid.
+  if (true) {
+    return (
+      <div className="space-y-5 max-w-5xl">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/10 border border-primary/20">
+            <ShieldCheck size={18} className="text-primary" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-foreground">Approval Workflows</h2>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Delegation-of-Authority chains. A CAPEX note routes to these approvers in order, based on its plant and amount.
+            </p>
+          </div>
+        </div>
+
+        <DashboardCard title="Delegation of Authority" subtitle={`${workflows.length} workflow${workflows.length === 1 ? "" : "s"}`}>
+          {wfLoading ? (
+            <div className="space-y-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}</div>
+          ) : workflows.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">No approval workflows configured.</p>
+          ) : (
+            <div className="divide-y divide-border rounded-lg border border-border overflow-hidden">
+              {workflows.map((wf) => (
+                <details key={wf.id} className="group">
+                  <summary className="flex items-center gap-3 px-4 py-3 cursor-pointer list-none select-none">
+                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 transition-transform group-open:rotate-90" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-foreground truncate">{wf.label || wf.entity}</div>
+                      <div className="text-[11px] text-muted-foreground truncate">{wf.entity} · {wf.category} · {wf.kind}</div>
+                    </div>
+                    <span className="text-[11px] font-medium text-muted-foreground tabular-nums shrink-0">{fmtBand(wf.minInr, wf.maxInr)}</span>
+                    <span className="text-[11px] font-semibold text-primary shrink-0">{wf.approverRoles.length} steps</span>
+                    {!wf.active && <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">inactive</span>}
+                  </summary>
+                  <ol className="px-4 pb-3 pt-1 border-t border-border flex flex-wrap items-center gap-x-1 gap-y-2">
+                    {wf.approverRoles.map((a, i) => {
+                      const s = chainStep(a);
+                      return (
+                        <li key={i} className="flex items-center gap-1">
+                          <span className="inline-flex items-center gap-1.5 rounded-md border border-border px-2 py-1">
+                            <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-primary/10 text-primary text-[9px] font-bold">{i + 1}</span>
+                            <span className="text-xs font-medium text-foreground">{s.role || "Approver"}</span>
+                            {s.who && <span className="text-[10px] text-muted-foreground">{s.who}</span>}
+                          </span>
+                          {i < wf.approverRoles.length - 1 && <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50" />}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </details>
+              ))}
+            </div>
+          )}
+        </DashboardCard>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5 max-w-5xl">

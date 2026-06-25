@@ -233,7 +233,7 @@ export function WbsTree({
                               <button onClick={() => toggle(`ms:${m.id}`)} className="flex items-center gap-1.5 min-w-0 flex-1 text-left">
                                 <ChevronRight size={13} className={`text-muted-foreground transition-transform ${mExpanded ? "rotate-90" : ""}`} />
                                 <Flag size={12} className="text-primary flex-shrink-0" />
-                                <span className="text-[13px] font-medium text-foreground truncate">{m.name}</span>
+                                <span className="text-[13px] font-medium text-foreground whitespace-normal break-words">{m.name}</span>
                                 <span className="text-[10px] text-muted-foreground">· {doneTasks}/{mTasks.length}</span>
                                 {m.gateDecision && <span className="text-[9px] uppercase font-semibold px-1 rounded bg-muted text-muted-foreground">{m.gateDecision.replace("_", "-")}</span>}
                               </button>
@@ -257,7 +257,7 @@ export function WbsTree({
                                           <button onClick={() => subs.length ? toggle(`task:${t.id}`) : onOpenTask(t)} className="flex items-center gap-1 flex-shrink-0">
                                             {subs.length > 0 ? <ChevronRight size={12} className={`text-muted-foreground transition-transform ${tExpanded ? "rotate-90" : ""}`} /> : <span className="w-3" />}
                                           </button>
-                                          <button onClick={() => onOpenTask(t)} className="text-[13px] text-foreground hover:text-primary truncate flex-1 text-left">{t.name}</button>
+                                          <button onClick={() => onOpenTask(t)} className="text-[13px] text-foreground hover:text-primary whitespace-normal break-words flex-1 text-left">{t.name}</button>
                                           {deps > 0 && <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground" title={`${deps} dependency(ies)`}><GitBranch size={10} />{deps}</span>}
                                           {t.gate?.pendingApproval && <Stamp size={12} className="text-warn flex-shrink-0" aria-label="Awaiting approval" />}
                                           {(t.gate?.daysOverdue ?? 0) > 0 && <span className="text-[10px] font-bold text-destructive">{t.gate!.daysOverdue}d</span>}
@@ -273,7 +273,7 @@ export function WbsTree({
                                             {subs.map((s) => (
                                               <div key={s.id} className="flex items-center gap-2 px-2 py-1 rounded bg-muted/30">
                                                 <DragHandle id={`sub:${s.id}`} />
-                                                <button onClick={() => onOpenTask(s)} className="text-xs text-foreground hover:text-primary truncate flex-1 text-left">{s.name}</button>
+                                                <button onClick={() => onOpenTask(s)} className="text-xs text-foreground hover:text-primary whitespace-normal break-words flex-1 text-left">{s.name}</button>
                                                 {s.assigneeName && <PersonAvatar id={s.assigneeId} name={s.assigneeName} size={16} />}
                                                 <ProgressBar pct={s.progressPct ?? 0} />
                                                 <TaskStatusChip status={s.status} />

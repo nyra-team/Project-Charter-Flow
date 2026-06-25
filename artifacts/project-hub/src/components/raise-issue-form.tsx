@@ -59,52 +59,53 @@ export function RaiseIssueForm({ projectId }: { projectId: number }) {
     );
   }
 
-  const selectCls = "w-full text-sm border border-border rounded-lg px-3 py-2 mt-1 bg-card disabled:opacity-50 disabled:cursor-not-allowed";
+  const selectCls = "w-full text-xs border border-border rounded-md px-2 py-1 mt-0.5 bg-card disabled:opacity-50 disabled:cursor-not-allowed";
+  const labelCls = "text-[11px] font-semibold text-muted-foreground";
 
   return (
-    <div className="glass-surface lift-card rounded-2xl p-4">
-      <h3 className="text-sm font-bold text-foreground mb-3 flex items-center gap-2"><Plus size={15} className="text-primary" /> Raise an issue</h3>
-      <div className="grid gap-3 sm:grid-cols-2">
+    <div className="glass-surface lift-card rounded-xl p-3">
+      <h3 className="text-xs font-bold text-foreground mb-2 flex items-center gap-1.5"><Plus size={13} className="text-primary" /> Raise an issue</h3>
+      <div className="grid gap-2 sm:grid-cols-2">
         <div>
-          <label className="text-xs font-semibold text-muted-foreground">Milestone</label>
+          <label className={labelCls}>Milestone</label>
           <select value={form.milestoneId} onChange={(e) => setForm({ ...form, milestoneId: e.target.value, taskId: "", subtaskId: "" })} className={selectCls}>
             <option value="">{milestonesArr.length ? "Select milestone…" : "No milestones"}</option>
             {milestonesArr.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs font-semibold text-muted-foreground">Task</label>
+          <label className={labelCls}>Task</label>
           <select disabled={!form.milestoneId} value={form.taskId} onChange={(e) => setForm({ ...form, taskId: e.target.value, subtaskId: "" })} className={selectCls}>
             <option value="">{!form.milestoneId ? "Select a milestone first" : tasksForMilestone.length ? "Select task…" : "No tasks"}</option>
             {tasksForMilestone.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs font-semibold text-muted-foreground">Subtask</label>
+          <label className={labelCls}>Subtask</label>
           <select disabled={!form.taskId} value={form.subtaskId} onChange={(e) => setForm({ ...form, subtaskId: e.target.value })} className={selectCls}>
             <option value="">{!form.taskId ? "Select a task first" : subtasksForTask.length ? "Select subtask…" : "No subtasks"}</option>
             {subtasksForTask.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
         </div>
         <div>
-          <label className="text-xs font-semibold text-muted-foreground">Raise to (owner / person)</label>
+          <label className={labelCls}>Raise to (owner / person)</label>
           <select value={form.assignee} onChange={(e) => setForm({ ...form, assignee: e.target.value })} className={selectCls}>
             <option value="">Unassigned</option>
             {usersArr.map((u) => <option key={u.id} value={u.id}>{u.name ?? `User ${u.id}`}</option>)}
           </select>
         </div>
         <div className="sm:col-span-2">
-          <label className="text-xs font-semibold text-muted-foreground">Title <span className="text-destructive">*</span></label>
-          <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="What's the issue?" className="w-full text-sm border border-border rounded-lg px-3 py-2 mt-1 bg-card outline-none focus:ring-1 focus:ring-primary/40" />
+          <label className={labelCls}>Title <span className="text-destructive">*</span></label>
+          <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="What's the issue?" className="w-full text-xs border border-border rounded-md px-2 py-1 mt-0.5 bg-card outline-none focus:ring-1 focus:ring-primary/40" />
         </div>
         <div className="sm:col-span-2">
-          <label className="text-xs font-semibold text-muted-foreground">Description</label>
-          <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} placeholder="Add context — what's blocked and why…" className="w-full text-sm border border-border rounded-lg px-3 py-2 mt-1 resize-y bg-card outline-none focus:ring-1 focus:ring-primary/40" />
+          <label className={labelCls}>Description</label>
+          <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={2} placeholder="Add context — what's blocked and why…" className="w-full text-xs border border-border rounded-md px-2 py-1 mt-0.5 resize-y bg-card outline-none focus:ring-1 focus:ring-primary/40" />
         </div>
       </div>
-      <div className="flex justify-end mt-3">
-        <button onClick={raise} disabled={!canRaise || busy} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-primary-foreground bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
-          <AlertTriangle size={14} /> Raise issue
+      <div className="flex justify-end mt-2">
+        <button onClick={raise} disabled={!canRaise || busy} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
+          <AlertTriangle size={13} /> Raise issue
         </button>
       </div>
     </div>
