@@ -124,6 +124,7 @@ export const ListChartersResponseItem = zod.object({
   strategicAlignmentTags: zod.array(zod.string()),
   scoringWeights: zod.object({}).passthrough(),
   nfaThreshold: zod.number().nullish(),
+  location: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -151,6 +152,7 @@ export const CreateCharterBody = zod.object({
   productivityImprovement: zod.string().optional(),
   strategicAlignmentTags: zod.array(zod.string()).optional(),
   nfaThreshold: zod.number().optional(),
+  location: zod.string().optional(),
 });
 
 /**
@@ -190,6 +192,7 @@ export const GetCharterResponse = zod.object({
   strategicAlignmentTags: zod.array(zod.string()),
   scoringWeights: zod.object({}).passthrough(),
   nfaThreshold: zod.number().nullish(),
+  location: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -251,6 +254,7 @@ export const UpdateCharterResponse = zod.object({
   strategicAlignmentTags: zod.array(zod.string()),
   scoringWeights: zod.object({}).passthrough(),
   nfaThreshold: zod.number().nullish(),
+  location: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -292,6 +296,7 @@ export const SubmitCharterResponse = zod.object({
   strategicAlignmentTags: zod.array(zod.string()),
   scoringWeights: zod.object({}).passthrough(),
   nfaThreshold: zod.number().nullish(),
+  location: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -542,6 +547,7 @@ export const ScmNegotiateResponse = zod.object({
   strategicAlignmentTags: zod.array(zod.string()),
   scoringWeights: zod.object({}).passthrough(),
   nfaThreshold: zod.number().nullish(),
+  location: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -589,6 +595,7 @@ export const EnterFinanceOrderResponse = zod.object({
   strategicAlignmentTags: zod.array(zod.string()),
   scoringWeights: zod.object({}).passthrough(),
   nfaThreshold: zod.number().nullish(),
+  location: zod.string().nullish(),
   createdAt: zod.string(),
   updatedAt: zod.string(),
 });
@@ -850,6 +857,7 @@ export const UpdateMilestoneBody = zod.object({
   rag: zod.string().optional(),
   plannedEffortHours: zod.number().optional(),
   scheduleVarianceDays: zod.number().optional(),
+  justification: zod.string().optional(),
   readinessChecklist: zod.array(zod.object({}).passthrough()).optional(),
   gateDecision: zod.string().optional(),
   order: zod.number().optional(),
@@ -1047,6 +1055,7 @@ export const UpdateTaskBody = zod.object({
   rag: zod.string().optional(),
   startDate: zod.string().optional(),
   endDate: zod.string().optional(),
+  justification: zod.string().optional(),
   actualStart: zod.string().optional(),
   actualEnd: zod.string().optional(),
   estimatedHours: zod.number().optional(),
@@ -1822,6 +1831,10 @@ export const ListIssuesResponseItem = zod.object({
   milestoneId: zod.number().nullish(),
   title: zod.string(),
   description: zod.string().optional(),
+  issueType: zod.string().nullish(),
+  severity: zod.string().nullish(),
+  priority: zod.string().nullish(),
+  dueDate: zod.string().nullish(),
   dependencyType: zod.string().nullish(),
   blockingOwnerId: zod.number().nullish(),
   blockingDept: zod.string().nullish(),
@@ -1845,6 +1858,10 @@ export const CreateIssueParams = zod.object({
 export const CreateIssueBody = zod.object({
   title: zod.string(),
   description: zod.string().optional(),
+  issueType: zod.string().optional(),
+  severity: zod.string().optional(),
+  priority: zod.string().optional(),
+  dueDate: zod.string().optional(),
   taskId: zod.number().optional(),
   milestoneId: zod.number().optional(),
   dependencyType: zod.string().optional(),
@@ -1869,6 +1886,10 @@ export const GetIssueResponse = zod.object({
   milestoneId: zod.number().nullish(),
   title: zod.string(),
   description: zod.string().optional(),
+  issueType: zod.string().nullish(),
+  severity: zod.string().nullish(),
+  priority: zod.string().nullish(),
+  dueDate: zod.string().nullish(),
   dependencyType: zod.string().nullish(),
   blockingOwnerId: zod.number().nullish(),
   blockingDept: zod.string().nullish(),
@@ -1891,6 +1912,10 @@ export const UpdateIssueParams = zod.object({
 export const UpdateIssueBody = zod.object({
   title: zod.string().optional(),
   description: zod.string().optional(),
+  issueType: zod.string().optional(),
+  severity: zod.string().optional(),
+  priority: zod.string().optional(),
+  dueDate: zod.string().optional(),
   dependencyType: zod.string().optional(),
   blockingOwnerId: zod.number().optional(),
   blockingDept: zod.string().optional(),
@@ -1907,6 +1932,10 @@ export const UpdateIssueResponse = zod.object({
   milestoneId: zod.number().nullish(),
   title: zod.string(),
   description: zod.string().optional(),
+  issueType: zod.string().nullish(),
+  severity: zod.string().nullish(),
+  priority: zod.string().nullish(),
+  dueDate: zod.string().nullish(),
   dependencyType: zod.string().nullish(),
   blockingOwnerId: zod.number().nullish(),
   blockingDept: zod.string().nullish(),

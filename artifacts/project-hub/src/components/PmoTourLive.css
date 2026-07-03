@@ -1,0 +1,119 @@
+/*
+ * Theming for the PMO Project Hub tour (driver.js). Scoped to
+ * `.pmo-tour-popover` so it never touches any other driver.js usage. Brand hex
+ * is inlined because it styles third-party (driver.js) DOM our Tailwind /
+ * design-system classes can't reach. Mirrors the OHC tour card with PMO blue.
+ */
+
+.driver-popover.pmo-tour-popover {
+  max-width: 348px;
+  padding: 20px;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 24px 60px rgba(2, 6, 23, 0.28);
+  color: #0f172a;
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+}
+
+/* driver.js sets a `font:` shorthand on children which clobbers the card's
+   font-family — force inherit so the popover uses the app font. */
+.pmo-tour-popover * {
+  font-family: inherit;
+}
+
+.pmo-tour-popover .driver-popover-progress-text {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #2563eb; /* brand primary */
+}
+
+.pmo-tour-popover .driver-popover-title {
+  margin: 8px 0 4px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.pmo-tour-popover .driver-popover-description {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.pmo-tour-popover .driver-popover-close-btn {
+  width: 28px;
+  height: 28px;
+  color: #94a3b8;
+  font-size: 18px;
+  border-radius: 9999px;
+  transition: color 150ms ease, background 150ms ease;
+}
+.pmo-tour-popover .driver-popover-close-btn:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+}
+
+/* ---- Footer + text buttons ---- */
+.pmo-tour-popover .driver-popover-footer {
+  margin-top: 18px;
+  gap: 8px;
+}
+.pmo-tour-popover .driver-popover-navigation-btns {
+  gap: 8px;
+}
+.pmo-tour-popover .driver-popover-footer-btn {
+  padding: 7px 16px;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 600;
+  text-shadow: none;
+  transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
+}
+.pmo-tour-popover .driver-popover-prev-btn {
+  background: #ffffff;
+  border-color: #e2e8f0;
+  color: #475569;
+}
+.pmo-tour-popover .driver-popover-prev-btn:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+.pmo-tour-popover .driver-popover-next-btn {
+  background: #2563eb; /* brand primary */
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+}
+.pmo-tour-popover .driver-popover-next-btn:hover {
+  background: #1d4ed8;
+}
+
+/* ---- Arrow follows the white card ---- */
+.pmo-tour-popover .driver-popover-arrow-side-top { border-top-color: #ffffff; }
+.pmo-tour-popover .driver-popover-arrow-side-bottom { border-bottom-color: #ffffff; }
+.pmo-tour-popover .driver-popover-arrow-side-left { border-left-color: #ffffff; }
+.pmo-tour-popover .driver-popover-arrow-side-right { border-right-color: #ffffff; }
+
+/* ---- Dark mode ---- driver appends to <body>, `.dark` sits on <html>. ---- */
+.dark .driver-popover.pmo-tour-popover {
+  background: #0f172a; /* slate-900 */
+  color: #e2e8f0;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+.dark .pmo-tour-popover .driver-popover-title { color: #f8fafc; }
+.dark .pmo-tour-popover .driver-popover-description { color: #94a3b8; }
+.dark .pmo-tour-popover .driver-popover-progress-text { color: #93c5fd; }
+.dark .pmo-tour-popover .driver-popover-close-btn { color: #64748b; }
+.dark .pmo-tour-popover .driver-popover-close-btn:hover { color: #f8fafc; background: #1e293b; }
+.dark .pmo-tour-popover .driver-popover-prev-btn {
+  background: #1e293b;
+  border-color: #334155;
+  color: #cbd5e1;
+}
+.dark .pmo-tour-popover .driver-popover-prev-btn:hover { background: #334155; color: #f8fafc; }
+.dark .pmo-tour-popover .driver-popover-arrow-side-top { border-top-color: #0f172a; }
+.dark .pmo-tour-popover .driver-popover-arrow-side-bottom { border-bottom-color: #0f172a; }
+.dark .pmo-tour-popover .driver-popover-arrow-side-left { border-left-color: #0f172a; }
+.dark .pmo-tour-popover .driver-popover-arrow-side-right { border-right-color: #0f172a; }

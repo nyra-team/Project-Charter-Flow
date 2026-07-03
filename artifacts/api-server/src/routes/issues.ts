@@ -26,13 +26,14 @@ router.post("/projects/:id/issues", requireRole(...WRITE_ROLES), async (req, res
   if (isNaN(projectId)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [projI] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, projectId));
   if (projI?.status === "closed") { res.status(409).json({ error: "Project is closed. Issues cannot be raised." }); return; }
-  const { title, description, taskId, milestoneId, dependencyType, blockingOwnerId, blockingDept, originalDeadline, proposedRevisedDeadline, raisedBy } = req.body as {
-    title: string; description?: string; taskId?: number; milestoneId?: number; dependencyType?: string;
+  const { title, description, issueType, severity, priority, dueDate, taskId, milestoneId, dependencyType, blockingOwnerId, blockingDept, originalDeadline, proposedRevisedDeadline, raisedBy } = req.body as {
+    title: string; description?: string; issueType?: string; severity?: string; priority?: string; dueDate?: string;
+    taskId?: number; milestoneId?: number; dependencyType?: string;
     blockingOwnerId?: number; blockingDept?: string; originalDeadline?: string; proposedRevisedDeadline?: string; raisedBy?: number;
   };
   if (!title) { res.status(400).json({ error: "title is required" }); return; }
   const [issue] = await db.insert(issuesTable).values({
-    projectId, title, description, taskId, milestoneId, dependencyType,
+    projectId, title, description, issueType, severity, priority, dueDate, taskId, milestoneId, dependencyType,
     blockingOwnerId, blockingDept, originalDeadline, proposedRevisedDeadline, raisedBy,
   }).returning();
   res.status(201).json(issue);
@@ -55,7 +56,7 @@ router.patch("/issues/:id", requireRole(...WRITE_ROLES), async (req, res): Promi
     if (projIssue?.status === "closed") { res.status(409).json({ error: "Project is closed. Issues cannot be updated." }); return; }
   }
   const updateData: Record<string, unknown> = {};
-  const fields = ["title", "description", "dependencyType", "blockingOwnerId", "blockingDept", "originalDeadline", "proposedRevisedDeadline", "status", "resolutionNotes"];
+  const fields = ["title", "description", "issueType", "severity", "priority", "dueDate", "dependencyType", "blockingOwnerId", "blockingDept", "originalDeadline", "proposedRevisedDeadline", "status", "resolutionNotes"];
   for (const f of fields) {
     if (req.body[f] !== undefined) updateData[f] = req.body[f];
   }

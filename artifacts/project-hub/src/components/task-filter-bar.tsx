@@ -18,6 +18,8 @@ interface TaskFilterBarProps {
   owners: Array<{ id: number; name: string }>;
   ownerFilter: string;
   onOwnerChange: (v: string) => void;
+  // Kanban groups by status already, so hide the Status/Priority selects there.
+  hideStatusPriority?: boolean;
 }
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -29,7 +31,7 @@ function useDebounce<T>(value: T, delay: number): T {
   return debounced;
 }
 
-export function TaskFilterBar({ filters, onChange, owners, ownerFilter, onOwnerChange }: TaskFilterBarProps) {
+export function TaskFilterBar({ filters, onChange, owners, ownerFilter, onOwnerChange, hideStatusPriority }: TaskFilterBarProps) {
   const [searchInput, setSearchInput] = useState(filters.search);
   // Search starts collapsed to an icon and pops out the field on click.
   const [searchOpen, setSearchOpen] = useState(!!filters.search);
@@ -82,6 +84,7 @@ export function TaskFilterBar({ filters, onChange, owners, ownerFilter, onOwnerC
         </button>
       )}
 
+      {!hideStatusPriority && (
       <Select value={filters.status} onValueChange={v => onChange({ ...filters, status: v === "all" ? "" : v })}>
         <SelectTrigger className="w-36 h-8 text-xs"><SelectValue placeholder="All Statuses" /></SelectTrigger>
         <SelectContent>
@@ -89,7 +92,9 @@ export function TaskFilterBar({ filters, onChange, owners, ownerFilter, onOwnerC
           {TASK_STATUSES.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
         </SelectContent>
       </Select>
+      )}
 
+      {!hideStatusPriority && (
       <Select value={filters.priority} onValueChange={v => onChange({ ...filters, priority: v === "all" ? "" : v })}>
         <SelectTrigger className="w-32 h-8 text-xs"><SelectValue placeholder="All Priorities" /></SelectTrigger>
         <SelectContent>
@@ -97,6 +102,7 @@ export function TaskFilterBar({ filters, onChange, owners, ownerFilter, onOwnerC
           {TASK_PRIORITIES.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
         </SelectContent>
       </Select>
+      )}
 
       <Select value={filters.rag} onValueChange={v => onChange({ ...filters, rag: v === "all" ? "" : v })}>
         <SelectTrigger className="w-28 h-8 text-xs"><SelectValue placeholder="All RAG" /></SelectTrigger>

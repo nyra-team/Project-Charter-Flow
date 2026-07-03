@@ -14,8 +14,9 @@ import { FileDropzone } from "@/components/ui/file-dropzone";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
 import { Plus, FileText, Trash2, Lock, Unlock, History, Tag, Folder, Search, Upload, Download, FileCheck2, Eye, Loader2, ExternalLink, Sparkles, ChevronDown, ChevronRight, SlidersHorizontal, X } from "lucide-react";
 import { formatDate } from "../lib/format";
-import { LIFECYCLE_STAGES, canonicalStageKey } from "../lib/lifecycle-config";
+import { LIFECYCLE_STAGES, canonicalStageKey, templateDocRank } from "../lib/lifecycle-config";
 import { LIFECYCLE_PHASES } from "../lib/lifecycle-phases";
+import { ProjectTemplatesTable } from "./project-templates";
 
 type Doc = {
   id: number; projectId: number; stage?: string | null; name: string;
@@ -32,6 +33,24 @@ type DocVersion = {
 
 const ACCESS_LEVELS = ["public", "team", "restricted", "confidential"] as const;
 const CATEGORY_TAGS = ["URS", "RFP", "NFA", "Charter", "Contract", "UAT", "Closure", "Other"];
+
+// Downloads go through the public /api/documents/:id/raw route (no bearer needed,
+// unlike the raw /api/storage/objects path which 401s from a plain <a download>).
+// The stored name often has no extension, so derive one from the MIME type.
+const MIME_EXT: Record<string, string> = {
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+  "application/vnd.ms-excel": ".xls",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "application/msword": ".doc",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+  "application/vnd.ms-powerpoint": ".ppt",
+  "application/pdf": ".pdf",
+  "text/html": ".html",
+};
+function dlName(name: string, fileType?: string | null): string {
+  if (/\.[a-z0-9]{2,5}$/i.test(name)) return name;
+  return name + (MIME_EXT[fileType ?? ""] ?? "");
+}
 
 const ACCESS_PILL: Record<string, { pill: string; icon: typeof Lock }> = {
   public:       { pill: "bg-success/10 text-success border-success/20",            icon: Unlock },
@@ -132,7 +151,7 @@ export function DocumentsTab({
     const phases: PhaseGroup[] = LIFECYCLE_PHASES.map(p => {
       const stages: StageGroup[] = p.stageKeys
         .filter(k => (byStage[k] ?? []).length > 0)
-        .map(k => { const m = stageMeta(k); return { key: k, label: m?.label ?? k, color: m?.color as string | undefined, docs: byStage[k]! }; });
+        .map(k => { const m = stageMeta(k); return { key: k, label: m?.label ?? k, color: m?.color as string | undefined, docs: byStage[k]!.sort((a, b) => templateDocRank(k, a.name) - templateDocRank(k, b.name)) }; });
       return { key: p.key, label: p.label, color: p.color, count: stages.reduce((s, g) => s + g.docs.length, 0), stages };
     }).filter(p => p.stages.length > 0);
     if ((byStage["__unstaged__"] ?? []).length > 0) {
@@ -207,14 +226,14 @@ export function DocumentsTab({
       <TableRow className="group">
         {/* Document */}
         <TableCell className="align-top pl-10">
-          <div className="flex items-start gap-2.5">
-            <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 border ${isTemplate ? "bg-amber-accent/10 border-amber-accent/30" : "bg-primary/10 border-primary/20"}`}>
-              {isTemplate ? <FileCheck2 size={15} className="text-amber-accent" /> : <FileText size={15} className="text-primary" />}
+          <div className="flex items-start gap-2">
+            <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 border ${isTemplate ? "bg-amber-accent/10 border-amber-accent/30" : "bg-primary/10 border-primary/20"}`}>
+              {isTemplate ? <FileCheck2 size={12} className="text-amber-accent" /> : <FileText size={12} className="text-primary" />}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">{d.name}</span>
-                <span className="text-[11px] font-mono font-semibold text-primary">v{d.version}</span>
+                <span className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">{d.name}</span>
+                <span className="text-[10px] font-mono font-semibold text-primary">v{d.version}</span>
                 {isLocked && (
                   <span className="text-[10px] font-mono uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border bg-destructive/10 text-destructive border-destructive/20 inline-flex items-center gap-1">
                     <Lock size={9} /> Locked
@@ -268,7 +287,7 @@ export function DocumentsTab({
               </button>
             )}
             {d.fileUrl && (
-              <a href={d.fileUrl} download className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-primary transition-colors" title={isTemplate ? "Download template" : "Download"}>
+              <a href={`/api/documents/${d.id}/raw`} download={dlName(d.name, d.fileType)} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-primary transition-colors" title={isTemplate ? "Download template" : "Download"}>
                 <Download size={13} />
               </a>
             )}
@@ -357,13 +376,20 @@ export function DocumentsTab({
         </div>
       )}
 
+      {/* Project Templates — the same 5-type sections as the repository's
+          templates tab, available inline within this project's documents. */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Project Templates</p>
+        <ProjectTemplatesTable />
+      </div>
+
       {filtered.length === 0 ? (
         <div className="glass-surface lift-card ph-rise rounded-2xl p-10 text-center text-sm text-muted-foreground">
           {allDocs.length === 0 ? "No documents yet. Click 'Upload Document' to add one." : "No documents match your filters."}
         </div>
       ) : (
         <div className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
-          <Table>
+          <Table className="text-xs [&_th]:h-8 [&_th]:text-xs [&_td]:py-1.5">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
                 <TableHead className="pl-10">Document</TableHead>
@@ -383,9 +409,9 @@ export function DocumentsTab({
                     <TableRow className="bg-muted/60 hover:bg-muted/70 cursor-pointer border-t-2 border-border" onClick={() => toggleStage(p.key)}>
                       <TableCell colSpan={6} className="py-2">
                         <div className="flex items-center gap-2">
-                          {pOpen ? <ChevronDown size={15} className="text-muted-foreground" /> : <ChevronRight size={15} className="text-muted-foreground" />}
-                          <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
-                          <span className="text-sm font-bold text-foreground uppercase tracking-wide">{p.label}</span>
+                          {pOpen ? <ChevronDown size={13} className="text-muted-foreground" /> : <ChevronRight size={13} className="text-muted-foreground" />}
+                          <span className="w-2 h-2 rounded-full" style={{ background: p.color }} />
+                          <span className="text-xs font-bold text-foreground uppercase tracking-wide">{p.label}</span>
                           <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{p.count} doc{p.count !== 1 ? "s" : ""}</span>
                         </div>
                       </TableCell>
@@ -399,9 +425,9 @@ export function DocumentsTab({
                           <TableRow className="bg-muted/30 hover:bg-muted/40 cursor-pointer" onClick={() => toggleStage(g.key)}>
                             <TableCell colSpan={6} className="py-1.5 pl-10">
                               <div className="flex items-center gap-2">
-                                {open ? <ChevronDown size={13} className="text-muted-foreground" /> : <ChevronRight size={13} className="text-muted-foreground" />}
-                                <Folder size={13} style={g.color ? { color: g.color } : undefined} className={g.color ? "" : "text-muted-foreground"} />
-                                <span className="text-[13px] font-semibold text-foreground">{g.label}</span>
+                                {open ? <ChevronDown size={12} className="text-muted-foreground" /> : <ChevronRight size={12} className="text-muted-foreground" />}
+                                <Folder size={12} style={g.color ? { color: g.color } : undefined} className={g.color ? "" : "text-muted-foreground"} />
+                                <span className="text-xs font-semibold text-foreground">{g.label}</span>
                                 <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">{countLabel}</span>
                               </div>
                             </TableCell>
@@ -702,10 +728,10 @@ function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void 
               <p className="text-sm text-muted-foreground max-w-md">{errMsg}</p>
               {doc.fileUrl && (
                 <div className="flex items-center gap-2">
-                  <a href={doc.fileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-muted text-foreground hover:bg-accent transition-colors">
+                  <a href={`/api/documents/${doc.id}/raw`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-muted text-foreground hover:bg-accent transition-colors">
                     <ExternalLink size={13} /> Open in new tab
                   </a>
-                  <a href={doc.fileUrl} download className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
+                  <a href={`/api/documents/${doc.id}/raw`} download={dlName(doc.name, doc.fileType)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
                     <Download size={13} /> Download
                   </a>
                 </div>

@@ -29,6 +29,7 @@ The sign-off block reflects the resolved DOA chain with per-row status / decided
 """
 import argparse
 import json
+import re
 import sys
 from datetime import datetime
 
@@ -49,6 +50,42 @@ ACCENT_BG = "DBF2F4"
 
 
 # ───── helpers ──────────────────────────────────────────────────────────────
+_BARE_QUARTER_RE = re.compile(r"^\s*(?:Q|Quarter\s*)([1-4])\s*$", re.IGNORECASE)
+
+
+def _fiscal_year_label(base_date_str):
+    """Indian FY (Apr–Mar): a date in Apr-2025…Mar-2026 → 'FY26'. None if unparseable."""
+    if not base_date_str:
+        return None
+    s = str(base_date_str).strip()
+    dt = None
+    for cut in (s[:10], s[:19]):
+        try:
+            dt = datetime.fromisoformat(cut)
+            break
+        except ValueError:
+            continue
+    if dt is None:
+        return None
+    fy_end = dt.year + 1 if dt.month >= 4 else dt.year
+    return f"FY{fy_end % 100:02d}"
+
+
+def qualify_target_date(raw, base_date_str):
+    """A bare quarter ('Q2') is ambiguous in the doc — append the charter's FY so
+    the timeline always names a year. Non-quarter values pass through untouched.
+    ponytail: assumes all bare quarters fall in the charter's base FY; doesn't roll
+    multi-FY projects (upgrade: honour a per-milestone year when the data carries one)."""
+    if raw is None:
+        return ""
+    s = str(raw).strip()
+    m = _BARE_QUARTER_RE.match(s)
+    if not m:
+        return s
+    fy = _fiscal_year_label(base_date_str)
+    return f"Q{m.group(1)} {fy}" if fy else s
+
+
 def set_cell_bg(cell, hex_color):
     tcPr = cell._tc.get_or_add_tcPr()
     shd = OxmlElement("w:shd")
@@ -299,9 +336,10 @@ def build(data, out_path):
         heading(doc, f"{n}. Project Deliverables (Key Milestones)", level=1)
         milestones = data.get("milestones") or []
         if milestones:
+            base = data.get("startDate") or data.get("projectApprovalDate") or data.get("noteDate") or data.get("createdAt")
             rows = [["Key Milestone", "Responsible", "Target Date"]]
             for m in milestones:
-                rows.append([m.get("milestone", ""), m.get("responsible", ""), m.get("targetDate", "")])
+                rows.append([m.get("milestone", ""), m.get("responsible", ""), qualify_target_date(m.get("targetDate", ""), base)])
             build_table(doc, rows, col_widths_cm=[9.4, 4.6, 3.6], band=True)
         else:
             para(doc, "No milestones captured.", italic=True, color=MUTED)
@@ -401,16 +439,30 @@ def build(data, out_path):
 
     sigs = data.get("signatories") or []
     if sigs:
-        rows = [["Role", "Name", "Status", "Decided At", "Comment"]]
-        for s in sigs:
+        # No Status / Decided At columns — this document is a frozen snapshot sent
+        # for e-signature; those would bake in "Pending"/blank and go stale once
+        # signing starts. The signature stamp itself is the approval evidence;
+        # live status lives in the app.
+        rows = [["Role", "Name", "Signature"]]
+        for i, s in enumerate(sigs, start=1):
             rows.append([
                 (s.get("role") or "").replace("_", " ").title(),
                 s.get("name", "") or "—",
-                (s.get("status") or "pending").title(),
-                fmt_date(s.get("decidedAt")),
-                s.get("comment", "") or "",
+                f"[[SIG{i}]]",
             ])
-        build_table(doc, rows, col_widths_cm=[3.8, 4.4, 2.4, 3.2, 3.8], band=True)
+        t = build_table(doc, rows, col_widths_cm=[4.0, 5.4, 6.0], band=True)
+        # Invisible e-sign anchors: the Documenso sender searches the PDF text
+        # layer for "[[SIGn]]" and pins signer n's signature field exactly on
+        # its cell. Whiten the markers + reserve stamp height per row.
+        for row in t.rows[1:]:
+            cell = row.cells[-1]
+            for p in cell.paragraphs:
+                for r in p.runs:
+                    if re.fullmatch(r"\[\[SIG\d+\]\]", r.text or ""):
+                        r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+                        r.font.size = Pt(8)
+            pad = cell.paragraphs[-1]
+            pad.paragraph_format.space_after = Pt(30)
     else:
         para(doc, "Sign-off block populated on submission — empty in draft mode.", italic=True, color=MUTED)
 

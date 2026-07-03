@@ -25,6 +25,7 @@ import {
   Wrench,
   FlaskConical,
   AlertTriangle,
+  Compass,
 } from "lucide-react";
 
 const SIDEBAR_COLLAPSED_KEY = "ph:sidebar:collapsed";
@@ -38,6 +39,10 @@ const CHARTER_NFA_HREF = "#charter-nfa";
 // "Business Case" opens the two-card workflow chooser popup (intercepted in
 // `navigate` below, same pattern as the sentinel above).
 const BUSINESS_CASE_HREF = "#business-case";
+// "Tour" launches the guided product tour. Same sentinel pattern as above: the
+// shared sidebar routes it through `navigate`, where we dispatch the start
+// event instead of changing route.
+const TOUR_HREF = "#tour";
 
 // Type the nav data against THIS app's lucide/React copy. The shared
 // CollapsibleSidebar resolves React from its own @types/react tree, so its
@@ -71,6 +76,7 @@ const MY_TEAM: Item = { icon: Network, label: "My Team Actions", href: "/my-team
 const RESOURCES: Item = { icon: Users, label: "Resource Management", href: "/resources" };
 const APPROVALS: Item = { icon: CheckSquare, label: "Approvals", href: "/approvals" };
 const RISKS_ISSUES: Item = { icon: AlertTriangle, label: "Risks / Issues", href: "/issues" };
+const TOUR: Item = { icon: Compass, label: "Tour", href: TOUR_HREF };
 const VENDOR_ITEMS: Item[] = [
   { icon: ScrollText, label: "New RFP", href: "/rfx" },
   { icon: Building2, label: "Vendor on board", href: "/vendors" },
@@ -155,6 +161,23 @@ export default function PmoSidebar({
     setRemountKey((k) => k + 1);
   }, []);
 
+  // Force the rail EXPANDED — used by the guided tour so it can anchor the
+  // "Business Case" CTA, which only renders in the expanded rail (the collapsed
+  // rail drops it). No-op when already expanded so we never remount needlessly.
+  const forceExpand = useCallback(() => {
+    if (!collapsedRef.current) return;
+    collapsedRef.current = false;
+    setCollapsed(false);
+    try { window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, "0"); } catch {}
+    setRemountKey((k) => k + 1);
+  }, []);
+
+  useEffect(() => {
+    const onExpand = () => forceExpand();
+    window.addEventListener("pmo:tour:expand-sidebar", onExpand);
+    return () => window.removeEventListener("pmo:tour:expand-sidebar", onExpand);
+  }, [forceExpand]);
+
   // The reduction is a DESKTOP collapsed-rail affordance only. The mobile drawer
   // always renders expanded, so when it's open we feed the full grouped nav.
   const railCollapsed = collapsed && !mobileOpen;
@@ -174,6 +197,7 @@ export default function PmoSidebar({
       { icon: ShieldCheck, label: "Roles & Access", href: "/admin/roles" },
       { icon: FlaskConical, label: "CIP", href: "/admin/cip" },
     ] });
+    sections.push({ items: [TOUR] });
   } else {
     sections = [
       { items: [BUSINESS_CASE, PORTFOLIO, PROJECTS, CHARTER, MY_TASKS, MY_TEAM] },
@@ -183,6 +207,7 @@ export default function PmoSidebar({
     ];
     if (isAdmin) sections.push({ title: "Admin", icon: Wrench, items: ADMIN_ITEMS });
     if (isSuperAdmin) sections.push({ items: ROLES_ITEMS });
+    sections.push({ title: "Tour", items: [TOUR] });
   }
 
   // Mirror the shared sidebar's default active logic, but treat the
@@ -218,6 +243,10 @@ export default function PmoSidebar({
         }
         if (href === BUSINESS_CASE_HREF) {
           onBusinessCase();
+          return;
+        }
+        if (href === TOUR_HREF) {
+          window.dispatchEvent(new Event("pmo:start-tour-live"));
           return;
         }
         // Clicking "Projects" auto-collapses the rail for a wider board.

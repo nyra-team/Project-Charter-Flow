@@ -5,9 +5,9 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { db, chartersTable, vendorsTable, risksTable, squadMembersTable, approvalsTable, usersTable } from "@workspace/db";
+import { db, chartersTable, vendorsTable, risksTable, squadMembersTable, approvalsTable, usersTable, activityTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
-import { matchBand } from "../lib/doa-resolver";
+import { matchBand, CAPEX_CATEGORY, CAPEX_KIND, signatoriesFromChain } from "../lib/doa-resolver";
 
 // generate_charter_nfa.py lives at apps/pmo/scripts/. This bundle runs from
 // apps/pmo/artifacts/api-server/dist/index.mjs, so walk three dirs up.
@@ -39,6 +39,9 @@ import {
 } from "@workspace/api-zod";
 import { logActivity } from "./activity";
 import { requireRole } from "../lib/guard";
+import { documensoConfigured, docxToPdf, sendForSignature, signersFromSignatories, getDocumensoDocument, nextPendingSigner, type EsignEnvelope } from "../integrations/documenso";
+import { notifySignerTurn } from "../lib/esign-notify";
+import { enrichSignatoryEmails } from "../lib/signatory-email";
 
 const router: IRouter = Router();
 
@@ -47,6 +50,12 @@ const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
 // Extended PATCH body — accepts all Charter+NFA merged columns.
 // Lives inline until lib/api-zod is regenerated from the updated OpenAPI spec.
 const ExtendedCharterPatch = z.object({
+  // Workflow status — lets the Charters Kanban board persist a drag-to-move
+  // between status columns. (PMO has no functional roles, so any user can.)
+  status: z.enum([
+    "draft", "submitted", "parallel_review", "scm_review",
+    "chairman_review", "finance_review", "pmo_review", "approved", "active", "rejected",
+  ]).optional(),
   // Narrative
   executiveSummary: z.string().optional(),
   currentState: z.string().optional(),
@@ -75,6 +84,9 @@ const ExtendedCharterPatch = z.object({
   // e-NFA form). Stashed in the scoringWeights jsonb to avoid a DB migration;
   // the DOCX generator reads it to order sections 2…N.
   sectionOrder: z.array(z.string()).optional(),
+  // DOA (Delegation of Authority) the raiser is acting under. No column of its
+  // own — stashed in the scoringWeights jsonb alongside sectionOrder.
+  doa: z.string().optional(),
   // Investment summary
   kind: z.enum(["capex", "opex", "mixed"]).optional(),
   capexAmount: z.coerce.number().optional(),
@@ -102,6 +114,8 @@ const ExtendedCharterPatch = z.object({
   kpis: z.array(z.object({ kpi: z.string(), baseline: z.string().optional(), goal: z.string().optional() })).optional(),
   steeringCommittee: z.array(z.object({ role: z.string(), name: z.string(), empCode: z.string().optional() })).optional(),
   keyProjectMembers: z.array(z.object({ role: z.string(), name: z.string(), empCode: z.string().optional() })).optional(),
+  // Manual approval signatory chain (drives the approval order on submit).
+  signatories: z.array(z.object({ role: z.string(), name: z.string().optional(), email: z.string().optional(), empCode: z.string().optional(), designation: z.string().optional(), status: z.string().optional() })).optional(),
   attachments: z.array(z.object({ name: z.string(), url: z.string(), size: z.number().optional(), mimeType: z.string().optional() })).optional(),
 });
 
@@ -202,6 +216,17 @@ router.get("/charters/:id", async (req, res): Promise<void> => {
   res.json(formatCharter(charter));
 });
 
+// Human labels for the edit-history log (falls back to the raw key otherwise).
+const CHARTER_FIELD_LABELS: Record<string, string> = {
+  title: "Title", description: "Description", scope: "Scope", deliverables: "Deliverables",
+  solutionComparison: "Solution comparison", tentativeBudget: "Tentative budget",
+  startDate: "Start date", endDate: "End date", durationDays: "Duration (days)",
+  toplineImprovement: "Topline improvement", bottomLineOptimization: "Bottom-line optimization",
+  complianceBenefits: "Compliance benefits", productivityImprovement: "Productivity improvement",
+  subject: "Subject", background: "Background", recommendation: "Recommendation",
+  modeOfProcurement: "Mode of procurement", vendorDetails: "Vendor details", status: "Status",
+};
+
 // Update charter
 router.patch("/charters/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const params = UpdateCharterParams.safeParse(req.params);
@@ -221,12 +246,17 @@ router.patch("/charters/:id", requireRole(...WRITE_ROLES), async (req, res): Pro
     res.status(400).json({ error: extended.error.message });
     return;
   }
-  const { sectionOrder, ...extData } = extended.data;
+  const { sectionOrder, doa, ...extData } = extended.data;
   const updateData: Record<string, unknown> = { ...legacy.data, ...extData };
-  // sectionOrder has no column of its own — merge it into the scoringWeights jsonb.
-  if (sectionOrder) {
-    const [cur] = await db.select({ sw: chartersTable.scoringWeights }).from(chartersTable).where(eq(chartersTable.id, params.data.id));
-    updateData.scoringWeights = { ...((cur?.sw as Record<string, unknown>) ?? {}), sectionOrder };
+  // Snapshot the pre-edit row so we can log exactly which fields changed.
+  const [existing] = await db.select().from(chartersTable).where(eq(chartersTable.id, params.data.id));
+  // sectionOrder + doa have no columns of their own — merge into the scoringWeights jsonb.
+  if (sectionOrder !== undefined || doa !== undefined) {
+    updateData.scoringWeights = {
+      ...((existing?.scoringWeights as Record<string, unknown>) ?? {}),
+      ...(sectionOrder !== undefined ? { sectionOrder } : {}),
+      ...(doa !== undefined ? { doa } : {}),
+    };
   }
   if (legacy.data.tentativeBudget !== undefined) {
     updateData.tentativeBudget = String(legacy.data.tentativeBudget);
@@ -243,7 +273,57 @@ router.patch("/charters/:id", requireRole(...WRITE_ROLES), async (req, res): Pro
     res.status(404).json({ error: "Charter not found" });
     return;
   }
+  // Edit-history trail: record the fields that actually changed so the e-NFA
+  // detail view can show an audit log. The editor's name is embedded in the
+  // message (activity.userId maps to the pmo users table, which req.user isn't).
+  const changed = Object.keys(updateData).filter((k) => String((existing as Record<string, unknown>)?.[k] ?? "") !== String(updateData[k] ?? ""));
+  if (changed.length > 0) {
+    const labels = changed.map((k) => CHARTER_FIELD_LABELS[k] ?? k).join(", ");
+    const who = req.user?.fullName || req.user?.email || "Someone";
+    await logActivity("nfa_edited", `${who} edited the e-NFA — changed: ${labels}`, charter.id, "charter");
+  }
   res.json(formatCharter(charter));
+});
+
+// Edit history for a charter / e-NFA (the audit trail shown beside Vendors).
+router.get("/charters/:id/activity", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const rows = await db.select().from(activityTable)
+    .where(and(eq(activityTable.entityType, "charter"), eq(activityTable.entityId, id)))
+    .orderBy(desc(activityTable.createdAt));
+  res.json(rows);
+});
+
+// DOA matrix for a charter / e-NFA — the approver chain. Post-submit returns the
+// stored signatories (with their decision status); in draft it returns a LIVE
+// preview resolved from the same CAPEX matrix the standalone e-NFA uses, so the
+// project NFA shows its DOA before submission too.
+router.get("/charters/:id/doa", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [charter] = await db.select().from(chartersTable).where(eq(chartersTable.id, id));
+  if (!charter) { res.status(404).json({ error: "Charter not found" }); return; }
+  const location = (charter as Record<string, unknown>).location as string ?? "";
+  const amountInr = Number(charter.finalNegotiatedBudget ?? charter.tentativeBudget ?? 0);
+  const stored = (charter.signatories as Array<{ role: string; name: string; status?: string }> | null) ?? [];
+  if (stored.length > 0) {
+    res.json({ source: "stored", location, amountInr, label: null, signatories: stored });
+    return;
+  }
+  const match = await matchBand({ entity: location, category: CAPEX_CATEGORY, kind: CAPEX_KIND, amountInr });
+  const signatories = match ? signatoriesFromChain(match.approverRoles as unknown[]) : [];
+  res.json({ source: "preview", location, amountInr, label: match?.label ?? null, signatories });
+});
+
+// Resolve the DOA chain for an arbitrary (location, amount) — used by the
+// charter CREATE form to show the live DOA matrix before the charter exists.
+router.get("/doa/resolve", async (req, res): Promise<void> => {
+  const location = String(req.query.location ?? "");
+  const amountInr = Number(String(req.query.amount ?? "").replace(/[^\d.]/g, "")) || 0;
+  const match = await matchBand({ entity: location, category: CAPEX_CATEGORY, kind: CAPEX_KIND, amountInr });
+  const signatories = match ? signatoriesFromChain(match.approverRoles as unknown[]) : [];
+  res.json({ location, amountInr, label: match?.label ?? null, signatories });
 });
 
 // Submit charter
@@ -263,38 +343,50 @@ router.post("/charters/:id/submit", requireRole(...WRITE_ROLES), async (req, res
     return;
   }
 
-  // Resolve approver chain via the DOA matrix.
-  // amountInr = finalNegotiatedBudget if available, else tentativeBudget.
-  const amountInr = Number(charter.finalNegotiatedBudget ?? charter.tentativeBudget ?? 0);
-  const match = await matchBand({
-    entity: charter.entity ?? "",
-    category: charter.category ?? "",
-    kind: charter.kind ?? "capex",
-    amountInr,
-  });
-  if (!match) {
-    res.status(422).json({
-      error: "No active DOA band covers this charter — configure one at /admin/doa-matrix and retry.",
-      context: { entity: charter.entity, category: charter.category, kind: charter.kind, amountInr },
-    });
-    return;
+  // The manual approval signatory chain wins: if the charter carries a stored
+  // chain with at least one real approver, route the approval to exactly those
+  // people. Otherwise fall back to resolving the chain from the CAPEX DOA matrix
+  // (location + amount) — same matrix the standalone e-NFA uses.
+  const stored = (charter.signatories as Array<{ role?: string; name?: string; email?: string; empCode?: string; designation?: string }> | null) ?? [];
+  // A row with a resolvable person counts even if Role was left blank — default
+  // it, don't silently drop the approver and 422 on "no chain".
+  const manual = stored.filter((s) => s?.name?.trim() || s?.email?.trim() || s?.empCode?.trim());
+
+  let signatories: Array<{ role: string; name: string; status: string }>;
+  let bandLabel: string | null = null;
+  let bandId: number | null = null;
+
+  if (manual.length > 0) {
+    // Keep email/empCode — sendCharterEsign needs them to route Documenso signing mail.
+    signatories = manual.map((s) => ({ role: s.role?.trim() || s.designation?.trim() || "Approver", name: (s.name ?? "").trim(), email: s.email?.trim() || undefined, empCode: s.empCode?.trim() || undefined, designation: s.designation?.trim() || undefined, status: "pending" }));
+  } else {
+    const amountInr = Number(charter.finalNegotiatedBudget ?? charter.tentativeBudget ?? 0);
+    const match = await matchBand({ entity: charter.location ?? "", category: CAPEX_CATEGORY, kind: CAPEX_KIND, amountInr });
+    const chain = (match?.approverRoles as unknown[]) ?? [];
+    if (!match || chain.length === 0) {
+      res.status(422).json({
+        error: "No approval signatory chain set, and no active DOA band covers this NFA — add approvers to the signatory chain, or configure a band at /admin/doa-matrix.",
+        context: { location: charter.location, amountInr },
+      });
+      return;
+    }
+    signatories = signatoriesFromChain(chain);
+    bandLabel = match.label; bandId = match.bandId;
   }
 
-  // Insert one parallel approval per resolved role; mirror into charter.signatories
-  // jsonb so the DOCX renderer / detail UI can show the full sign-off block.
-  const signatories: Array<{ role: string; name: string; status: string }> = [];
-  for (const role of match.approverRoles) {
-    const [user] = await db.select().from(usersTable).where(eq(usersTable.role, role)).limit(1);
+  // One parallel approval per step. Resolve approverId to the PMO user with the
+  // step's email (so the email-gated decide endpoint recognises the assignee).
+  // ponytail: a non-PMO-user approver leaves approverId null → approvable by any
+  // decider/admin; add them to pmo_users to gate it to that one person.
+  for (let i = 0; i < signatories.length; i++) {
+    const sig = signatories[i]!;
+    const email = (manual[i]?.email || (sig.name.includes("@") ? sig.name : "")).toLowerCase();
+    const [user] = email ? await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1) : [];
     await db.insert(approvalsTable).values({
       charterId: charter.id,
       approverId: user?.id ?? null,
-      approverRole: role,
+      approverRole: sig.role,
       stage: "parallel_review",
-      status: "pending",
-    });
-    signatories.push({
-      role,
-      name: user?.name ?? "",
       status: "pending",
     });
   }
@@ -303,14 +395,30 @@ router.post("/charters/:id/submit", requireRole(...WRITE_ROLES), async (req, res
     .set({ status: "parallel_review", signatories })
     .where(eq(chartersTable.id, params.data.id))
     .returning();
+  const approverList = signatories.map((s) => s.name || s.role).join(", ") || "(empty)";
   await logActivity(
     "charter_submitted",
-    `Charter "${charter.title}" submitted — DOA band "${match.label}" → ${match.approverRoles.join(", ") || "(empty)"}`,
+    `Charter "${charter.title}" submitted — ${manual.length ? "manual signatory chain" : `DOA band "${bandLabel}"`} → ${approverList}`,
     charter.id,
     "charter",
     charter.submittedById,
   );
-  res.json({ ...formatCharter(updated), doaBand: { id: match.bandId, label: match.label, approverRoles: match.approverRoles } });
+
+  // Auto-send the DOA chain to Documenso as part of Submit for Approval.
+  // Best-effort: a Documenso outage must not block the submission — the
+  // manual "Send for e-Signature" button on the charter is the retry path.
+  let esign: EsignEnvelope | null = null;
+  let esignError: string | null = null;
+  if (documensoConfigured()) {
+    try {
+      esign = await sendCharterEsign(updated);
+    } catch (e) {
+      esignError = (e as Error).message;
+      req.log?.warn({ err: esignError, charterId: charter.id }, "auto e-sign on submit failed");
+    }
+  }
+
+  res.json({ ...formatCharter(updated), doaBand: { id: bandId, label: manual.length ? "Manual signatory chain" : bandLabel, approverRoles: signatories.map((s) => s.role) }, esign, esignError });
 });
 
 // SCM negotiate
@@ -522,26 +630,14 @@ function formatCharter(c: Record<string, unknown>) {
 // ═══════════════════════════════════════════════════════════════════════════
 // DOCX — render the consolidated Charter+NFA on demand
 // ═══════════════════════════════════════════════════════════════════════════
-router.get("/charters/:id/docx", async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) {
-    res.status(400).json({ error: "Invalid id" });
-    return;
-  }
-  const [charter] = await db.select().from(chartersTable).where(eq(chartersTable.id, id));
-  if (!charter) {
-    res.status(404).json({ error: "Charter not found" });
-    return;
-  }
-  const risks = await db.select().from(risksTable).where(eq(risksTable.charterId, id));
-
-  let dir: string | undefined;
+export async function renderCharterDocx(charter: Record<string, unknown> & { id: number; scoringWeights?: unknown }): Promise<Buffer> {
+  const risks = await db.select().from(risksTable).where(eq(risksTable.charterId, charter.id));
+  const dir = await mkdtemp(path.join(tmpdir(), "charter-nfa-"));
   try {
-    dir = await mkdtemp(path.join(tmpdir(), "charter-nfa-"));
     const inPath = path.join(dir, "in.json");
     const outPath = path.join(dir, "out.docx");
     const sectionOrder = (charter.scoringWeights as { sectionOrder?: string[] } | null)?.sectionOrder;
-    const payload = { ...formatCharter(charter as Record<string, unknown>), structuredRisks: risks, sectionOrder };
+    const payload = { ...formatCharter(charter), structuredRisks: risks, sectionOrder };
     await writeFile(inPath, JSON.stringify(payload), "utf-8");
 
     await new Promise<void>((resolve, reject) => {
@@ -555,15 +651,92 @@ router.get("/charters/:id/docx", async (req, res): Promise<void> => {
       });
     });
 
-    const buf = await readFile(outPath);
+    return await readFile(outPath);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+router.get("/charters/:id/docx", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+  const [charter] = await db.select().from(chartersTable).where(eq(chartersTable.id, id));
+  if (!charter) {
+    res.status(404).json({ error: "Charter not found" });
+    return;
+  }
+
+  try {
+    const buf = await renderCharterDocx(charter as never);
     const safeTitle = (charter.title || `Charter-${id}`).replace(/[^a-z0-9\-_ ]/gi, "").trim().slice(0, 60) || `Charter-${id}`;
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     res.setHeader("Content-Disposition", `attachment; filename="${safeTitle}.docx"`);
     res.send(buf);
   } catch (e) {
     res.status(500).json({ error: `Failed to generate Charter+NFA document: ${(e as Error).message}` });
-  } finally {
-    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// E-SIGN — send the charter's DOA chain to Documenso. Signatures land back via
+// /api/documenso/webhook and are recorded exactly like in-app approvals.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Render → PDF → Documenso send → persist envelope → tell the first signer.
+// Shared by the manual /esign route (retry path) and the auto-send on submit.
+// Throws Error (optionally with .statusCode) when the charter can't be sent.
+async function sendCharterEsign(charter: { id: number; title?: string | null; signatories?: unknown; esign?: unknown }): Promise<EsignEnvelope> {
+  if ((charter.esign as { documentId?: number } | null)?.documentId) {
+    throw Object.assign(new Error("Already sent for e-signature."), { statusCode: 409 });
+  }
+  const sigs = await enrichSignatoryEmails((charter.signatories as Array<{ role?: string; name?: string; email?: string; empCode?: string }>) ?? []);
+  const { signers, missing } = signersFromSignatories(sigs);
+  if (signers.length === 0 || missing.length > 0) {
+    throw Object.assign(
+      new Error(`Signatories without an email address: ${missing.join(", ") || "(none resolvable)"}. E-sign needs an email per approver.`),
+      { statusCode: 422 },
+    );
+  }
+
+  const pdf = await docxToPdf(await renderCharterDocx(charter as never));
+  const esign = await sendForSignature({
+    title: `Charter+NFA — ${charter.title || `Charter ${charter.id}`}`,
+    externalId: `charter:${charter.id}`,
+    pdf,
+    signers,
+  });
+  await db.update(chartersTable).set({ esign } as never).where(eq(chartersTable.id, charter.id));
+  await logActivity("charter_esign_sent", `Charter "${charter.title}" sent for e-signature via Documenso (${signers.length} signers)`, charter.id, "charter");
+
+  // PMO-branded "your turn" bell+email for the first signer (Documenso mails
+  // its own link too). Best-effort — the envelope is already out.
+  try {
+    const doc = await getDocumensoDocument(esign.documentId);
+    const first = nextPendingSigner(doc);
+    if (first) await notifySignerTurn({ email: first.email, signingUrl: first.signingUrl, kind: "charter", entityId: charter.id, title: charter.title || `Charter ${charter.id}` });
+  } catch { /* notify is auxiliary */ }
+
+  return esign;
+}
+
+router.post("/charters/:id/esign", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!documensoConfigured()) { res.status(501).json({ error: "E-sign is not configured (set DOCUMENSO_URL + DOCUMENSO_API_TOKEN)." }); return; }
+  const [charter] = await db.select().from(chartersTable).where(eq(chartersTable.id, id));
+  if (!charter) { res.status(404).json({ error: "Charter not found" }); return; }
+  if (charter.status !== "parallel_review") { res.status(409).json({ error: `Charter is ${charter.status}; e-sign covers the DOA parallel-review stage — submit the charter first.` }); return; }
+
+  try {
+    const esign = await sendCharterEsign(charter);
+    const [updated] = await db.select().from(chartersTable).where(eq(chartersTable.id, id));
+    res.json({ ...formatCharter(updated), esign });
+  } catch (e) {
+    const status = (e as { statusCode?: number }).statusCode ?? 502;
+    res.status(status).json({ error: status === 502 ? `Failed to send for e-signature: ${(e as Error).message}` : (e as Error).message, ...(status === 409 ? { esign: charter.esign } : {}) });
   }
 });
 

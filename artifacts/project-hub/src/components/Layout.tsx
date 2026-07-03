@@ -2,15 +2,13 @@ import { Link, useLocation } from "wouter";
 import { useUserStore } from "../lib/store";
 import { useTheme } from "../lib/use-theme";
 import { useAuth } from "../auth/context";
-import { Settings, Plug, Moon, Sun, LogOut } from "lucide-react";
+import { Settings, Plug, Moon, Sun, LogOut, Compass } from "lucide-react";
 import { useState, useEffect } from "react";
 import { AppHeader } from "@granules/shared/components/AppHeader";
 import PmoSidebar from "./PmoSidebar";
 import { NotificationBell } from "./notification-bell";
 import { ConnectorsPopup } from "./ConnectorsPopup";
 import { CharterNfaPopup } from "./CharterNfaPopup";
-
-const ADMIN_ROLES = ["pmo", "executive_director", "chairman"];
 
 function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
@@ -29,7 +27,7 @@ function ThemeToggle() {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
-  const { role, setRole } = useUserStore();
+  const { role, setRole, setIsSuperAdmin } = useUserStore();
   const { profile, signOut } = useAuth();
 
   const displayName = profile?.full_name || profile?.email || "Signed in";
@@ -43,8 +41,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // "Business Case" CTA opens the two-card workflow chooser popup.
   const openBusinessCase = () => { setMobileOpen(false); setCharterNfaOpen(true); };
 
-  // Close mobile drawer on route change.
-  useEffect(() => { setMobileOpen(false); }, [location]);
+  // Close mobile drawer + the Business Case chooser on route change (so the
+  // tour navigating into a charter form doesn't leave the popup hanging over it).
+  useEffect(() => { setMobileOpen(false); setCharterNfaOpen(false); }, [location]);
+
+  // Let the guided tour drive the Business Case chooser directly (so it doesn't
+  // depend on the sidebar CTA, which is hidden when the rail is collapsed).
+  useEffect(() => {
+    const open = () => setCharterNfaOpen(true);
+    const close = () => setCharterNfaOpen(false);
+    window.addEventListener("pmo:tour:open-business-case", open);
+    window.addEventListener("pmo:tour:close-business-case", close);
+    return () => {
+      window.removeEventListener("pmo:tour:open-business-case", open);
+      window.removeEventListener("pmo:tour:close-business-case", close);
+    };
+  }, []);
 
   // Sync the UI role from the user's REAL role (resolved from the master
   // employee DB, returned by /api/users/me). Authorization is enforced
@@ -52,11 +64,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     fetch("/api/users/me", { credentials: "include" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((me) => { if (me?.pmoRole) setRole(me.pmoRole); })
+      .then((me) => { if (me?.pmoRole) setRole(me.pmoRole); setIsSuperAdmin(!!me?.isSuperAdmin); })
       .catch(() => {});
-  }, [setRole]);
+  }, [setRole, setIsSuperAdmin]);
 
-  const isAdmin = ADMIN_ROLES.includes(role);
+  // PMO has no functional roles anymore — every PMO user sees all sections,
+  // including the Admin section + admin topbar tools.
+  const isAdmin = true;
   const isSuperAdmin = !!profile?.is_super_admin;
 
   // Signed-in identity — moved out of the top bar to the sidebar foot.
@@ -115,6 +129,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
             }
             actions={
               <>
+                <button
+                  onClick={() => window.dispatchEvent(new Event("pmo:start-tour-live"))}
+                  title="Take a guided tour"
+                  aria-label="Take a guided product tour"
+                  className="hidden md:flex w-9 h-9 rounded-md items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors duration-200"
+                >
+                  <Compass size={16} />
+                </button>
                 <ThemeToggle />
                 <NotificationBell />
                 {isAdmin && (
@@ -143,6 +165,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div key={location} className="relative w-full px-4 sm:px-6 lg:px-8 pt-3 pb-6 lg:pb-8 ph-rise">
             {children}
           </div>
+          {/* Powered by TXO — sits at the end of the page, seen on scroll. */}
+          <footer className="px-4 sm:px-6 lg:px-8 pt-4 pb-4 flex items-center justify-center gap-2 text-[11px] font-medium text-muted-foreground border-t border-border/50">
+            <span className="leading-none">Powered by</span>
+            <img src="/txo-logo.png" alt="TXO" className="h-4 w-auto object-contain block -translate-y-[10%]" />
+          </footer>
         </div>
       </div>
 

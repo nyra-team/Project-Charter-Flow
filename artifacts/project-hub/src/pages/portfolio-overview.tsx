@@ -22,6 +22,64 @@ import { HEALTH_META, type Health } from "../lib/health";
 import { chartTooltipProps, HoverHint } from "@/components/ui-kit";
 import { Table, TableHeader, TableBody, TableFooter, TableHead, TableRow, TableCell } from "@/components/ui/table";
 
+// Minimal shape of a milestone from GET /api/milestones (enriched list).
+type MilestoneLite = {
+  id: number; projectId: number; projectName?: string | null;
+  name: string; dueDate?: string | null; status?: string | null; rag?: string | null;
+};
+
+const RAG_DOT: Record<string, string> = { green: "bg-success", amber: "bg-warn", red: "bg-destructive" };
+const fmtDue = (d?: string | null) => (d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" }) : "—");
+
+// "Due in 30 Days" drill body: one collapsible row per project, expanding to the
+// project's milestones due within 30 days.
+function MilestonesDueAccordion({ groups }: { groups: Array<{ projectId: number; projectName: string; milestones: MilestoneLite[] }> }) {
+  const [, navigate] = useLocation();
+  const [open, setOpen] = useState<Set<number>>(() => new Set(groups[0] ? [groups[0].projectId] : []));
+  const toggle = (id: number) => setOpen((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+
+  if (groups.length === 0) {
+    return <p className="text-xs text-muted-foreground text-center py-10">No milestones due in the next 30 days.</p>;
+  }
+  return (
+    <div className="space-y-1.5">
+      {groups.map((g) => {
+        const isOpen = open.has(g.projectId);
+        return (
+          <div key={g.projectId} className="rounded-lg border border-border/60 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => toggle(g.projectId)}
+              className="w-full flex items-center gap-2 px-3 py-2 bg-muted/40 hover:bg-muted/60 transition-colors text-left"
+            >
+              {isOpen ? <ChevronDown size={14} className="text-muted-foreground shrink-0" /> : <ChevronRight size={14} className="text-muted-foreground shrink-0" />}
+              <span className="text-[12px] font-semibold text-card-foreground truncate flex-1">{g.projectName}</span>
+              <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-warn/10 text-warn px-2 py-0.5 text-[10px] font-semibold num-tabular">
+                {g.milestones.length} due
+              </span>
+            </button>
+            {isOpen && (
+              <ul className="divide-y divide-border/40">
+                {g.milestones.map((m) => (
+                  <li
+                    key={m.id}
+                    className="flex items-center gap-2 px-3 py-1.5 pl-8 hover:bg-primary/[0.05] cursor-pointer"
+                    onClick={() => navigate(`/projects/${g.projectId}`)}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${RAG_DOT[(m.rag ?? "").toLowerCase()] ?? "bg-muted-foreground/50"}`} />
+                    <span className="text-[11.5px] text-card-foreground truncate flex-1">{m.name}</span>
+                    <span className="text-[11px] text-muted-foreground num-tabular shrink-0">{fmtDue(m.dueDate)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Chart palette ─────────────────────────────────────────────────────────────
 // Health hex live in lib/health.ts (HEALTH_HEX); these add the chart-only
 // accent hues (indigo/violet) the bars and donut use.
@@ -163,6 +221,10 @@ function deliveryHealthKey(
   const actualPct = total > 0 ? (done / total) * 100 : (p.progress ?? 0);
   const start = p.start ? new Date(p.start.slice(0, 10)).getTime() : null;
   const end = p.end ? new Date(p.end.slice(0, 10)).getTime() : null;
+
+  // Finished (all tasks done / 100%) → on track, even if past due. Without this,
+  // a completed-but-not-flagged project past its end date reads as Delayed.
+  if (actualPct >= 100) return "on_track";
 
   // Delayed — past the target end date and not complete.
   if (end != null && end < now) return "delayed";
@@ -448,6 +510,17 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
       return r.json() as Promise<Array<{ projectId?: number | null; status?: string | null; n: number }>>;
     },
   });
+
+  // All milestones across non-closed projects (enriched with projectName) —
+  // powers the "Due in 30 Days" drill-down accordion.
+  const { data: allMilestones = [] } = useQuery({
+    queryKey: ["/api/milestones"],
+    queryFn: async () => {
+      const r = await fetch("/api/milestones", { credentials: "include" });
+      if (!r.ok) return [] as MilestoneLite[];
+      return r.json() as Promise<MilestoneLite[]>;
+    },
+  });
   const taskAgg = useMemo(() => {
     const m = new Map<number, TaskAgg>();
     for (const t of taskStats) {
@@ -656,11 +729,12 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
 
   // Top Strategic Projects — top 10 active projects by progress, rendered in the
   // drill popup exactly like the chairman/executive dashboard's section.
-  const topProjects = useMemo(() =>
-    [...projects]
-      .filter((p) => p.status === "active")
-      .sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0))
-      .slice(0, 10)
+  const topProjects = useMemo(() => {
+    // For now the Top Strategic list is just the CIP (confidential) projects —
+    // Metoprolol today. No cap. Broaden to top-by-progress later if needed.
+    const isCip = (p: unknown) => (p as Record<string, unknown>).confidential === true;
+    return projects
+      .filter((p) => p.status === "active" && isCip(p))
       .map((p) => {
         // Functional head = the CXO who heads this project's department/function.
         const headCode = leaderCodeForFunction(p.function);
@@ -672,8 +746,8 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
           functionalHead: headCode ? (leaderNameByCode.get(headCode) ?? "—") : "—",
           end: p.endDate,
         };
-      }),
-  [projects, leaderNameByCode]);
+      });
+  }, [projects, leaderNameByCode]);
   // Columns mirror the dashboard's Top Strategic Projects table (RAG badge,
   // progress bar, sponsor, due date).
   const topDrillCols: DrillColumn[] = [
@@ -787,32 +861,63 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
   const now = new Date();
   const activeFiltered = filtered.filter((p) => p.status === "active");
   const totalPlanned = activeFiltered.reduce((s, p) => s + (p.capexBudget ?? 0) + (p.opexBudget ?? 0), 0);
-  const avgProgress = activeFiltered.length > 0 ? activeFiltered.reduce((s, p) => s + (p.progress ?? 0), 0) / activeFiltered.length : 0;
-  const estimatedSpend = totalPlanned * (avgProgress / 100);
-  const budgetVariancePct = totalPlanned > 0 ? Math.round(((estimatedSpend - totalPlanned * 0.5) / totalPlanned) * 100) : 0;
-  const datedActive = activeFiltered.filter((p) => p.startDate && p.endDate);
-  const schedVarianceDays = Math.round(datedActive.reduce((s, p) => {
-    const start = new Date(p.startDate!), end = new Date(p.endDate!);
-    const totalDays = Math.max(1, (end.getTime() - start.getTime()) / 86400000);
-    const elapsed = Math.max(0, (now.getTime() - start.getTime()) / 86400000);
-    const expected = Math.min(100, (elapsed / totalDays) * 100);
-    return s + ((((p.progress ?? 0) - expected) / 100) * totalDays);
-  }, 0) / Math.max(1, datedActive.length));
-  const upcomingIn30 = activeFiltered.filter((p) => {
-    if (!p.endDate) return false;
-    const d = new Date(p.endDate);
-    return d >= now && d.getTime() <= now.getTime() + 30 * 86400000;
-  });
+  // Standard, actuals-based variances — use the per-project values the API enriches
+  // each project with (api-server/src/routes/projects.ts), NOT a frontend heuristic:
+  //   Budget Variance %  = (Actual − Baseline) ÷ Baseline × 100, from budget-line actuals.
+  //   Schedule Variance  = avg of the project's milestones' (actual finish − planned due) days.
+  // Rolled up over EVERY in-view project that actually carries the data (not just
+  // status=active) — a project with budget-line actuals or finished milestones
+  // contributes whatever its status. Budget-weighted mean of %; simple mean of days.
+  const enrichedNum = (p: (typeof filtered)[number], key: string): number | null => {
+    const v = (p as unknown as Record<string, unknown>)[key];
+    return typeof v === "number" ? v : null;
+  };
+  const budgetVarItems = filtered
+    .map((p) => ({ pct: enrichedNum(p, "budgetVariancePct"), w: (p.capexBudget ?? 0) + (p.opexBudget ?? 0) }))
+    .filter((r): r is { pct: number; w: number } => r.pct != null);
+  const budgetWsum = budgetVarItems.reduce((s, r) => s + r.w, 0);
+  const budgetVariancePct = budgetVarItems.length === 0
+    ? 0
+    : budgetWsum > 0
+      ? Math.round(budgetVarItems.reduce((s, r) => s + r.pct * r.w, 0) / budgetWsum)
+      : Math.round(budgetVarItems.reduce((s, r) => s + r.pct, 0) / budgetVarItems.length);
+  const schedVarItems = filtered
+    .map((p) => ({ p, days: enrichedNum(p, "scheduleVarianceDays") }))
+    .filter((r): r is { p: (typeof filtered)[number]; days: number } => r.days != null);
+  const schedVarianceDays = schedVarItems.length
+    ? Math.round(schedVarItems.reduce((s, r) => s + r.days, 0) / schedVarItems.length)
+    : 0;
 
-  const schedDrillRows = datedActive.map((p) => {
-    const start = new Date(p.startDate!), end = new Date(p.endDate!);
-    const totalDays = Math.max(1, (end.getTime() - start.getTime()) / 86400000);
-    const elapsed = Math.max(0, (now.getTime() - start.getTime()) / 86400000);
-    const expected = Math.min(100, (elapsed / totalDays) * 100);
-    const varDays = Math.round((((p.progress ?? 0) - expected) / 100) * totalDays);
-    return { name: p.name, progress: `${p.progress ?? 0}%`, expected: `${Math.round(expected)}%`, variance: `${varDays >= 0 ? "+" : ""}${varDays}d` };
-  });
-  const dueDrillRows = upcomingIn30.map((p) => ({ name: p.name, due: fmtD(p.endDate) }));
+  // Milestones due within the next 30 days, across ALL projects, grouped by
+  // project — drives the "Due in 30 Days" card's accordion drill-down.
+  const milestonesDueIn30 = useMemo(() => {
+    const horizon = now.getTime() + 30 * 86400000;
+    return (allMilestones as MilestoneLite[]).filter((m) => {
+      if (!m.dueDate) return false;
+      if (m.status === "completed" || m.status === "done") return false;
+      const t = new Date(m.dueDate).getTime();
+      return Number.isFinite(t) && t >= now.getTime() && t <= horizon;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMilestones]);
+
+  const milestoneGroups = useMemo(() => {
+    const byProject = new Map<number, { projectId: number; projectName: string; milestones: MilestoneLite[] }>();
+    for (const m of milestonesDueIn30) {
+      const g = byProject.get(m.projectId) ?? { projectId: m.projectId, projectName: m.projectName ?? `Project ${m.projectId}`, milestones: [] };
+      g.milestones.push(m);
+      byProject.set(m.projectId, g);
+    }
+    // Soonest-due milestone first within each project; projects ordered by their earliest due.
+    const groups = [...byProject.values()];
+    for (const g of groups) g.milestones.sort((a, b) => new Date(a.dueDate!).getTime() - new Date(b.dueDate!).getTime());
+    groups.sort((a, b) => new Date(a.milestones[0]!.dueDate!).getTime() - new Date(b.milestones[0]!.dueDate!).getTime());
+    return groups;
+  }, [milestonesDueIn30]);
+
+  const schedDrillRows = schedVarItems.map(({ p, days }) => ({
+    name: p.name, progress: `${p.progress ?? 0}%`, variance: `${days >= 0 ? "+" : ""}${days}d`,
+  }));
   const REVIEW_STAGES = ["parallel_review", "scm_review", "chairman_review", "finance_review", "pmo_review", "submitted"];
   const approvalDrillRows = (summary?.chartersByStatus ?? [])
     .filter((c) => REVIEW_STAGES.includes(c.status))
@@ -904,12 +1009,12 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
         </div>
         <div className="ph-rise ph-rise-3">
           <KPITile featured label="Off Track" value={counts.at_risk} icon={AlertTriangle} tone="warn" valueClassName="text-warn" sub={`${Math.round(counts.at_risk / n * 100)}% of portfolio`}
-            hint={{ rows: [{ label: "Share of portfolio", value: `${Math.round(counts.at_risk / n * 100)}%` }], footer: "Behind schedule." }}
+            hint={{ rows: [{ label: "Share of portfolio", value: `${Math.round(counts.at_risk / n * 100)}%` }], footer: DELIVERY_LEGEND_DESC.off_track }}
             drill={{ subtitle: "Projects behind schedule (>15% off the timeline)", columns: projectDrillColsJustified, rows: projectRowsByHealth("at_risk"), rowHref: projectRowHref, emptyText: "No off-track projects." }} />
         </div>
         <div className="ph-rise ph-rise-4">
           <KPITile featured label="Delayed" value={counts.delayed} icon={AlertOctagon} tone="danger" valueClassName="text-destructive" sub={`${Math.round(counts.delayed / n * 100)}% of portfolio`}
-            hint={{ rows: [{ label: "Share of portfolio", value: `${Math.round(counts.delayed / n * 100)}%` }], footer: "Past its due date." }}
+            hint={{ rows: [{ label: "Share of portfolio", value: `${Math.round(counts.delayed / n * 100)}%` }], footer: DELIVERY_LEGEND_DESC.delayed }}
             drill={{ subtitle: "Projects past their planned end date", columns: projectDrillColsJustified, rows: projectRowsByHealth("delayed"), rowHref: projectRowHref, emptyText: "No delayed projects." }} />
         </div>
         <div className="ph-rise ph-rise-4">
@@ -928,25 +1033,30 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
           trendLabel={budgetVariancePct > 0 ? "Over baseline" : "Under baseline"}
           hint={{
             rows: [
-              { label: "Planned (active)", value: formatCurrency(totalPlanned) },
-              { label: "Est. spend", value: formatCurrency(Math.round(estimatedSpend)) },
-              { label: "Avg progress", value: `${Math.round(avgProgress)}%` },
+              { label: "Planned budget (active)", value: formatCurrency(totalPlanned) },
+              { label: "Projects costed", value: budgetVarItems.length },
             ],
-            footer: "How much over or under budget the portfolio is.",
+            footer: "(Actual spend − Planned budget) ÷ Planned budget",
           }}
           drill={{ subtitle: "Budget per active project (CapEx + OpEx) feeding the variance", columns: budgetDrillCols, rows: budgetDrillRows, rowHref: projectRowHref, emptyText: "No project budgets." }} />
         <KPITile compact label="Schedule Variance" value={`${schedVarianceDays >= 0 ? "+" : ""}${schedVarianceDays}d`} icon={Calendar}
-          tone={schedVarianceDays < -5 ? "danger" : schedVarianceDays < 0 ? "warn" : "success"}
-          trend={schedVarianceDays >= 0 ? "up" : "down"}
-          trendLabel={schedVarianceDays >= 0 ? "Ahead of plan" : "Behind plan"}
+          tone={schedVarianceDays > 5 ? "danger" : schedVarianceDays > 0 ? "warn" : "success"}
+          trend={schedVarianceDays <= 0 ? "up" : "down"}
+          trendLabel={schedVarianceDays <= 0 ? "On / ahead of plan" : "Behind plan"}
           hint={{
-            rows: [{ label: "Projects with dates", value: datedActive.length }],
-            footer: "How many days ahead of or behind schedule the portfolio is.",
+            rows: [{ label: "Projects measured", value: schedVarItems.length }],
+            footer: "Actual finish date − Planned finish date (in days)",
           }}
-          drill={{ subtitle: "Schedule variance per active project (progress vs elapsed time)", columns: [{ key: "name", label: "Project" }, { key: "progress", label: "Progress", align: "right" }, { key: "expected", label: "Expected", align: "right" }, { key: "variance", label: "Variance", align: "right" }], rows: schedDrillRows, rowHref: projectRowHref, emptyText: "No projects with start/end dates." }} />
-        <KPITile compact label="Due in 30 Days" value={upcomingIn30.length} icon={Clock} tone="amber" sub="Upcoming deadlines"
-          hint={{ footer: "Active projects whose planned end date falls within the next 30 days." }}
-          drill={{ subtitle: "Active projects due within 30 days", columns: [{ key: "name", label: "Project" }, { key: "due", label: "Due Date" }], rows: dueDrillRows, rowHref: projectRowHref, emptyText: "No deadlines in the next 30 days." }} />
+          drill={{ subtitle: "Schedule variance per active project (milestone actual vs planned finish)", columns: [{ key: "name", label: "Project" }, { key: "progress", label: "Progress", align: "right" }, { key: "variance", label: "Variance", align: "right" }], rows: schedDrillRows, rowHref: projectRowHref, emptyText: "No projects with milestone schedule data." }} />
+        <KPITile compact label="Due in 30 Days" value={milestonesDueIn30.length} icon={Clock} tone="amber" sub={`${milestoneGroups.length} project${milestoneGroups.length === 1 ? "" : "s"}`}
+          hint={{ footer: "Milestones across all projects whose due date falls within the next 30 days." }}
+          drill={{
+            subtitle: "Milestones due within 30 days, grouped by project",
+            content: <MilestonesDueAccordion groups={milestoneGroups} />,
+            rows: milestonesDueIn30.map((m) => ({ project: m.projectName ?? `Project ${m.projectId}`, milestone: m.name, due: fmtDue(m.dueDate) })),
+            columns: [{ key: "project", label: "Project" }, { key: "milestone", label: "Milestone" }, { key: "due", label: "Due" }],
+            emptyText: "No milestones due in the next 30 days.",
+          }} />
         <KPITile compact label="Pending Approvals" value={summary?.pendingApprovals ?? 0} icon={FileText} tone="primary" sub="Awaiting action"
           hint={{ footer: "Charters currently sitting in a review stage (submitted → PMO review), awaiting an approver decision." }}
           drill={{ subtitle: "Charters in review stages", columns: [{ key: "stage", label: "Review Stage" }, { key: "count", label: "Charters", align: "right" }], rows: approvalDrillRows, linkHref: "/approvals", linkLabel: "Open approvals queue", emptyText: "No charters awaiting review." }} />
@@ -1017,34 +1127,43 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
         <DashboardCard title="Project Health" subtitle="Health distribution"
           drill={{ subtitle: "Project count by health status", columns: [{ key: "status", label: "Status" }, { key: "projects", label: "Projects", align: "right" }], rows: statusDrillRows, emptyText: "No projects match the filters." }}>
-          <ResponsiveContainer width="100%" height={120}>
-            <BarChart data={statusBars} layout="vertical" margin={{ top: 8, right: 28, bottom: 4, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={72} />
-              <Tooltip {...chartTooltipProps} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
-              <Bar dataKey="value" radius={[0, 6, 6, 0]} maxBarSize={28}>
-                <LabelList dataKey="value" position="right" style={{ fontSize: 12, fontWeight: 700, fill: "hsl(var(--foreground))" }} />
-                {statusBars.map((e, i) => <Cell key={i} fill={e.color} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          {/* Hand-rolled bar list — Recharts drops zero-width bars (and their
+              labels), so On Track / Delayed vanished when they were 0. Four
+              fixed rows always render: name, proportional bar, count beside. */}
+          <div className="flex flex-col justify-center gap-2.5 h-[120px] px-1">
+            {statusBars.map((s) => {
+              const max = Math.max(...statusBars.map((b) => b.value), 1);
+              return (
+                <div key={s.name} className="flex items-center gap-2">
+                  <span className="w-[72px] shrink-0 text-[11px] text-muted-foreground text-right">{s.name}</span>
+                  <div className="flex-1 h-5 rounded-md bg-muted/40 overflow-hidden">
+                    <div className="h-full rounded-md" style={{ width: `${(s.value / max) * 100}%`, background: s.color }} />
+                  </div>
+                  <span className="w-6 shrink-0 text-[12px] font-bold num-tabular text-foreground text-right">{s.value}</span>
+                </div>
+              );
+            })}
+          </div>
         </DashboardCard>
 
         <DashboardCard title="Budget vs Spend" subtitle="Spend estimated as Σ(budget × % complete)"
           drill={{ subtitle: "Budget vs estimated spend, per project", columns: budgetDrillCols, rows: budgetDrillRows, rowHref: projectRowHref, emptyText: "No project budgets." }}>
-          <ResponsiveContainer width="100%" height={120}>
-            <BarChart data={[{ name: "Budget", v: totalBudget, c: C.indigo }, { name: "Est. Spend", v: totalSpend, c: C.violet }]} layout="vertical" margin={{ top: 8, right: 48, bottom: 4, left: 8 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={v => `₹${(v / 1e6).toFixed(0)}M`} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={72} />
-              <Tooltip {...chartTooltipProps} formatter={(v: number) => [formatCurrency(v), ""]} cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }} />
-              <Bar dataKey="v" radius={[0, 6, 6, 0]} maxBarSize={36}>
-                <LabelList dataKey="v" position="right" formatter={(v: number) => `₹${(v / 1e6).toFixed(1)}M`} style={{ fontSize: 11, fontWeight: 700, fill: "hsl(var(--foreground))" }} />
-                {[C.indigo, C.violet].map((c, i) => <Cell key={i} fill={c} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          {/* Hand-rolled bar list — same treatment as Project Health so a zero
+              budget/spend row still renders its label beside the bar. */}
+          <div className="flex flex-col justify-center gap-2.5 h-[120px] px-1">
+            {[{ name: "Budget", v: totalBudget, c: C.indigo }, { name: "Est. Spend", v: totalSpend, c: C.violet }].map((s) => {
+              const max = Math.max(totalBudget, totalSpend, 1);
+              return (
+                <div key={s.name} className="flex items-center gap-2">
+                  <span className="w-[72px] shrink-0 text-[11px] text-muted-foreground text-right">{s.name}</span>
+                  <div className="flex-1 h-5 rounded-md bg-muted/40 overflow-hidden">
+                    <div className="h-full rounded-md" style={{ width: `${(s.v / max) * 100}%`, background: s.c }} />
+                  </div>
+                  <span className="w-12 shrink-0 text-[11px] font-bold num-tabular text-foreground text-right">{`₹${(s.v / 1e6).toFixed(1)}M`}</span>
+                </div>
+              );
+            })}
+          </div>
         </DashboardCard>
 
         <DashboardCard title="Priority Mix" subtitle="Projects by priority band"

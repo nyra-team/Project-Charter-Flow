@@ -14,6 +14,7 @@ export const milestonesTable = pgTable("pmo_milestones", {
   // apps/pmo/scripts/add-milestone-start-date.sql migration.
   startDate: text("start_date"),
   dueDate: text("due_date"),
+  dueDateHistory: text("due_date_history").notNull().default("[]"),
   actualStart: text("actual_start"),
   actualEnd: text("actual_end"),
   status: text("status").notNull().default("not_started"),
@@ -31,9 +32,17 @@ export const milestonesTable = pgTable("pmo_milestones", {
   stage: text("stage"),
   plannedEffortHours: integer("planned_effort_hours").notNull().default(0),
   scheduleVarianceDays: integer("schedule_variance_days").notNull().default(0),
+  // Reason recorded when the due date was auto-extended because a child task's
+  // end date ran past it (carried from the task's justification).
+  justification: text("justification"),
   readinessChecklist: jsonb("readiness_checklist").notNull().default([]),
   gateDecision: text("gate_decision"),
   order: integer("order").notNull().default(0),
+  // Finish-to-start predecessor: the milestone that must complete before this
+  // one starts. Delivery milestones are auto-chained (each one's predecessor is
+  // the prior milestone in `order`) so the Gantt can draw M1→M2→M3 arrows.
+  // Nullable: the first milestone in a chain (and ad-hoc milestones) have none.
+  predecessorId: integer("predecessor_id"),
   // Jira sync mapping (nullable). A Jira *Epic* imports into a milestone:
   // jiraKey = linked Epic issue key (e.g. "MYG-42"); jiraSyncedAt = last
   // import/sync time. Mirrors the same columns on pmo_tasks / pmo_projects

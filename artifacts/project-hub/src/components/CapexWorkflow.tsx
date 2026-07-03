@@ -13,8 +13,10 @@ import { api } from "@/lib/extra-api";
 import { useToast } from "@/hooks/use-toast";
 import { useUserStore } from "../lib/store";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { ReferenceDocUpload } from "./ReferenceDocUpload";
+import { FUNCTIONS_LIST } from "../lib/lifecycle-config";
 
 // ── Shared chrome — copied verbatim from charter-template-new.tsx ────────────
 function Section({ title, subtitle, required, children }: {
@@ -232,7 +234,7 @@ export function CapexWorkflow() {
             <Field label="Purpose of Capex"><AutoTextarea value={v("purpose")} onChange={txt("purpose")} minRows={3} placeholder="What this capital expenditure is for…" className="w-full text-xs px-2.5 py-1.5 focus:outline-none" /></Field>
           </Section>
 
-          <Section title="Project Type">{checks(PROJECT_TYPES)}</Section>
+          <div data-tour="tour-capex-options"><Section title="Project Type">{checks(PROJECT_TYPES)}</Section></div>
 
           <Section title="Project Details">
             <Field label="Project Description"><AutoTextarea value={v("project_description")} onChange={txt("project_description")} minRows={2} placeholder="Describe the project scope and deliverables…" className="w-full text-xs px-2.5 py-1.5 focus:outline-none" /></Field>

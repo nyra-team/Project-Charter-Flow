@@ -71,7 +71,7 @@ export default function RfxDetailPage() {
       <button onClick={() => goBack("/rfx")} className="text-sm text-muted-foreground inline-flex items-center gap-1 hover:underline">
         <ArrowLeft size={12} /> Back
       </button>
-      <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div data-tour="tour-rfp-doc" className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">{e.title}</h1>
           <p className="text-sm text-muted-foreground">{e.type.toUpperCase()} • {e.currency}</p>

@@ -47,6 +47,8 @@ export const nfasTable = pgTable("pmo_nfas", {
   customFields: jsonb("custom_fields").notNull().default([]),
   // draft | pending_approval | approved | rejected
   status: text("status").notNull().default("draft"),
+  // Documenso e-sign envelope: { provider, documentId, sentAt, recipients: [{ email, role, signingOrder }] }
+  esign: jsonb("esign"),
   createdById: integer("created_by_id"),
   createdByName: text("created_by_name").notNull().default(""),
   createdByCode: text("created_by_code").notNull().default(""),

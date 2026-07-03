@@ -10,8 +10,8 @@
 // breaching SLA" without a per-task approval workflow.
 // ───────────────────────────────────────────────────────────────────────────
 import { Router, type IRouter } from "express";
-import { db, projectsTable, milestonesTable, tasksTable, usersTable, messagesTable } from "@workspace/db";
-import { eq, ne, inArray, desc, sql } from "drizzle-orm";
+import { db, projectsTable, milestonesTable, tasksTable, usersTable, messagesTable, completionDecisionsTable } from "@workspace/db";
+import { eq, ne, inArray, desc, sql, and, isNotNull, isNull } from "drizzle-orm";
 import { computeStageCriticalPath, type CriticalPath } from "../lib/critical-path";
 import { generateGateMilestones } from "../lib/gate-milestones";
 import { logActivity } from "./activity";
@@ -145,6 +145,9 @@ router.get("/tasks", async (req, res): Promise<void> => {
 // GET /api/task-stats — per-project status counts, computed in SQL.
 // The portfolio board only needs counts per project, not full task objects.
 // ponytail: replaces a 1.3MB /api/tasks fetch + client-side loop that took ~4s.
+// Subtasks are excluded so portfolio health matches the Projects board rule
+// ("subtasks don't count as tasks") — else a project with all top-level tasks
+// done but an open subtask reads Delayed here and Completed there.
 router.get("/task-stats", async (_req, res): Promise<void> => {
   const rows = await db
     .select({
@@ -153,6 +156,7 @@ router.get("/task-stats", async (_req, res): Promise<void> => {
       n: sql<number>`count(*)::int`,
     })
     .from(tasksTable)
+    .where(isNull(tasksTable.parentTaskId))
     .groupBy(tasksTable.projectId, tasksTable.status);
   res.json(rows);
 });
@@ -174,6 +178,68 @@ router.get("/me/tasks", async (req, res): Promise<void> => {
     completed: all.filter((t) => isDone(t.status)),
   };
   res.json(buckets);
+});
+
+// GET /api/me/completion-approvals — task/subtask completions awaiting THIS
+// user's sign-off (they're the resolved approver and a request is pending).
+router.get("/me/completion-approvals", async (req, res): Promise<void> => {
+  const myId = await resolveMyUserId(req.user?.email);
+  if (myId == null) { res.json([]); return; }
+  const rows = await db.select().from(tasksTable)
+    .where(and(eq(tasksTable.completionApproverId, myId), isNotNull(tasksTable.completionRequestedBy)))
+    .orderBy(desc(tasksTable.completionRequestedAt));
+  if (rows.length === 0) { res.json([]); return; }
+  const projs = await db.select({ id: projectsTable.id, name: projectsTable.name })
+    .from(projectsTable).where(inArray(projectsTable.id, [...new Set(rows.map((r) => r.projectId))]));
+  const projName = new Map(projs.map((p) => [p.id, p.name]));
+  const reqIds = [...new Set(rows.map((r) => r.completionRequestedBy).filter(Boolean) as number[])];
+  const reqUsers = reqIds.length
+    ? await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(inArray(usersTable.id, reqIds))
+    : [];
+  const reqName = new Map(reqUsers.map((u) => [u.id, u.name]));
+  res.json(rows.map((t) => ({
+    id: t.id,
+    name: t.name,
+    projectId: t.projectId,
+    projectName: projName.get(t.projectId) ?? `Project ${t.projectId}`,
+    parentTaskId: t.parentTaskId,
+    completionRequestedBy: t.completionRequestedBy,
+    completionApproverId: t.completionApproverId,
+    completionReason: t.completionReason,
+    completionRequestedByName: t.completionRequestedBy != null ? reqName.get(t.completionRequestedBy) ?? null : null,
+    completionRequestedAt: t.completionRequestedAt,
+  })));
+});
+
+// GET /api/me/completion-decisions — log of completions THIS user has signed
+// off (accepted/rejected), newest first, for the Approvals history.
+router.get("/me/completion-decisions", async (req, res): Promise<void> => {
+  const myId = await resolveMyUserId(req.user?.email);
+  if (myId == null) { res.json([]); return; }
+  const rows = await db.select().from(completionDecisionsTable)
+    .where(eq(completionDecisionsTable.approverId, myId))
+    .orderBy(desc(completionDecisionsTable.decidedAt))
+    .limit(50);
+  if (rows.length === 0) { res.json([]); return; }
+  const projs = await db.select({ id: projectsTable.id, name: projectsTable.name })
+    .from(projectsTable).where(inArray(projectsTable.id, [...new Set(rows.map((r) => r.projectId))]));
+  const projName = new Map(projs.map((p) => [p.id, p.name]));
+  const reqIds = [...new Set(rows.map((r) => r.requesterId).filter(Boolean) as number[])];
+  const reqUsers = reqIds.length
+    ? await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(inArray(usersTable.id, reqIds))
+    : [];
+  const reqName = new Map(reqUsers.map((u) => [u.id, u.name]));
+  res.json(rows.map((r) => ({
+    id: r.id,
+    taskId: r.taskId,
+    taskName: r.taskName,
+    projectId: r.projectId,
+    projectName: projName.get(r.projectId) ?? `Project ${r.projectId}`,
+    decision: r.decision,
+    reason: r.reason,
+    requesterName: r.requesterId != null ? reqName.get(r.requesterId) ?? null : null,
+    decidedAt: r.decidedAt,
+  })));
 });
 
 // GET /api/milestones — all milestones across projects, enriched.

@@ -9,7 +9,6 @@ import {
   useUpdateEscalationRule, useDeleteEscalationRule, useListUsers,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { useUserStore } from "../lib/store";
 import { PageHeader } from "@/components/ui-kit";
 import { Input } from "@/components/ui/input";
 import { Zap, Bell, Plus, Trash2, ArrowRight, ShieldCheck } from "lucide-react";
@@ -32,12 +31,11 @@ const RECIPES: {
 ];
 
 const RECIPE_BY_TRIGGER = Object.fromEntries(RECIPES.map((r) => [r.trigger, r]));
-const ADMIN_ROLES = ["pmo", "executive_director", "chairman"];
 
 export default function AutomationsPage() {
   const { toast } = useToast();
-  const { role } = useUserStore();
-  const canEdit = ADMIN_ROLES.includes(role);
+  // PMO has no functional roles anymore — every PMO user can edit automations.
+  const canEdit = true;
   const { data: rules = [], refetch } = useListEscalationRules();
   const { data: users = [] } = useListUsers();
   const createRule = useCreateEscalationRule();
@@ -85,7 +83,7 @@ export default function AutomationsPage() {
       />
 
       {/* Governance reassurance banner */}
-      <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
+      <div data-tour="auto-banner" className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
         <ShieldCheck size={16} className="text-success mt-0.5 flex-shrink-0" />
         <p className="text-xs text-muted-foreground leading-relaxed">
           Automations here configure the same escalation rules your governance engine already evaluates on schedule —
@@ -95,7 +93,7 @@ export default function AutomationsPage() {
 
       {/* Recipe gallery */}
       <div>
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Recipes</h3>
+        <h3 data-tour="auto-recipes" className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Recipes</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {RECIPES.map((r) => (
             <div key={r.trigger} className="rounded-xl border border-card-border bg-card glass-surface p-4 flex flex-col" style={{ borderLeft: `3px solid ${r.accent}` }}>

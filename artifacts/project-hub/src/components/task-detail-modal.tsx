@@ -5,7 +5,7 @@
 // Right sidebar: status + lightning + Improve Task, a dismissable "Pinned fields"
 // panel, and the "Details" panel (Assignee, Priority, Parent, Due date, Labels,
 // Team, Start date, Development, Reporter). Wired to pmo_tasks + pmo_messages.
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useListUsers, useCreateTask } from "@workspace/api-client-react";
@@ -18,6 +18,10 @@ import {
   AtSign, Smile, Check, FolderKanban, Flag, CornerDownRight,
 } from "lucide-react";
 import { api } from "@/lib/extra-api";
+import { CompletionApprovalBanner, useReasonPrompt } from "./CompletionApproval";
+import { useDateJustify } from "@/components/date-justify";
+import { parentEndToExtend } from "@/lib/cascadeParentEnd";
+import { buildWbsCodes, wbsLabel } from "@/lib/wbs";
 import { useToast } from "@/hooks/use-toast";
 import { useUserStore } from "@/lib/store";
 import { PersonAvatar } from "./person-avatar";
@@ -31,7 +35,6 @@ const EMOJIS = "😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 🙃 😉
 
 type AttView = { fileName?: string; name?: string; fileUrl?: string; url?: string } & Record<string, unknown>;
 const attName = (a: AttView) => a.fileName ?? a.name ?? "file";
-const codeOf = (id: number) => `TSK-${String(id).padStart(4, "0")}`;
 
 // Editor toolbar bits. onMouseDown+preventDefault keeps the contentEditable
 // selection so execCommand applies to the highlighted text.
@@ -122,7 +125,7 @@ function AssigneePicker({ value, people, onPick, children, title = "Assign" }: {
 // @mention, emoji, attach, table, divider). Shared so the comment composer has
 // every option the description has. Self-contained (owns its own menu state +
 // contentEditable); `onSave` receives the HTML.
-function RichEditor({
+export function RichEditor({
   people, initialHTML = "", placeholder, autoFocus, minHeight = 64,
   onSave, onCancel, saveLabel = "Save", saving, clearOnSave,
 }: {
@@ -295,6 +298,10 @@ export function TaskDetailModal({
   const { toast } = useToast();
   const qc = useQueryClient();
   const { userId } = useUserStore();
+  // Project-local WBS codes (1, 2, 2.1 …) — shared with the task table so a
+  // subtask shows its parent task's number, not the raw DB id.
+  const wbsCodes = useMemo(() => buildWbsCodes(allTasks), [allTasks]);
+  const codeOf = useCallback((id: number) => wbsLabel(wbsCodes, id), [wbsCodes]);
   const [draft, setDraft] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(true);
   const [editingDesc, setEditingDesc] = useState(false);
@@ -350,6 +357,21 @@ export function TaskDetailModal({
     onSuccess: () => { onRefresh(); toast({ title: "Task updated" }); },
     onError: () => toast({ title: "Update failed", variant: "destructive" }),
   });
+  // Date changes are gated behind a mandatory justification (same modal as the
+  // task table). Routes the start/due edits below through requestDateChange.
+  const { requestDateChange, dateJustifyModal } = useDateJustify();
+
+  // Status changes for a task OR subtask. Completing needs a justification and
+  // (unless you're the approver) goes to the approver for accept/reject — the
+  // backend gates it; here we just collect the reason.
+  const { ask: askComplete, node: completeNode } = useReasonPrompt();
+  const changeStatus = async (taskId: number, v: string) => {
+    if (v !== "completed") { await api.patch(`/api/tasks/${taskId}`, { status: v }); onRefresh(); return; }
+    const reason = await askComplete({ title: "Mark complete — sent to the approver", label: "Justification for completing this task", confirmText: "Request completion" });
+    if (reason == null) return;
+    await api.patch(`/api/tasks/${taskId}`, { status: v, completionReason: reason });
+    onRefresh();
+  };
 
   const addComment = useMutation({
     mutationFn: (body: string) => api.post(`/api/tasks/${task.id}/comments`, { body, attachments: [] }),
@@ -432,6 +454,9 @@ export function TaskDetailModal({
   const linkable = allTasks.filter((t) => t.projectId === task.projectId && t.id !== task.id && t.parentTaskId !== task.id && !deps.includes(t.id));
 
   return (
+    <>
+    {dateJustifyModal}
+    {completeNode}
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="w-[95vw] max-w-[1240px] max-h-[92vh] p-0 gap-0 overflow-hidden flex flex-col bg-white">
         {/* Top bar — Add epic / code  +  right-side icon cluster */}
@@ -494,6 +519,7 @@ export function TaskDetailModal({
         <div className="flex-1 min-h-0 flex">
           {/* ── LEFT (main) — narrower ── */}
           <div className="w-[42%] shrink-0 min-w-0 px-5 pt-3 pb-4 overflow-y-auto">
+            <CompletionApprovalBanner task={task} currentUserId={userId ?? null} onDone={onRefresh} />
             {editingName ? (
               <input
                 autoFocus
@@ -702,7 +728,7 @@ export function TaskDetailModal({
                           <PersonAvatar id={s.assigneeId} name={s.assigneeName ?? "Unassigned"} size={22} />
                         </AssigneePicker>
                         <div className="h-7 w-24 shrink-0 rounded overflow-hidden border border-[#dfe1e6]">
-                          <StatusSelect value={s.status} onChange={(v) => api.patch(`/api/tasks/${s.id}`, { status: v }).then(onRefresh)} />
+                          <StatusSelect value={s.status} onChange={(v) => void changeStatus(s.id, v)} />
                         </div>
                       </div>
                     ))}
@@ -775,13 +801,35 @@ export function TaskDetailModal({
                     {parent ? <span className="truncate text-[#1868db]">{codeOf(parent.id)} · {parent.name}</span> : <span className="text-[#626f86]">None</span>}
                   </SidebarRow>
                   <SidebarRow label="Due date">
-                    <input type="date" defaultValue={task.endDate ?? ""}
-                      onBlur={(e) => { if (e.target.value !== (task.endDate ?? "")) patch.mutate({ endDate: e.target.value || null }); }}
+                    <input type="date" defaultValue={(task.endDate ?? "").slice(0, 10)}
+                      onBlur={(e) => requestDateChange({
+                        taskId: task.id,
+                        // First-time set of a previously-undefined due date skips the
+                        // prompt; only an edit to an already-defined date asks WHY.
+                        firstAssignment: !task.endDate,
+                        changes: [{ label: "Due", from: task.endDate ?? null, to: e.target.value || null }],
+                        apply: (reason) => {
+                          const newEnd = e.target.value || null;
+                          patch.mutate({ endDate: newEnd, justification: reason || undefined });
+                          // If this subtask now ends after its parent, stretch the parent.
+                          const ext = parent && parentEndToExtend(parent.endDate, newEnd);
+                          if (parent && ext) {
+                            api.patch(`/api/tasks/${parent.id}`, { endDate: ext }).then(onRefresh);
+                          }
+                        },
+                      })}
                       className="text-[12px] text-[#172b4d] bg-transparent rounded px-1 py-0.5 outline-none hover:bg-[#f1f2f4] focus:bg-[#f1f2f4] w-fit" />
                   </SidebarRow>
                   <SidebarRow label="Start date">
-                    <input type="date" defaultValue={task.startDate ?? ""}
-                      onBlur={(e) => { if (e.target.value !== (task.startDate ?? "")) patch.mutate({ startDate: e.target.value || null }); }}
+                    <input type="date" defaultValue={(task.startDate ?? "").slice(0, 10)}
+                      onBlur={(e) => requestDateChange({
+                        taskId: task.id,
+                        // First-time set of a previously-undefined start date skips the
+                        // prompt; only an edit to an already-defined date asks WHY.
+                        firstAssignment: !task.startDate,
+                        changes: [{ label: "Start", from: task.startDate ?? null, to: e.target.value || null }],
+                        apply: (reason) => patch.mutate({ startDate: e.target.value || null, justification: reason || undefined }),
+                      })}
                       className="text-[12px] text-[#172b4d] bg-transparent rounded px-1 py-0.5 outline-none hover:bg-[#f1f2f4] focus:bg-[#f1f2f4] w-fit" />
                   </SidebarRow>
                   <SidebarRow label="Reporter">
@@ -799,7 +847,7 @@ export function TaskDetailModal({
             {/* Status + Priority */}
             <div className="flex items-center gap-2 mb-4">
               <div className="relative h-8 w-[130px] rounded border border-[#dfe1e6] overflow-hidden [&_select]:!text-left [&_select]:!pr-6">
-                <StatusSelect value={task.status} onChange={(v) => patch.mutate({ status: v })} />
+                <StatusSelect value={task.status} onChange={(v) => void changeStatus(task.id, v)} />
                 <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-70" />
               </div>
               <div className="relative h-8 w-[110px] rounded border border-[#dfe1e6] overflow-hidden [&_select]:!text-left [&_select]:!pr-6">
@@ -851,5 +899,6 @@ export function TaskDetailModal({
         </div>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

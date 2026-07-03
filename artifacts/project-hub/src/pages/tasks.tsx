@@ -7,10 +7,12 @@ import { PageHeader } from "@/components/ui-kit";
 import { TaskFilterBar, applyTaskFilters, type TaskFilters } from "@/components/task-filter-bar";
 import { ConnectBoard, type BoardTask } from "@/components/connect-board";
 import { TaskDetailModal } from "@/components/task-detail-modal";
+import { useReasonPrompt } from "@/components/CompletionApproval";
 import { WbsTree, type WbsTask, type WbsMilestone } from "@/components/wbs-tree";
 import { TaskStatusChip, PriorityChip } from "@/components/task-status-chip";
 import { HoverHint } from "@/components/ui-kit";
 import { KanbanView } from "@/components/monday/KanbanView";
+import { ActionCard } from "@/components/monday/ActionCard";
 import { CalendarView, type CalendarItem } from "@/components/monday/CalendarView";
 import { PriorityCell, OwnerCell, DateCell, type BoardColumn, type BoardGroup } from "@/components/monday";
 import { PersonAvatar } from "@/components/person-avatar";
@@ -52,6 +54,7 @@ export default function TasksPage() {
   const [projectFilter, setProjectFilter] = useState("");
   const [stageFilter, setStageFilter] = useState("");
   const [openTask, setOpenTask] = useState<AggTask | null>(null);
+  const { ask: askComplete, node: completeNode } = useReasonPrompt();
 
   const refresh = () => qc.invalidateQueries({ queryKey: ["/api/tasks"] });
 
@@ -64,15 +67,36 @@ export default function TasksPage() {
 
   const groups = useMemo(() => groupTasks(filtered, groupBy), [filtered, groupBy]);
 
-  // Kanban — one column per task status, same board as the Projects view.
-  const kanbanGroups = useMemo<BoardGroup<AggTask>[]>(
-    () => TASK_STATUSES.map((s) => ({ key: s.value, label: s.label, color: s.solid, rows: filtered.filter((t) => t.status === s.value) })),
-    [filtered],
-  );
-  const moveTaskToStatus = (rowId: string, status: string) => {
+  // Kanban — columns by the selected axis (Status or Milestone). Status keeps a
+  // fixed set of columns so empty lanes still show; Milestone is data-derived.
+  const kanbanGroups = useMemo<BoardGroup<AggTask>[]>(() => {
+    if (groupBy === "milestone") {
+      const byId = new Map<string, { label: string; rows: AggTask[] }>();
+      for (const t of filtered) {
+        const key = t.milestoneId != null ? String(t.milestoneId) : "none";
+        if (!byId.has(key)) byId.set(key, { label: t.milestoneName ?? "No milestone", rows: [] });
+        byId.get(key)!.rows.push(t);
+      }
+      return [...byId.entries()].map(([key, v]) => ({ key, label: v.label, color: "#6366F1", rows: v.rows }));
+    }
+    return TASK_STATUSES.map((s) => ({ key: s.value, label: s.label, color: s.solid, rows: filtered.filter((t) => t.status === s.value) }));
+  }, [filtered, groupBy]);
+  // Drag-to-move PATCHes the field matching the active group-by axis. Dragging
+  // into the Completed lane needs a justification → routed to the approver.
+  const moveTaskToGroup = async (rowId: string, groupKey: string) => {
     const id = Number(rowId.replace("task:", ""));
     if (!Number.isFinite(id)) return;
-    void api.patch(`/api/tasks/${id}`, { status }).then(refresh);
+    if (groupBy !== "milestone" && groupKey === "completed") {
+      const reason = await askComplete({ title: "Mark complete — sent to the approver", label: "Justification for completing this task", confirmText: "Request completion" });
+      if (reason == null) { refresh(); return; }
+      await api.patch(`/api/tasks/${id}`, { status: groupKey, completionReason: reason });
+      refresh();
+      return;
+    }
+    const patch = groupBy === "milestone"
+      ? { milestoneId: groupKey === "none" ? null : Number(groupKey) }
+      : { status: groupKey };
+    void api.patch(`/api/tasks/${id}`, patch).then(refresh);
   };
   // Calendar — place each task on its due (else start) date.
   const calendarItems = useMemo<CalendarItem[]>(
@@ -91,7 +115,7 @@ export default function TasksPage() {
 
       {/* Filters + group-by */}
       <div className="rounded-2xl bg-card border border-card-border glass-surface p-3 space-y-2">
-        <TaskFilterBar filters={filters} onChange={setFilters} owners={users ?? []} ownerFilter={ownerFilter} onOwnerChange={setOwnerFilter} />
+        <TaskFilterBar filters={filters} onChange={setFilters} owners={users ?? []} ownerFilter={ownerFilter} onOwnerChange={setOwnerFilter} hideStatusPriority={view === "kanban"} />
         <div className="flex flex-wrap items-center gap-2">
           <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="text-xs h-8 rounded-lg border border-input bg-background px-2 outline-none focus:ring-2 focus:ring-ring/40">
             <option value="">All Projects</option>
@@ -114,6 +138,16 @@ export default function TasksPage() {
               </select>
             </div>
           )}
+          {/* Kanban group-by — only the axes we can render as columns + drag-to-move. */}
+          {view === "kanban" && (
+            <div className="flex items-center gap-1.5 ml-auto">
+              <span className="text-[11px] text-muted-foreground uppercase tracking-wider">Group by</span>
+              <select value={groupBy === "milestone" ? "milestone" : "status"} onChange={(e) => setGroupBy(e.target.value as GroupBy)} className="text-xs h-8 rounded-lg border border-input bg-background px-2 outline-none focus:ring-2 focus:ring-ring/40">
+                <option value="status">Status</option>
+                <option value="milestone">Milestone</option>
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -133,10 +167,25 @@ export default function TasksPage() {
         <KanbanView<AggTask>
           groups={kanbanGroups}
           columns={TASK_BOARD_COLUMNS}
+          colWidth={340}
+          sectionStyle="ac"
           getRowId={(t) => `task:${t.id}`}
           getName={(t) => <span className="font-medium">{t.name}</span>}
+          renderCard={(t) => (
+            <ActionCard
+              meta={[t.projectName, t.milestoneName].filter(Boolean).join(" · ")}
+              title={t.name}
+              ownerName={t.assigneeName}
+              ownerPhoto={t.assigneeId != null ? ((users?.find((u) => u.id === t.assigneeId) as { photoUrl?: string | null } | undefined)?.photoUrl ?? null) : null}
+              priority={t.priority}
+              dueDate={t.endDate}
+              progressPct={t.progressPct ?? null}
+              completed={t.status === "completed"}
+              overdue={false}
+            />
+          )}
           onOpenRow={(t) => setOpenTask(t)}
-          onMoveToGroup={moveTaskToStatus}
+          onMoveToGroup={moveTaskToGroup}
         />
       ) : view === "calendar" ? (
         <CalendarView<CalendarItem>
@@ -157,6 +206,7 @@ export default function TasksPage() {
       {openTask && (
         <TaskDetailModal task={openTask} allTasks={(tasks ?? []) as AggTask[]} onClose={() => setOpenTask(null)} onOpenTask={(id) => setOpenTask(((tasks ?? []) as AggTask[]).find((t) => t.id === id) ?? null)} onRefresh={refresh} />
       )}
+      {completeNode}
     </div>
   );
 }

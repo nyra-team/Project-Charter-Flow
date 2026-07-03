@@ -457,6 +457,9 @@ importers:
       docx-preview:
         specifier: ^0.3.6
         version: 0.3.7
+      driver.js:
+        specifier: ^1.6.0
+        version: 1.6.0
       jspdf:
         specifier: ^4.2.1
         version: 4.2.1
@@ -2401,6 +2404,9 @@ packages:
 
   dompurify@3.4.3:
     resolution: {integrity: sha512-VVwJidIJcp1hpg2OMXML3ZVRPYSZiq4aX7qBh83BSIpOaRDqI+qxhXjjIWnpzkOXhmp0L81lnoME1mnCc9H48A==}
+
+  driver.js@1.6.0:
+    resolution: {integrity: sha512-gryo9QS7AZhz8J0bmdf42dwaTzcd1BgSJLnaSM7cPJbu8bTW8wIEuiGDy4MoCvB4Sr8wA9g5o2G9EFNVYZGeVQ==}
 
   drizzle-kit@0.31.9:
     resolution: {integrity: sha512-GViD3IgsXn7trFyBUUHyTFBpH/FsHTxYJ66qdbVggxef4UBPHRYxQaRzYLTuekYnk9i5FIEL9pbBIwMqX/Uwrg==}
@@ -5912,6 +5918,8 @@ snapshots:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
     optional: true
+
+  driver.js@1.6.0: {}
 
   drizzle-kit@0.31.9:
     dependencies:

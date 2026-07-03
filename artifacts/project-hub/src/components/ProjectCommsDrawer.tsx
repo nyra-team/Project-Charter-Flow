@@ -30,6 +30,20 @@ const fmtTime = (s: string) =>
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+// Initials avatar — matches the task-popup comment thread look. Colour is
+// derived from the name so each person is consistently tinted.
+const AVATAR_HUES = ["#6366f1", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6"];
+const CommentAvatar = ({ name }: { name: string }) => {
+  const initials = (name || "?").trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "?";
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return (
+    <span className="shrink-0 inline-flex items-center justify-center rounded-full text-[10px] font-semibold text-white" style={{ width: 24, height: 24, background: AVATAR_HUES[h % AVATAR_HUES.length] }}>
+      {initials}
+    </span>
+  );
+};
+
 // Render a message body with each tagged person's "@<full name>" in blue.
 // Names come from the message's taggedUserIds (resolved), so multi-word names
 // match in full — longest first so a full name wins over a shorter one.
@@ -328,48 +342,12 @@ export function ProjectCommsDrawer({
 
         {view === "communication" ? (
           <>
-            {/* Thread */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-              {isLoading ? (
-                <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 size={18} className="animate-spin" /></div>
-              ) : msgs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center text-center py-10 gap-2 text-muted-foreground/70">
-                  <MessageSquare size={22} className="text-muted-foreground/40" />
-                  <p className="text-sm">No messages yet</p>
-                  <p className="text-[11px]">Start the project conversation or attach a file below.</p>
-                </div>
-              ) : (
-                msgs.map((m) => (
-                  <div key={m.id} className="rounded-lg border border-border bg-muted/20 px-3 py-2">
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-[11px] font-semibold text-foreground truncate">{resolveName(m.senderId)}</span>
-                      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">{fmtTime(m.createdAt)}</span>
-                    </div>
-                    {m.body && <p className="text-[12px] text-foreground/90 whitespace-pre-wrap break-words">{renderBody(m.body, m.taggedUserIds ?? [], resolveName)}</p>}
-                    {(m.attachments ?? []).length > 0 && (
-                      <div className="mt-2 flex flex-col gap-1">
-                        {(m.attachments ?? []).map((att, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => openAttachment(att)}
-                            className="group flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1 text-left hover:border-primary/50 hover:bg-primary/5 transition-colors"
-                          >
-                            <FileText size={13} className="text-primary shrink-0" />
-                            <span className="text-[11px] text-foreground truncate flex-1">{att.fileName}</span>
-                            {att.fileSize ? <span className="text-[10px] text-muted-foreground shrink-0">{fmtSize(att.fileSize)}</span> : null}
-                            <Download size={12} className="text-muted-foreground/50 group-hover:text-primary shrink-0" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Composer */}
-            <div className="border-t border-border px-4 py-3 space-y-2">
+            {/* Composer — top, like the task popup comments view (avatar + editor) */}
+            <div className="border-b border-border px-4 pt-3 pb-3 space-y-2">
+              <p className="text-[12px] font-semibold text-foreground">Comments</p>
+              <div className="flex items-start gap-2">
+                <CommentAvatar name={resolveName(senderId)} />
+                <div className="flex-1 min-w-0 space-y-2">
               {/* Tagged people — chips + add picker */}
               <div className="flex flex-wrap items-center gap-1.5">
                 {tagged.map((uid) => (
@@ -390,7 +368,7 @@ export function ProjectCommsDrawer({
                     <AtSign size={11} /> Tag people
                   </button>
                   {tagOpen && (
-                    <div className="absolute left-0 bottom-full mb-1.5 z-50 w-60 rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
+                    <div className="absolute left-0 top-full mt-1.5 z-50 w-60 rounded-lg border border-border bg-popover text-popover-foreground shadow-lg">
                       <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-border">
                         <Search size={12} className="text-muted-foreground shrink-0" />
                         <input
@@ -427,7 +405,7 @@ export function ProjectCommsDrawer({
               </div>
               <div className="relative">
                 {mentionOpen && mentionMatches.length > 0 && (
-                  <div className="absolute left-0 bottom-full mb-1.5 z-50 w-60 rounded-lg border border-border bg-popover text-popover-foreground shadow-lg py-1 max-h-56 overflow-y-auto">
+                  <div className="absolute left-0 top-full mt-1.5 z-50 w-60 rounded-lg border border-border bg-popover text-popover-foreground shadow-lg py-1 max-h-56 overflow-y-auto">
                     <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Tag a person</div>
                     {mentionMatches.map((p, i) => (
                       <button
@@ -448,7 +426,7 @@ export function ProjectCommsDrawer({
                   value={body}
                   onChange={onBodyChange}
                   onKeyDown={onBodyKeyDown}
-                  placeholder="Write a message…  (@ to tag · Ctrl+Enter to send)"
+                  placeholder="Add a comment…  (@ to tag · Ctrl+Enter to send)"
                   rows={2}
                   className="w-full resize-none rounded-md border border-border bg-background px-2.5 py-1.5 text-[12px] text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-1 focus:ring-primary/40"
                 />
@@ -461,9 +439,54 @@ export function ProjectCommsDrawer({
                   className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-[12px] font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
                 >
                   {sending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-                  {sending ? "Sending…" : "Send"}
+                  {sending ? "Posting…" : "Comment"}
                 </button>
               </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Thread */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+              {isLoading ? (
+                <div className="flex items-center justify-center py-10 text-muted-foreground"><Loader2 size={18} className="animate-spin" /></div>
+              ) : msgs.length === 0 ? (
+                <div className="flex flex-col items-center justify-center text-center py-10 gap-2 text-muted-foreground/70">
+                  <MessageSquare size={22} className="text-muted-foreground/40" />
+                  <p className="text-sm">No comments yet</p>
+                  <p className="text-[11px]">Start the conversation above.</p>
+                </div>
+              ) : (
+                msgs.map((m) => (
+                  <div key={m.id} className="flex items-start gap-2">
+                    <CommentAvatar name={resolveName(m.senderId)} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11px] leading-tight">
+                        <span className="font-medium text-foreground">{resolveName(m.senderId)}</span>
+                        <span className="text-muted-foreground"> · {fmtTime(m.createdAt)}</span>
+                      </p>
+                      {m.body && <p className="text-[12px] text-foreground/90 whitespace-pre-wrap break-words mt-0.5">{renderBody(m.body, m.taggedUserIds ?? [], resolveName)}</p>}
+                      {(m.attachments ?? []).length > 0 && (
+                        <div className="mt-1.5 flex flex-col gap-1">
+                          {(m.attachments ?? []).map((att, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => openAttachment(att)}
+                              className="group flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1 text-left hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                            >
+                              <FileText size={13} className="text-primary shrink-0" />
+                              <span className="text-[11px] text-foreground truncate flex-1">{att.fileName}</span>
+                              {att.fileSize ? <span className="text-[10px] text-muted-foreground shrink-0">{fmtSize(att.fileSize)}</span> : null}
+                              <Download size={12} className="text-muted-foreground/50 group-hover:text-primary shrink-0" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </>
         ) : (

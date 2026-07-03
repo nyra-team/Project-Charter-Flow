@@ -153,9 +153,10 @@ export default function ExecutiveDashboard() {
     return d > cutoff30 && d <= addDays(now, 60);
   });
 
-  const topProjects = [...activeProjects]
-    .sort((a, b) => (b.progress ?? 0) - (a.progress ?? 0))
-    .slice(0, 10);
+  // For now the Top Strategic list is just the CIP (confidential) projects —
+  // Metoprolol today. No cap. Broaden to top-by-progress later if needed.
+  const isCip = (p: unknown) => (p as Record<string, unknown>).confidential === true;
+  const topProjects = activeProjects.filter(isCip);
 
   const isLoading = loadingSummary || loadingProjects;
 

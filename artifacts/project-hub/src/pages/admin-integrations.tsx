@@ -339,7 +339,8 @@ function InboundMcpCard() {
 export default function AdminIntegrationsPage() {
   const { profile } = useAuth();
   const { toast } = useToast();
-  const isAdmin = !!(profile?.is_super_admin || profile?.pmo_role === "admin");
+  // PMO has no functional roles anymore — every PMO user can access integrations.
+  const isAdmin = true;
 
   const [rows, setRows] = useState<IntegrationRow[]>([]);
   const [loading, setLoading] = useState(true);

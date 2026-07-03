@@ -92,7 +92,7 @@ export default function NudgesPage() {
             <p className="text-[10px] font-mono tracking-[0.22em] uppercase text-muted-foreground mb-2 inline-flex items-center gap-1.5">
               <Sparkles size={11} /> Nyra
             </p>
-            <h2 className="text-3xl lg:text-4xl font-bold tracking-tight text-card-foreground">Your Nudges</h2>
+            <h2 data-tour="nud-title" className="text-3xl lg:text-4xl font-bold tracking-tight text-card-foreground">Your Nudges</h2>
             <p className="text-sm text-muted-foreground mt-2 max-w-xl">
               Proactive prompts composed from live PMO signals (overdue tasks, approvals past SLA, RAG-red projects, stuck
               charters, budget breaches). Refreshes every 15 minutes.

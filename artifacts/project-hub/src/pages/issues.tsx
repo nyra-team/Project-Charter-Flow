@@ -6,6 +6,7 @@ import { CheckCircle2, Clock } from "lucide-react";
 // Read-only register of issues individuals have raised against projects.
 type Issue = {
   id: number; projectId: number; title: string; description?: string | null;
+  issueType?: string | null; severity?: string | null; priority?: string | null; dueDate?: string | null;
   status?: string | null; raisedBy?: number | null; blockingOwnerId?: number | null;
   createdAt?: string;
 };
@@ -61,8 +62,16 @@ export default function IssuesList() {
         <div className="min-w-0">
           <p className="text-sm font-semibold text-foreground truncate">{i.title}</p>
           {i.description && <p className="text-[12px] text-muted-foreground line-clamp-2">{i.description}</p>}
+          {(i.issueType || i.severity || i.priority || i.dueDate) && (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {i.issueType && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{i.issueType}</span>}
+              {i.severity && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">Severity: {i.severity}</span>}
+              {i.priority && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">Priority: {i.priority}</span>}
+              {i.dueDate && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">Due {new Date(i.dueDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}</span>}
+            </div>
+          )}
           <p className="text-[11px] text-muted-foreground mt-1">
-            {projName(i.projectId)} · raised by {userName(i.raisedBy)} → to {userName(i.blockingOwnerId)}
+            {projName(i.projectId)} · raised by {userName(i.raisedBy)} · SPOC {userName(i.blockingOwnerId)}
             {i.createdAt ? ` · ${new Date(i.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })}` : ""}
           </p>
         </div>
@@ -78,7 +87,7 @@ export default function IssuesList() {
 
   return (
     <div className="space-y-5">
-      <h2 className="text-lg font-bold text-foreground">Risks / Issues</h2>
+      <h2 data-tour="issues-title" className="text-lg font-bold text-foreground">Risks / Issues</h2>
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading issues…</p>
       ) : (

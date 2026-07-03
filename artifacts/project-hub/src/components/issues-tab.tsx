@@ -9,6 +9,7 @@ import { formatDate } from "../lib/format";
 type Issue = {
   id: number; projectId: number; taskId?: number | null; milestoneId?: number | null;
   title: string; description?: string | null;
+  issueType?: string | null; severity?: string | null; priority?: string | null; dueDate?: string | null;
   dependencyType?: string | null; blockingOwnerId?: number | null; blockingDept?: string | null;
   originalDeadline?: string | null; proposedRevisedDeadline?: string | null;
   status: string; raisedBy?: number | null; resolvedAt?: string | null; resolutionNotes?: string | null;
@@ -73,9 +74,9 @@ export function IssuesTab({ projectId }: { projectId: number }) {
   }
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-1.5">
       {/* Summary tiles */}
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-4 gap-1.5">
         {[
           { key: "open", label: "Open", count: grouped.open ?? 0 },
           { key: "in_progress", label: "In Progress", count: grouped.in_progress ?? 0 },
@@ -87,18 +88,18 @@ export function IssuesTab({ projectId }: { projectId: number }) {
             <button
               key={s.key}
               onClick={() => setStatusFilter(statusFilter === s.key ? "" : s.key)}
-              className="glass-surface lift-card ph-rise rounded-lg px-2.5 py-1.5 text-left transition-all"
+              className="glass-surface lift-card ph-rise rounded-lg px-2 py-1 text-left transition-all flex items-center justify-between gap-1"
               style={{ border: `1px solid ${statusFilter === s.key ? m.color : "hsl(var(--border))"}` }}
             >
               <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: m.color }}>{s.label}</p>
-              <p className="text-lg font-bold leading-tight" style={{ color: m.color }}>{s.count}</p>
+              <p className="text-sm font-bold leading-none" style={{ color: m.color }}>{s.count}</p>
             </button>
           );
         })}
       </div>
 
       {/* Filters */}
-      <div className="glass-surface lift-card ph-rise rounded-lg p-2 flex flex-wrap gap-2 items-center">
+      <div className="glass-surface lift-card ph-rise rounded-lg p-1.5 flex flex-wrap gap-1.5 items-center">
         <span className="text-[10px] font-semibold text-muted-foreground">FILTERS:</span>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="text-xs border border-border rounded-md px-2 py-1">
           <option value="">All statuses</option>
@@ -117,7 +118,7 @@ export function IssuesTab({ projectId }: { projectId: number }) {
 
       {/* List */}
       {filtered.length === 0 ? (
-        <div className="glass-surface lift-card ph-rise rounded-lg p-5 text-center text-xs text-muted-foreground">
+        <div className="glass-surface lift-card ph-rise rounded-lg p-2.5 text-center text-xs text-muted-foreground">
           {issuesArr.length === 0 ? "No issues raised on this project." : "No issues match your filters."}
         </div>
       ) : (
@@ -138,14 +139,18 @@ export function IssuesTab({ projectId }: { projectId: number }) {
                       <span className="text-[10px] font-mono text-muted-foreground">I-{i.id}</span>
                       <p className="text-xs font-semibold text-foreground">{i.title}</p>
                       <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: meta.bg, color: meta.color }}>{i.status.replace("_", " ")}</span>
+                      {i.issueType && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground">{i.issueType}</span>}
+                      {i.severity && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground">Sev: {i.severity}</span>}
+                      {i.priority && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground">Pri: {i.priority}</span>}
                       {i.dependencyType && <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground">{i.dependencyType}</span>}
                     </div>
                     {i.description && <p className="text-[11px] text-muted-foreground mt-0.5">{i.description}</p>}
                     <div className="flex items-center gap-2 mt-1 text-[10px] text-muted-foreground flex-wrap">
                       {taskLabel && <span>↳ Task: <b>{taskLabel}</b></span>}
                       {msLabel && <span>↳ Milestone: <b>{msLabel}</b></span>}
-                      {i.blockingOwnerId && <span>Blocking: <b>{userName(i.blockingOwnerId)}</b></span>}
+                      {i.blockingOwnerId && <span>SPOC: <b>{userName(i.blockingOwnerId)}</b></span>}
                       {i.blockingDept && <span>Dept: <b>{i.blockingDept}</b></span>}
+                      {i.dueDate && <span>Due: {formatDate(i.dueDate)}</span>}
                       {i.originalDeadline && <span>Original: {formatDate(i.originalDeadline)}</span>}
                       {i.proposedRevisedDeadline && <span>Revised: {formatDate(i.proposedRevisedDeadline)}</span>}
                       <span>Raised by {userName(i.raisedBy)}</span>

@@ -14,6 +14,25 @@ import {
   Clock, FileText, MessageSquare, AlertCircle, Stamp, AlertOctagon,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui-kit";
+import { api } from "@/lib/extra-api";
+import { CompletionApprovalBanner } from "@/components/CompletionApproval";
+
+type CompletionApprovalItem = {
+  id: number; name: string; projectId: number; projectName: string; parentTaskId: number | null;
+  completionRequestedBy: number | null; completionApproverId: number | null;
+  completionReason: string | null; completionRequestedByName: string | null;
+};
+
+type CompletionDecisionItem = {
+  id: number; taskId: number; taskName: string | null; projectId: number; projectName: string;
+  decision: "accepted" | "rejected"; reason: string | null; requesterName: string | null; decidedAt: string | null;
+};
+
+function fmtWhen(iso?: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
 
 // SLA badge — token-driven (success / warn / destructive), consistent with the
 // rest of the redesigned surfaces.
@@ -476,6 +495,20 @@ function TeamApprovals() {
 
 export default function ApprovalsList() {
   const { role, userId } = useUserStore();
+  const qc = useQueryClient();
+  // Task/subtask completions awaiting my sign-off (see CompletionApproval).
+  const { data: myCompletions = [] } = useQuery({
+    queryKey: ["/api/me/completion-approvals"],
+    queryFn: () => api.get<CompletionApprovalItem[]>("/api/me/completion-approvals"),
+  });
+  const { data: completionLog = [] } = useQuery({
+    queryKey: ["/api/me/completion-decisions"],
+    queryFn: () => api.get<CompletionDecisionItem[]>("/api/me/completion-decisions"),
+  });
+  const refreshCompletions = () => {
+    qc.invalidateQueries({ queryKey: ["/api/me/completion-approvals"] });
+    qc.invalidateQueries({ queryKey: ["/api/me/completion-decisions"] });
+  };
   // Initiator is a testing/demo role — fetch *all* pending approvals (no
   // approverId filter) so they can drive the workflow forward by deciding
   // as any approver. Other roles only see what's assigned to them.
@@ -499,7 +532,7 @@ export default function ApprovalsList() {
     ? (projectsForCount as Array<{ status?: string | null; stage?: string | null }>)
         .filter(p => p.status !== "closed" && p.stage).length
     : 0;
-  const totalPending = filteredApprovals.length + stageRowCount;
+  const totalPending = filteredApprovals.length + stageRowCount + myCompletions.length;
 
   const roleDesc = ROLE_DESCRIPTIONS[role];
 
@@ -512,7 +545,7 @@ export default function ApprovalsList() {
           : `Items awaiting your review as ${role.replace(/_/g, " ")}`}
         icon={Stamp}
         actions={
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20">
+          <div data-tour="appr-pending" className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20">
             <Clock size={13} className="text-primary" />
             <span className="text-xs font-semibold text-primary">{totalPending} pending</span>
           </div>
@@ -533,6 +566,62 @@ export default function ApprovalsList() {
           <p className="text-sm text-foreground/90">{roleDesc}</p>
         </div>
       ) : null}
+
+      {/* Task/subtask completions awaiting my sign-off */}
+      {myCompletions.length > 0 && (
+        <div>
+          <h3 className="text-sm font-bold text-foreground mb-3 mt-2 flex items-center gap-2">
+            <CheckSquare size={15} className="text-primary" /> Task Completions ({myCompletions.length})
+          </h3>
+          <div className="space-y-3">
+            {myCompletions.map((t) => (
+              <div key={t.id} className="rounded-xl border border-card-border bg-card p-3">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className="text-sm font-semibold text-foreground truncate">
+                    {t.parentTaskId != null ? "Subtask" : "Task"}: {t.name}
+                  </span>
+                  <Link href={`/projects/${t.projectId}?task=${t.id}`}>
+                    <a className="text-[11px] text-primary hover:underline shrink-0">{t.projectName} →</a>
+                  </Link>
+                </div>
+                <CompletionApprovalBanner task={t} currentUserId={userId} onDone={refreshCompletions} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Completion decision log — my past accept/reject sign-offs */}
+      {completionLog.length > 0 && (
+        <div>
+          <h3 className="text-sm font-bold text-foreground mb-2 mt-2 flex items-center gap-2">
+            <Clock size={15} className="text-muted-foreground" /> Completion decision log
+          </h3>
+          <div className="rounded-xl border border-card-border bg-card divide-y divide-border/60">
+            {completionLog.map((d) => (
+              <div key={d.id} className="flex items-start gap-2 px-3 py-2">
+                {d.decision === "accepted"
+                  ? <CheckCircle2 size={15} className="text-success shrink-0 mt-0.5" />
+                  : <XCircle size={15} className="text-destructive shrink-0 mt-0.5" />}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[13px] text-foreground truncate">
+                      <span className={`font-semibold ${d.decision === "accepted" ? "text-success" : "text-destructive"}`}>
+                        {d.decision === "accepted" ? "Accepted" : "Rejected"}
+                      </span>
+                      {" "}completion of <span className="font-medium">{d.taskName ?? `task #${d.taskId}`}</span>
+                    </span>
+                    <span className="text-[11px] text-muted-foreground shrink-0">{fmtWhen(d.decidedAt)}</span>
+                  </div>
+                  <div className="text-[11px] text-muted-foreground truncate">
+                    {d.projectName}{d.requesterName ? ` · requested by ${d.requesterName}` : ""}{d.reason ? ` · “${d.reason}”` : ""}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Initiator-only: per-stage advance panel (covers every lifecycle stage) */}
       {isInitiator && <InitiatorStageAdvancePanel />}

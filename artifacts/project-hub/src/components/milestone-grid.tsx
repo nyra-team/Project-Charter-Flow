@@ -1,7 +1,7 @@
 import { useState, useMemo } from "react";
-import { useUpdateMilestone, useListIssues } from "@workspace/api-client-react";
+import { useUpdateMilestone, useCreateMilestone, useListIssues } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowUpDown, AlertTriangle, Search } from "lucide-react";
+import { ArrowUpDown, AlertTriangle, Search, Plus } from "lucide-react";
 import { StatusSelect, PrioritySelect, RagDot } from "./task-status-chip";
 import { fmtVariance, getStatusMeta, TASK_STATUSES, TASK_PRIORITIES } from "../lib/task-constants";
 import { IssueRaiseModal } from "./issue-raise-modal";
@@ -153,7 +153,23 @@ const RAG_OPTIONS = [
 export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users = [] }: MilestoneGridProps) {
   const { toast } = useToast();
   const updateMilestone = useUpdateMilestone();
+  const createMilestone = useCreateMilestone();
   const { data: issues = [] } = useListIssues(projectId);
+
+  // Manual add — inline name entry, then POST /projects/:id/milestones.
+  const [adding, setAdding] = useState(false);
+  const [newName, setNewName] = useState("");
+  function addMilestone() {
+    const name = newName.trim();
+    if (!name) { setAdding(false); return; }
+    createMilestone.mutate(
+      { id: projectId, data: { name } } as never,
+      {
+        onSuccess: () => { setNewName(""); setAdding(false); onRefresh(); toast({ title: "Milestone added" }); },
+        onError: () => toast({ title: "Couldn't add milestone", variant: "destructive" }),
+      }
+    );
+  }
 
   // Optimistic patches
   const [pendingPatches, setPendingPatches] = useState<Record<number, Record<string, unknown>>>({});
@@ -351,6 +367,26 @@ export function MilestoneGrid({ milestones, tasks, projectId, onRefresh, users =
           </button>
         )}
         <span className="text-xs text-muted-foreground ml-2">{sorted.length} / {milestones.length}</span>
+        {adding ? (
+          <input
+            autoFocus
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onBlur={addMilestone}
+            onKeyDown={e => { if (e.key === "Enter") addMilestone(); if (e.key === "Escape") { setNewName(""); setAdding(false); } }}
+            placeholder="Milestone name, Enter to add"
+            className="text-xs border border-input bg-background text-foreground rounded-lg px-2 py-1.5 h-8 outline-none focus:ring-2 focus:ring-ring/40"
+            style={{ minWidth: 200 }}
+          />
+        ) : (
+          <button
+            onClick={() => setAdding(true)}
+            disabled={createMilestone.isPending}
+            className="ml-auto inline-flex items-center gap-1 text-xs font-semibold text-primary border border-primary/30 hover:bg-primary/10 rounded-lg px-2.5 py-1.5 h-8 disabled:opacity-50"
+          >
+            <Plus size={13} /> Add Milestone
+          </button>
+        )}
       </div>
 
       <div className="glass-surface lift-card ph-rise overflow-x-auto rounded-2xl">

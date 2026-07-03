@@ -15,6 +15,28 @@ import { eq } from "drizzle-orm";
  * Returns the ordered list of role strings (e.g. ["hod","cfo","executive_director","chairman"]).
  * Empty array means no matching band — caller should treat this as a config error.
  */
+// CAPEX DOA defaults — the seeded matrix is keyed Category="Capex",
+// Kind="Capex Material & Services" (see scripts/seed-capex-doa.sql). Both the
+// standalone e-NFA (nfas.ts) and the project Charter+NFA (charters.ts) resolve
+// their DOA through these SAME constants + the location entity, so a project's
+// NFA gets the identical approver chain a standalone e-NFA would for the same
+// (location, amount).
+export const CAPEX_CATEGORY = "Capex";
+export const CAPEX_KIND = "Capex Material & Services";
+
+// Build a signatory grid from a resolved DOA approver chain. The seeded matrix
+// stores each step as { designation, email }; older bands store plain role
+// strings — handle both. Returns [] when nothing resolved.
+export function signatoriesFromChain(chain: unknown[]): Array<{ role: string; name: string; status: "pending" }> {
+  return (chain ?? []).map((c) => {
+    if (c && typeof c === "object") {
+      const o = c as { designation?: string; email?: string; role?: string; name?: string };
+      return { role: o.designation || o.role || "", name: o.email || o.name || "", status: "pending" as const };
+    }
+    return { role: String(c), name: "", status: "pending" as const };
+  }).filter((s) => s.role || s.name);
+}
+
 export type DoaContext = {
   entity?: string | null;
   category?: string | null;

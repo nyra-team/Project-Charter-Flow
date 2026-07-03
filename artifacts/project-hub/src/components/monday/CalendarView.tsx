@@ -83,7 +83,7 @@ export function CalendarView<T extends CalendarItem>({
           return (
             <div
               key={key}
-              className={`min-h-[96px] border-b border-r border-border/50 p-1.5 ${inMonth ? "" : "bg-muted/20"}`}
+              className={`min-h-[64px] border-b border-r border-border/50 p-1 ${inMonth ? "" : "bg-muted/20"}`}
             >
               <div className={`text-[11px] mb-1 inline-flex items-center justify-center w-5 h-5 rounded-full ${
                 isToday ? "bg-primary text-primary-foreground font-bold" : inMonth ? "text-foreground" : "text-muted-foreground/40"

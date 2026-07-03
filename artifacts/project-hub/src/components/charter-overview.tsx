@@ -5,20 +5,45 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { FileText, Info } from "lucide-react";
+import { FileText, Info, Activity, ListChecks, Flag, HeartPulse } from "lucide-react";
+import { KPITile } from "./dashboard/primitives";
 import { HoverHint } from "./ui-kit/HoverHint";
+import { AttachmentPopover } from "./AttachmentPopover";
 import { api } from "@/lib/extra-api";
 import { formatCurrency } from "../lib/format";
 import { getStatusMeta } from "../lib/task-constants";
 
 type AnyRec = Record<string, unknown>;
 type TaskLite = { id?: number; name?: string; status: string; parentTaskId?: number | null; milestoneId?: number | null };
-type MsLite = { id: number; name: string; dueDate?: string | null; status: string };
+type MsLite = { id: number; name: string; dueDate?: string | null; startDate?: string | null; status: string; progressPct?: number | null; dueDateHistory?: string | null };
 
 const str = (c: AnyRec, k: string): string => { const v = c[k]; return typeof v === "string" ? v.trim() : ""; };
 const numOrNull = (c: AnyRec, k: string): number | null => { const v = c[k]; return v != null && v !== "" && !Number.isNaN(Number(v)) ? Number(v) : null; };
 const fmtDate = (s?: string | null) => (s ? new Date(s).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—");
 const cap = (s?: string) => (s ? s.replace(/_/g, " ").replace(/\b\w/g, (m) => m.toUpperCase()) : "—");
+
+// Scope / Business Case text for CIP projects with NO linked charter — written
+// straight into the overview. Keyed by a substring of the project name (same
+// name-based convention used elsewhere for these tracker-imported projects).
+const NO_CHARTER_OVERVIEW: { match: RegExp; description?: string; scope: string; businessCase: string; budget?: string; roi?: string }[] = [
+  {
+    match: /metoprolol/i,
+    description: "To develop a cost improvement formulation for Metoprolol.",
+    scope:
+      "The existing production capacity is 3.9mn Tab (0.663 MT/day using 4 Wurster Coaters), whereas the current proposal utilizing a single Wurster unit is expected to achieve a production capacity of 35.88mn Tab (6.1 MT/day).",
+    businessCase:
+      "The existing production capacity is 3.9mn Tab (0.663 MT/day using 4 Wurster Coaters), whereas the current proposal utilizing a single Wurster unit is expected to achieve a production capacity of 35.88mn Tab (6.1 MT/day).",
+    // A single fixed budget shown instead of CapEx / OpEx.
+    budget: "₹3.21 Cr",
+    roi: "Less than 1 year · ₹50 Cr profitability",
+  },
+  {
+    match: /potassium chloride|klorcon|\bkcl\b/i,
+    scope:
+      "In KCL formulations, the API constitutes approximately 85% of the total formulation weight and is the primary contributor to the overall product cost. The current API is sourced at a cost of USD 5.5/kg, whereas the proposed sourcing strategy involves procuring the API at USD 2/kg, resulting in significant cost savings. Additionally, a reduction in solvent consumption has been proposed to further optimize manufacturing costs while ensuring a secure and reliable API supply source.",
+    businessCase: "",
+  },
+];
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -61,14 +86,6 @@ function FactList({ rows }: { rows: Array<[string, React.ReactNode] | null> }) {
     </dl>
   );
 }
-function StatTile({ label, value, color, valueClass }: { label: string; value: React.ReactNode; color?: string; valueClass?: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm">
-      <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-[17px] font-bold leading-none tabular-nums ${valueClass ?? "text-foreground"}`} style={color ? { color } : undefined}>{value}</p>
-    </div>
-  );
-}
 
 // ── Status visuals for the right-side live updates ──────────────────────────
 function StatusDot({ status, size = 8 }: { status: string; size?: number }) {
@@ -78,6 +95,23 @@ function StatusDot({ status, size = 8 }: { status: string; size?: number }) {
 function StatusPill({ status }: { status: string }) {
   const sm = getStatusMeta(status);
   return <span className="text-[9.5px] font-semibold px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap" style={{ background: `${sm.solid}1a`, color: sm.solid }}>{sm.label}</span>;
+}
+// Circular progress ring — same look as the Portfolio summary donut.
+function ProgressRing({ pct, color, size = 30 }: { pct: number; color: string; size?: number }) {
+  const sw = 3.5;
+  const r = (size - sw) / 2;
+  const circ = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, pct));
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0 -rotate-90">
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth={sw} />
+      <circle
+        cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={sw} strokeLinecap="round"
+        strokeDasharray={circ} strokeDashoffset={circ * (1 - clamped / 100)}
+        style={{ transition: "stroke-dashoffset 0.6s cubic-bezier(.16,1,.3,1)" }}
+      />
+    </svg>
+  );
 }
 // One task row + its nested subtasks, each with a status dot + pill. Shows the
 // subtask completion count when the task has subtasks.
@@ -127,7 +161,7 @@ function TaskUpdatesSection({ top, subsByParent }: { top: TaskLite[]; subsByPare
 }
 
 export function CharterOverview({
-  project, projectName, pmName, ownerName, tasks = [], milestones = [],
+  project, projectName, pmName, ownerName, tasks = [], milestones = [], isCip = false,
 }: {
   project: AnyRec | null | undefined;
   projectName?: string;
@@ -135,6 +169,8 @@ export function CharterOverview({
   ownerName?: string | null;
   tasks?: TaskLite[];
   milestones?: MsLite[];
+  /** CIP project — shows the product/strength/customer/market header block. */
+  isCip?: boolean;
 }) {
   const p = (project ?? {}) as AnyRec;
   const charterId = Number(p.charterId ?? 0);
@@ -251,12 +287,19 @@ export function CharterOverview({
   // ── AI summary — reads the milestones + tasks and explains the project ────
   const projId = Number(p.id ?? 0);
 
-  const aiInput = (() => {
+  // Project's own fields only — used for the Project Description (which must NOT
+  // reference milestones or tasks).
+  const projectFieldsInput = (() => {
     const lines: string[] = [`Project: ${str(c, "title") || projectName || "Project"}`];
     if (str(p, "status")) lines.push(`Status: ${cap(str(p, "status"))}`);
     if (str(p, "description")) lines.push(`Description: ${str(p, "description")}`);
     if (str(c, "category") || str(p, "category")) lines.push(`Category: ${str(c, "category") || str(p, "category")}`);
     if (str(p, "function")) lines.push(`Function: ${str(p, "function")}`);
+    return lines.join("\n");
+  })();
+
+  const aiInput = (() => {
+    const lines: string[] = [projectFieldsInput];
     if (milestones.length) {
       lines.push("Milestones and their tasks:");
       for (const m of milestones) {
@@ -285,19 +328,46 @@ export function CharterOverview({
     retry: false,
   });
 
+  // AI Insights (Current Status) — what's going wrong, risks, what to improve.
+  const insightsInput = (() => {
+    const overdueMs = milestones.filter((m) => m.status !== "completed" && m.dueDate && new Date(m.dueDate).getTime() < now).slice(0, 8);
+    const lines = [
+      `Project: ${str(c, "title") || projectName || "Project"}`,
+      `Overall progress: ${rollupPct}% (${unitDone}/${unitTotal} units complete)`,
+      `Tasks — done ${tdone}, in progress ${tinprog}, delayed ${tdelayed}, on hold ${tonhold}, not started ${tnot} (of ${total})`,
+      `Milestones — ${msDone}/${milestones.length} complete${msOverdue ? `, ${msOverdue} overdue` : ""}`,
+    ];
+    if (overdueMs.length) lines.push(`Overdue milestones: ${overdueMs.map((m) => `${m.name} (due ${fmtDate(m.dueDate)})`).join("; ")}`);
+    return lines.join("\n");
+  })();
+  const insightsQ = useQuery({
+    queryKey: ["project-ai-insights", projId, rollupPct, tdelayed, tonhold, msOverdue],
+    queryFn: async () => {
+      const r = await api.post<{ rewritten?: string }>("/api/ai/improve-text", {
+        text: insightsInput,
+        instruction: "You are a PMO analyst reviewing this project's CURRENT status. Return 4-6 short bullet points, each on its OWN line starting with '- ' (no intro, no paragraph). Each point should call out what is going wrong or most at risk, the likely root cause, or a concrete, actionable recommendation on what to improve. Be specific to the numbers/items given; do not invent details. If the project is genuinely on track, list what's going well and the single most important thing to watch.",
+        maxWords: 200,
+      });
+      return (r.rewritten ?? "").trim();
+    },
+    enabled: projId > 0 && (total > 0 || milestones.length > 0),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
   // AI project description — generated when no structured charter is linked, so
   // the Overview still carries a written description of the project.
   const descQ = useQuery({
-    queryKey: ["project-ai-description", projId, total, milestones.length],
+    queryKey: ["project-ai-description", projId, projectFieldsInput],
     queryFn: async () => {
       const r = await api.post<{ rewritten?: string }>("/api/ai/improve-text", {
-        text: aiInput,
-        instruction: "Write a concise Project Description (3–5 sentences) in plain English explaining what this project is, the problem or opportunity it addresses, and its intended outcome. Base it strictly on the project's fields, milestones and tasks — do not invent specifics. Write it as a flowing description, not a list.",
+        text: projectFieldsInput,
+        instruction: "Write a concise Project Description (3–5 sentences) in plain English explaining what this project is, the problem or opportunity it addresses, and its intended outcome. Base it strictly on the project's own fields — do NOT reference, list, or summarise milestones or tasks. Write it as a flowing description, not a list.",
         maxWords: 140,
       });
       return (r.rewritten ?? "").trim();
     },
-    enabled: charterId === 0 && projId > 0 && (top.length > 0 || milestones.length > 0 || !!str(p, "description")),
+    enabled: charterId === 0 && projId > 0 && !!str(p, "description"),
     staleTime: 5 * 60_000,
     retry: false,
   });
@@ -312,10 +382,17 @@ export function CharterOverview({
     ["Productivity improvement", str(c, "productivityImprovement")],
   ] as Array<[string, string]>).filter(([, v]) => v);
 
+  // No-charter fallback (matched on the project's own name) for Scope / Business Case / Budget.
+  const noCharterOv = NO_CHARTER_OVERVIEW.find((o) => o.match.test(title) || o.match.test(projectName ?? "") || o.match.test(str(p, "name")));
   const budgetRows = ([
     ["Tentative / Approved Budget", money(cnum("tentativeBudget"))],
-    ["CapEx", money(pnum("capexBudget") ?? cnum("capexAmount"))],
-    ["OpEx", money(pnum("opexBudget") ?? cnum("opexAmount"))],
+    // A fixed single Budget replaces CapEx / OpEx for projects that carry one.
+    ...(noCharterOv?.budget
+      ? [["Budget", noCharterOv.budget] as [string, string]]
+      : [
+          ["CapEx", money(pnum("capexBudget") ?? cnum("capexAmount"))],
+          ["OpEx", money(pnum("opexBudget") ?? cnum("opexAmount"))],
+        ] as Array<[string, string | null]>),
     ["Final Negotiated Budget", money(cnum("finalNegotiatedBudget"))],
     ["Latest Estimate (LE)", money(cnum("leAmount"))],
     ["Potential Additional Budget", money(cnum("potentialAdditionalBudget"))],
@@ -323,6 +400,8 @@ export function CharterOverview({
     ["Payback", cnum("paybackMonths") != null ? `${cnum("paybackMonths")} months` : null],
     ["NFA Threshold", money(cnum("nfaThreshold"))],
   ] as Array<[string, string | null]>).filter(([, v]) => v) as Array<[string, React.ReactNode]>;
+  // CIP projects always carry an Expected ROI field (blank for now).
+  if (isCip) budgetRows.push(["Expected ROI", noCharterOv?.roi ?? "—"]);
 
   if (charterId > 0 && isLoading) {
     return <div className="space-y-2 max-w-3xl">{[1, 2, 3, 4].map((i) => <div key={i} className="h-5 rounded bg-muted/40 animate-pulse" style={{ width: `${90 - i * 12}%` }} />)}</div>;
@@ -358,15 +437,18 @@ export function CharterOverview({
         : <p className="text-[13px] text-muted-foreground italic">Not specified.</p>}
     </Section>
   );
-  const descriptionNode: React.ReactNode = hasCharter
+  const descriptionNode: React.ReactNode = noCharterOv?.description
+    ? noCharterOv.description
+    : hasCharter
     ? (str(p, "description") || str(c, "description") || str(c, "executiveSummary"))
     : (descQ.isLoading && !descQ.data
-        ? <p className="text-[13px] text-muted-foreground italic">Generating a project description from the project's milestones and tasks…</p>
+        ? <p className="text-[13px] text-muted-foreground italic">Generating a project description…</p>
         : (descQ.data || str(p, "description")));
-  const businessCase = str(c, "businessCase") || str(c, "businessOutcome") || str(c, "businessDrivers");
+  const scopeText = str(c, "scope") || noCharterOv?.scope || "";
+  const businessCase = str(c, "businessCase") || str(c, "businessOutcome") || str(c, "businessDrivers") || noCharterOv?.businessCase || "";
   const deliverablesText = str(c, "deliverables");
-  // Project Deliverables (Key Milestones) — rendered as a table, mirroring the
-  // Project Charter Excel: Key Milestone · Target Date · Status.
+  // Project Deliverables (Key Milestones) — Key Milestone · Start Date · Target
+  // Date (editable, revised targets struck through) · Status (+ progress ring).
   const deliverablesNode: React.ReactNode = milestones.length > 0
     ? (
       <div className="overflow-x-auto rounded-lg border border-border">
@@ -374,18 +456,41 @@ export function CharterOverview({
           <thead>
             <tr className="bg-muted/40 text-left text-[10px] uppercase tracking-wider text-muted-foreground">
               <th className="px-3 py-2 font-semibold border-b border-border">Key Milestone</th>
+              <th className="px-3 py-2 font-semibold border-b border-border whitespace-nowrap">Start Date</th>
               <th className="px-3 py-2 font-semibold border-b border-border whitespace-nowrap">Target Date</th>
               <th className="px-3 py-2 font-semibold border-b border-border">Status</th>
             </tr>
           </thead>
           <tbody>
-            {milestones.map((m) => (
-              <tr key={m.id} className="border-b border-border/50 last:border-0">
+            {milestones.map((m) => {
+              let prior: string[] = [];
+              try { const h = JSON.parse(m.dueDateHistory || "[]"); if (Array.isArray(h)) prior = h.filter(Boolean); } catch { /* ignore */ }
+              // Target date is auto-fed from the milestone's tasks (backend rolls the latest
+              // task due date up onto the milestone) — read-only here, not user-editable.
+              const pct = m.status === "completed" ? 100 : (m.progressPct ?? 0);
+              // Keep the status pill in sync with progress so a 100% ring never reads "to be started".
+              const effStatus = pct >= 100 ? "completed" : pct > 0 && m.status === "not_started" ? "in_progress" : m.status;
+              return (
+              <tr key={m.id} className={`border-b border-border/50 last:border-0 ${pct >= 100 ? "bg-green-50" : ""}`}>
                 <td className="px-3 py-2 align-top text-foreground/90">{m.name}</td>
-                <td className="px-3 py-2 align-top whitespace-nowrap tabular-nums text-muted-foreground">{m.dueDate ? fmtDate(m.dueDate) : "—"}</td>
-                <td className="px-3 py-2 align-top"><StatusPill status={m.status} /></td>
+                <td className="px-3 py-2 align-top whitespace-nowrap tabular-nums text-muted-foreground">{m.startDate ? fmtDate(m.startDate) : "—"}</td>
+                <td className="px-3 py-2 align-top whitespace-nowrap">
+                  {/* Struck-through superseded targets (newest last), then the current auto-fed one. */}
+                  {prior.map((d, i) => <div key={i} className="text-[11px] tabular-nums text-muted-foreground/70 line-through">{fmtDate(d)}</div>)}
+                  <span className="tabular-nums text-[12px] text-foreground" title="Auto-fed from the milestone's tasks">
+                    {m.dueDate ? fmtDate(m.dueDate) : "—"}
+                  </span>
+                </td>
+                <td className="px-3 py-2 align-top">
+                  <div className="flex items-center gap-2">
+                    <StatusPill status={effStatus} />
+                    <ProgressRing pct={pct} color={pct >= 100 ? "#16a34a" : pct > 0 ? "#d97706" : "#94a3b8"} size={30} />
+                    <span className="text-[12px] font-bold tabular-nums" style={{ color: pct >= 100 ? "#16a34a" : pct > 0 ? "#d97706" : undefined }}>{pct}%</span>
+                  </div>
+                </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -403,13 +508,41 @@ export function CharterOverview({
             <span className="h-1 w-1 rounded-full bg-primary" />Charter Overview
           </span>
           {pcRef && <span className="font-mono text-[10.5px] font-semibold text-muted-foreground">{pcRef}</span>}
-          {hasCharter && (
+          {hasCharter ? (
             <Link href={`/charters/${charterId}`} className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-primary px-2.5 py-1 text-[11px] font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90">
               <FileText size={12} /> View Charter
             </Link>
+          ) : (
+            <span
+              title="Not available — no charter is linked to this project"
+              aria-disabled="true"
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1 text-[11px] font-semibold text-muted-foreground opacity-70 cursor-not-allowed"
+            >
+              <FileText size={12} /> View Charter
+            </span>
+          )}
+          {projId > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1 text-[11px] font-semibold text-muted-foreground" title="Attach the Project Introduction Form (PIF)">
+              PIF
+              <AttachmentPopover projectId={projId} taskId={null} label="PIF attachment" />
+            </span>
           )}
         </div>
         <h2 className="mt-2.5 text-[25px] font-bold leading-[1.1] tracking-tight text-foreground">{title}</h2>
+        {isCip && (
+          <div className="mt-2 overflow-hidden rounded-lg border border-[#1d238b]/40">
+            <table className="w-full text-[12px] border-collapse">
+              <tbody>
+                {([["Product Name", str(p, "productName")], ["Strength", str(p, "strength")], ["Market", str(p, "market")], ["Customer", str(p, "customer")]] as Array<[string, string]>).map(([label, val]) => (
+                  <tr key={label} className="border-b border-[#1d238b]/15 last:border-0">
+                    <td className="px-3 py-1.5 font-semibold text-white bg-[#1d238b] w-36 align-top">{label}</td>
+                    <td className="px-3 py-1.5 text-foreground bg-[#1d238b]/[0.06]">{val || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
         <p className="mt-1 text-[12px] text-muted-foreground">{category || " "}</p>
         <div className="mt-3.5 h-px w-full bg-border" />
       </header>
@@ -417,7 +550,7 @@ export function CharterOverview({
       {/* ── Core overview — Project Name (above) · Description · Scope ·
           Business Case · Deliverables. Always visible. ───────────────────── */}
       {coreSec("Project Description", descriptionNode)}
-      {coreSec("Scope", str(c, "scope"))}
+      {coreSec("Scope", scopeText)}
       {coreSec("Business Case", businessCase)}
       {coreSec("Project Deliverables", deliverablesNode)}
 
@@ -426,46 +559,6 @@ export function CharterOverview({
       {/* Lead summary */}
       {lead && <p className="mt-3 text-[12.5px] leading-6 text-foreground/80 line-clamp-2">{lead}</p>}
 
-      {/* AI-generated summary — synthesised from the milestones & tasks */}
-      {(summaryQ.isLoading || summaryQ.data) && (
-        <Section title="Summary">
-          {summaryQ.isLoading
-            ? <p className="text-[13px] text-muted-foreground italic">Generating a summary from the project's milestones and tasks…</p>
-            : <Para>{summaryQ.data}</Para>}
-        </Section>
-      )}
-
-      {/* At a glance */}
-      <Section title="Project Information"><FactList rows={infoRows} /></Section>
-
-      {/* Milestones & tasks — a 5–10 line summary: one line per milestone with
-          a few representative tasks (no counts). */}
-      {(total > 0 || milestones.length > 0) && (
-        <Section title="Milestones & Tasks">
-          {milestones.length > 0 ? (
-            <ul className="space-y-1.5">
-              {milestones.slice(0, 6).map((m) => {
-                const all = (tasksByMs.get(m.id) ?? []).map((t) => t.name?.trim()).filter(Boolean) as string[];
-                const shown = all.slice(0, 3);
-                return (
-                  <li key={m.id} className="text-[13px] leading-6 text-foreground/90">
-                    <span className="font-semibold text-foreground">{m.name}</span>
-                    {shown.length ? <span className="text-foreground/75"> — {shown.join(", ")}{all.length > shown.length ? ", and more" : ""}</span> : <span className="text-muted-foreground"> — no tasks yet</span>}
-                  </li>
-                );
-              })}
-              {milestones.length > 6 && <li className="text-[12.5px] text-muted-foreground italic">…and {milestones.length - 6} more milestones</li>}
-            </ul>
-          ) : total > 0 ? (
-            <ul className="space-y-1">
-              {(top.map((t) => t.name?.trim()).filter(Boolean) as string[]).slice(0, 6).map((n, i) => <li key={i} className="text-[13px] leading-6 text-foreground/90">{n}</li>)}
-              {top.length > 6 && <li className="text-[12.5px] text-muted-foreground italic">…and {top.length - 6} more tasks</li>}
-            </ul>
-          ) : (
-            <Para>No tasks defined yet.</Para>
-          )}
-        </Section>
-      )}
 
       {/* Narrative — conventional charter sections (only those with content;
           Description / Scope / Deliverables already shown in the core above) */}
@@ -497,12 +590,10 @@ export function CharterOverview({
 
       {budgetRows.length > 0 && <Section title="Budget & Investment"><FactList rows={budgetRows} /></Section>}
 
-      <Section title="Stakeholders">
+      <Section title="Project Head">
         <FactList rows={[
-          ["Sponsor", str(c, "projectSponsor") || "—"],
           ["Project Manager", pm || "—"],
-          ownerName ? ["Project Owner", <span className="inline-flex items-center rounded px-1.5 py-0.5 bg-primary/10 text-primary font-semibold">{ownerName}</span>] : null,
-          members.length > 0 ? ["Key Members", members.filter((m) => m.name?.trim()).map((m) => m.name).join(", ") || "—"] : null,
+          ["Project Owner", ownerName ? <span className="inline-flex items-center rounded px-1.5 py-0.5 bg-primary/10 text-primary font-semibold">{ownerName}</span> : "—"],
         ]} />
       </Section>
 
@@ -541,10 +632,10 @@ export function CharterOverview({
         <div className="mt-3.5 h-px w-full bg-border" />
         {/* KPI stat strip — the at-a-glance scorecard */}
         <div className="mt-3.5 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <StatTile label="Progress" value={`${rollupPct}%`} valueClass="text-primary" />
-          <StatTile label="Tasks" value={`${tdone}/${total}`} />
-          <StatTile label="Milestones" value={`${msDone}/${milestones.length}`} />
-          <StatTile label="Health" value={ragUi.label} color={ragUi.c} />
+          <KPITile compact highlight label="Progress" value={`${rollupPct}%`} icon={Activity} tone="primary" />
+          <KPITile compact highlight label="Tasks" value={`${tdone}/${total}`} icon={ListChecks} tone="primary" />
+          <KPITile compact highlight label="Milestones" value={`${msDone}/${milestones.length}`} icon={Flag} tone="amber" />
+          <KPITile compact highlight label="Health" value={ragUi.label} icon={HeartPulse} tone={rag === "red" ? "danger" : rag === "amber" ? "amber" : "success"} />
         </div>
         <div className="mt-3.5 h-px w-full bg-border" />
       </header>
@@ -574,17 +665,18 @@ export function CharterOverview({
               </button>
             </HoverHint>
           </div>
+          {/* Each count links to the project's Table view (tasks grouped by milestone). */}
           <div className="flex flex-wrap gap-1.5">
-            <span className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[10.5px]"><span className="text-muted-foreground">Total</span><b className="tabular-nums text-foreground">{total}</b></span>
+            <Link href={`/projects/${projId}?view=table`} title="Open milestone table view" className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[10.5px] transition-colors hover:border-primary hover:bg-primary/5"><span className="text-muted-foreground">Total</span><b className="tabular-nums text-foreground">{total}</b></Link>
             {([["Done", tdone, "completed"], ["In Progress", tinprog, "in_progress"], ["Delayed", tdelayed, "delayed"], ["On Hold", tonhold, "on_hold"], ["Not Started", tnot, "not_started"]] as const).map(([l, v, st]) => (
-              <span key={l} className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[10.5px]"><StatusDot status={st} size={7} /><span className="text-muted-foreground">{l}</span><b className="tabular-nums text-foreground">{v}</b></span>
+              <Link key={l} href={`/projects/${projId}?view=table`} title="Open milestone table view" className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[10.5px] transition-colors hover:border-primary hover:bg-primary/5"><StatusDot status={st} size={7} /><span className="text-muted-foreground">{l}</span><b className="tabular-nums text-foreground">{v}</b></Link>
             ))}
           </div>
-          <div className="mt-2 border-t border-border/50 pt-2 text-[10.5px] text-muted-foreground">
+          <Link href={`/projects/${projId}?view=table`} title="Open milestone table view" className="mt-2 block border-t border-border/50 pt-2 text-[10.5px] text-muted-foreground transition-colors hover:text-foreground">
             <b className="tabular-nums text-foreground">{milestones.length}</b> milestone{milestones.length === 1 ? "" : "s"}
             {" · "}<b className="tabular-nums" style={{ color: "#16A34A" }}>{msDone}</b> done
             {" · "}<b className="tabular-nums" style={{ color: msOverdue ? "#DC2626" : undefined }}>{msOverdue}</b> overdue
-          </div>
+          </Link>
         </div>
 
         {/* Derived insights — a written summary, not a per-task list */}
@@ -617,39 +709,29 @@ export function CharterOverview({
         })()}
       </Section>
 
-      <Section title="Project Information"><FactList rows={infoRows} /></Section>
-
-      {budgetRows.length > 0 && <Section title="Budget & Investment"><FactList rows={budgetRows} /></Section>}
-
-      <Section title="Stakeholders">
-        <FactList rows={[
-          ["Sponsor", str(c, "projectSponsor") || "—"],
-          ["Project Manager", pm || "—"],
-          ownerName ? ["Project Owner", <span className="inline-flex items-center rounded px-1.5 py-0.5 bg-primary/10 text-primary font-semibold">{ownerName}</span>] : null,
-          members.length > 0 ? ["Key Members", members.filter((m) => m.name?.trim()).map((m) => m.name).join(", ") || "—"] : null,
-        ]} />
+      <Section title="AI Insights">
+        {insightsQ.isLoading && !insightsQ.data
+          ? <p className="text-[13px] text-muted-foreground italic">Analysing what's going well, what's at risk, and what to improve…</p>
+          : insightsQ.data
+            ? (
+              <ul className="rounded-xl border border-border bg-card px-4 py-3 space-y-1.5 list-none">
+                {insightsQ.data.split("\n").map((l) => l.replace(/^\s*[-•*]\s*/, "").trim()).filter(Boolean).map((point, i) => (
+                  <li key={i} className="flex gap-2 text-[13px] leading-[1.5] text-foreground/85">
+                    <span className="mt-[7px] w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                    <span className="min-w-0">{point}</span>
+                  </li>
+                ))}
+              </ul>
+            )
+            : <Para>No insights available yet — add tasks and milestones to generate them.</Para>}
       </Section>
 
-      {milestones.length > 0 && (
-        <Section title="Milestones">
-          <div className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
-            {milestones.slice(0, 5).map((m) => {
-              const overdue = m.status !== "completed" && !!m.dueDate && new Date(m.dueDate).getTime() < now;
-              return (
-                <div key={m.id} className="flex items-center gap-2 px-3 py-2">
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground/90">{m.name}</span>
-                  <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">{m.dueDate ? fmtDate(m.dueDate) : "—"}</span>
-                  {overdue && <span className="shrink-0 text-[10px] font-semibold" style={{ color: "#DC2626" }}>OVERDUE</span>}
-                  <StatusPill status={m.status} />
-                </div>
-              );
-            })}
-            {milestones.length > 5 && <div className="px-3 py-1.5 text-[11px] italic text-muted-foreground">…and {milestones.length - 5} more</div>}
-          </div>
-        </Section>
-      )}
-
-      {top.length > 0 && <TaskUpdatesSection top={top} subsByParent={subsByParent} />}
+      <Section title="Project Head">
+        <FactList rows={[
+          ["Project Manager", pm || "—"],
+          ["Project Owner", ownerName ? <span className="inline-flex items-center rounded px-1.5 py-0.5 bg-primary/10 text-primary font-semibold">{ownerName}</span> : "—"],
+        ]} />
+      </Section>
 
     </aside>
     </div>

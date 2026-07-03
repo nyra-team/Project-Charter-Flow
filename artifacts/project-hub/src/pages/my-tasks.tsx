@@ -39,7 +39,7 @@ export default function MyTasksPage() {
         <Skeleton className="h-24 w-full rounded-2xl" />
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          <div data-tour="mt-buckets" className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
             {BUCKETS.map((b) => (
               <MetricCard
                 key={b.key}
@@ -54,7 +54,7 @@ export default function MyTasksPage() {
             ))}
           </div>
 
-          <div className="rounded-2xl bg-card border border-card-border glass-surface overflow-hidden">
+          <div data-tour="mt-list" className="rounded-2xl bg-card border border-card-border glass-surface overflow-hidden">
             <div className="px-4 py-2.5 border-b border-border/60">
               <h2 className="text-sm font-semibold text-foreground">{BUCKETS.find((b) => b.key === active)!.label} · {rows.length}</h2>
             </div>

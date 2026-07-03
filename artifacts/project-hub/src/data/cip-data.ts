@@ -67,7 +67,7 @@ export const CIP_DATA = {
       "1",
       "Metoprolol Succinate Extended-Release Tablets, USP 25 mg, 50 mg, 100 mg and 200 mg (Matrix formulation)-",
       "Completed",
-      "Dissolution - In-House\nOther tests- VIMTA",
+      "Completed",
       "Daicel",
       "Completed (UOD simplification- 30-07-2026)",
       "28-Feb-2026",

@@ -9,6 +9,10 @@
 export interface CreateIssueBody {
   title: string;
   description?: string;
+  issueType?: string;
+  severity?: string;
+  priority?: string;
+  dueDate?: string;
   taskId?: number;
   milestoneId?: number;
   dependencyType?: string;

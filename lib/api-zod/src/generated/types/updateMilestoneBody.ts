@@ -19,6 +19,7 @@ export interface UpdateMilestoneBody {
   rag?: string;
   plannedEffortHours?: number;
   scheduleVarianceDays?: number;
+  justification?: string;
   readinessChecklist?: UpdateMilestoneBodyReadinessChecklistItem[];
   gateDecision?: string;
   order?: number;

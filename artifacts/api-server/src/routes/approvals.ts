@@ -139,17 +139,29 @@ router.post("/approvals/:id/decide", requireRole(...DECIDE_ROLES), async (req, r
     }
   }
 
-  const decision = parsed.data.decision;
+  const updated = await applyApprovalDecision(approval, parsed.data.decision, parsed.data.comments ?? null);
+  const [enriched] = await enrichApprovals([updated as unknown as Record<string, unknown>]);
+  res.json(enriched);
+});
+
+// Record a decision on a pmo_approvals row + drive workflow progression.
+// Shared by the in-app decide endpoint above and the Documenso e-sign webhook
+// (routes/documenso-webhook.ts) — permission gating stays with the callers.
+export async function applyApprovalDecision(
+  approval: typeof approvalsTable.$inferSelect,
+  decision: "approved" | "rejected",
+  comments: string | null,
+): Promise<typeof approvalsTable.$inferSelect> {
   const decidedAt = new Date();
   const [updated] = await db.update(approvalsTable).set({
     status: decision,
-    comments: parsed.data.comments ?? null,
+    comments,
     decidedAt,
-  }).where(eq(approvalsTable.id, params.data.id)).returning();
+  }).where(eq(approvalsTable.id, approval.id)).returning();
 
   // Mirror the per-row decision into charter.signatories jsonb so the DOCX
   // renderer + charter-detail UI see live status without joining pmo_approvals.
-  await mirrorSignatoryDecision(approval.charterId, approval.approverRole, decision, parsed.data.comments ?? null, decidedAt);
+  await mirrorSignatoryDecision(approval.charterId, approval.approverRole, decision, comments, decidedAt);
 
   const [charter] = await db.select().from(chartersTable).where(eq(chartersTable.id, approval.charterId));
   const [approver] = approval.approverId != null
@@ -211,9 +223,8 @@ router.post("/approvals/:id/decide", requireRole(...DECIDE_ROLES), async (req, r
     }
   }
 
-  const [enriched] = await enrichApprovals([updated as unknown as Record<string, unknown>]);
-  res.json(enriched);
-});
+  return updated;
+}
 
 // Dashboard: pending approvals
 router.get("/dashboard/pending-approvals", async (req, res): Promise<void> => {

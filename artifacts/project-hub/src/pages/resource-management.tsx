@@ -93,7 +93,7 @@ export default function ResourceManagement() {
               <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
                 <Users className="h-3 w-3" /> Resource Management
               </div>
-              <h1 className="text-xl font-bold text-foreground mt-0.5 flex items-center gap-2">
+              <h1 data-tour="res-title" className="text-xl font-bold text-foreground mt-0.5 flex items-center gap-2">
                 Project Owners
               </h1>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -107,7 +107,7 @@ export default function ResourceManagement() {
           </div>
 
           {/* Stat strip */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
+          <div data-tour="res-stats" className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
             <StatTile icon={UserCheck} label="Owners" value={totalOwners} accent="bg-primary/10 text-primary" />
             <StatTile icon={Layers} label="Projects" value={totalProjects} accent="bg-blue-500/10 text-blue-600" />
             <StatTile icon={FolderOpen} label="Avg per owner" value={avg} accent="bg-emerald-500/10 text-emerald-600" />

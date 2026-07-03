@@ -98,7 +98,7 @@ function TaskCard({
       {/* RAG health accent bar (Planner-style) */}
       <div className="h-1 w-full" style={{ background: ragColor }} />
 
-      <div className="p-3">
+      <div className="p-3.5">
         {/* Top row — grip + priority + type badges */}
         <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
           <GripVertical className="w-3.5 h-3.5 -ml-1 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors flex-shrink-0" />
@@ -121,7 +121,7 @@ function TaskCard({
 
         {/* Title */}
         <h4
-          className={`text-[13px] leading-snug font-semibold ${done ? "line-through text-muted-foreground" : "text-foreground"}`}
+          className={`text-[14px] leading-snug font-semibold ${done ? "line-through text-muted-foreground" : "text-foreground"}`}
           style={{ wordBreak: "break-word" }}
         >
           {task.name}
@@ -195,7 +195,7 @@ function DroppableColumn({
       className={`flex flex-col flex-shrink-0 rounded-2xl border transition-colors ${
         isOver ? "border-primary/50 bg-primary/5 ring-2 ring-primary/15" : "border-border/70 bg-muted/30"
       }`}
-      style={{ minWidth: 268, width: 268 }}
+      style={{ minWidth: 340, width: 340 }}
     >
       {/* Bucket header — use the semantic status color (`bg`) for the dot + label.
           `color` is the white pill-foreground and would render invisible here. */}

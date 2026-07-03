@@ -1,13 +1,21 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, type SyntheticEvent } from "react";
 import { HoverHint, StatusChip } from "@/components/ui-kit";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useListProjects, useListUsers, useListCharters, useListAllProjectTeamMembers } from "@workspace/api-client-react";
+import { useListProjects, useListUsers, useListCharters, useListAllProjectTeamMembers, useCreateUser, useUpdateCharter, useUpdateProject } from "@workspace/api-client-react";
+import { EmployeeCombobox, type EmployeeHit } from "../components/employee-combobox";
+import { LIFECYCLE_STAGES, canonicalStageKey } from "../lib/lifecycle-config";
 import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "../lib/format";
-import { BarChart2, Search, ChevronDown, ChevronLeft, ChevronRight, Filter, Check, Plus, Table2, LayoutGrid, GanttChartSquare, CalendarClock, Building2, Flag, Info, ListChecks, GripVertical, MessageSquare, BellRing, Loader2, X, Trash2 } from "lucide-react";
+import { BarChart2, Search, ChevronDown, ChevronLeft, ChevronRight, Filter, Check, Plus, Table2, LayoutGrid, GanttChartSquare, CalendarClock, Building2, Flag, Info, ListChecks, GripVertical, MessageSquare, BellRing, Loader2, X, Trash2, Lock } from "lucide-react";
+
+// Lock glyph shown beside a confidential ("locked") project's name — the
+// project is visible only to its assigned people (server-enforced).
+const LockBadge = () => (
+  <Lock size={11} className="inline align-[-1px] mr-1 text-amber-600 shrink-0" aria-label="Restricted — visible to assigned people only" />
+);
 import {
   DndContext, DragOverlay, PointerSensor, KeyboardSensor, useSensor, useSensors,
   pointerWithin, rectIntersection, defaultDropAnimationSideEffects,
@@ -22,8 +30,13 @@ import { CSS } from "@dnd-kit/utilities";
 import { TASK_PRIORITIES } from "../lib/task-constants";
 import { createPortal } from "react-dom";
 import { JiraImportButton } from "../components/jira-sync";
+import { ImportProjectsButton } from "../components/import-projects";
+import { CreateProjectButton } from "../components/create-project";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { DownloadCloud } from "lucide-react";
 import { useUserView } from "../hooks/use-user-view";
 import { type BoardGroup, type BoardColumn, ProgressCell, DateCell } from "@/components/monday";
+import { AttachmentPopover } from "@/components/AttachmentPopover";
 import { KanbanView as ProjectsKanbanBoard } from "@/components/monday/KanbanView";
 import { GroupByPill } from "@/components/monday/GroupByPill";
 import { ActionCard } from "@/components/monday/ActionCard";
@@ -43,6 +56,7 @@ interface ProjectRow {
   name: string;
   description?: string | null;
   status: string;
+  stage?: string | null;
   priority: string;
   ragStatus?: string | null;
   progress?: number | null;
@@ -54,6 +68,7 @@ interface ProjectRow {
   capexBudget?: number | null;
   opexBudget?: number | null;
   function?: string | null;
+  confidential?: boolean | null;
 }
 
 // Per-project task rollup the "Tasks" + "Task Status" columns render.
@@ -87,11 +102,11 @@ function TaskStatusBar({ agg }: { agg?: TaskAgg }) {
     { n: agg.not_started, c: "#CBD5E1", label: "not started" },
   ].filter(s => s.n > 0);
   return (
-    <div className="flex items-center gap-2 w-full">
-      <div className="flex h-2 flex-1 min-w-[60px] rounded-full overflow-hidden bg-gray-200" title={seg.map(s => `${s.n} ${s.label}`).join(" · ")}>
+    <div className="flex items-center gap-2 w-full min-w-0">
+      <div className="flex h-2 flex-1 min-w-0 rounded-full overflow-hidden bg-gray-200" title={seg.map(s => `${s.n} ${s.label}`).join(" · ")}>
         {seg.map((s, i) => <div key={i} style={{ width: `${(s.n / agg.total) * 100}%`, background: s.c }} />)}
       </div>
-      <span className="text-[10px] font-semibold text-gray-700 tabular-nums whitespace-nowrap">{agg.done}/{agg.total}</span>
+      <span className="shrink-0 text-[10px] font-semibold text-gray-700 tabular-nums whitespace-nowrap">{agg.done}/{agg.total}</span>
     </div>
   );
 }
@@ -119,10 +134,13 @@ export function TimelineCell({ start, end, endHistory }: { start?: string | null
   let text: string;
   if (start && end) {
     const a = dateParts(start), b = dateParts(end);
-    if (a.year === b.year && a.monIdx === b.monIdx) {
-      text = `${a.day}→${b.day} ${a.mon}`;
-    } else if (a.year === b.year) {
-      text = `${a.day} ${a.mon} → ${b.day} ${b.mon}`;
+    // Compact when the range shares a year (drop the start year; collapse to a
+    // single month when it also shares the month) so it fits the column when
+    // the sidebar squeezes it. Full "DD Mon YY → DD Mon YY" only across years.
+    if (a.year === b.year) {
+      text = a.monIdx === b.monIdx
+        ? `${a.day}→${b.day} ${b.mon} ${b.yy}`
+        : `${a.day} ${a.mon} → ${b.day} ${b.mon} ${b.yy}`;
     } else {
       text = `${a.day} ${a.mon} ${a.yy} → ${b.day} ${b.mon} ${b.yy}`;
     }
@@ -132,25 +150,41 @@ export function TimelineCell({ start, end, endHistory }: { start?: string | null
   } else {
     text = "—";
   }
-  // Hover tooltip — weeks elapsed since the start date.
+  // Hover tooltip — total planned duration from start to end date.
   let weeksTip: string | undefined;
-  if (start) {
-    const sMs = new Date(start.slice(0, 10)).getTime();
-    const elapsed = Math.max(0, Math.floor((Date.now() - sMs) / (7 * 86_400_000)));
-    weeksTip = `${elapsed} week${elapsed === 1 ? "" : "s"} elapsed`;
+  if (start && end) {
+    const s = new Date(start.slice(0, 10)), e = new Date(end.slice(0, 10));
+    const days = Math.max(0, Math.floor((e.getTime() - s.getTime()) / 86_400_000));
+    // Whole calendar months from start to end (not day-count / 30).
+    let months = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth());
+    if (e.getDate() < s.getDate()) months--;
+    months = Math.max(0, months);
+    const unit = (n: number, u: string) => `${n} ${u}${n === 1 ? "" : "s"}`;
+    if (days < 7) weeksTip = unit(days, "day");
+    else if (months < 2) {
+      const w = Math.floor(days / 7), rd = days % 7;
+      weeksTip = rd ? `${unit(w, "week")} ${unit(rd, "day")}` : unit(w, "week");
+    }
+    else if (months < 12) weeksTip = unit(months, "month");
+    else {
+      const y = Math.floor(months / 12), m = months % 12;
+      weeksTip = m ? `${unit(y, "year")} ${unit(m, "month")}` : unit(y, "year");
+    }
   }
   const pill = (
-    <span title={weeksTip} className="flex w-full items-center justify-center rounded-full bg-gray-100 border border-gray-200 px-2 h-5 text-[11px] text-gray-700 whitespace-nowrap cursor-default">
+    <span title={weeksTip} className="block w-full truncate text-center rounded-full bg-gray-100 border border-gray-200 px-1.5 h-5 leading-5 text-[9px] text-gray-700 cursor-default">
       {text}
     </span>
   );
   if (prior.length === 0) return pill;
-  // Revised target: current pill on top, superseded end dates struck below
-  // (newest superseded first) — mirrors the CXO Action Centre date display.
+  // Revised target: current pill on top, then ONLY the two most-recent superseded
+  // end dates struck below (newest first). The full history lives in the
+  // date-edit popup, so older changes are simply omitted here (no hint).
+  const visible = prior.slice().reverse().slice(0, 2);
   return (
     <div className="flex flex-col items-center gap-0.5" title={`Previous: ${prior.slice().reverse().join(", ")}`}>
       {pill}
-      {prior.slice().reverse().map((d, i) => {
+      {visible.map((d, i) => {
         const o = dateParts(d);
         return <span key={i} className="text-[10px] leading-tight line-through text-gray-400 whitespace-nowrap">{o.day} {o.mon} {o.yy}</span>;
       })}
@@ -338,22 +372,34 @@ const STATUS_LEGEND_DESC: Record<string, string> = {
   cancelled: "Cancelled — work stopped before completion.",
   postponed: "On hold / deferred to a later date.",
 };
+// Project-specific short status = its current lifecycle stage's short label
+// (Business Case → URS → RFP → … → Development → UAT → Go Live → Closure), which
+// describes where THIS project actually is. Handles legacy stage keys via
+// canonicalStageKey. Falls back to the status label when no stage is set.
+const STAGE_SHORT_LABEL = new Map<string, string>(LIFECYCLE_STAGES.map((s) => [s.key, s.shortLabel]));
+const stageLabelOf = (rawStage?: string | null): string | null => {
+  const k = rawStage ? canonicalStageKey(rawStage) : null;
+  return (k && STAGE_SHORT_LABEL.get(k)) || null;
+};
 
 // Fixed column widths (px) so every status table lines up identically.
 const COLS: { key: string; header: string; width: number; align?: "left" | "center"; info?: string }[] = [
   { key: "code", header: "Project Code", width: 120, info: "Auto-generated project reference code." },
+  { key: "owner", header: "Owner", width: 110, align: "left", info: "Project owner — assign from the employee directory." },
   { key: "name", header: "Project Name", width: 240, info: "Project title — click a row to open it." },
   { key: "team", header: "Team", width: 130, align: "center", info: "Project owner and manager." },
   { key: "status", header: "Health", width: 116, align: "center" },
   { key: "priority", header: "Priority", width: 90, align: "center", info: "Project priority (P0–P3) — click to change." },
   { key: "justification", header: "Justification", width: 220, align: "left", info: "Owner's explanation, required when a project is delayed or off-track." },
   { key: "tasks", header: "Tasks", width: 64, align: "center", info: "Completed tasks out of total." },
+  { key: "progress", header: "%", width: 60, align: "center", info: "Overall completion percentage." },
   { key: "taskStatus", header: "Task Status", width: 170, info: "Breakdown of the project's tasks by status." },
   { key: "timeline", header: "Timeline", width: 170, info: "Planned start and end dates with elapsed progress." },
 ];
 // Optional columns the user can add globally via the "Add column" menu.
-type OptionalKey = "budget" | "description";
+type OptionalKey = "budget" | "description" | "currentStatus";
 const OPTIONAL_COLS: { key: OptionalKey; header: string; width: number; align?: "left" | "center"; info?: string }[] = [
+  { key: "currentStatus", header: "Current Status", width: 150, align: "left", info: "A short, project-specific description of where the project currently is (its lifecycle stage)." },
   { key: "budget", header: "Budget", width: 130, info: "Approved budget and spend to date." },
   { key: "description", header: "Project Description", width: 300, info: "Short description of the project." },
 ];
@@ -428,6 +474,15 @@ type RowHealth = { key: "on_track" | "off_track" | "delayed" | "na" | "completed
 // cell-fill SSOT (ActionItems.tsx STATUS_FILL): green #16A34A · amber #F59E0B ·
 // red #DC2626 · slate #64748B — On Track→green, Off Track→amber, Delayed→red.
 const HEALTH_COLORS = { on_track: "#16A34A", off_track: "#F59E0B", delayed: "#DC2626", na: "#64748B", completed: "#16A34A" } as const;
+// A project counts as finished when its status says completed OR every task is
+// done (or, with no tasks, progress is 100). Lets a finished-but-not-yet-flagged
+// project read as Completed instead of Delayed/overdue.
+function isProjectComplete(p: { status: string; progress?: number | null }, agg?: TaskAgg): boolean {
+  if (displayStatusOf(p.status).key === "completed") return true;
+  if (agg && agg.total > 0) return agg.done >= agg.total;
+  return (p.progress ?? 0) >= 100;
+}
+
 function scheduleHealth(p: ProjectRow, agg?: TaskAgg): RowHealth {
   const ds = displayStatusOf(p.status).key;
   const r = (n: number) => Math.round(n);
@@ -439,8 +494,9 @@ function scheduleHealth(p: ProjectRow, agg?: TaskAgg): RowHealth {
   const done = agg?.done ?? 0;
   const actualPct = total > 0 ? (done / total) * 100 : (p.progress ?? 0);
 
-  if (ds === "completed")
-    return { key: "completed", label: "Completed", color: HEALTH_COLORS.completed, reason: `Completed — all ${total} task(s) done.` };
+  // Finished (flag set, or all tasks done / 100%) → Completed, even if past due.
+  if (isProjectComplete(p, agg))
+    return { key: "completed", label: "Completed", color: HEALTH_COLORS.completed, reason: total > 0 ? `Completed — all ${total} task(s) done.` : "Completed — 100% progress." };
 
   const start = msTime(p.startDate);
   const end = msTime(p.endDate);
@@ -593,29 +649,51 @@ function HealthHeaderTip() {
 const PRIORITY_META = new Map(TASK_PRIORITIES.map((p) => [p.value, p]));
 
 // ── Action-Centre kanban card (shared <ActionCard>) — map a project → props. ──
-function ActionCentreProjectCard({ p, ownerName, ownerPhoto, taskAgg }: {
+function ActionCentreProjectCard({ p, ownerName, ownerPhoto, taskAgg, onAssignOwner }: {
   p: ProjectRow;
   ownerName: (p: ProjectRow) => string | null;
   ownerPhoto: (p: ProjectRow) => string | null;
   taskAgg: Map<number, TaskAgg>;
+  onAssignOwner?: (p: ProjectRow, hit: EmployeeHit) => void;
 }) {
-  const completed = displayStatusOf(p.status).key === "completed";
-  const overdue = !completed && !!p.endDate && new Date(p.endDate).getTime() < new Date().setHours(0, 0, 0, 0);
   const agg = taskAgg.get(p.id);
+  const completed = isProjectComplete(p, agg);
+  // Overdue projects live in the board's own "Delayed" lane — the lane is the
+  // signal, so the card itself stays neutral (no red shell).
+  const overdue = false;
   const pct = p.progress != null
     ? p.progress
     : agg && agg.total ? Math.round((agg.done / agg.total) * 100) : null;
+  const on = ownerName(p);
+  // Click the avatar to reassign — stop drag/open so only the picker opens.
+  const stop = (e: SyntheticEvent) => e.stopPropagation();
+  const ownerSlot = onAssignOwner ? (
+    <span onPointerDown={stop} onClick={stop} className="min-w-0">
+      <EmployeeCombobox
+        value={on ?? undefined}
+        onSelect={(hit) => onAssignOwner(p, hit)}
+        trigger={
+          <button type="button" title={on ? `Owner: ${on} — click to reassign` : "Assign owner"}
+            className="flex items-center gap-1.5 min-w-0 rounded px-1 py-0.5 -mx-1 hover:bg-slate-100">
+            <PersonCell name={on} photoUrl={ownerPhoto(p)} />
+            <span className="text-[11px] font-medium text-slate-600 truncate max-w-[110px]">{on || "—"}</span>
+          </button>
+        }
+      />
+    </span>
+  ) : undefined;
   return (
     <ActionCard
       meta={[projectCode(p), p.function].filter(Boolean).join(" · ")}
       title={p.name}
-      ownerName={ownerName(p)}
+      ownerName={on}
       ownerPhoto={ownerPhoto(p)}
       priority={p.priority}
       dueDate={p.endDate}
       progressPct={pct}
       completed={completed}
       overdue={overdue}
+      ownerSlot={ownerSlot}
     />
   );
 }
@@ -726,15 +804,16 @@ function KanbanCardInner({ p, d, ownerName, ownerPhoto, taskAgg, overlay }: {
   overlay?: boolean;
 }) {
   const progress = Math.max(0, Math.min(100, Math.round(p.progress ?? 0)));
-  const sched = d.key === "completed" ? { label: "Completed", color: d.color } : scheduleStatus(p.ragStatus);
   const owner = ownerName(p);
   const agg = taskAgg.get(p.id);
   const taskTotal = agg?.total ?? 0;
   const taskDone = agg?.done ?? 0;
+  const completed = isProjectComplete(p, agg);
+  const sched = completed ? { label: "Completed", color: DISPLAY_BY_KEY.get("completed")?.color ?? "#16A34A" } : scheduleStatus(p.ragStatus);
   const pr = PRIORITY_META.get(p.priority as never);
   const budget = (p.capexBudget ?? 0) + (p.opexBudget ?? 0);
   const endMs = p.endDate ? new Date(p.endDate.slice(0, 10)).getTime() : null;
-  const overdue = endMs != null && endMs < Date.now() && d.key !== "completed";
+  const overdue = !completed && endMs != null && endMs < Date.now();
   const due = p.endDate ? (() => { const o = dateParts(p.endDate!); return `${o.day} ${o.mon} ${o.yy}`; })() : null;
   return (
     <div
@@ -752,7 +831,7 @@ function KanbanCardInner({ p, d, ownerName, ownerPhoto, taskAgg, overlay }: {
         </div>
 
         {/* Title */}
-        <div className="mt-1 text-[13px] font-semibold text-gray-800 leading-snug whitespace-normal break-words group-hover:text-primary transition-colors">{p.name}</div>
+        <div className="mt-1 text-[13px] font-semibold text-gray-800 leading-snug whitespace-normal break-words group-hover:text-primary transition-colors">{p.confidential && <LockBadge />}{p.name}</div>
 
         {/* Meta — department · budget */}
         {(p.function || budget > 0) && (
@@ -1389,6 +1468,18 @@ function ProjectFullCalendar({ rows, onOpen }: { rows: ProjectRow[]; onOpen: (id
   );
 }
 
+// Investment / type classification for the toolbar filter.
+// ponytail: name-based — the CIP (pharma special-project) tracker imports are
+// the only real members today; everything else is IT. CAPEX / OPEX / NPL stay
+// as filter options but have no members yet (kept so the dropdown is complete).
+// Revisit if the budget / category fields start carrying real data.
+const CLASS_KEYS = ["CAPEX", "OPEX", "NPL", "CIP", "IT"] as const;
+const CIP_NAME_RE = /metoprolol|potassium chloride|klorcon|\bkcl\b/;
+function classifyProject(p: Record<string, unknown>): string[] {
+  const hay = `${p.name ?? ""}`.toLowerCase();
+  return CIP_NAME_RE.test(hay) ? ["CIP"] : ["IT"];
+}
+
 export default function ProjectsList() {
   const { data: projects, isLoading, refetch } = useListProjects();
   const { data: users = [] } = useListUsers();
@@ -1410,10 +1501,24 @@ export default function ProjectsList() {
     queryKey: ["/api/tasks", "all"],
     queryFn: async () => {
       const r = await fetch("/api/tasks");
-      if (!r.ok) return [] as Array<{ projectId?: number | null; status?: string | null }>;
-      return r.json() as Promise<Array<{ projectId?: number | null; status?: string | null }>>;
+      if (!r.ok) return [] as Array<{ projectId?: number | null; status?: string | null; parentTaskId?: number | null }>;
+      return r.json() as Promise<Array<{ projectId?: number | null; status?: string | null; parentTaskId?: number | null }>>;
     },
   });
+  // Project-level attachment counts (task_id IS NULL), one bulk call → the
+  // paperclip badge beside each project code in the table.
+  const { data: attachmentCounts = [] } = useQuery({
+    queryKey: ["/api/attachments/counts"],
+    queryFn: async () => {
+      const r = await fetch("/api/attachments/counts", { credentials: "include" });
+      return r.ok ? (await r.json() as Array<{ projectId: number; count: number }>) : [];
+    },
+  });
+  const attachmentCountByProject = useMemo(
+    () => new Map(attachmentCounts.map((c) => [c.projectId, c.count])),
+    [attachmentCounts],
+  );
+
   // Latest delay/off-track justification per project (for the Justification column).
   const { data: justifications = [] } = useQuery({
     queryKey: ["/api/project-justifications/latest"],
@@ -1500,8 +1605,9 @@ export default function ProjectsList() {
 
   const taskAgg = useMemo(() => {
     const m = new Map<number, TaskAgg>();
-    for (const t of tasks as Array<{ projectId?: number | null; status?: string | null }>) {
+    for (const t of tasks as Array<{ projectId?: number | null; status?: string | null; parentTaskId?: number | null }>) {
       if (t.projectId == null) continue;
+      if (t.parentTaskId != null) continue; // subtasks don't count as tasks
       const e = m.get(t.projectId) ?? { total: 0, done: 0, in_progress: 0, delayed: 0, on_hold: 0, not_started: 0 };
       e.total++;
       switch (t.status) {
@@ -1516,16 +1622,66 @@ export default function ProjectsList() {
     return m;
   }, [tasks]);
 
+  // Owner id: prefer the project's own projectOwnerId (SSOT for new assignments,
+  // works without a charter); fall back to the linked charter for existing data.
+  const ownerIdFor = (p: ProjectRow): number | null => {
+    const pid = (p as unknown as Record<string, unknown>).projectOwnerId as number | null | undefined;
+    if (pid != null) return pid;
+    return p.charterId != null ? ownerByCharter.get(p.charterId) ?? null : null;
+  };
   const ownerName = (p: ProjectRow) => {
-    const oid = p.charterId != null ? ownerByCharter.get(p.charterId) : null;
+    const oid = ownerIdFor(p);
     return oid != null ? usersById.get(oid) ?? null : null;
   };
   const managerName = (p: ProjectRow) => (p.projectManagerId != null ? usersById.get(p.projectManagerId) ?? null : null);
   const ownerPhoto = (p: ProjectRow) => {
-    const oid = p.charterId != null ? ownerByCharter.get(p.charterId) : null;
+    const oid = ownerIdFor(p);
     return oid != null ? photoById.get(oid) ?? null : null;
   };
   const managerPhoto = (p: ProjectRow) => (p.projectManagerId != null ? photoById.get(p.projectManagerId) ?? null : null);
+
+  // ── Owner assignment — pick from the master employee directory and persist to
+  //    the linked charter's projectOwnerId (where the owner lives). PMO users are
+  //    matched to employees by email; a first-time owner with no PMO user row yet
+  //    gets one created on the fly, then the charter is pointed at it.
+  const userIdByEmail = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const u of users as Array<{ id: number; email?: string | null }>) {
+      if (u.email) m.set(u.email.toLowerCase(), u.id);
+    }
+    return m;
+  }, [users]);
+  const { mutateAsync: createUserAsync } = useCreateUser();
+  const { mutateAsync: updateCharterAsync } = useUpdateCharter();
+  const { mutateAsync: updateProjectAsync } = useUpdateProject();
+  const [assigningId, setAssigningId] = useState<number | null>(null);
+
+  const assignOwner = async (p: ProjectRow, hit: EmployeeHit) => {
+    if (!hit.email) { toast({ title: "Can't assign", description: `${hit.name} has no email on record.` }); return; }
+    try {
+      setAssigningId(p.id);
+      let uid = userIdByEmail.get(hit.email.toLowerCase());
+      if (uid == null) {
+        const created = await createUserAsync({ data: { name: hit.name, email: hit.email, role: "team_member", department: hit.designation ?? "" } });
+        uid = (created as { id: number }).id;
+      }
+      // Store on the project (works for charter-less projects too); keep the
+      // charter in sync when one exists so other charter readers stay correct.
+      await updateProjectAsync({ id: p.id, data: { projectOwnerId: uid } as never });
+      if (p.charterId != null) await updateCharterAsync({ id: p.charterId, data: { projectOwnerId: uid } });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["/api/projects"] }),
+        qc.invalidateQueries({ queryKey: ["/api/charters"] }),
+        qc.invalidateQueries({ queryKey: ["/api/users"] }),
+      ]);
+      await refetch();
+      toast({ title: "Owner assigned", description: `${hit.name} is now the owner.` });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Couldn't assign owner", description: (e as Error)?.message });
+    } finally {
+      setAssigningId(null);
+    }
+  };
 
   // ── Project-level Communication + Attachments drawer (opened per-project
   //    from a Kanban card or a Table row). Backed by project-scoped messages.
@@ -1544,6 +1700,9 @@ export default function ProjectsList() {
   const views = useUserView<ProjectsViewConfig>({ scope: "project_list", fallback: FALLBACK });
   const [search, setSearch] = useState(FALLBACK.search);
   const [status, setStatus] = useState(FALLBACK.status);
+  // CAPEX/OPEX/NPL/CIP/IT type filter — single-select dropdown; "" = All (no
+  // type filtering). Selecting one isolates to projects carrying that tag.
+  const [classFilter, setClassFilter] = useState<string>("");
   const [priority, setPriority] = useState("");
   const [sort, setSort] = useState<ProjectsViewConfig["sort"]>(FALLBACK.sort);
 
@@ -1578,7 +1737,22 @@ export default function ProjectsList() {
     ...COLS,
     ...OPTIONAL_COLS.filter((c) => extraCols[groupKey]?.[c.key]),
     ...(customCols[groupKey] ?? []).map((c) => ({ key: `cf:${c.id}`, header: c.header || "Untitled", width: 160 as number, info: "Custom field — click the header to rename it." })),
+    { key: "__del__", header: "", width: 40 as number },
   ];
+
+  // Delete a project (with its milestones/tasks); the charter returns to the
+  // Approved lane so it can be re-created.
+  const deleteProject = async (p: ProjectRow) => {
+    if (!window.confirm(`Delete project "${p.name}"?\n\nThis removes its milestones and tasks. The charter is kept and returns to the Approved lane.`)) return;
+    try {
+      const r = await fetch(`/api/projects/${p.id}`, { method: "DELETE" });
+      if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { error?: string }).error || "Delete failed");
+      toast({ title: "Project deleted" });
+      void refetch();
+    } catch (e) {
+      toast({ title: "Couldn't delete project", description: e instanceof Error ? e.message : "Please try again.", variant: "destructive" });
+    }
+  };
 
   // Signed-in user's own department (master-DB function), used to default the view.
   const { data: me } = useQuery({
@@ -1627,11 +1801,13 @@ export default function ProjectsList() {
   const [filterOpen, setFilterOpen] = useState(false);
   const [prioOpen, setPrioOpen] = useState(false);
   const [deptOpen, setDeptOpen] = useState(false);
+  const [typeOpen, setTypeOpen] = useState(false);
   const [colsOpen, setColsOpen] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement | null>(null);
   const filterRef = useRef<HTMLDivElement | null>(null);
   const prioRef = useRef<HTMLDivElement | null>(null);
   const deptRef = useRef<HTMLDivElement | null>(null);
+  const typeRef = useRef<HTMLDivElement | null>(null);
   const colsRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     function onDoc(e: MouseEvent) {
@@ -1640,6 +1816,7 @@ export default function ProjectsList() {
       if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false);
       if (prioRef.current && !prioRef.current.contains(e.target as Node)) setPrioOpen(false);
       if (deptRef.current && !deptRef.current.contains(e.target as Node)) setDeptOpen(false);
+      if (typeRef.current && !typeRef.current.contains(e.target as Node)) setTypeOpen(false);
       if (colsRef.current && !colsRef.current.contains(e.target as Node)) setColsOpen(null);
     }
     document.addEventListener("mousedown", onDoc);
@@ -1663,6 +1840,9 @@ export default function ProjectsList() {
       if (status && displayStatusOf(p.status).key !== status) return false;
       if (priority && (p as ProjectRow).priority !== priority) return false;
       if (dept && (p as ProjectRow).function !== dept) return false;
+      // Type filter (single-select). "" = All (uncategorised included); a chosen
+      // type isolates to projects carrying that tag (CIP ⇒ Metoprolol-only).
+      if (classFilter && !classifyProject(p as unknown as Record<string, unknown>).includes(classFilter)) return false;
       if (q && !`${p.name} ${p.description ?? ""}`.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -1673,7 +1853,7 @@ export default function ProjectsList() {
       return 0;
     });
     return sorted;
-  }, [projects, search, status, priority, dept, sort]);
+  }, [projects, search, status, priority, dept, sort, classFilter]);
 
   // ── Group the filtered projects by display status (New → Active → Completed
   //    → Cancelled → Postponed). Empty groups are dropped.
@@ -1702,7 +1882,7 @@ export default function ProjectsList() {
   }, [filtered]);
 
   // Resolve a project's owner id (lives on the linked charter, not the project).
-  const ownerIdOf = (p: ProjectRow) => (p.charterId != null ? (ownerByCharter.get(p.charterId) ?? null) : null);
+  const ownerIdOf = (p: ProjectRow) => ownerIdFor(p);
 
   // Kanban columns by the selected "Group by" axis (Action Centre parity):
   //   status   = the fixed lifecycle columns (incl. empty, for a stable shape);
@@ -1747,17 +1927,27 @@ export default function ProjectsList() {
       if (none && none.length) lanes.push({ key: "__none__", label: "No department", color: "#94A3B8", rows: none });
       return lanes;
     }
-    return DISPLAY_STATUSES.map((d) => ({ key: d.key, label: d.label, color: d.color, rows: buckets.get(d.key) ?? [] }));
+    // Status lanes + a separate "Delayed" lane (schedule health, not a DB
+    // status) — delayed projects are pulled out of their status bucket so each
+    // project appears exactly once on the board.
+    const delayed = filtered.filter((r) => scheduleHealth(r, taskAgg.get(r.id)).key === "delayed");
+    const delayedIds = new Set(delayed.map((r) => r.id));
+    const cols: BoardGroup<ProjectRow>[] = DISPLAY_STATUSES.map((d) => ({
+      key: d.key, label: d.label, color: d.color,
+      rows: (buckets.get(d.key) ?? []).filter((r) => !delayedIds.has(r.id)),
+    }));
+    cols.splice(2, 0, { key: "__delayed__", label: "Delayed", color: HEALTH_COLORS.delayed, rows: delayed });
+    return cols;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [groupBy, filtered, buckets, ownerByCharter, usersById]);
+  }, [groupBy, filtered, buckets, ownerByCharter, usersById, taskAgg]);
 
   return (
     <div className="space-y-2 pt-1.5">
       {/* Header — z-50 so the toolbar filter dropdowns sit above the Gantt/Kanban
           (ph-rise leaves a transform → stacking context, so it needs an explicit z). */}
       <div className="relative z-50 flex items-center justify-between gap-3 flex-wrap ph-rise">
-        <div>
-          <h2 className="text-xl font-bold text-foreground">Projects</h2>
+        <div className="flex items-center gap-3 min-w-0">
+          <h2 data-tour="tour-projects" className="text-xl font-bold text-foreground shrink-0">Projects</h2>
         </div>
         {/* Right side: filter/view toolbar moved up, beside the Jira import button */}
         <div className="flex items-center gap-3 flex-wrap">
@@ -1827,7 +2017,8 @@ export default function ProjectsList() {
           </div>
         )}
 
-        {/* Filter — icon only; opens the status dropdown */}
+        {/* Filter — icon only; opens the status dropdown. Hidden on Kanban (Group-by covers it). */}
+        {view !== "kanban" && (
         <div className="relative" ref={filterRef}>
           <button
             type="button"
@@ -1855,8 +2046,10 @@ export default function ProjectsList() {
             </div>
           )}
         </div>
+        )}
 
-        {/* Priority filter — icon only; opens the priority dropdown */}
+        {/* Priority filter — icon only; opens the priority dropdown. Hidden on Kanban. */}
+        {view !== "kanban" && (
         <div className="relative" ref={prioRef}>
           <button
             type="button"
@@ -1884,8 +2077,10 @@ export default function ProjectsList() {
             </div>
           )}
         </div>
+        )}
 
-        {/* Department filter — icon only */}
+        {/* Department filter — icon only. Hidden on Kanban. */}
+        {view !== "kanban" && (
         <div className="relative" ref={deptRef}>
           <button
             type="button"
@@ -1921,10 +2116,60 @@ export default function ProjectsList() {
             </div>
           )}
         </div>
+        )}
 
-        {/* (The Add-column control moved to a "+" at the top-right of the table.) */}
+        {/* Type filter — CAPEX · OPEX · NPL · CIP · IT, single-select + All. */}
+        <div className="relative" ref={typeRef}>
+          <button
+            type="button"
+            onClick={() => { setTypeOpen((o) => !o); setFilterOpen(false); setPrioOpen(false); setDeptOpen(false); setColsOpen(null); }}
+            title="Filter by project type"
+            className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
+              classFilter ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+            }`}
+          >
+            <Filter size={13} /> {classFilter || "Type"}
+          </button>
+          {typeOpen && (
+            <div className="absolute left-0 top-full mt-1.5 z-50 w-44 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
+              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Project type</div>
+              <button
+                onClick={() => { setClassFilter(""); setTypeOpen(false); }}
+                className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${classFilter === "" ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
+              >
+                All types
+                {classFilter === "" && <Check size={13} />}
+              </button>
+              {CLASS_KEYS.map((k) => (
+                <button
+                  key={k}
+                  onClick={() => { setClassFilter(k); setTypeOpen(false); }}
+                  className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${classFilter === k ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
+                >
+                  <span className="truncate">{k}</span>
+                  {classFilter === k && <Check size={13} className="shrink-0" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Import + Create Project — kept in the same toolbar as the view/filter controls. */}
+        <div className="mx-0.5 pl-0.5 border-l border-border/60 flex items-center gap-1">
+          <Popover>
+            <PopoverTrigger asChild>
+              <button type="button" title="Import projects" className="h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+                <DownloadCloud size={13} /> Import <ChevronDown size={11} className="opacity-70" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-56 p-1.5 flex flex-col gap-1">
+              <JiraImportButton onDone={() => { void refetch(); }} />
+              <ImportProjectsButton onDone={() => { void refetch(); }} />
+            </PopoverContent>
+          </Popover>
+          <CreateProjectButton onDone={() => { void refetch(); }} />
+        </div>
       </div>
-        <JiraImportButton onDone={() => { void refetch(); }} />
         </div>
       </div>
 
@@ -1942,9 +2187,9 @@ export default function ProjectsList() {
             columns={PROJECT_COLUMNS}
             showIssueKey={false}
             getRowId={(p) => `project:${p.id}`}
-            getName={(p) => <span className="font-medium">{p.name}</span>}
-            renderCard={(p) => <ActionCentreProjectCard p={p} ownerName={ownerName} ownerPhoto={ownerPhoto} taskAgg={taskAgg} />}
-            colWidth={320}
+            getName={(p) => <span className="font-medium">{p.confidential && <LockBadge />}{p.name}</span>}
+            renderCard={(p) => <ActionCentreProjectCard p={p} ownerName={ownerName} ownerPhoto={ownerPhoto} taskAgg={taskAgg} onAssignOwner={assignOwner} />}
+            colWidth={340}
             sectionStyle="ac"
             tintBody={groupBy === "priority"}
             onOpenRow={(p) => setLocation(`/projects/${p.id}`)}
@@ -1970,6 +2215,8 @@ export default function ProjectsList() {
                 return;
               }
               if (groupBy === "owner") return; // owner lives on the charter — owner lanes are view-only
+              // Delayed lane is computed schedule health, not a settable status → view-only.
+              if (groupKey === "__delayed__") return;
               // Status — gate the change behind a justification (CXO board parity).
               setMoveJustify({ id, to: groupKey, toLabel: DISPLAY_BY_KEY.get(groupKey)?.label ?? groupKey });
             }}
@@ -2097,8 +2344,17 @@ export default function ProjectsList() {
                   {(orderedCols) => {
                     const cell = (key: string, p: ProjectRow) => {
                       switch (key) {
-                        case "code": return <td key="code" className="border border-gray-200 px-2 py-0.5 font-mono text-[11px] font-semibold text-gray-800 whitespace-nowrap">{projectCode(p)}</td>;
-                        case "name": return <td key="name" className="border border-gray-200 px-2 py-0.5 font-medium text-gray-800 whitespace-normal break-words" title={p.name}>{p.name}</td>;
+                        case "code": return (
+                          <td key="code" className="border border-gray-200 px-2 py-0.5 font-mono text-[11px] font-semibold text-gray-800 whitespace-nowrap">
+                            <span className="flex items-center gap-1 min-w-0">
+                              <span className="truncate">{projectCode(p)}</span>
+                              <span className="shrink-0 inline-flex">
+                                <AttachmentPopover projectId={p.id} count={attachmentCountByProject.get(p.id) ?? 0} label={`${projectCode(p)} attachments`} />
+                              </span>
+                            </span>
+                          </td>
+                        );
+                        case "name": return <td key="name" className="border border-gray-200 px-2 py-0.5 font-medium text-gray-800 whitespace-normal break-words" title={p.name}>{p.confidential && <LockBadge />}{p.name}</td>;
                         case "team": return (
                           <td key="team" className="border border-gray-200 px-2 py-0.5 text-center">
                             <div className="flex justify-center">
@@ -2111,6 +2367,30 @@ export default function ProjectsList() {
                             </div>
                           </td>
                         );
+                        case "owner": {
+                          const on = ownerName(p);
+                          const busy = assigningId === p.id;
+                          return (
+                            <td key="owner" className="border border-gray-200 px-2 py-0.5" onClick={(e) => e.stopPropagation()}>
+                              <EmployeeCombobox
+                                value={on ?? undefined}
+                                onSelect={(hit) => assignOwner(p, hit)}
+                                trigger={
+                                  <button
+                                    type="button"
+                                    title={on ? `Owner: ${on} — click to reassign` : "Assign owner"}
+                                    className="group flex items-center gap-1.5 min-w-0 max-w-full rounded px-1 py-0.5 -mx-1 hover:bg-gray-50"
+                                  >
+                                    {busy
+                                      ? <Loader2 size={14} className="animate-spin text-gray-400" />
+                                      : <PersonCell name={on} photoUrl={ownerPhoto(p)} />}
+                                    {on && <span className="truncate text-[11px] text-gray-700">{on}</span>}
+                                  </button>
+                                }
+                              />
+                            </td>
+                          );
+                        }
                         case "status": return <HealthCell key="status" health={scheduleHealth(p, taskAgg.get(p.id))} align="center" />;
                         case "priority": {
                           const pm = PRIORITY_META.get(p.priority as never);
@@ -2166,10 +2446,48 @@ export default function ProjectsList() {
                           return <td key="justification" className="border border-gray-200 px-2 py-0.5 text-center text-gray-400">—</td>;
                         }
                         case "tasks": return <td key="tasks" className="border border-gray-200 px-2 py-0.5 text-center font-semibold tabular-nums text-gray-800">{taskAgg.get(p.id)?.total ?? 0}</td>;
+                        case "progress": {
+                          const pct = Math.min(100, Math.max(0, Math.round(p.progress ?? 0)));
+                          // !overflow-visible + nowrap so the % is never clipped when the
+                          // sidebar narrows the (table-fixed) column — beats the table's
+                          // [&_td]:overflow-hidden descendant rule via !important.
+                          return <td key="progress" className="border border-gray-200 px-2 py-0.5 text-center font-semibold tabular-nums text-gray-700 whitespace-nowrap !overflow-visible">{pct}%</td>;
+                        }
                         case "taskStatus": return <td key="taskStatus" className="border border-gray-200 px-2 py-0.5"><TaskStatusBar agg={taskAgg.get(p.id)} /></td>;
                         case "timeline": return <td key="timeline" className="border border-gray-200 px-2 py-0.5 whitespace-nowrap"><TimelineCell start={p.startDate} end={p.endDate} /></td>;
+                        case "currentStatus": {
+                          const ds = displayStatusOf(p.status);
+                          // Project-specific text only — its lifecycle stage
+                          // (Business Case → URS → RFP → … → Go Live → Closure), or
+                          // the project's own description. Never the generic status
+                          // word (New / Active / …).
+                          const desc = stageLabelOf(p.stage) ?? (p.description?.trim() || null);
+                          return (
+                            <td key="currentStatus" className="border border-gray-200 px-2 py-0.5">
+                              <div className="flex items-center gap-1.5 min-w-0" title={desc ?? ""}>
+                                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: ds.color }} />
+                                {desc
+                                  ? <span className="truncate text-[11px] text-gray-700">{desc}</span>
+                                  : <span className="text-[11px] text-gray-400">—</span>}
+                              </div>
+                            </td>
+                          );
+                        }
                         case "budget": return <td key="budget" className="border border-gray-200 px-2 py-0.5 text-gray-800 tabular-nums whitespace-nowrap">{formatCurrency((p.capexBudget ?? 0) + (p.opexBudget ?? 0))}</td>;
                         case "description": return <td key="description" className="border border-gray-200 px-2 py-0.5 text-gray-700 truncate" title={p.description ?? ""}>{p.description || <span className="text-gray-400">—</span>}</td>;
+                        case "__del__": return (
+                          <td key="__del__" className="border border-gray-200 px-1 py-0.5 text-center">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); void deleteProject(p); }}
+                              title="Delete project"
+                              aria-label={`Delete project ${p.name}`}
+                              className="inline-flex items-center justify-center rounded p-1 text-gray-300 hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </td>
+                        );
                         default:
                           // Custom user-defined column — editable cell, value stored locally.
                           if (key.startsWith("cf:")) {

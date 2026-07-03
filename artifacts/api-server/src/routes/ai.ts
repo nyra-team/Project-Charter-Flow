@@ -476,8 +476,8 @@ router.post("/ai/charters/draft-template", async (req, res): Promise<void> => {
   const result = await llm({
     task: "charter_draft_template",
     system:
-      "You are an experienced PMO Business Analyst drafting a corporate Project Charter. Given a project title, sponsor, owning function, category and optional budget/hint, produce realistic, executive-grade first-draft content for every section of the charter. Be specific to the project as described — never write generic placeholder text. Where you state numbers, label them as illustrative ('e.g.', 'approx.'). Never invent real stakeholder names, real vendors, or hard calendar dates — for milestone target dates use relative phrasing like 'Q1' / 'Month 3'. For responsible parties use roles (e.g. 'IT Lead', 'Process Owner'), not invented names.",
-    prompt: `Project title: ${title}\nProject sponsor: ${sponsor || "(unspecified)"}\nFunction / Department: ${fn || "(unspecified)"}\nCategory: ${category || "(unspecified)"}\nApproved budget: ${approvedBudget ? `INR ${approvedBudget}` : "(unspecified)"}\nUser hint: ${hint || "(none)"}${sourceText ? `\n\nReference document (extracted from an uploaded source — treat as ground truth; incorporate the relevant facts, do not copy verbatim):\n${sourceText.slice(0, MAX_DOC_TEXT_CHARS)}` : ""}\n\nDraft each charter field. Narrative fields 60-160 words each (shorter for one-line items). Provide 4-6 milestones and 3-5 KPIs. Use professional, decision-grade language an executive steering committee would expect.`,
+      "You are an experienced PMO Business Analyst drafting a corporate Project Charter. Given a project title, sponsor, owning function, category and optional budget/hint, produce realistic, executive-grade first-draft content for every section of the charter. Be specific to the project as described — never write generic placeholder text. Where you state numbers, label them as illustrative ('e.g.', 'approx.'). Never invent real stakeholder names or real vendors. For responsible parties use roles (e.g. 'IT Lead', 'Process Owner'), not invented names. Milestone target dates MUST be real calendar dates in strict YYYY-MM-DD format (e.g. 2026-08-15) — never 'Q1' / 'Month 3' / prose. Anchor them to today's date given below: the first milestone ~2-4 weeks out, each subsequent milestone strictly later, spaced realistically across the project horizon.",
+    prompt: `Today's date: ${new Date().toISOString().slice(0, 10)}\nProject title: ${title}\nProject sponsor: ${sponsor || "(unspecified)"}\nFunction / Department: ${fn || "(unspecified)"}\nCategory: ${category || "(unspecified)"}\nApproved budget: ${approvedBudget ? `INR ${approvedBudget}` : "(unspecified)"}\nUser hint: ${hint || "(none)"}${sourceText ? `\n\nReference document (extracted from an uploaded source — treat as ground truth; incorporate the relevant facts, do not copy verbatim):\n${sourceText.slice(0, MAX_DOC_TEXT_CHARS)}` : ""}\n\nDraft each charter field. Narrative fields 60-160 words each (shorter for one-line items). Provide 4-6 milestones (each with a YYYY-MM-DD targetDate, in chronological order) and 3-5 KPIs. Use professional, decision-grade language an executive steering committee would expect.`,
     jsonSchema: z.object({
       executiveSummary: z.string().min(80),
       background: z.string().min(60),
@@ -500,11 +500,30 @@ router.post("/ai/charters/draft-template", async (req, res): Promise<void> => {
         goal: z.string().optional(),
       })).optional(),
     }),
-    jsonSchemaHint: `{ "executiveSummary":"...", "background":"...", "inScope":"...", "outOfScope":"...", "businessOutcome":"...", "constraints":"...", "scopeLimitations":"...", "assumptions":"...", "risks":"...", "potentialAdditionalBudget":"...", "milestones":[{"milestone":"...","responsible":"IT Lead","targetDate":"Q1"}], "kpis":[{"kpi":"...","baseline":"...","goal":"..."}] }`,
+    jsonSchemaHint: `{ "executiveSummary":"...", "background":"...", "inScope":"...", "outOfScope":"...", "businessOutcome":"...", "constraints":"...", "scopeLimitations":"...", "assumptions":"...", "risks":"...", "potentialAdditionalBudget":"...", "milestones":[{"milestone":"...","responsible":"IT Lead","targetDate":"2026-08-15"}], "kpis":[{"kpi":"...","baseline":"...","goal":"..."}] }`,
     maxTokens: 4000,
   });
   if (!result.ok) return aiError(result.reason, result.message, res);
-  res.json(result.data);
+
+  // The form renders targetDate into <input type="date">, which only accepts
+  // YYYY-MM-DD. Coerce anything the model returns that isn't a valid future ISO
+  // date to a sensibly-spaced fallback (3 weeks apart from today, in order) so
+  // the timeline column always populates.
+  const data = result.data as { milestones?: Array<{ targetDate?: string }> };
+  if (Array.isArray(data.milestones)) {
+    const today = new Date();
+    const spaced = (i: number) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() + 21 * (i + 1));
+      return d.toISOString().slice(0, 10);
+    };
+    data.milestones.forEach((m, i) => {
+      const v = (m.targetDate ?? "").trim();
+      const parsed = /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(v) : null;
+      m.targetDate = parsed && !isNaN(parsed.getTime()) && parsed >= today ? v : spaced(i);
+    });
+  }
+  res.json(data);
 });
 
 // ---------------------------------------------------------------------------

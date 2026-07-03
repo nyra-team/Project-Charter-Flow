@@ -29,6 +29,9 @@ export type DrillData = {
   /** Column definitions. If omitted, derived from the first row's keys. */
   columns?: DrillColumn[];
   rows: Array<Record<string, unknown>>;
+  /** Custom body. When set, renders this instead of the rows table (the count
+   *  badge + Share CSV still use `rows`, so pass a flat `rows` alongside it). */
+  content?: React.ReactNode;
   /** Optional "open the full view" deep-link rendered in the footer. */
   linkHref?: string;
   linkLabel?: string;
@@ -46,7 +49,7 @@ function drillCell(value: unknown): React.ReactNode {
 }
 
 export function MetricDrillModal({
-  open, onClose, title, subtitle, description, columns, rows, emptyText, accentBar, rowHref,
+  open, onClose, title, subtitle, description, columns, rows, content, emptyText, accentBar, rowHref,
 }: { open: boolean; onClose: () => void; accentBar?: string } & DrillData) {
   const [, navigate] = useLocation();
   const cols: DrillColumn[] = columns && columns.length
@@ -108,7 +111,9 @@ export function MetricDrillModal({
         </DialogHeader>
 
         <div className="overflow-y-auto overflow-x-hidden px-3 sm:px-4 py-2 flex-1" onScroll={onBodyScroll}>
-          {rows.length === 0 ? (
+          {content ? (
+            content
+          ) : rows.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground">
               <Inbox size={24} className="text-muted-foreground/40" />
               <p className="text-xs">{emptyText ?? "No underlying records to show."}</p>

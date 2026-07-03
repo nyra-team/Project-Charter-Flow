@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable, squadMembersTable, budgetLinesTable, approvalsTable, timelogsTable, scoringCriteriaTable, projectScoresTable, notificationsTable, activityTable } from "@workspace/db";
+import { db, projectsTable, milestonesTable, tasksTable, usersTable, chartersTable, squadMembersTable, projectTeamMembersTable, budgetLinesTable, approvalsTable, timelogsTable, scoringCriteriaTable, projectScoresTable, notificationsTable, activityTable, completionDecisionsTable } from "@workspace/db";
 import { eq, desc, inArray, and, or, sql, isNull } from "drizzle-orm";
 import {
   CreateProjectBody,
@@ -27,10 +27,14 @@ import { computeStageCriticalPath } from "../lib/critical-path";
 import { computeTaskCpm, wouldCreateDependencyCycle } from "../lib/critical-path-cpm";
 import { runCriticalPathAction } from "../lib/critical-path-actions";
 import { generateGateMilestones, ensureUnscheduledMilestone } from "../lib/gate-milestones";
+import { chainProjectMilestones } from "../lib/milestone-chain";
+import { generateMilestonesAndTasksFromCharter, validateEndDateAgainstCharter, scheduleImportedProject } from "../lib/charter-plan";
+import { extractText, parseProjectsFromText } from "../lib/import-projects";
 import { seedProjectTemplateDocuments } from "../lib/templateDocuments";
 import { recomputeRollups } from "../lib/rollup";
 import { mergeTaskWorkbook } from "../lib/import-tasks";
-import { requireRole } from "../lib/guard";
+import { requireRole, requireSession } from "../lib/guard";
+import { requireProjectView, requireTaskEdit, taskProjectId } from "../lib/membership";
 import { notify } from "../lib/notify";
 import { resolveRole, type Recipient } from "../lib/role-resolver";
 import type { EmailBanner } from "../lib/mailer";
@@ -69,6 +73,49 @@ function notifyTaskEventDetached(o: {
   })().catch((err) => console.warn(`[notify] ${o.type} failed:`, String(err)));
 }
 
+// Resolve the acting user (from the JWT-derived email) to their pmo_users.id.
+// Returns null when there's no local user row yet.
+async function actorUserId(req: { user?: { email: string } }): Promise<number | null> {
+  if (!req.user?.email) return null;
+  const [u] = await db.select({ id: usersTable.id }).from(usersTable)
+    .where(eq(usersTable.email, req.user.email.toLowerCase()));
+  return u?.id ?? null;
+}
+
+// Who must approve this task's completion: its explicit manager (the assigner),
+// else the project manager (charter fallback). Null when no one can be resolved
+// — completion then proceeds ungated (no owner to ask).
+async function completionApproverId(task: { managerId: number | null; projectId: number }): Promise<number | null> {
+  if (task.managerId) return task.managerId;
+  const [pm] = await resolveRole("pm", task.projectId);
+  if (pm?.userId) return pm.userId;
+  // Fall back to the project's owner (assignable from the projects table) so a
+  // project with no task-manager and no PM/charter still has someone to verify
+  // completions — otherwise the gate finds no approver and completes directly.
+  const [proj] = await db.select({ ownerId: projectsTable.projectOwnerId }).from(projectsTable).where(eq(projectsTable.id, task.projectId));
+  return proj?.ownerId ?? null;
+}
+
+// Fan a task-completion-approval event to one specific user (bell + email).
+function notifyUserDetached(userId: number, o: { projectId: number; type: string; title: string; body: string; relatedEntityId: number; banner?: EmailBanner }): void {
+  void (async () => {
+    const [u] = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+      .from(usersTable).where(eq(usersTable.id, userId));
+    if (!u) return;
+    await notify({
+      projectId: o.projectId,
+      type: o.type,
+      title: o.title,
+      body: o.body,
+      relatedEntityType: "task",
+      relatedEntityId: o.relatedEntityId,
+      link: `/projects/${o.projectId}?task=${o.relatedEntityId}`,
+      recipients: [{ userId: u.id, name: u.name, email: u.email ?? null }],
+      email: { banner: o.banner },
+    });
+  })().catch((err) => console.warn(`[notify] ${o.type} failed:`, String(err)));
+}
+
 // Recompute the project's progress rollup (subtask -> task -> milestone ->
 // project) after a work-item mutation. Best-effort: a rollup failure must never
 // fail the user's write, which has already committed by the time we get here.
@@ -91,7 +138,12 @@ async function enrichOne(taskId: number) {
 
 const router: IRouter = Router();
 
-const WRITE_ROLES = ["pm", "pmo", "hod", "initiator"];
+// Structural writes on projects/milestones/tasks (create, edit, delete) are
+// editor-only. "initiator" (= any authenticated user) was DROPPED here so base
+// "Users" can no longer create/edit projects or create tasks — they may only
+// edit tasks assigned to them (see requireTaskEdit on the task routes below).
+// Admins bypass via requireRole. NOTE: other routers keep their own WRITE_ROLES.
+const WRITE_ROLES = ["pm", "pmo", "hod"];
 
 // Projects
 router.get("/projects", async (req, res): Promise<void> => {
@@ -101,37 +153,63 @@ router.get("/projects", async (req, res): Promise<void> => {
   if (programId != null && !isNaN(programId)) conditions.push(eq(projectsTable.programId, programId));
   if (portfolioId != null && !isNaN(portfolioId)) conditions.push(eq(projectsTable.portfolioId, portfolioId));
 
+  // Resolve the caller's local pmo_users id + the projects they are assigned to
+  // (PM · charter owner/sponsor/manager · squad · project team member). Used
+  // both to scope regular users' list AND to gate confidential ("locked")
+  // projects — those are visible only to their assigned people.
+  let meId: number | null = null;
+  let myCharterIds: number[] = [];
+  let myTeamProjectIds: number[] = [];
+  if (req.user) {
+    const [me] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(eq(usersTable.email, req.user.email.toLowerCase()));
+    meId = me?.id ?? null;
+    if (meId != null) {
+      const ledCharters = await db.select({ id: chartersTable.id }).from(chartersTable)
+        .where(or(
+          eq(chartersTable.projectOwnerId, meId),
+          eq(chartersTable.projectSponsorId, meId),
+          eq(chartersTable.projectManagerId, meId),
+        ));
+      const squadCharters = await db.select({ charterId: squadMembersTable.charterId }).from(squadMembersTable)
+        .where(eq(squadMembersTable.userId, meId));
+      myCharterIds = [...new Set(
+        [...ledCharters.map((c) => c.id), ...squadCharters.map((s) => s.charterId)]
+          .filter((x): x is number => x != null),
+      )];
+      const teamRows = await db.select({ pid: projectTeamMembersTable.projectId }).from(projectTeamMembersTable)
+        .where(eq(projectTeamMembersTable.userId, meId));
+      myTeamProjectIds = [...new Set(teamRows.map((t) => t.pid).filter((x): x is number => x != null))];
+    }
+  }
+
   // Row-level visibility (server-enforced). Chairman / Executive Director /
   // Transformation team / platform admin (req.user.seeAllProjects, resolved in
   // requireAuth from the master employee DB) see EVERY project. Everyone else
-  // is scoped to projects they own: they are the PM, or the charter
-  // owner/sponsor/manager, or a squad member.
+  // is scoped to projects they're assigned to.
   if (req.user && !req.user.seeAllProjects) {
-    const [me] = await db.select({ id: usersTable.id }).from(usersTable)
-      .where(eq(usersTable.email, req.user.email.toLowerCase()));
-    if (!me) { res.json([]); return; } // no local user row yet ⇒ owns nothing
-
-    const ledCharters = await db.select({ id: chartersTable.id }).from(chartersTable)
-      .where(or(
-        eq(chartersTable.projectOwnerId, me.id),
-        eq(chartersTable.projectSponsorId, me.id),
-        eq(chartersTable.projectManagerId, me.id),
-      ));
-    const squadCharters = await db.select({ charterId: squadMembersTable.charterId }).from(squadMembersTable)
-      .where(eq(squadMembersTable.userId, me.id));
-    const charterIds = [...new Set(
-      [...ledCharters.map((c) => c.id), ...squadCharters.map((s) => s.charterId)]
-        .filter((x): x is number => x != null),
-    )];
-
-    const mine = [eq(projectsTable.projectManagerId, me.id)];
-    if (charterIds.length) mine.push(inArray(projectsTable.charterId, charterIds));
+    if (meId == null) { res.json([]); return; } // no local user row yet ⇒ owns nothing
+    const mine = [eq(projectsTable.projectManagerId, meId)];
+    if (myCharterIds.length) mine.push(inArray(projectsTable.charterId, myCharterIds));
+    if (myTeamProjectIds.length) mine.push(inArray(projectsTable.id, myTeamProjectIds));
     conditions.push(or(...mine)!);
   }
 
-  const projects = conditions.length
+  const rawProjects = conditions.length
     ? await db.select().from(projectsTable).where(and(...conditions)).orderBy(desc(projectsTable.createdAt))
     : await db.select().from(projectsTable).orderBy(desc(projectsTable.createdAt));
+
+  // Confidential ("locked") projects are visible only to their assigned people,
+  // even for see-all roles. Super-admins keep oversight so a locked-but-yet-
+  // unassigned project isn't orphaned (they can still open it and assign people).
+  const isAssigned = (p: (typeof rawProjects)[number]) => meId != null && (
+    p.projectManagerId === meId ||
+    (p.charterId != null && myCharterIds.includes(p.charterId)) ||
+    myTeamProjectIds.includes(p.id)
+  );
+  const projects = req.user?.isSuperAdmin
+    ? rawProjects
+    : rawProjects.filter((p) => !p.confidential || isAssigned(p));
 
   // Enrich with per-project variance aggregates (additive fields):
   //  - scheduleVarianceDays: avg of the project's milestones' schedule_variance_days
@@ -172,6 +250,9 @@ router.get("/projects", async (req, res): Promise<void> => {
 router.post("/projects", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const parsed = CreateProjectBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  // The end date must align with the NFA milestone schedule — reject early if not.
+  const planError = await validateEndDateAgainstCharter(parsed.data.charterId, parsed.data.endDate);
+  if (planError) { res.status(400).json({ error: planError }); return; }
   const d = parsed.data as Record<string, unknown>;
   const [project] = await db.insert(projectsTable).values({
     charterId: parsed.data.charterId,
@@ -198,6 +279,9 @@ router.post("/projects", requireRole(...WRITE_ROLES), async (req, res): Promise<
   // Seed the standard gate milestones (BC Approved, URS Approved, …) for new
   // projects so the lifecycle gates exist as milestones from day one.
   try { await generateGateMilestones(project.id); } catch { /* non-fatal */ }
+  // Schedule the NFA delivery plan: a milestone per charter milestone (deadline
+  // from its targetDate, else spread to the project end date) + a task each.
+  try { await generateMilestonesAndTasksFromCharter(project.id, parsed.data.charterId, parsed.data.endDate); } catch { /* non-fatal */ }
   // Attach the universal deliverable templates so business users edit-in-place
   // instead of hunting for them. Idempotent + non-fatal.
   try {
@@ -207,6 +291,122 @@ router.post("/projects", requireRole(...WRITE_ROLES), async (req, res): Promise<
     await seedProjectTemplateDocuments(project.id, me?.id ?? null);
   } catch { /* non-fatal */ }
   res.status(201).json(formatProject(project as unknown as Record<string, unknown>));
+});
+
+// Project-owned child tables (no FK cascade in this schema) cleared on delete.
+// Excludes the source docs (charters / nfas / pifs) and shared templates.
+const PROJECT_CHILD_TABLES = [
+  "pmo_milestones", "pmo_tasks", "pmo_workstreams", "pmo_budget_lines",
+  "pmo_baselines", "pmo_project_stages", "pmo_project_team_members",
+  "pmo_project_justifications", "pmo_resource_allocations", "pmo_change_requests",
+  "pmo_lessons_learned", "pmo_benefits_reviews", "pmo_meetings", "pmo_documents",
+  "pmo_escalation_log", "pmo_escalation_rules", "pmo_purchase_requisitions",
+  "pmo_rfx_events", "pmo_issues", "pmo_messages",
+];
+
+router.delete("/projects/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
+  const params = GetProjectParams.safeParse(req.params);
+  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  const id = Number(params.data.id);
+  const [proj] = await db.select({ id: projectsTable.id, name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, id));
+  if (!proj) { res.status(404).json({ error: "Project not found" }); return; }
+
+  // Timelogs are keyed by task, not project — clear via the task subquery first.
+  await db.execute(sql`delete from pmo_timelogs where task_id in (select id from pmo_tasks where project_id = ${id})`);
+  for (const t of PROJECT_CHILD_TABLES) {
+    await db.execute(sql.raw(`delete from ${t} where project_id = ${id}`));
+  }
+  // The charter is the source NFA — don't delete it; unlink it and send it back
+  // to the Approved lane so the project can be re-created from it.
+  await db.execute(sql`update pmo_charters set project_id = null, status = 'approved' where project_id = ${id}`);
+  await db.delete(projectsTable).where(eq(projectsTable.id, id));
+  await logActivity("project_deleted", `Project "${proj.name}" deleted`, id, "project");
+  res.json({ ok: true });
+});
+
+// Import projects from an uploaded file of ANY format (base64 in JSON). The
+// LLM extracts the projects + milestones; each is created with its generated
+// schedule (gate milestones + delivery milestones + tasks).
+router.post("/projects/import", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
+  try {
+    const body = (req.body || {}) as { fileBase64?: string; fileName?: string };
+    const b64 = String(body.fileBase64 || "");
+    const fileName = String(body.fileName || "upload");
+    if (!b64) { res.status(400).json({ error: "No file provided." }); return; }
+    const buffer = Buffer.from(b64, "base64");
+    if (!buffer.length) { res.status(400).json({ error: "Empty file." }); return; }
+
+    const text = await extractText(buffer, fileName);
+    if (!text.trim()) { res.status(422).json({ error: "Couldn't read any text from that file." }); return; }
+    const parsed = await parseProjectsFromText(text);
+    if (!parsed.length) { res.status(422).json({ error: "No projects found in the file." }); return; }
+
+    const created: { id: number; name: string; milestones: number; tasks: number }[] = [];
+    for (const p of parsed) {
+      const [project] = await db.insert(projectsTable).values({
+        name: p.name.slice(0, 300),
+        description: p.description ?? "",
+        startDate: p.startDate ?? undefined,
+        endDate: p.endDate ?? undefined,
+        stage: "initiation",
+      }).returning();
+      try { await generateGateMilestones(project.id); } catch { /* non-fatal */ }
+      let counts = { milestones: 0, tasks: 0 };
+      try {
+        // Faithful import — persist exactly the milestones/tasks/subtasks in the
+        // file, with all their fields. Nothing is generated (per requirement).
+        counts = await scheduleImportedProject(project.id, (p.milestones ?? []) as never, {
+          name: project.name, description: p.description, startDate: p.startDate, endDate: p.endDate,
+        });
+      } catch { /* non-fatal */ }
+      await logActivity("project_imported", `Project "${project.name}" imported from ${fileName}`, project.id, "project");
+      created.push({ id: project.id, name: project.name, ...counts });
+    }
+    res.status(201).json({ created: created.length, projects: created });
+  } catch (e) {
+    const status = (e as { status?: number })?.status;
+    const code = status && [400, 403, 404, 409, 422, 502, 503].includes(status) ? status : 500;
+    if (code === 500) console.error("[projects import] failed:", (e as Error)?.message);
+    res.status(code).json({ error: (e as Error)?.message || "Import failed." });
+  }
+});
+
+// Manually create a project from typed name + milestones + tasks (no LLM, no
+// file). Tasks are nested under their milestone. Sits next to import.
+router.post("/projects/manual", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
+  const body = (req.body || {}) as {
+    name?: string;
+    milestones?: { name?: string; dueDate?: string | null; tasks?: string[] }[];
+  };
+  const name = String(body.name || "").trim();
+  if (!name) { res.status(400).json({ error: "Project name is required." }); return; }
+  const milestones = (body.milestones ?? []).filter((m) => (m?.name ?? "").trim());
+
+  const [project] = await db.insert(projectsTable).values({
+    name: name.slice(0, 300), description: "", stage: "initiation",
+  }).returning();
+
+  let mCount = 0, tCount = 0;
+  for (let i = 0; i < milestones.length; i++) {
+    const m = milestones[i];
+    const [milestone] = await db.insert(milestonesTable).values({
+      projectId: project.id, name: m.name!.trim().slice(0, 300),
+      dueDate: m.dueDate || null, status: "not_started", order: i,
+    }).returning({ id: milestonesTable.id });
+    mCount++;
+    const tasks = (m.tasks ?? []).map((t) => String(t || "").trim()).filter(Boolean);
+    for (let j = 0; j < tasks.length; j++) {
+      await db.insert(tasksTable).values({
+        projectId: project.id, milestoneId: milestone.id, name: tasks[j].slice(0, 300),
+        status: "not_started", order: j,
+      });
+      tCount++;
+    }
+  }
+  await chainProjectMilestones(project.id);
+  await rollup(project.id);
+  await logActivity("project_created", `Project "${project.name}" created manually`, project.id, "project");
+  res.status(201).json({ id: project.id, name: project.name, milestones: mCount, tasks: tCount });
 });
 
 // IMPORTANT: This route must appear before /projects/:id to avoid being shadowed by the wildcard
@@ -243,7 +443,7 @@ router.get("/projects/scoring-rank", async (_req, res): Promise<void> => {
   res.json({ ranked, criteriaCount: criteria.length });
 });
 
-router.get("/projects/:id", async (req, res): Promise<void> => {
+router.get("/projects/:id", requireProjectView(req => Number(req.params.id)), async (req, res): Promise<void> => {
   const params = GetProjectParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [project] = await db.select().from(projectsTable).where(eq(projectsTable.id, params.data.id));
@@ -263,6 +463,15 @@ router.patch("/projects/:id", requireRole(...WRITE_ROLES), async (req, res): Pro
   const parsed = UpdateProjectBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const updateData: Record<string, unknown> = { ...parsed.data };
+  // projectOwnerId isn't in the legacy zod body (which strips unknown keys), so
+  // read it straight off req.body to let the projects table assign an owner.
+  if ((req.body as Record<string, unknown>)?.projectOwnerId !== undefined) {
+    updateData.projectOwnerId = (req.body as Record<string, unknown>).projectOwnerId;
+  }
+  // Confidential flag — not in the legacy zod body; read straight off req.body.
+  if ((req.body as Record<string, unknown>)?.confidential !== undefined) {
+    updateData.confidential = !!(req.body as Record<string, unknown>).confidential;
+  }
   if (parsed.data.capexBudget !== undefined) updateData.capexBudget = String(parsed.data.capexBudget);
   if (parsed.data.opexBudget !== undefined) updateData.opexBudget = String(parsed.data.opexBudget);
   if (parsed.data.budgetThresholdPct !== undefined) updateData.budgetThresholdPct = String(parsed.data.budgetThresholdPct);
@@ -273,7 +482,7 @@ router.patch("/projects/:id", requireRole(...WRITE_ROLES), async (req, res): Pro
 });
 
 // Milestones
-router.get("/projects/:id/milestones", async (req, res): Promise<void> => {
+router.get("/projects/:id/milestones", requireProjectView(req => Number(req.params.id)), async (req, res): Promise<void> => {
   const params = ListMilestonesParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const milestones = await db.select().from(milestonesTable).where(eq(milestonesTable.projectId, params.data.id)).orderBy(milestonesTable.order);
@@ -296,6 +505,8 @@ router.post("/projects/:id/milestones", requireRole(...WRITE_ROLES), async (req,
   }).returning();
   // New (empty) milestone changes the project's milestone denominator.
   await rollup(params.data.id);
+  // Slot the new milestone into the finish-to-start chain (Gantt arrows).
+  await chainProjectMilestones(params.data.id);
   res.status(201).json(milestone);
 });
 
@@ -314,8 +525,17 @@ router.patch("/milestones/:id", requireRole(...WRITE_ROLES), async (req, res): P
   const newDueDate = (updateData.dueDate as string | undefined) ?? existingM.dueDate;
   const newActualEndM = (updateData.actualEnd as string | undefined) ?? existingM.actualEnd;
   updateData.scheduleVarianceDays = computeScheduleVarianceDays(newDueDate, newActualEndM);
+  // Revised-target trail: when the target (due) date actually changes and there
+  // was a prior date, push the old one onto due_date_history (struck through in UI).
+  if (updateData.dueDate !== undefined && existingM.dueDate && updateData.dueDate !== existingM.dueDate) {
+    let hist: string[] = [];
+    try { hist = JSON.parse((existingM as Record<string, unknown>).dueDateHistory as string || "[]"); } catch { /* ignore */ }
+    updateData.dueDateHistory = JSON.stringify([...hist, existingM.dueDate]);
+  }
   const [milestone] = await db.update(milestonesTable).set(updateData).where(eq(milestonesTable.id, params.data.id)).returning();
   if (!milestone) { res.status(404).json({ error: "Milestone not found" }); return; }
+  // Reordering changes the chain — rebuild predecessors so Gantt arrows follow.
+  if ("order" in (parsed.data as Record<string, unknown>)) await chainProjectMilestones(existingM.projectId);
 
   // Audit trail: log what changed
   const msChangedFields = Object.keys(parsed.data).filter(k => k !== "scheduleVarianceDays");
@@ -341,12 +561,12 @@ router.delete("/milestones/:id", requireRole("pmo", "pm"), async (req, res): Pro
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [doomed] = await db.select({ projectId: milestonesTable.projectId }).from(milestonesTable).where(eq(milestonesTable.id, params.data.id));
   await db.delete(milestonesTable).where(eq(milestonesTable.id, params.data.id));
-  if (doomed) await rollup(doomed.projectId);
+  if (doomed) { await rollup(doomed.projectId); await chainProjectMilestones(doomed.projectId); }
   res.sendStatus(204);
 });
 
 // Tasks
-router.get("/projects/:id/tasks", async (req, res): Promise<void> => {
+router.get("/projects/:id/tasks", requireProjectView(req => Number(req.params.id)), async (req, res): Promise<void> => {
   const params = ListTasksParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const tasks = await db.select().from(tasksTable).where(eq(tasksTable.projectId, params.data.id)).orderBy(tasksTable.order);
@@ -507,7 +727,7 @@ router.post("/projects/:id/tasks/import", requireRole(...WRITE_ROLES), async (re
   }
 });
 
-router.get("/tasks/:id", async (req, res): Promise<void> => {
+router.get("/tasks/:id", requireProjectView(req => taskProjectId(Number(req.params.id))), async (req, res): Promise<void> => {
   const params = GetTaskParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, params.data.id));
@@ -516,7 +736,7 @@ router.get("/tasks/:id", async (req, res): Promise<void> => {
   res.json(enriched);
 });
 
-router.patch("/tasks/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
+router.patch("/tasks/:id", requireTaskEdit(), async (req, res): Promise<void> => {
   const params = UpdateTaskParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const parsed = UpdateTaskBody.safeParse(req.body);
@@ -539,9 +759,43 @@ router.patch("/tasks/:id", requireRole(...WRITE_ROLES), async (req, res): Promis
   if (!existing) { res.status(404).json({ error: "Task not found" }); return; }
   const [projTask] = await db.select({ status: projectsTable.status, name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, existing.projectId));
   if (projTask?.status === "closed") { res.status(409).json({ error: "Project is closed. Tasks cannot be updated." }); return; }
+  // Completion-approval gate. Marking a task/subtask completed doesn't complete
+  // it unless you're its approver (the assigner). Anyone else records a pending
+  // request with a justification and the approver is notified to accept/reject.
+  const wantsComplete = parsed.data.status === "completed" && existing.status !== "completed";
+  if (wantsComplete) {
+    const actorId = await actorUserId(req);
+    const approverId = await completionApproverId(existing);
+    if (approverId && approverId !== actorId) {
+      const reason = String((req.body as Record<string, unknown>)?.completionReason ?? "").trim();
+      const [pending] = await db.update(tasksTable).set({
+        completionRequestedBy: actorId,
+        completionApproverId: approverId,
+        completionReason: reason || null,
+        completionRequestedAt: new Date(),
+      }).where(eq(tasksTable.id, existing.id)).returning();
+      const [enrichedPending] = await enrichTasks([pending as unknown as Record<string, unknown>]);
+      await logActivity("task_updated", `Completion requested for task "${existing.name}"${reason ? ` — ${reason}` : ""} (awaiting approval)`, existing.projectId, "task", existing.id);
+      res.json(enrichedPending);
+      const actorName = ((enrichedPending as Record<string, unknown>).completionRequestedByName as string | null) ?? "Someone";
+      notifyUserDetached(approverId, {
+        projectId: existing.projectId,
+        type: "completion_requested",
+        title: `Approval needed: "${existing.name}" marked complete`,
+        body: `${actorName} marked this task complete${reason ? ` — "${reason}"` : ""}. Accept to complete it, or reject with a reason.`,
+        relatedEntityId: existing.id,
+        banner: { emoji: "⏳", title: "Completion approval needed", color: "amber" },
+      });
+      return;
+    }
+  }
   // Edge-trigger for the completion alert: only on the not-completed → completed
   // transition, so a later PATCH on other fields can't re-fire it.
   const completedNow = parsed.data.status === "completed" && existing.status !== "completed";
+  // Edge-trigger for the assignment alert: assignee set to a NEW person (from
+  // unassigned or a different assignee). Notifies that person below (bell + email).
+  const reassignedTo = (parsed.data.assigneeId != null && parsed.data.assigneeId !== existing.assigneeId)
+    ? parsed.data.assigneeId : null;
   const newEndDate = (updateData.endDate as string | undefined) ?? existing.endDate;
   const newActualEnd = (updateData.actualEnd as string | undefined) ?? existing.actualEnd;
   updateData.scheduleVarianceDays = computeScheduleVarianceDays(newEndDate, newActualEnd);
@@ -555,6 +809,27 @@ router.patch("/tasks/:id", requireRole(...WRITE_ROLES), async (req, res): Promis
   const [task] = await db.update(tasksTable).set(updateData).where(eq(tasksTable.id, params.data.id)).returning();
   if (!task) { res.status(404).json({ error: "Task not found" }); return; }
   const [enriched] = await enrichTasks([task as unknown as Record<string, unknown>]);
+
+  // Auto-extend the parent milestone when a task's new end date runs past it.
+  // The justification supplied with the date change is carried onto the
+  // milestone (its own `justification` column) + the activity log so the slip
+  // is traceable. ISO YYYY-MM-DD compares correctly as strings.
+  if (updateData.endDate !== undefined && task.endDate && task.milestoneId != null) {
+    const [ms] = await db.select().from(milestonesTable).where(eq(milestonesTable.id, task.milestoneId));
+    if (ms && ms.dueDate && task.endDate > ms.dueDate) {
+      const reason = (parsed.data as Record<string, unknown>).justification as string | undefined;
+      await db.update(milestonesTable)
+        .set({ dueDate: task.endDate, scheduleVarianceDays: computeScheduleVarianceDays(task.endDate, ms.actualEnd ?? undefined), justification: reason ?? ms.justification ?? null })
+        .where(eq(milestonesTable.id, ms.id));
+      await logActivity(
+        "milestone_updated",
+        `Milestone "${ms.name}" due date auto-extended to ${task.endDate} — task "${task.name}" runs past it${reason ? `. Justification: ${reason}` : ""}`,
+        ms.projectId,
+        "milestone",
+        ms.id,
+      );
+    }
+  }
 
   // Audit trail: log what changed
   const changedFields = Object.keys(parsed.data).filter(k => k !== "scheduleVarianceDays");
@@ -647,6 +922,99 @@ router.patch("/tasks/:id", requireRole(...WRITE_ROLES), async (req, res): Promis
       banner: { emoji: "✅", title: "Task completed", color: "green" },
     });
   }
+  // Notify the newly-assigned person (bell + email) when a task/subtask is
+  // reassigned or an unassigned one is handed to someone — skip self-assignment.
+  if (reassignedTo != null) {
+    void (async () => {
+      const actorId = await actorUserId(req);
+      if (reassignedTo === actorId) return; // "Assign to me" — no self-ping
+      notifyUserDetached(reassignedTo, {
+        projectId: existing.projectId,
+        type: "task_assigned",
+        title: `Task assigned to you: "${existing.name}"`,
+        body: `You've been assigned "${existing.name}" in "${projTask?.name ?? "project"}"${existing.endDate ? ` — due ${existing.endDate}` : ""}.`,
+        relatedEntityId: existing.id,
+        banner: { emoji: "📋", title: "Task assigned", color: "blue" },
+      });
+    })().catch(() => { /* notify is best-effort */ });
+  }
+});
+
+// Approver decides a pending completion request: accept → status completed,
+// reject → keep status + require a reason. Either way notifies the requester.
+// Any authenticated user may call it; the handler self-checks that the actor IS
+// the task's designated approver (the approver can be a base "User").
+router.post("/tasks/:id/complete-decision", requireSession, async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) { res.status(400).json({ error: "Bad task id" }); return; }
+  const decision = (req.body?.decision as string) === "reject" ? "reject" : "accept";
+  const reason = String((req.body?.reason as string) ?? "").trim();
+  const [existing] = await db.select().from(tasksTable).where(eq(tasksTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Task not found" }); return; }
+  if (!existing.completionRequestedBy) { res.status(409).json({ error: "No pending completion request for this task." }); return; }
+  const actorId = await actorUserId(req);
+  if (actorId !== existing.completionApproverId && !req.user?.isSuperAdmin) {
+    res.status(403).json({ error: "Only the task's approver can decide this completion." }); return;
+  }
+  const requesterId = existing.completionRequestedBy;
+  const clearPending = { completionRequestedBy: null, completionApproverId: null, completionReason: null, completionRequestedAt: null };
+
+  if (decision === "reject") {
+    if (!reason) { res.status(400).json({ error: "A reason is required to reject." }); return; }
+    const [row] = await db.update(tasksTable).set(clearPending).where(eq(tasksTable.id, id)).returning();
+    const [enriched] = await enrichTasks([row as unknown as Record<string, unknown>]);
+    await logActivity("task_updated", `Completion rejected for task "${existing.name}" — ${reason}`, existing.projectId, "task", existing.id);
+    await db.insert(completionDecisionsTable).values({
+      taskId: existing.id, projectId: existing.projectId, taskName: existing.name,
+      decision: "rejected", approverId: actorId ?? existing.completionApproverId, requesterId, reason,
+    });
+    res.json(enriched);
+    if (requesterId) notifyUserDetached(requesterId, {
+      projectId: existing.projectId,
+      type: "completion_rejected",
+      title: `Completion rejected: "${existing.name}"`,
+      body: `Your request to complete this task was rejected — "${reason}". The task stays ${(existing.status ?? "").replace(/_/g, " ")}.`,
+      relatedEntityId: existing.id,
+      banner: { emoji: "✋", title: "Completion rejected", color: "red" },
+    });
+    return;
+  }
+
+  // accept → mark the task completed
+  const [row] = await db.update(tasksTable).set({
+    status: "completed",
+    scheduleVarianceDays: computeScheduleVarianceDays(existing.endDate, existing.actualEnd ?? undefined),
+    ...clearPending,
+  }).where(eq(tasksTable.id, id)).returning();
+  const [enriched] = await enrichTasks([row as unknown as Record<string, unknown>]);
+  await logActivity("task_updated", `Completion approved for task "${existing.name}" — status → completed`, existing.projectId, "task", existing.id);
+  await db.insert(completionDecisionsTable).values({
+    taskId: existing.id, projectId: existing.projectId, taskName: existing.name,
+    decision: "accepted", approverId: actorId ?? existing.completionApproverId, requesterId, reason: reason || null,
+  });
+  // ponytail: progress rolls up the tree; parent-STATUS auto-aggregation only
+  // fires on the direct PATCH path, so an approved subtask won't instantly flip
+  // its parent to completed. Acceptable; wire the aggregation here if needed.
+  await rollup(existing.projectId);
+  const [projTask] = await db.select({ name: projectsTable.name }).from(projectsTable).where(eq(projectsTable.id, existing.projectId));
+  res.json(enriched);
+  if (requesterId) notifyUserDetached(requesterId, {
+    projectId: existing.projectId,
+    type: "completion_accepted",
+    title: `Completion approved: "${existing.name}"`,
+    body: "Your request to complete this task was approved — it's now marked completed.",
+    relatedEntityId: existing.id,
+    banner: { emoji: "✅", title: "Completion approved", color: "green" },
+  });
+  notifyTaskEventDetached({
+    projectId: existing.projectId,
+    assigneeId: existing.assigneeId,
+    type: "task_completed",
+    title: `Task completed: "${existing.name}" in "${projTask?.name ?? "project"}"`,
+    body: existing.endDate ? `Planned end date was ${existing.endDate}.` : "Marked completed.",
+    relatedEntityId: existing.id,
+    banner: { emoji: "✅", title: "Task completed", color: "green" },
+  });
 });
 
 router.delete("/tasks/:id", requireRole("pmo", "pm"), async (req, res): Promise<void> => {
@@ -659,7 +1027,7 @@ router.delete("/tasks/:id", requireRole("pmo", "pm"), async (req, res): Promise<
 });
 
 // Timelogs
-router.get("/tasks/:id/timelogs", async (req, res): Promise<void> => {
+router.get("/tasks/:id/timelogs", requireProjectView(req => taskProjectId(Number(req.params.id))), async (req, res): Promise<void> => {
   const taskId = parseInt(req.params.id);
   if (isNaN(taskId)) { res.status(400).json({ error: "Invalid task id" }); return; }
   const rows = await db.select().from(timelogsTable).where(eq(timelogsTable.taskId, taskId)).orderBy(desc(timelogsTable.date));
@@ -675,7 +1043,7 @@ router.get("/tasks/:id/timelogs", async (req, res): Promise<void> => {
   })));
 });
 
-router.post("/tasks/:id/timelogs", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
+router.post("/tasks/:id/timelogs", requireTaskEdit(), async (req, res): Promise<void> => {
   const taskId = parseInt(req.params.id);
   if (isNaN(taskId)) { res.status(400).json({ error: "Invalid task id" }); return; }
   const [task] = await db.select().from(tasksTable).where(eq(tasksTable.id, taskId)).limit(1);
@@ -722,7 +1090,7 @@ router.post("/tasks/:id/timelogs", requireRole(...WRITE_ROLES), async (req, res)
   res.status(201).json({ ...row, hours: Number(row.hours), userName });
 });
 
-router.patch("/tasks/:taskId/timelogs/:id", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
+router.patch("/tasks/:taskId/timelogs/:id", requireTaskEdit("taskId"), async (req, res): Promise<void> => {
   const taskId = parseInt(req.params.taskId);
   const id = parseInt(req.params.id);
   if (isNaN(taskId) || isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
@@ -1121,10 +1489,10 @@ function computeScheduleVarianceDays(plannedEnd: string | null | undefined, actu
 
 async function enrichTasks(tasks: Array<Record<string, unknown>>) {
   if (!tasks.length) return [];
-  const assigneeIds = [...new Set(tasks.filter(t => t.assigneeId).map(t => t.assigneeId as number))];
-  const users = assigneeIds.length
+  const nameIds = [...new Set(tasks.flatMap(t => [t.assigneeId, t.completionRequestedBy]).filter(Boolean) as number[])];
+  const users = nameIds.length
     ? await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable)
-        .where(inArray(usersTable.id, assigneeIds))
+        .where(inArray(usersTable.id, nameIds))
     : [];
   const userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
 
@@ -1157,6 +1525,7 @@ async function enrichTasks(tasks: Array<Record<string, unknown>>) {
       successorIds,
       crossProjectPredecessors: enrichedCrossProjectPreds,
       assigneeName: t.assigneeId ? userMap[t.assigneeId as number] ?? null : null,
+      completionRequestedByName: t.completionRequestedBy ? userMap[t.completionRequestedBy as number] ?? null : null,
       estimatedHours: t.estimatedHours != null ? Number(t.estimatedHours) : null,
       actualHours: t.actualHours != null ? Number(t.actualHours) : null,
     };

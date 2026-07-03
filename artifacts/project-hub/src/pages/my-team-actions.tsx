@@ -306,7 +306,7 @@ export default function MyTeamActions() {
             <Users className="w-5 h-5" />
           </span>
           <div>
-            <h1 className="text-[16px] font-heading font-bold text-foreground leading-tight">My Team Actions</h1>
+            <h1 data-tour="mta-title" className="text-[16px] font-heading font-bold text-foreground leading-tight">My Team Actions</h1>
             <p className="text-[12px] text-muted-foreground">Your reporting line and team — click anyone to explore their team.</p>
           </div>
         </div>

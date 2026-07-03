@@ -9,11 +9,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AlertTriangle, CheckCircle2, Clock, Plus, X } from "lucide-react";
 import { DEPARTMENTS } from "../lib/task-constants";
 import { formatDate } from "../lib/format";
+import { ISSUE_TYPES, SEVERITIES, PRIORITIES } from "./raise-issue-form";
 
 interface Issue {
   id: number;
   title: string;
   description?: string | null;
+  issueType?: string | null;
+  severity?: string | null;
+  priority?: string | null;
+  dueDate?: string | null;
   taskId?: number | null;
   milestoneId?: number | null;
   dependencyType?: string | null;
@@ -53,6 +58,10 @@ export function IssueRaiseModal({ open, onClose, projectId, taskId, milestoneId,
   const [form, setForm] = useState({
     title: "",
     description: "",
+    issueType: "",
+    severity: "",
+    priority: "",
+    dueDate: "",
     dependencyType: "blocking",
     blockingOwnerId: "",
     blockingDept: "",
@@ -69,7 +78,7 @@ export function IssueRaiseModal({ open, onClose, projectId, taskId, milestoneId,
   );
 
   function resetForm() {
-    setForm({ title: "", description: "", dependencyType: "blocking", blockingOwnerId: "", blockingDept: "", originalDeadline: "", proposedRevisedDeadline: "" });
+    setForm({ title: "", description: "", issueType: "", severity: "", priority: "", dueDate: "", dependencyType: "blocking", blockingOwnerId: "", blockingDept: "", originalDeadline: "", proposedRevisedDeadline: "" });
     setShowForm(false);
   }
 
@@ -84,6 +93,10 @@ export function IssueRaiseModal({ open, onClose, projectId, taskId, milestoneId,
         data: {
           title: form.title,
           description: form.description || undefined,
+          issueType: form.issueType || undefined,
+          severity: form.severity || undefined,
+          priority: form.priority || undefined,
+          dueDate: form.dueDate || undefined,
           taskId: taskId,
           milestoneId: milestoneId,
           dependencyType: form.dependencyType || undefined,
@@ -139,7 +152,7 @@ export function IssueRaiseModal({ open, onClose, projectId, taskId, milestoneId,
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle size={18} className="text-amber-500" />
@@ -147,7 +160,7 @@ export function IssueRaiseModal({ open, onClose, projectId, taskId, milestoneId,
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* Existing issues */}
           {relevantIssues.length > 0 && (
             <div className="space-y-3">
@@ -174,8 +187,12 @@ export function IssueRaiseModal({ open, onClose, projectId, taskId, milestoneId,
                     </div>
                     {issue.description && <p className="text-xs text-gray-500">{issue.description}</p>}
                     <div className="flex flex-wrap gap-3 text-xs text-gray-500">
+                      {issue.issueType && <span>Issue Type: <b>{issue.issueType}</b></span>}
+                      {issue.severity && <span>Severity: <b>{issue.severity}</b></span>}
+                      {issue.priority && <span>Priority: <b>{issue.priority}</b></span>}
+                      {issue.dueDate && <span>Due: <b>{formatDate(issue.dueDate)}</b></span>}
                       {issue.dependencyType && <span>Type: <b>{issue.dependencyType}</b></span>}
-                      {ownerName && <span>Blocking Owner: <b>{ownerName}</b></span>}
+                      {ownerName && <span>SPOC: <b>{ownerName}</b></span>}
                       {issue.blockingDept && <span>Dept: <b>{issue.blockingDept}</b></span>}
                       {issue.originalDeadline && <span>Original: <b>{formatDate(issue.originalDeadline)}</b></span>}
                       {issue.proposedRevisedDeadline && (
@@ -214,7 +231,7 @@ export function IssueRaiseModal({ open, onClose, projectId, taskId, milestoneId,
 
           {/* Raise new issue form */}
           {showForm ? (
-            <div className="rounded-xl p-4 space-y-3" style={{ background: "#FFF8F5", border: "1px solid #FDBA74" }}>
+            <div className="rounded-xl p-3 space-y-2" style={{ background: "#FFF8F5", border: "1px solid #FDBA74" }}>
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-gray-700">Raise New Issue</p>
                 <button onClick={resetForm} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
@@ -230,7 +247,38 @@ export function IssueRaiseModal({ open, onClose, projectId, taskId, milestoneId,
                 <Textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} rows={2} className="text-sm" />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-4 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">Issue Type</label>
+                  <Select value={form.issueType} onValueChange={v => setForm(f => ({ ...f, issueType: v }))}>
+                    <SelectTrigger className="text-sm h-9"><SelectValue placeholder="Select type" /></SelectTrigger>
+                    <SelectContent>
+                      {ISSUE_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">Severity / Impact</label>
+                  <Select value={form.severity} onValueChange={v => setForm(f => ({ ...f, severity: v }))}>
+                    <SelectTrigger className="text-sm h-9"><SelectValue placeholder="Select severity" /></SelectTrigger>
+                    <SelectContent>
+                      {SEVERITIES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">Priority</label>
+                  <Select value={form.priority} onValueChange={v => setForm(f => ({ ...f, priority: v }))}>
+                    <SelectTrigger className="text-sm h-9"><SelectValue placeholder="Select priority" /></SelectTrigger>
+                    <SelectContent>
+                      {PRIORITIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">Due date</label>
+                  <Input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate: e.target.value }))} className="text-sm h-9" />
+                </div>
                 <div>
                   <label className="text-xs font-medium text-gray-600 mb-1 block">Dependency Type</label>
                   <Select value={form.dependencyType} onValueChange={v => setForm(f => ({ ...f, dependencyType: v }))}>
@@ -268,7 +316,7 @@ export function IssueRaiseModal({ open, onClose, projectId, taskId, milestoneId,
                   <label className="text-xs font-medium text-gray-600 mb-1 block">Original Deadline</label>
                   <Input type="date" value={form.originalDeadline} onChange={e => setForm(f => ({ ...f, originalDeadline: e.target.value }))} className="text-sm h-9" />
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-4">
                   <label className="text-xs font-medium text-gray-600 mb-1 block">Proposed Revised Deadline</label>
                   <Input type="date" value={form.proposedRevisedDeadline} onChange={e => setForm(f => ({ ...f, proposedRevisedDeadline: e.target.value }))} className="text-sm h-9" />
                 </div>

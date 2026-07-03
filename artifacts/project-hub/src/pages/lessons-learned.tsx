@@ -104,11 +104,11 @@ export default function LessonsLearnedPage() {
               <BookOpen size={18} className="text-primary" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-foreground tracking-tight">Lessons Learned Repository</h1>
+              <h1 data-tour="les-title" className="text-xl font-bold text-foreground tracking-tight">Lessons Learned Repository</h1>
               <p className="text-[11px] text-muted-foreground mt-0.5">Cross-project knowledge — search by keyword, tag, or use AI semantic search.</p>
             </div>
           </div>
-          <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm">
+          <button data-tour="les-capture" onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm">
             <Plus size={14} /> Capture Lesson
           </button>
         </div>

@@ -878,3 +878,20 @@
 .zone-band-amber     { background-color: var(--zone-amber); }
 .zone-band-green     { background-color: var(--zone-green); }
 .zone-band-neutral   { background-color: var(--zone-neutral); }
+
+/* docx-preview — proper document-viewer chrome: grey backdrop, white pages with
+   shadow + spacing so the generated Charter/e-NFA reads like a printed page. */
+.docx-wrapper {
+  background: #f1f5f9 !important;
+  padding: 24px 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 20px !important;
+}
+.docx-wrapper > section.docx {
+  background: #fff !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12), 0 8px 24px rgba(15, 23, 42, 0.08) !important;
+  border-radius: 3px !important;
+  margin: 0 !important;
+}

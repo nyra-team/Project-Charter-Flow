@@ -69,7 +69,7 @@ export default function VendorsPage() {
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Vendor Master</h1>
+          <h1 data-tour="ven-title" className="text-2xl font-semibold tracking-tight">Vendor Master</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Source of truth for every supplier. Registrations flow in from the vendor portal; PMO qualifies, segments, and scorecards them here.
           </p>
@@ -83,7 +83,7 @@ export default function VendorsPage() {
       </div>
 
       {/* Filter bar */}
-      <div className="rounded-2xl border border-border bg-card/40 p-3 flex items-center gap-2 flex-wrap">
+      <div data-tour="ven-filters" className="rounded-2xl border border-border bg-card/40 p-3 flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[200px]">
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input

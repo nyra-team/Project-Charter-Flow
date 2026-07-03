@@ -176,16 +176,20 @@ def build(data, out_path):
             cell.vertical_alignment = WD_ALIGN_VERTICAL.TOP
             pr = cell.paragraphs[0]; pr.paragraph_format.space_after = Pt(2)
             run(pr, str(sig.get("role") or ""), bold=True, size=9, color=GREY)
-            pn = cell.add_paragraph(); pn.paragraph_format.space_after = Pt(10)
+            pn = cell.add_paragraph(); pn.paragraph_format.space_after = Pt(4)
             run(pn, str(sig.get("name") or "—"), bold=True, size=10)
-            status = (sig.get("status") or "pending").lower()
-            psd = cell.add_paragraph()
-            if status == "approved":
-                run(psd, "✓ Approved", bold=True, size=9, color=GREEN)
-            elif status == "rejected":
-                run(psd, "✗ Rejected", bold=True, size=9, color=RED)
-            else:
-                run(psd, "Pending", size=9, color=GREY)
+            # No printed status word — this document is a frozen snapshot sent for
+            # e-signature; a baked "Pending"/"Approved" would go stale the moment
+            # someone signs (the signature stamp itself is the approval evidence,
+            # and live status lives in the app). Just a "Signature:" label + the
+            # invisible [[SIGn]] anchor the Documenso sender pins the field to.
+            plabel = cell.add_paragraph()
+            run(plabel, "Signature:", size=8, color=GREY)
+            # Invisible e-sign anchor (white text — present in the PDF text layer,
+            # unseen on paper). space_after reserves room for the signature stamp.
+            psig = cell.add_paragraph()
+            psig.paragraph_format.space_after = Pt(30)
+            run(psig, f"[[SIG{idx + 1}]]", size=8, color=RGBColor(0xFF, 0xFF, 0xFF))
         # blank trailing cells stay empty
 
     add_para(doc, space_after=2)

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { api } from "@/lib/extra-api";
 import { Link, useLocation } from "wouter";
 import { useGoBack } from "../lib/back";
 import { WorkflowSwitch, CapexWorkflow } from "../components/CapexWorkflow";
@@ -46,6 +47,8 @@ type Milestone = { milestone: string; responsible: string; targetDate: string };
 type Kpi = { kpi: string; baseline: string; goal: string };
 type Member = { name: string; email?: string | null; designation?: string | null };
 type VendorMatrix = { columns: string[]; rows: string[][] };
+// Editable approval signatory chain (same shape as the standalone e-NFA).
+type Sig = { role: string; name: string; email?: string; empCode?: string; designation?: string };
 
 function Section({ title, subtitle, required, dense, children }: {
   title: string; subtitle?: string; icon?: React.ReactNode; required?: boolean; dense?: boolean; children: React.ReactNode;
@@ -222,27 +225,60 @@ export default function NewCharterTemplate() {
   const aiEnabled = !aiStatus || aiStatus.configured;
   const [saving, setSaving] = useState(false);
   const [drafting, setDrafting] = useState(false);
-  // True once the AI draft has been generated — going back to step 1 and
-  // continuing again must NOT re-draft (it would re-call the AI and refill
-  // sections). The existing draft is preserved as-is.
+  // True once the AI draft has been generated. "Draft with AI" fills empty
+  // fields only, so it's re-clickable; this just gates the autosave hint.
   const [drafted, setDrafted] = useState(false);
-  // Two-step flow: 1 = mandatory basics, 2 = AI-drafted narrative (editable +
-  // per-field "Rephrase with AI"). Continue from step 1 auto-drafts step 2.
+  // Two-step flow: 1 = mandatory basics, 2 = charter narrative (with a
+  // "Draft with AI" button). Continue just navigates — drafting is on demand.
   const [step, setStep] = useState<1 | 2>(1);
   // CapEx vs the standard charter+e-NFA workflow.
   const [mode, setMode] = useState<"standard" | "capex">("standard");
+
+  // Let the guided tour drive the form so it can walk into each option
+  // (Standard ↔ CapEx, and the AI-narrative step) without the user clicking.
+  useEffect(() => {
+    const onMode = (e: Event) => {
+      const m = (e as CustomEvent).detail;
+      if (m === "standard" || m === "capex") setMode(m);
+    };
+    const onStep = (e: Event) => {
+      const s = (e as CustomEvent).detail;
+      if (s === 1 || s === 2 || s === "1" || s === "2") setStep(Number(s) as 1 | 2);
+    };
+    window.addEventListener("pmo:tour:set-charter-mode", onMode);
+    window.addEventListener("pmo:tour:set-charter-step", onStep);
+    return () => {
+      window.removeEventListener("pmo:tour:set-charter-mode", onMode);
+      window.removeEventListener("pmo:tour:set-charter-step", onStep);
+    };
+  }, []);
   // Created charter id — opens the Charter+e-NFA preview overlay after submit.
   const [previewId, setPreviewId] = useState<number | null>(null);
+
+  // ── EDIT MODE — /charters/new?edit=<id> prefills every field from an existing
+  // draft charter and saves via PATCH (no new charter, no RFP float). This is
+  // the "edit everything" surface; charter-detail's inline edit stays for quick tweaks.
+  const editId = (() => {
+    const v = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("edit") : null;
+    const n = v ? parseInt(v, 10) : NaN;
+    return Number.isFinite(n) ? n : null;
+  })();
 
   // Identification
   const [title, setTitle] = useState("");
   const [projectSponsor, setProjectSponsor] = useState("");
   const [department, setDepartment] = useState("");
   const [category, setCategory] = useState("");
+  // Location / Unit — drives the CAPEX DOA matrix exactly like the standalone
+  // e-NFA, so the project's NFA resolves the identical approver chain.
+  // (named unitLocation to avoid the wouter setLocation router setter above.)
+  const [unitLocation, setUnitLocation] = useState("");
   const [pmType, setPmType] = useState("");
   const [pmName, setPmName] = useState("");
   const [projectApprovalDate, setProjectApprovalDate] = useState("");
   const [lastRevisionDate, setLastRevisionDate] = useState("");
+  // DOA — Delegation of Authority the raiser is acting under (Basics step).
+  const [doa, setDoa] = useState("");
   const [members, setMembers] = useState<Member[]>([{ name: "" }]);
   const { data: usersData = [] } = useListUsers();
   // Member dropdown options = employee directory ∪ any names already chosen / AI-drafted
@@ -283,6 +319,10 @@ export default function NewCharterTemplate() {
   // Deliverables
   const [milestones, setMilestones] = useState<Milestone[]>([{ milestone: "", responsible: "", targetDate: "" }]);
 
+  // Approval signatory chain — the manual chain that drives the approval order
+  // on submit. Starts blank (roles are NOT prefilled); the user adds each step.
+  const [sigs, setSigs] = useState<Sig[]>([{ role: "", name: "" }]);
+
   // Benefits
   const [kpis, setKpis] = useState<Kpi[]>([{ kpi: "", baseline: "", goal: "" }]);
   const [roiPerAnnum, setRoiPerAnnum] = useState("");
@@ -306,21 +346,23 @@ export default function NewCharterTemplate() {
 
   // ── autosave the whole form to this device (survives reload / nav away) ───
   useFormDraft("pmo:charter-draft", {
-    title, projectSponsor, department, category, pmType, pmName, projectApprovalDate,
-    lastRevisionDate, members, projectDescription, refText, executiveSummary, background,
+    title, projectSponsor, department, category, location: unitLocation, pmType, pmName, projectApprovalDate,
+    lastRevisionDate, doa, members, projectDescription, refText, executiveSummary, background,
     inScope, outOfScope, businessOutcome, constraints, approvedBudget, leBudget,
     scopeLimitations, milestones, kpis, roiPerAnnum, risks, assumptions,
-    potentialAdditionalBudget, customFields, vendor, sectionOrder,
+    potentialAdditionalBudget, customFields, vendor, sectionOrder, sigs,
     drafted,
   }, (s) => {
     if (s.title != null) setTitle(s.title);
     if (s.projectSponsor != null) setProjectSponsor(s.projectSponsor);
     if (s.department != null) setDepartment(s.department);
     if (s.category != null) setCategory(s.category);
+    if (s.location != null) setUnitLocation(s.location);
     if (s.pmType != null) setPmType(s.pmType);
     if (s.pmName != null) setPmName(s.pmName);
     if (s.projectApprovalDate != null) setProjectApprovalDate(s.projectApprovalDate);
     if (s.lastRevisionDate != null) setLastRevisionDate(s.lastRevisionDate);
+    if (s.doa != null) setDoa(s.doa);
     if (s.members != null) setMembers(s.members);
     if (s.projectDescription != null) setProjectDescription(s.projectDescription);
     if (s.refText != null) setRefText(s.refText);
@@ -334,6 +376,7 @@ export default function NewCharterTemplate() {
     if (s.leBudget != null) setLeBudget(s.leBudget);
     if (s.scopeLimitations != null) setScopeLimitations(s.scopeLimitations);
     if (s.milestones != null) setMilestones(s.milestones);
+    if (s.sigs != null) setSigs(s.sigs);
     if (s.kpis != null) setKpis(s.kpis);
     if (s.roiPerAnnum != null) setRoiPerAnnum(s.roiPerAnnum);
     if (s.risks != null) setRisks(s.risks);
@@ -350,7 +393,61 @@ export default function NewCharterTemplate() {
     }
     // Once created (previewId set), stop autosaving so the cleared draft can't be
     // re-persisted from live state — reopening "Charter + e-NFA" starts blank.
-  }, previewId === null);
+    // Edit mode never touches the create-draft (it loads from the server).
+  }, previewId === null && editId === null);
+
+  // Edit mode: load the charter once and prefill every wizard field.
+  useEffect(() => {
+    if (!editId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/charters/${editId}`);
+        if (!res.ok) throw new Error(`Failed to load charter (HTTP ${res.status})`);
+        const c = await res.json() as Record<string, any>;
+        setTitle(c.title ?? "");
+        setProjectSponsor(c.projectSponsor ?? "");
+        setDepartment(c.department ?? "");
+        setCategory(c.category ?? "");
+        setUnitLocation(c.location ?? "");
+        setPmType(c.pmType ?? "");
+        setPmName(c.pmName ?? "");
+        setProjectApprovalDate(c.projectApprovalDate ?? "");
+        setLastRevisionDate(c.lastRevisionDate ?? "");
+        setDoa(c.scoringWeights?.doa ?? "");
+        setMembers(c.keyProjectMembers?.length ? c.keyProjectMembers.map((m: any) => ({ name: m.name ?? "", email: m.email ?? undefined, designation: m.designation ?? undefined })) : [{ name: "" }]);
+        // description was composed as projectDescription + summary/background/outcome
+        // joined with \n\n — recover the leading block as the editable description.
+        setProjectDescription(String(c.description ?? "").split("\n\n")[0] ?? "");
+        setExecutiveSummary(c.executiveSummary ?? "");
+        setBackground(c.background ?? "");
+        setInScope(c.scope ?? "");
+        setOutOfScope(c.outOfScope ?? "");
+        setBusinessOutcome(c.businessOutcome ?? "");
+        setConstraints(c.constraints ?? "");
+        setApprovedBudget(c.tentativeBudget != null && Number(c.tentativeBudget) !== 0 ? String(c.tentativeBudget) : "");
+        setLeBudget(c.leAmount != null ? String(c.leAmount) : "");
+        setScopeLimitations(c.scopeLimitations ?? "");
+        setMilestones(c.milestones?.length ? c.milestones.map((m: any) => ({ milestone: m.milestone ?? "", responsible: m.responsible ?? "", targetDate: m.targetDate ?? "" })) : [{ milestone: "", responsible: "", targetDate: "" }]);
+        setSigs(c.signatories?.length ? c.signatories.map((s: any) => ({ role: s.role ?? "", name: s.name ?? "", email: s.email ?? undefined, empCode: s.empCode ?? undefined, designation: s.designation ?? undefined })) : [{ role: "", name: "" }]);
+        setKpis(c.kpis?.length ? c.kpis.map((k: any) => ({ kpi: k.kpi ?? "", baseline: k.baseline ?? "", goal: k.goal ?? "" })) : [{ kpi: "", baseline: "", goal: "" }]);
+        setRoiPerAnnum(c.roiPerAnnum != null ? String(c.roiPerAnnum) : "");
+        setRisks(typeof c.risks === "string" ? c.risks : "");
+        setAssumptions(c.assumptions ?? "");
+        setPotentialAdditionalBudget(c.potentialAdditionalBudget ?? "");
+        setCustomFields(Array.isArray(c.customFields) ? c.customFields : []);
+        if (c.vendorMatrix?.columns?.length) setVendor(c.vendorMatrix);
+        const so = c.scoringWeights?.sectionOrder;
+        if (Array.isArray(so)) {
+          const saved = so.filter((id: string) => DEFAULT_SECTION_ORDER.includes(id));
+          setSectionOrder([...saved, ...DEFAULT_SECTION_ORDER.filter(id => !saved.includes(id))]);
+        }
+        setDrafted(true); // never auto-AI-draft over loaded data
+      } catch (e) {
+        toast({ title: (e as Error).message || "Failed to load charter for editing", variant: "destructive" });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId]);
 
   // ── dynamic-row helpers ──────────────────────────────────────────────────
   const addMilestone = () => setMilestones(m => [...m, { milestone: "", responsible: "", targetDate: "" }]);
@@ -481,19 +578,25 @@ export default function NewCharterTemplate() {
         throw new Error(err?.message || err?.error || `AI draft failed (${res.status})`);
       }
       const d = await res.json() as Record<string, unknown>;
-      const setIfEmpty = (cur: string, set: (v: string) => void, v?: unknown) => {
-        if (!cur.trim() && typeof v === "string" && v.trim()) set(v);
-      };
-      setIfEmpty(executiveSummary, setExecutiveSummary, d.executiveSummary);
-      setIfEmpty(background, setBackground, d.background);
-      setIfEmpty(inScope, setInScope, d.inScope);
-      setIfEmpty(outOfScope, setOutOfScope, d.outOfScope);
-      setIfEmpty(businessOutcome, setBusinessOutcome, d.businessOutcome);
-      setIfEmpty(constraints, setConstraints, d.constraints);
-      setIfEmpty(scopeLimitations, setScopeLimitations, d.scopeLimitations);
-      setIfEmpty(assumptions, setAssumptions, d.assumptions);
-      setIfEmpty(risks, setRisks, d.risks);
-      setIfEmpty(potentialAdditionalBudget, setPotentialAdditionalBudget, d.potentialAdditionalBudget);
+      // Fill fields one by one (not all at once) so the user sees each section
+      // land in turn. Empty fields only — never overwrites your input.
+      const steps: Array<[string, (v: string) => void, unknown]> = [
+        [executiveSummary, setExecutiveSummary, d.executiveSummary],
+        [background, setBackground, d.background],
+        [inScope, setInScope, d.inScope],
+        [outOfScope, setOutOfScope, d.outOfScope],
+        [businessOutcome, setBusinessOutcome, d.businessOutcome],
+        [constraints, setConstraints, d.constraints],
+        [scopeLimitations, setScopeLimitations, d.scopeLimitations],
+        [assumptions, setAssumptions, d.assumptions],
+        [risks, setRisks, d.risks],
+        [potentialAdditionalBudget, setPotentialAdditionalBudget, d.potentialAdditionalBudget],
+      ];
+      for (const [cur, set, v] of steps) {
+        if (cur.trim() || typeof v !== "string" || !v.trim()) continue;
+        set(v);
+        await new Promise((r) => setTimeout(r, 400)); // ponytail: fixed pace; make proportional to length if it feels off
+      }
 
       // Structured tables — only replace if the user hasn't started one (single blank row).
       const draftMs = Array.isArray(d.milestones) ? (d.milestones as Milestone[]) : [];
@@ -513,15 +616,10 @@ export default function NewCharterTemplate() {
     }
   }
 
-  // Validate the step-1 mandatory basics, then (if AI is configured) auto-draft
-  // the narrative sections before advancing to step 2.
-  async function continueToDraft() {
-    if (!title.trim()) { toast({ title: "Project Name is required", variant: "destructive" }); return; }
-    if (!projectSponsor) { toast({ title: "Project Sponsor is required", variant: "destructive" }); return; }
-    if (!category) { toast({ title: "Project Category is required", variant: "destructive" }); return; }
-    if (!projectDescription.trim()) { toast({ title: "Project Description is required", description: "Write it, or use “Draft with AI”.", variant: "destructive" }); return; }
-    if (!projectApprovalDate) { toast({ title: "Date of Project Approval is required", variant: "destructive" }); return; }
-    if (aiEnabled && !drafted) { await draftWithAi(); }
+  // Go to the narrative page. No validation gate — the user can browse all
+  // fields freely; mandatory basics are only enforced at submit. No auto-draft —
+  // the user clicks "Draft with AI" on step 2 when they want it.
+  function continueToNarrative() {
     setStep(2);
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -536,7 +634,6 @@ export default function NewCharterTemplate() {
     if (!projectSponsor) { toast({ title: "Project Sponsor is required", variant: "destructive" }); return; }
     if (!category) { toast({ title: "Project Category is required", variant: "destructive" }); return; }
     if (!projectDescription.trim()) { toast({ title: "Project Description is required", description: "Write it, or use “Draft with AI”.", variant: "destructive" }); return; }
-    if (!projectApprovalDate) { toast({ title: "Date of Project Approval is required", variant: "destructive" }); return; }
 
     setSaving(true);
     try {
@@ -547,6 +644,39 @@ export default function NewCharterTemplate() {
       const deliverables = milestones.filter(m => m.milestone.trim())
         .map(m => `• ${m.milestone}${m.responsible ? ` — ${m.responsible}` : ""}${m.targetDate ? ` (${m.targetDate})` : ""}`)
         .join("\n") || "To be defined.";
+
+      // EDIT MODE — one PATCH with every field (empty strings included, so a
+      // cleared field actually clears), then back to the charter page.
+      if (editId) {
+        const patch: Record<string, unknown> = {
+          title: title.trim(), description, scope, deliverables,
+          tentativeBudget: Number(approvedBudget) || 0,
+          executiveSummary, background, outOfScope, constraints, assumptions,
+          potentialAdditionalBudget, category, location: unitLocation, department,
+          leAmount: Number(leBudget) || undefined,
+          roiPerAnnum: Number(roiPerAnnum) || undefined,
+          milestones: milestones.filter(m => m.milestone.trim()).map(m => ({ milestone: m.milestone, responsible: m.responsible, targetDate: m.targetDate, status: "pending" })),
+          kpis: kpis.filter(k => k.kpi.trim()),
+          keyProjectMembers: members.filter(m => m.name.trim()).map(m => ({ role: "Member", name: m.name, email: m.email ?? null, designation: m.designation ?? null })),
+          signatories: sigs.filter(s => s.role.trim() || s.name.trim()).map(s => ({ role: s.role.trim() || s.designation?.trim() || "Approver", name: s.name.trim(), email: s.email || undefined, empCode: s.empCode, designation: s.designation?.trim() || undefined, status: "pending" })),
+          projectSponsor, pmType, pmName, projectApprovalDate, lastRevisionDate, doa,
+          businessOutcome, scopeLimitations, risks, vendorMatrix: vendor,
+          customFields: customFields.filter(f => f.label.trim() || f.value.trim()),
+          sectionOrder,
+        };
+        const patchRes = await fetch(`/api/charters/${editId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        if (!patchRes.ok) {
+          const err = await patchRes.json().catch(() => ({}));
+          throw new Error(err?.error || `Save failed (${patchRes.status})`);
+        }
+        toast({ title: "Charter updated" });
+        setLocation(`/charters/${editId}`);
+        return;
+      }
 
       const createRes = await fetch("/api/charters", {
         method: "POST",
@@ -577,18 +707,24 @@ export default function NewCharterTemplate() {
         assumptions,
         potentialAdditionalBudget,
         category,
+        location: unitLocation,
         department,
         leAmount: Number(leBudget) || undefined,
         roiPerAnnum: Number(roiPerAnnum) || undefined,
         milestones: milestones.filter(m => m.milestone.trim()).map(m => ({ milestone: m.milestone, responsible: m.responsible, targetDate: m.targetDate, status: "pending" })),
         kpis: kpis.filter(k => k.kpi.trim()),
         keyProjectMembers: members.filter(m => m.name.trim()).map(m => ({ role: "Member", name: m.name, email: m.email ?? null, designation: m.designation ?? null })),
+        // Manual approval signatory chain — drives the approval order on submit.
+        // Keep a picked approver even when Role is blank — dropping the row
+        // silently loses the approval chain and the submit later 422s.
+        signatories: sigs.filter(s => s.role.trim() || s.name.trim()).map(s => ({ role: s.role.trim() || s.designation?.trim() || "Approver", name: s.name.trim(), email: s.email || undefined, empCode: s.empCode, designation: s.designation?.trim() || undefined, status: "pending" })),
         // new template columns
         projectSponsor,
         pmType,
         pmName,
         projectApprovalDate,
         lastRevisionDate,
+        doa,
         businessOutcome,
         scopeLimitations,
         risks,
@@ -691,7 +827,7 @@ export default function NewCharterTemplate() {
           <h2 className="text-lg font-bold text-foreground tracking-tight">Project Charter · e-NFA <span className="text-sm font-normal text-muted-foreground">— complete the charter to initiate the approval workflow</span></h2>
           <p className="text-[11px] text-muted-foreground mt-0.5">Your progress autosaves on this device — you can safely leave and come back.</p>
         </div>
-        <div className="flex items-center gap-2 text-xs font-semibold flex-shrink-0">
+        <div data-tour="tour-charter-capex" className="flex items-center gap-2 text-xs font-semibold flex-shrink-0">
         <WorkflowSwitch mode={mode} onChange={setMode} />
         </div>
       </div>
@@ -703,7 +839,7 @@ export default function NewCharterTemplate() {
         </span>
         <span className="h-px w-6 bg-border" />
         <span className={`inline-flex items-center gap-1.5 px-3 h-7 rounded-full ${step === 2 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/25 text-[10px]">2</span> AI Charter Narrative
+          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-white/25 text-[10px]">2</span> Charter Narrative
         </span>
       </div>
 
@@ -745,6 +881,9 @@ export default function NewCharterTemplate() {
                   <SelectContent>{CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
+              <Field label="Location / Unit">
+                <Input value={unitLocation} onChange={e => setUnitLocation(e.target.value)} placeholder="e.g. Gagillapur-PFI (1300)" className="h-8" />
+              </Field>
               <Field label="Type">
                 <Select value={pmType} onValueChange={setPmType}>
                   <SelectTrigger className="h-8"><SelectValue placeholder="Type" /></SelectTrigger>
@@ -759,7 +898,7 @@ export default function NewCharterTemplate() {
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Approval Date" required>
+              <Field label="Approval Date">
                 <Input type="date" value={projectApprovalDate} onChange={e => setProjectApprovalDate(e.target.value)} className="h-8 px-2" />
               </Field>
               <Field label="Last Revision">
@@ -826,26 +965,64 @@ export default function NewCharterTemplate() {
             </Section>
           </div>
 
+          {/* ── Approval signatory chain (drives the approval order on submit) ── */}
+          <Section dense title="Approval signatory chain" subtitle="Sequential approval order — these people approve this note on submit." icon={<ShieldAlert size={16} />}>
+            <div className="space-y-1.5">
+              {sigs.map((s, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="w-5 text-[11px] text-muted-foreground tabular-nums shrink-0">{i + 1}</span>
+                  <Input
+                    value={s.role}
+                    onChange={(e) => setSigs((a) => a.map((x, j) => j === i ? { ...x, role: e.target.value } : x))}
+                    placeholder="Role"
+                    className="h-8 w-48 shrink-0"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <EmployeeCombobox
+                      value={s.name || undefined}
+                      placeholder="Select approver…"
+                      onSelect={(hit) => setSigs((a) => a.map((x, j) => j === i ? { ...x, name: hit.name, email: hit.email ?? undefined, empCode: hit.code ?? undefined, designation: hit.designation ?? undefined } : x))}
+                    />
+                  </div>
+                  <Input
+                    value={s.designation ?? ""}
+                    onChange={(e) => setSigs((a) => a.map((x, j) => j === i ? { ...x, designation: e.target.value } : x))}
+                    placeholder="Designation"
+                    className="h-8 w-56 shrink-0"
+                  />
+                  <button type="button" onClick={() => setSigs((a) => a.filter((_, j) => j !== i))} title="Remove signatory" className="w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"><Trash2 size={14} /></button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setSigs((a) => [...a, { role: "", name: "" }])} className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80"><Plus size={13} /> Add signatory</button>
+            </div>
+          </Section>
+
           {/* ── Step 1 footer ─────────────────────────────────────────────── */}
           <div className="flex items-center justify-between gap-3 pt-2">
             <Link href="/"><button type="button" className="px-4 h-8 rounded-md text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">Cancel</button></Link>
-            <button type="button" disabled={drafting} onClick={continueToDraft} className="flex items-center gap-2 px-5 h-8 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
-              {drafting ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
-              {drafting ? "Generating AI draft…" : (aiEnabled && !drafted) ? "Continue — Generate AI Draft" : "Continue"}
+            <button type="button" onClick={continueToNarrative} className="flex items-center gap-2 px-5 h-8 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
+              Continue <ChevronRight size={15} />
             </button>
           </div>
         </div>
       ) : (
         <div className="space-y-4">
-          {aiEnabled && (
-            <div className="rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3 flex items-start gap-2.5">
+          {/* ── Charter narrative — draft the whole narrative with AI ──────── */}
+          <div className="rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3 flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5">
               <Sparkles size={16} className="text-primary flex-shrink-0 mt-0.5" />
               <p className="text-xs text-muted-foreground">
-                AI has drafted the narrative sections from your basics. Edit any field freely, then use
-                <span className="font-semibold text-primary"> Rephrase with AI</span> to polish it. Numbers, dates and facts you enter are preserved.
+                Write each section yourself, or click <span className="font-semibold text-primary">Draft with AI</span> to generate them from your
+                basics — then polish any field with <span className="font-semibold text-primary">Rephrase with AI</span>. Numbers, dates and facts you enter are preserved.
               </p>
             </div>
-          )}
+            {aiEnabled && (
+              <button type="button" data-tour="tour-charter-ai" disabled={drafting} onClick={draftWithAi} className="flex items-center gap-2 px-4 h-8 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0">
+                {drafting ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                {drafting ? "Drafting…" : "Draft with AI"}
+              </button>
+            )}
+          </div>
           {/* ── Reorderable narrative sections — drag the grip to reorder. ── */}
           <p className="text-[11px] text-muted-foreground -mb-1 pl-5">Drag the <GripVertical size={11} className="inline -mt-0.5" /> handle to reorder sections — the order is saved and used in the generated document.</p>
           {(() => {
@@ -992,9 +1169,9 @@ export default function NewCharterTemplate() {
             <button type="button" onClick={backToBasics} className="flex items-center gap-1.5 px-4 h-8 rounded-md text-sm font-semibold text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
               <ChevronLeft size={15} /> Back to basics
             </button>
-            <button type="button" disabled={saving} onClick={handleSubmit} className="flex items-center gap-2 px-5 h-8 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
+            <button type="button" data-tour="tour-charter-submit" disabled={saving} onClick={handleSubmit} className="flex items-center gap-2 px-5 h-8 rounded-md text-sm font-semibold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed">
               {saving ? <Loader2 size={15} className="animate-spin" /> : <FileText size={15} />}
-              {saving ? "Creating…" : "Create Project Charter"}
+              {saving ? (editId ? "Saving…" : "Creating…") : (editId ? "Save Changes" : "Create Project Charter")}
             </button>
           </div>
         </div>

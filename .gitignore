@@ -55,3 +55,9 @@ Thumbs.db
 artifacts/*/.env
 artifacts/*/.env.local
 artifacts/api-server/uploads/
+
+# ponytail: runtime junk kept out of prod deploy
+*.log
+.logs-*.log
+__pycache__/
+uploads/

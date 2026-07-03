@@ -6,9 +6,9 @@ import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
-import { db, documentsTable, messagesTable } from "@workspace/db";
+import { db, documentsTable, messagesTable, attachmentsTable, nfasTable, chartersTable } from "@workspace/db";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
-import { localFileExists, openLocalFileStream, readLocalMeta } from "../lib/localStorage";
+import { localFileExists, localFileSize, openLocalFileStream, readLocalMeta } from "../lib/localStorage";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -137,8 +137,26 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
         .where(sql`${messagesTable.attachments}::text LIKE ${`%${objectPath}%`}`)
         .limit(1);
       if (!linkedMsg) {
-        res.status(403).json({ error: "Access denied: no project document is registered for this path." });
-        return;
+        // Fallback 2: files clipped onto a project/task/subtask via the paperclip
+        // icon live in pmo_attachments.fileUrl. Same uuid-embedded path guarantee.
+        const [linkedAtt] = await db
+          .select({ id: attachmentsTable.id })
+          .from(attachmentsTable)
+          .where(like(attachmentsTable.fileUrl, `%${objectPath}`))
+          .limit(1);
+        if (!linkedAtt) {
+          // Fallback 3: signed/versioned e-sign PDFs pulled back from Documenso
+          // live only in the nfa/charter `esign` jsonb (signedObjectPath +
+          // versions[].path). Same uuid-embedded path guarantee as above.
+          const [linkedNfa] = await db.select({ id: nfasTable.id }).from(nfasTable)
+            .where(sql`${nfasTable.esign}::text LIKE ${`%${objectPath}%`}`).limit(1);
+          const [linkedCharter] = linkedNfa ? [null] : await db.select({ id: chartersTable.id }).from(chartersTable)
+            .where(sql`${chartersTable.esign}::text LIKE ${`%${objectPath}%`}`).limit(1);
+          if (!linkedNfa && !linkedCharter) {
+            res.status(403).json({ error: "Access denied: no project document is registered for this path." });
+            return;
+          }
+        }
       }
     }
 
@@ -151,8 +169,11 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
       }
       const meta = await readLocalMeta(objectId);
       res.setHeader("Content-Type", meta?.contentType || "application/octet-stream");
-      if (meta?.size) res.setHeader("Content-Length", String(meta.size));
-      res.setHeader("Cache-Control", "private, max-age=3600");
+      // Content-Length from the file itself — meta.size goes stale if the
+      // stored object is ever rewritten (e.g. cert-page strip).
+      const size = await localFileSize(objectId);
+      if (size) res.setHeader("Content-Length", String(size));
+      res.setHeader("Cache-Control", "private, no-store");
       openLocalFileStream(objectId).pipe(res);
       return;
     }

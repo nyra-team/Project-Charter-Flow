@@ -9,26 +9,14 @@ import { db, nfasTable, projectsTable, notificationsTable } from "@workspace/db"
 import { eq, desc, and } from "drizzle-orm";
 import { logActivity } from "./activity";
 import { requireRole } from "../lib/guard";
-import { matchBand } from "../lib/doa-resolver";
+import { matchBand, CAPEX_CATEGORY, CAPEX_KIND, signatoriesFromChain } from "../lib/doa-resolver";
+import { documensoConfigured, docxToPdf, sendForSignature, signersFromSignatories, getDocumensoDocument, nextPendingSigner, type EsignEnvelope } from "../integrations/documenso";
+import { notifySignerTurn } from "../lib/esign-notify";
+import { enrichSignatoryEmails } from "../lib/signatory-email";
 
-// CAPEX DOA defaults — the seeded matrix is keyed Category="Capex",
-// Kind="Capex Material & Services" (see scripts/seed-capex-doa.sql).
-const CAPEX_CATEGORY = "Capex";
-const CAPEX_KIND = "Capex Material & Services";
-
-// Build a signatory grid from a resolved DOA approver chain. The seeded matrix
-// stores each step as { designation, email }; older bands store plain role
-// strings — handle both. Returns [] when nothing resolved (caller keeps the
-// note's existing signatories / manual grid).
-function signatoriesFromChain(chain: unknown[]): Array<{ role: string; name: string; status: "pending" }> {
-  return (chain ?? []).map((c) => {
-    if (c && typeof c === "object") {
-      const o = c as { designation?: string; email?: string; role?: string; name?: string };
-      return { role: o.designation || o.role || "", name: o.email || o.name || "", status: "pending" as const };
-    }
-    return { role: String(c), name: "", status: "pending" as const };
-  }).filter((s) => s.role || s.name);
-}
+// CAPEX DOA defaults + signatory builder are shared with charters.ts via
+// ../lib/doa-resolver so the project NFA and the standalone e-NFA resolve the
+// identical approver chain (see CAPEX_CATEGORY / CAPEX_KIND / signatoriesFromChain).
 
 const router: IRouter = Router();
 
@@ -45,6 +33,7 @@ const RequirementItem = z.object({
 const Signatory = z.object({
   role: z.string().default(""),
   name: z.string().default(""),
+  email: z.string().optional(),
   empCode: z.string().optional(),
   designation: z.string().optional(),
   status: z.enum(["pending", "approved", "rejected"]).default("pending"),
@@ -247,7 +236,21 @@ router.post("/nfas/:id/submit", requireRole(...WRITE_ROLES), async (req, res): P
     .where(eq(nfasTable.id, id))
     .returning();
   await logActivity("nfa_submitted", `NFA "${nfa.subject || nfa.noteNo}" submitted for approval${doaLabel ? ` (DOA: ${doaLabel}, ${sigs.length} approvers)` : ""}`, nfa.id, "nfa");
-  res.json(updated);
+
+  // Auto-send to Documenso as part of submit (same policy as charters):
+  // best-effort — POST /nfas/:id/esign remains the manual retry path.
+  let esign: EsignEnvelope | null = null;
+  let esignError: string | null = null;
+  if (documensoConfigured()) {
+    try {
+      esign = await sendNfaEsign(updated);
+    } catch (e) {
+      esignError = (e as Error).message;
+      req.log?.warn({ err: esignError, nfaId: nfa.id }, "auto e-sign on submit failed");
+    }
+  }
+
+  res.json({ ...updated, esign: esign ?? updated.esign, esignError });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -313,15 +316,9 @@ router.post("/nfas/:id/decide", requireRole(...DECIDE_ROLES), async (req, res): 
 // DOCX — render the note on demand via scripts/generate_nfa.py
 // ═══════════════════════════════════════════════════════════════════════════
 
-router.get("/nfas/:id/docx", async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
-  const [nfa] = await db.select().from(nfasTable).where(eq(nfasTable.id, id));
-  if (!nfa) { res.status(404).json({ error: "NFA not found" }); return; }
-
-  let dir: string | undefined;
+export async function renderNfaDocx(nfa: unknown): Promise<Buffer> {
+  const dir = await mkdtemp(path.join(tmpdir(), "nfa-"));
   try {
-    dir = await mkdtemp(path.join(tmpdir(), "nfa-"));
     const inPath = path.join(dir, "in.json");
     const outPath = path.join(dir, "out.docx");
     await writeFile(inPath, JSON.stringify(nfa), "utf-8");
@@ -337,15 +334,79 @@ router.get("/nfas/:id/docx", async (req, res): Promise<void> => {
       });
     });
 
-    const buf = await readFile(outPath);
+    return await readFile(outPath);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+router.get("/nfas/:id/docx", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [nfa] = await db.select().from(nfasTable).where(eq(nfasTable.id, id));
+  if (!nfa) { res.status(404).json({ error: "NFA not found" }); return; }
+
+  try {
+    const buf = await renderNfaDocx(nfa);
     const safeSubject = (nfa.subject || `NFA-${nfa.noteNo}`).replace(/[^a-z0-9\-_ ]/gi, "").trim().slice(0, 60) || `NFA-${nfa.noteNo}`;
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     res.setHeader("Content-Disposition", `attachment; filename="${safeSubject}.docx"`);
     res.send(buf);
   } catch (e) {
     res.status(500).json({ error: `Failed to generate NFA document: ${(e as Error).message}` });
-  } finally {
-    if (dir) await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// E-SIGN — send the pending note to Documenso; signatures come back via the
+// /api/documenso/webhook and are recorded like in-app decisions.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Render → PDF → Documenso send → persist envelope → tell the first signer.
+// Shared by the manual /esign route (retry path) and the auto-send on submit.
+async function sendNfaEsign(nfa: { id: number; noteNo?: string | null; subject?: string | null; signatories?: unknown; esign?: unknown }): Promise<EsignEnvelope> {
+  if ((nfa.esign as { documentId?: number } | null)?.documentId) {
+    throw Object.assign(new Error("Already sent for e-signature."), { statusCode: 409 });
+  }
+  const sigs = await enrichSignatoryEmails((nfa.signatories as Array<{ role?: string; name?: string; email?: string; empCode?: string }>) ?? []);
+  const { signers, missing } = signersFromSignatories(sigs);
+  if (signers.length === 0 || missing.length > 0) {
+    throw Object.assign(
+      new Error(`Signatories without an email address: ${missing.join(", ") || "(none resolvable)"}. E-sign needs an email per approver.`),
+      { statusCode: 422 },
+    );
+  }
+
+  const title = `e-NFA ${nfa.noteNo}${nfa.subject ? ` — ${nfa.subject}` : ""}`;
+  const pdf = await docxToPdf(await renderNfaDocx(nfa as never));
+  const esign = await sendForSignature({ title, externalId: `nfa:${nfa.id}`, pdf, signers });
+  await db.update(nfasTable).set({ esign } as never).where(eq(nfasTable.id, nfa.id));
+  await logActivity("nfa_esign_sent", `NFA "${nfa.subject || nfa.noteNo}" sent for e-signature via Documenso (${signers.length} signers)`, nfa.id, "nfa");
+
+  try {
+    const doc = await getDocumensoDocument(esign.documentId);
+    const first = nextPendingSigner(doc);
+    if (first) await notifySignerTurn({ email: first.email, signingUrl: first.signingUrl, kind: "nfa", entityId: nfa.id, title });
+  } catch { /* notify is auxiliary */ }
+
+  return esign;
+}
+
+router.post("/nfas/:id/esign", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!documensoConfigured()) { res.status(501).json({ error: "E-sign is not configured (set DOCUMENSO_URL + DOCUMENSO_API_TOKEN)." }); return; }
+  const [nfa] = await db.select().from(nfasTable).where(eq(nfasTable.id, id));
+  if (!nfa) { res.status(404).json({ error: "NFA not found" }); return; }
+  if (nfa.status !== "pending_approval") { res.status(409).json({ error: `NFA is ${nfa.status}; submit it for approval first.` }); return; }
+
+  try {
+    const esign = await sendNfaEsign(nfa);
+    const [updated] = await db.select().from(nfasTable).where(eq(nfasTable.id, id));
+    res.json({ ...updated, esign });
+  } catch (e) {
+    const status = (e as { statusCode?: number }).statusCode ?? 502;
+    res.status(status).json({ error: status === 502 ? `Failed to send for e-signature: ${(e as Error).message}` : (e as Error).message, ...(status === 409 ? { esign: nfa.esign } : {}) });
   }
 });
 

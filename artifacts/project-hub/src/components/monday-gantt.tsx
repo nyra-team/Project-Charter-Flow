@@ -47,12 +47,27 @@ export type GanttItem = {
   dim?: boolean;              // de-emphasise (e.g. off the critical path)
   emphasise?: boolean;        // ring + shadow (e.g. on the critical path)
   meta?: ReactNode;           // extra content under the name in the label rail
+  // Milestone markers drawn ON this bar (diamonds at their dates). done ⇒ solid
+  // green, else hollow (white + green outline). For "project bar with milestones".
+  markers?: { date: string; done: boolean; label?: string }[];
 };
-export type GanttGroup = { key: string; label: string; color: string; items: GanttItem[] };
+export type GanttGroup = {
+  key: string; label: string; color: string; items: GanttItem[];
+  // Optional group-level dependency (e.g. milestone → milestone). When set, an
+  // arrow is drawn from each predecessor group's summary bar to this one's.
+  // `id` keys the group for predecessor lookups; both reference group ids.
+  id?: number;
+  predecessorIds?: number[];
+};
 
 const ROW_H = 42;
 const GROUP_H = 36;
 const BAR_H = 22;
+// Milestone diamond (14px box, rotated 45°, drawn at left-1) → tips sit ~4px
+// left and ~16px right of xOf(date). Offsets to land dependency arrows just
+// outside it (3px gap) instead of inside, where the diamond would cover them.
+const MS_LEFT = -7;
+const MS_RIGHT = 19;
 
 export function MondayGantt({
   groups,
@@ -65,6 +80,7 @@ export function MondayGantt({
   extraControls,
   autoFitOnLoad = false,
   defaultCollapsed = false,
+  flat = false,
 }: {
   groups: GanttGroup[];
   onOpen?: (id: number) => void;
@@ -88,6 +104,11 @@ export function MondayGantt({
    *  fires once when the first non-empty group set lands). User toggles after
    *  are preserved. */
   defaultCollapsed?: boolean;
+  /** Flat mode: drop the group header band + summary bar + label-rail group
+   *  header, rendering the item bars directly (always expanded). For lists that
+   *  are conceptually a single flat set — e.g. one bar per project, no
+   *  milestone/group layer. */
+  flat?: boolean;
 }) {
   const [pxPerDay, setPxPerDay] = useState(22);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -276,9 +297,10 @@ export function MondayGantt({
   // Lay rows out vertically; remember each item's centre-Y for arrows.
   const centerY = new Map<number, number>();
   let y = 0;
+  const GH = flat ? 0 : GROUP_H;
   const laid = groups.map((g) => {
-    const headerY = y; y += GROUP_H;
-    const open = !collapsed[g.key];
+    const headerY = y; y += GH;
+    const open = flat ? true : !collapsed[g.key];
     if (open) for (const it of g.items) { centerY.set(it.id, y + ROW_H / 2); y += ROW_H; }
     // Group span (summary bar) across its items' dates.
     const gTimes: number[] = [];
@@ -305,15 +327,42 @@ export function MondayGantt({
         if (predY == null || !pred) continue;
         const predEnd = msTime(pred.end) ?? msTime(pred.start);
         if (predEnd == null) continue;
+        // Anchor points. A task bar is entered/left at its edges; a milestone
+        // is a 14px diamond centred ~6px right of xOf(date) with tips ~±10px, so
+        // land the arrow just OUTSIDE the diamond (else the arrowhead is buried
+        // inside it and reads as "merged into the milestone").
+        const x1 = pred.isMilestone ? xOf(predEnd) + MS_RIGHT : xOf(predEnd) + pxPerDay;
+        const x2 = it.isMilestone ? xOf(succStart) + MS_LEFT : xOf(succStart);
         // Monday-style critical path: an edge is "critical" (drawn as a red
         // connector) only when BOTH endpoints sit on the critical path — i.e.
         // the caller flagged them with `emphasise`.
-        arrows.push({ x1: xOf(predEnd) + pxPerDay, y1: predY, x2: xOf(succStart), y2: succY, critical: !!(pred.emphasise && it.emphasise) });
+        arrows.push({ x1, y1: predY, x2, y2: succY, critical: !!(pred.emphasise && it.emphasise) });
+      }
+    }
+    // Group-level (milestone → milestone) arrows between summary bars. The
+    // summary bar sits at the group header's mid-line spanning [lo, hi]; we link
+    // a predecessor group's end to this group's start. Always visible (groups
+    // render even when collapsed), so the milestone chain reads as a roadmap.
+    const groupAnchor = new Map<number, { y: number; lo: number; hi: number }>();
+    for (const { g, headerY, span } of laid) {
+      if (g.id != null && span) groupAnchor.set(g.id, { y: headerY + GROUP_H / 2, lo: span.lo, hi: span.hi });
+    }
+    for (const { g, headerY, span } of laid) {
+      if (g.id == null || !g.predecessorIds?.length || !span) continue;
+      const succY = headerY + GROUP_H / 2;
+      for (const pid of g.predecessorIds) {
+        const pred = groupAnchor.get(pid);
+        if (!pred) continue;
+        // Stop 4px short of the successor bar's left edge so the arrowhead sits
+        // beside the summary bar, not tucked under it.
+        arrows.push({ x1: xOf(pred.hi) + pxPerDay, y1: pred.y, x2: xOf(span.lo) - 4, y2: succY, critical: false });
       }
     }
     // Draw the red critical edges last so the chain reads on top of the grey ones.
     arrows.sort((a, b) => Number(a.critical) - Number(b.critical));
   }
+  // True when a critical path is active — used to fade the off-path arrows.
+  const hasCritical = arrows.some((a) => a.critical);
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-sm">
@@ -464,6 +513,7 @@ export function MondayGantt({
             <div style={{ width: labelWidth }} className="shrink-0 sticky left-0 z-30 bg-white border-r border-gray-200">
               {laid.map(({ g, open }) => (
                 <Fragment key={g.key}>
+                  {!flat && (
                   <button
                     type="button"
                     onClick={() => setCollapsed((c) => ({ ...c, [g.key]: !c[g.key] }))}
@@ -475,6 +525,7 @@ export function MondayGantt({
                     <span className="text-xs font-semibold text-gray-800 truncate">{g.label}</span>
                     <span className="text-[10px] text-gray-400">({g.items.length})</span>
                   </button>
+                  )}
                   {open && g.items.map((it) => (
                     <div
                       key={it.id}
@@ -518,7 +569,7 @@ export function MondayGantt({
 
               {/* dependency arrows */}
               {showDeps && arrows.length > 0 && (
-                <svg className="absolute inset-0 z-10 pointer-events-none overflow-visible" width={trackW} height={bodyH}>
+                <svg className="absolute inset-0 z-20 pointer-events-none overflow-visible" width={trackW} height={bodyH}>
                   <defs>
                     <marker id="mg-arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
                       <path d="M0,0 L6,3 L0,6 Z" fill="#9ca3af" />
@@ -528,8 +579,17 @@ export function MondayGantt({
                     </marker>
                   </defs>
                   {arrows.map((a, i) => {
-                    const midX = Math.max(a.x1 + 8, a.x2 - 8);
-                    const d = `M ${a.x1} ${a.y1} H ${midX} V ${a.y2} H ${a.x2}`;
+                    // Elbow connector. When the successor starts with room ahead of
+                    // the predecessor's end, a simple 3-segment elbow reads cleanly.
+                    // When it starts at/left of it (x2 near/behind x1), that elbow
+                    // would double back through the bars — so route around: exit the
+                    // predecessor right, drop into the gutter between the two rows,
+                    // travel left, then enter the successor from its left.
+                    const stub = 10;
+                    const d =
+                      a.x2 >= a.x1 + 2 * stub
+                        ? `M ${a.x1} ${a.y1} H ${a.x2 - stub} V ${a.y2} H ${a.x2}`
+                        : `M ${a.x1} ${a.y1} h ${stub} V ${(a.y1 + a.y2) / 2} H ${a.x2 - stub} V ${a.y2} H ${a.x2}`;
                     return (
                       <path
                         key={i}
@@ -537,6 +597,9 @@ export function MondayGantt({
                         fill="none"
                         stroke={a.critical ? "#e2445c" : "#9ca3af"}
                         strokeWidth={a.critical ? 2 : 1.2}
+                        // When a critical chain is shown, fade the off-path links
+                        // so the red critical path stands clearly apart from them.
+                        opacity={hasCritical && !a.critical ? 0.2 : 1}
                         markerEnd={a.critical ? "url(#mg-arrow-crit)" : "url(#mg-arrow)"}
                       />
                     );
@@ -567,8 +630,8 @@ export function MondayGantt({
               {laid.map(({ g, headerY, open, span }) => (
                 <Fragment key={g.key}>
                   {/* group header band */}
-                  <div className="absolute left-0 right-0 bg-white border-b border-gray-200" style={{ top: headerY, height: GROUP_H }} />
-                  {span && (() => {
+                  {!flat && <div className="absolute left-0 right-0 bg-white border-b border-gray-200" style={{ top: headerY, height: GROUP_H }} />}
+                  {!flat && span && (() => {
                     // Group progress = average of its (non-milestone) item bars,
                     // surfaced as a very subtle lighter shade over the done portion.
                     const prog = g.items.filter((it) => !it.isMilestone);
@@ -621,7 +684,7 @@ export function MondayGantt({
                               onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); const x = left + 6; setLinkSrc({ id: it.id, x, y: cy }); setLinkCur({ x, y: cy }); }}
                               onClick={(e) => e.stopPropagation()}
                               title="Drag onto a task to link it as the successor"
-                              className="absolute top-1/2 -right-2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white border-2 border-[#0073ea] shadow cursor-crosshair opacity-0 group-hover:opacity-100 hover:scale-125 transition-all z-30"
+                              className="absolute top-1/2 -right-2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white border-2 border-[#0073ea] shadow cursor-crosshair opacity-40 group-hover:opacity-100 hover:scale-125 transition-all z-30"
                             />
                           )}
                         </div>
@@ -648,8 +711,8 @@ export function MondayGantt({
                     const width = Math.max((dayFloor(hi) - dayFloor(lo)) / DAY_MS * pxPerDay + pxPerDay, 8);
                     const isTarget = !!linkSrc && hoverTarget === it.id && linkSrc.id !== it.id;
                     return (
+                      <Fragment key={it.id}>
                       <div
-                        key={it.id}
                         onClick={() => onOpen?.(it.id)}
                         onMouseEnter={() => { if (linkSrcRef.current) setTarget(it.id); }}
                         onMouseLeave={() => { if (hoverTargetRef.current === it.id) setTarget(null); }}
@@ -672,10 +735,26 @@ export function MondayGantt({
                             onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); const x = left + width; setLinkSrc({ id: it.id, x, y: cy }); setLinkCur({ x, y: cy }); }}
                             onClick={(e) => e.stopPropagation()}
                             title="Drag onto another task to link it as the successor (creates a dependency)"
-                            className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3 h-3 rounded-full bg-white border-2 border-[#0073ea] shadow cursor-crosshair opacity-0 group-hover:opacity-100 hover:scale-125 transition-all z-30"
+                            className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3 h-3 rounded-full bg-white border-2 border-[#0073ea] shadow cursor-crosshair opacity-40 group-hover:opacity-100 hover:scale-125 transition-all z-30"
                           />
                         )}
                       </div>
+                      {/* Milestone diamonds ON the bar — solid green = done, hollow = due. */}
+                      {it.markers?.map((m, mi) => {
+                        const mt = msTime(m.date);
+                        if (mt == null) return null;
+                        const mx = xOf(mt) + pxPerDay / 2;
+                        return (
+                          <span
+                            key={`m${mi}`}
+                            onClick={() => onOpen?.(it.id)}
+                            title={`${m.label ?? "Milestone"} · ${m.date} · ${m.done ? "done" : "due"}`}
+                            className={`absolute z-20 w-3 h-3 rotate-45 rounded-[2px] shadow-sm hover:scale-125 transition-transform ${onOpen ? "cursor-pointer" : ""}`}
+                            style={{ left: mx - 6, top: cy - 6, background: m.done ? "#16a34a" : "#ffffff", border: m.done ? "1px solid #15803d" : "2px solid #16a34a" }}
+                          />
+                        );
+                      })}
+                      </Fragment>
                     );
                   })}
                 </Fragment>

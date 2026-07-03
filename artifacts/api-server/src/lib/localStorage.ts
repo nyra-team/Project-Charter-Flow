@@ -90,6 +90,15 @@ export async function localFileExists(objectId: string): Promise<boolean> {
   }
 }
 
+export async function localFileSize(objectId: string): Promise<number | null> {
+  try {
+    const { file } = pathsFor(objectId);
+    return (await fs.stat(file)).size;
+  } catch {
+    return null;
+  }
+}
+
 export function openLocalFileStream(objectId: string): ReadStream {
   const { file } = pathsFor(objectId);
   return createReadStream(file);

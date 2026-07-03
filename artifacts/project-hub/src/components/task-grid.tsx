@@ -29,6 +29,7 @@ export interface GridTask {
   endDate?: string | null;
   actualStart?: string | null;
   actualEnd?: string | null;
+  justification?: string | null;
   scheduleVarianceDays?: number | null;
   predecessorIds?: number[] | string | null;
   estimatedHours?: number | null;
@@ -770,8 +771,9 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
 
   const userOptions = users.map(u => ({ value: u.id.toString(), label: u.name }));
 
-  // Computed visible column count for spanning helper rows
-  const VISIBLE_COLS = 20
+  // Computed visible column count for spanning helper rows. Base includes the
+  // always-visible Justification column (added at the end).
+  const VISIBLE_COLS = 21
     - (isHidden("manager") ? 1 : 0)
     - (isHidden("predecessor") ? 1 : 0)
     - (isHidden("cft") ? 2 : 0)  // CFT Team + CFT Owner share one toggle
@@ -908,6 +910,19 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
           return { id: task.parentTaskId, name: p?.name ?? "" };
         })()
       : null;
+
+    // Timeline → Justification: changing any planned/actual date immediately
+    // stamps the Justification cell with the change (old → new), persisted in the
+    // same patch so it shows at once. The user can then edit the cell to add the
+    // real reason (overwrites the auto-note — schema keeps the latest only).
+    const fmtDateShort = (v?: string | null) =>
+      v ? new Date(v).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
+    const patchTimeline = (field: "startDate" | "endDate" | "actualStart" | "actualEnd", label: string, newVal: string) => {
+      const oldVal = (d[field] ?? null) as string | null;
+      const nv = newVal || null;
+      if (oldVal === nv) return;
+      patch(task.id, { [field]: nv, justification: `${label}: ${fmtDateShort(oldVal)} → ${fmtDateShort(nv)}` });
+    };
 
     const isDragged = draggedTaskId === task.id;
     const dragOverThis = dragOver && dragOver.kind === "row" && dragOver.id === task.id ? dragOver : null;
@@ -1077,26 +1092,26 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
         {/* Planned Start */}
         {!isHidden("plannedStart") && (
           <td className="px-1" style={{ minWidth: 90 }}>
-            <InlineCell type="date" value={d.startDate ?? ""} onSave={v => patch(task.id, { startDate: v || null })} placeholder="Start" />
+            <InlineCell type="date" value={d.startDate ?? ""} onSave={v => patchTimeline("startDate", "Plan. Start", v)} placeholder="Start" />
           </td>
         )}
 
         {/* Planned End (Due Date) */}
         <td className="px-1" style={{ minWidth: 90 }}>
-          <InlineCell type="date" value={d.endDate ?? ""} onSave={v => patch(task.id, { endDate: v || null })} placeholder="End" />
+          <InlineCell type="date" value={d.endDate ?? ""} onSave={v => patchTimeline("endDate", "Due Date", v)} placeholder="End" />
         </td>
 
         {/* Actual Start */}
         {!isHidden("actualStart") && (
           <td className="px-1" style={{ minWidth: 90 }}>
-            <InlineCell type="date" value={d.actualStart ?? ""} onSave={v => patch(task.id, { actualStart: v || null })} placeholder="Act. Start" />
+            <InlineCell type="date" value={d.actualStart ?? ""} onSave={v => patchTimeline("actualStart", "Act. Start", v)} placeholder="Act. Start" />
           </td>
         )}
 
         {/* Actual End */}
         {!isHidden("actualEnd") && (
           <td className="px-1" style={{ minWidth: 90 }}>
-            <InlineCell type="date" value={d.actualEnd ?? ""} onSave={v => patch(task.id, { actualEnd: v || null })} placeholder="Act. End" />
+            <InlineCell type="date" value={d.actualEnd ?? ""} onSave={v => patchTimeline("actualEnd", "Act. End", v)} placeholder="Act. End" />
           </td>
         )}
 
@@ -1175,6 +1190,16 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
             </button>
           </td>
         )}
+
+        {/* Justification — editable; auto-stamped on any timeline date change */}
+        <td className="px-1" style={{ minWidth: 170, maxWidth: 240 }}>
+          <InlineCell
+            type="text"
+            value={d.justification ?? ""}
+            onSave={v => patch(task.id, { justification: v })}
+            placeholder="—"
+          />
+        </td>
 
         {/* Add subtask */}
         <td className="px-1 text-center" style={{ width: 32 }}>
@@ -1319,6 +1344,7 @@ export function TaskGrid({ tasks, projectId, onRefresh, users }: TaskGridProps) 
               {!isHidden("effort") && <th style={{ minWidth: 65 }} className={thCls}>Effort <SortBtn col="plannedEffortHours" /></th>}
               {!isHidden("actualHrs") && <th style={{ minWidth: 70 }} className={thCls}>Actual hrs</th>}
               {!isHidden("issues") && <th style={{ width: 60 }} className={thCls}>Issues</th>}
+              <th style={{ minWidth: 170 }} className={thCls}>Justification</th>
               <th style={{ width: 32 }} className={thCls}></th>
             </tr>
           </thead>

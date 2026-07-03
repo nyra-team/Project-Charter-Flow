@@ -96,7 +96,7 @@ export function DocxView({ docxUrl, fileName = "document.docx", className, heigh
           <Download size={13} /> Download .docx
         </button>
       </div>
-      <div ref={bodyRef} className="flex-1 min-h-0 overflow-auto scrollbar-thin">
+      <div ref={bodyRef} className="flex-1 min-h-0 overflow-auto scrollbar-thin bg-slate-100">
         {status === "loading" && (
           <div className="h-full flex items-center justify-center gap-2 text-muted-foreground">
             <Loader2 size={18} className="animate-spin" /> <span className="text-sm">Generating preview…</span>
@@ -108,7 +108,7 @@ export function DocxView({ docxUrl, fileName = "document.docx", className, heigh
             <p className="text-sm text-muted-foreground max-w-md">{err}</p>
           </div>
         )}
-        <div ref={ref} className={status === "ready" ? "flex justify-center py-4" : "hidden"} style={{ zoom } as React.CSSProperties} />
+        <div ref={ref} className={status === "ready" ? "block" : "hidden"} style={{ zoom } as React.CSSProperties} />
       </div>
     </div>
   );

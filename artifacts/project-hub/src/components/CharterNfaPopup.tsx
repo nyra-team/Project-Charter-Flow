@@ -57,6 +57,7 @@ export function CharterNfaPopup({ open, onClose }: { open: boolean; onClose: () 
       {/* Vertical stack — each option is a full-width row with its description
           visible below the title (no hover card needed). */}
       <div
+        data-tour="tour-charter-chooser"
         className="flex flex-col items-center gap-2.5 w-full max-w-sm"
         onClick={e => e.stopPropagation()}
         role="dialog"
@@ -76,6 +77,7 @@ export function CharterNfaPopup({ open, onClose }: { open: boolean; onClose: () 
               <Fragment key={opt.href}>
                 <button
                   type="button"
+                  data-tour={opt.href === "/charters/new" ? "tour-charter-card" : "tour-enfa-card"}
                   onClick={() => choose(opt.href)}
                   className="group h-full flex flex-col gap-1 rounded-2xl border border-border bg-card shadow-xl px-3.5 py-3 text-left text-card-foreground hover:bg-accent hover:border-primary/50 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
                 >

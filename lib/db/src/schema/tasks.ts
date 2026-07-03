@@ -30,6 +30,18 @@ export const tasksTable = pgTable("pmo_tasks", {
   // endDate changes, so the timeline can strike prior targets and show the new
   // one (mirrors the CXO Action Centre revised-date display).
   endDateHistory: text("end_date_history").notNull().default("[]"),
+  // Reason logged for the latest date change (the justification gate). Holds the
+  // most recent reason; full history lives in task comments + activity.
+  justification: text("justification"),
+  // Completion-approval gate. When someone who ISN'T the task's approver marks it
+  // completed, the status stays put and these fields record the pending request:
+  // who asked, who must approve (managerId ?? project PM, resolved at request
+  // time), their justification, and when. Cleared once the approver accepts
+  // (status → completed) or rejects. NULL requester ⇒ no pending request.
+  completionRequestedBy: integer("completion_requested_by"),
+  completionApproverId: integer("completion_approver_id"),
+  completionReason: text("completion_reason"),
+  completionRequestedAt: timestamp("completion_requested_at", { withTimezone: true }),
   actualStart: text("actual_start"),
   actualEnd: text("actual_end"),
   estimatedHours: numeric("estimated_hours", { precision: 8, scale: 2 }),

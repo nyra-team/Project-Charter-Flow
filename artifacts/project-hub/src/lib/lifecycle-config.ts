@@ -533,6 +533,15 @@ export function canonicalStageKey(key: string | null | undefined): string | null
   return getStageConfig(remapped) ? remapped : null;
 }
 
+/** Rank of a document within its stage's template sequence (requiredDocs order,
+ *  matched by exact name — same convention as stage-panel). Docs not named in
+ *  the template rank after all template docs, keeping their existing order. */
+export function templateDocRank(stageKey: string | null | undefined, docName: string): number {
+  const reqs = (getStageConfig(canonicalStageKey(stageKey) ?? "")?.requiredDocs ?? []) as Array<{ name: string }>;
+  const i = reqs.findIndex(r => r.name === docName);
+  return i === -1 ? reqs.length : i;
+}
+
 // ── Conditional paths (mirrors api-server/src/lib/stage-gates.ts) ──────────────
 // 'vendor' runs all 9 stages; 'internal' skips the two procurement stages.
 export const INTERNAL_SKIPPED_STAGES = ["vendor_selection", "contract_po"];

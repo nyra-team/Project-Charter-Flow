@@ -62,7 +62,7 @@ export default function RfxListPage() {
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">RFx</h1>
+          <h1 data-tour="tour-rfx" className="text-2xl font-semibold tracking-tight">RFx</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             Sourcing events — RFI / RFP / RFQ / e-auction. Two-envelope tech + commercial bidding, blind grading, dual-role unlock.
           </p>

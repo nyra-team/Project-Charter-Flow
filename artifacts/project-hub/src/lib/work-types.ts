@@ -29,12 +29,19 @@ export interface AggTask {
   startDate: string | null;
   endDate: string | null;
   endDateHistory?: string | null;
+  justification?: string | null;
   progressPct: number;
   predecessorIds: number[] | string;
   estimatedHours: number | null;
   actualHours: number | null;
   isCritical?: boolean;
   gate: GateInfo;
+  // Completion-approval gate (see CompletionApproval.tsx). Set while a completion
+  // is awaiting the approver's decision.
+  completionRequestedBy?: number | null;
+  completionApproverId?: number | null;
+  completionReason?: string | null;
+  completionRequestedByName?: string | null;
 }
 
 export interface MeTasks {

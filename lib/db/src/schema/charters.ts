@@ -104,6 +104,8 @@ export const chartersTable = pgTable("pmo_charters", {
   keyProjectMembers: jsonb("key_project_members").notNull().default([]),
   // [{ name, url, size?, mimeType? }]
   attachments: jsonb("attachments").notNull().default([]),
+  // Documenso e-sign envelope: { provider, documentId, sentAt, recipients: [{ email, role, signingOrder }] }
+  esign: jsonb("esign"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),

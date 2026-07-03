@@ -16,6 +16,14 @@ export interface Issue {
   title: string;
   description?: string;
   /** @nullable */
+  issueType?: string | null;
+  /** @nullable */
+  severity?: string | null;
+  /** @nullable */
+  priority?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
   dependencyType?: string | null;
   /** @nullable */
   blockingOwnerId?: number | null;

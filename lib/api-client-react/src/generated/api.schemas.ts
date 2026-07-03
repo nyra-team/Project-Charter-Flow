@@ -371,6 +371,7 @@ export interface UpdateMilestoneBody {
   rag?: string;
   plannedEffortHours?: number;
   scheduleVarianceDays?: number;
+  justification?: string;
   readinessChecklist?: UpdateMilestoneBodyReadinessChecklistItem[];
   gateDecision?: string;
   order?: number;
@@ -746,6 +747,14 @@ export interface Issue {
   title: string;
   description?: string;
   /** @nullable */
+  issueType?: string | null;
+  /** @nullable */
+  severity?: string | null;
+  /** @nullable */
+  priority?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
   dependencyType?: string | null;
   /** @nullable */
   blockingOwnerId?: number | null;
@@ -768,6 +777,10 @@ export interface Issue {
 export interface CreateIssueBody {
   title: string;
   description?: string;
+  issueType?: string;
+  severity?: string;
+  priority?: string;
+  dueDate?: string;
   taskId?: number;
   milestoneId?: number;
   dependencyType?: string;
@@ -781,6 +794,10 @@ export interface CreateIssueBody {
 export interface UpdateIssueBody {
   title?: string;
   description?: string;
+  issueType?: string;
+  severity?: string;
+  priority?: string;
+  dueDate?: string;
   dependencyType?: string;
   blockingOwnerId?: number;
   blockingDept?: string;

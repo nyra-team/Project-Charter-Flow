@@ -10,10 +10,11 @@ import { SessionExpiredModal } from "./components/SessionExpiredModal";
 import { JustificationRequiredModal } from "./components/JustificationRequiredModal";
 import { AskNyra } from "./components/AskNyra";
 import { TitleTooltip } from "./components/ui-kit/TitleTooltip";
+import PmoTourLive from "./components/PmoTourLive";
+import PmoPageTour from "./components/PmoPageTour";
 import NewCharterTemplate from "./pages/charter-template-new";
 import CharterNfaNew from "./pages/charter-nfa-new";
 import NewDemand from "./pages/demand-new";
-import CharterNfaSelect from "./pages/charter-nfa-select";
 import DemandsList from "./pages/demands";
 import PipelinePage from "./pages/pipeline";
 import CharterDetail from "./pages/charter-detail";
@@ -93,7 +94,6 @@ function Router() {
         <Route path="/charters/nfa-new" component={CharterNfaNew} />
         <Route path="/charters/new" component={NewCharterTemplate} />
         <Route path="/charters" component={ChartersList} />
-        <Route path="/charter-nfa" component={CharterNfaSelect} />
         <Route path="/demands/new" component={NewDemand} />
         <Route path="/demands" component={DemandsList} />
         <Route path="/pipeline" component={PipelinePage} />
@@ -147,6 +147,12 @@ function App() {
         <TooltipProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
             <Router />
+            {/* Guided charter→project product tour (driver.js). Inside the
+                router so it can navigate between pages; renders null when idle. */}
+            <PmoTourLive />
+            {/* Per-section auto-tour: first time you manually open a section the
+                main tour doesn't cover, it walks that page's features. */}
+            <PmoPageTour />
           </WouterRouter>
           <Toaster />
           <TitleTooltip />

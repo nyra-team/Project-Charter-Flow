@@ -8,6 +8,7 @@ import vendorPortalRouter from "./routes/vendor_portal";
 import templateFilesRouter from "./routes/template-files";
 import localUploadsRouter from "./routes/local-uploads";
 import documentsPublicRouter from "./routes/documents-public";
+import documensoWebhookRouter from "./routes/documenso-webhook";
 import { logger } from "./lib/logger";
 import { requireAuth } from "./middlewares/requireAuth";
 
@@ -91,6 +92,10 @@ app.use("/api", localUploadsRouter);
 // guarded). Mounted BEFORE requireAuth so plain wget/curl need no Bearer.
 // Only /documents/:id/raw lives here; /documents/:id stays behind requireAuth.
 app.use("/api", documentsPublicRouter);
+
+// Documenso e-sign callback — mounted BEFORE requireAuth (Documenso can't send
+// a Bearer token); guarded inside by the DOCUMENSO_WEBHOOK_SECRET header check.
+app.use("/api", documensoWebhookRouter);
 
 app.use("/api", requireAuth, router);
 

@@ -30,16 +30,32 @@ export function ExcelGroupTable({
   const [order, setOrder] = useState<string[]>(() => {
     if (typeof window !== "undefined") {
       try {
-        const saved = JSON.parse(window.localStorage.getItem(`${storageKey}:order`) || "null");
+        // `:order2` — bumped from `:order` so stale saved orders (which appended
+        // newer default columns like Owner at the END) are discarded once, and
+        // the canonical column order takes effect.
+        const saved = JSON.parse(window.localStorage.getItem(`${storageKey}:order2`) || "null");
         if (Array.isArray(saved) && saved.every((k) => typeof k === "string")) {
-          return [...saved.filter((k: string) => colKeys.includes(k)), ...colKeys.filter((k) => !saved.includes(k))];
+          // Keep the user's saved order for known columns, then splice any NEW
+          // columns in at their CANONICAL position (right after their defined
+          // predecessor), not at the end.
+          const merged = saved.filter((k: string) => colKeys.includes(k));
+          colKeys.forEach((k, idx) => {
+            if (merged.includes(k)) return;
+            let insertAt = merged.length;
+            for (let j = idx - 1; j >= 0; j--) {
+              const pos = merged.indexOf(colKeys[j]!);
+              if (pos !== -1) { insertAt = pos + 1; break; }
+            }
+            merged.splice(insertAt, 0, k);
+          });
+          return merged;
         }
       } catch { /* ignore */ }
     }
     return colKeys;
   });
   useEffect(() => {
-    try { window.localStorage.setItem(`${storageKey}:order`, JSON.stringify(order)); } catch { /* ignore */ }
+    try { window.localStorage.setItem(`${storageKey}:order2`, JSON.stringify(order)); } catch { /* ignore */ }
   }, [order, storageKey]);
 
   // Per-table column widths.
@@ -63,7 +79,19 @@ export function ExcelGroupTable({
   const orderedCols = useMemo(() => {
     const byKey = new Map(cols.map((c) => [c.key, c]));
     const ord = order.map((k) => byKey.get(k)).filter(Boolean) as ExcelCol[];
-    for (const c of cols) if (!ord.includes(c)) ord.push(c);
+    // Insert any column missing from the saved order at its CANONICAL position
+    // (right after its defined predecessor), not appended at the end — so a
+    // newly-added default column (e.g. Owner beside Project Code) lands where
+    // it's defined even for users whose saved order predates it.
+    cols.forEach((c, idx) => {
+      if (ord.includes(c)) return;
+      let insertAt = ord.length;
+      for (let j = idx - 1; j >= 0; j--) {
+        const pos = ord.indexOf(cols[j]!);
+        if (pos !== -1) { insertAt = pos + 1; break; }
+      }
+      ord.splice(insertAt, 0, c);
+    });
     return ord;
   }, [cols, order]);
 
@@ -97,7 +125,7 @@ export function ExcelGroupTable({
 
   return (
     <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white" style={accent ? { borderLeftWidth: 4, borderLeftColor: accent } : undefined}>
-      <table className="w-full min-w-[680px] border-collapse text-xs table-fixed">
+      <table className="w-full min-w-[900px] border-collapse text-xs table-fixed [&_td]:overflow-hidden">
         <colgroup>
           {orderedCols.map((c) => <col key={c.key} style={{ width: `${((width[c.key] ?? c.width) / totalW) * 100}%` }} />)}
         </colgroup>

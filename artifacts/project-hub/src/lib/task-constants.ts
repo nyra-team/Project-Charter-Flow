@@ -34,10 +34,18 @@ export const RAG_OPTIONS = [
   { value: "red",   label: "Red",   color: "#DC3545" },
 ] as const;
 
+// Default org departments — used by every project except CIP tracker imports.
 export const DEPARTMENTS = [
   "Engineering", "Product", "Design", "Finance", "Legal",
   "Marketing", "Sales", "HR", "Operations", "IT", "Procurement",
   "Supply Chain", "Quality", "R&D", "Strategy",
+];
+
+// Departments as they appear in the CIP project-tracker sheets (Granules R&D) —
+// only offered for CIP projects (detected from the departments their tasks use).
+export const CIP_DEPARTMENTS = [
+  "F R&D", "F AR&D", "PM", "QC 2 GGP", "SCM",
+  "BE Study Coordinator", "AQA", "API", "RA",
 ];
 
 const FALLBACK_META = { value: "", label: "—", color: "#FFFFFF", bg: "#808080", solid: "#808080" };

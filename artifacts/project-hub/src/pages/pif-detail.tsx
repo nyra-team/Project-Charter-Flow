@@ -3,7 +3,6 @@ import { useRoute, useLocation, Link } from "wouter";
 import { useGoBack } from "../lib/back";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { useUserStore } from "../lib/store";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,10 +55,6 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// Roles allowed to deliver HOD verdicts. PMO + admins included as a courtesy
-// escape hatch for demo / cleanup. Tweak in one place if the policy changes.
-const HOD_ROLES = ["hod", "pmo", "executive_director", "chairman"];
-
 export default function PifDetail() {
   const [, params] = useRoute<{ id: string }>("/pifs/:id");
   const pifId = params?.id ? parseInt(params.id) : NaN;
@@ -67,8 +62,8 @@ export default function PifDetail() {
   const goBack = useGoBack();
   const { toast } = useToast();
   const qc = useQueryClient();
-  const { role } = useUserStore();
-  const canDecide = HOD_ROLES.includes(role);
+  // PMO has no functional roles anymore — any PMO user can deliver the verdict.
+  const canDecide = true;
 
   const [decideOpen, setDecideOpen] = useState<"approve" | "reject" | null>(null);
   const [decisionNote, setDecisionNote] = useState("");

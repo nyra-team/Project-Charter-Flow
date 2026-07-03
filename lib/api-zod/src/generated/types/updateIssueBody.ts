@@ -9,6 +9,10 @@
 export interface UpdateIssueBody {
   title?: string;
   description?: string;
+  issueType?: string;
+  severity?: string;
+  priority?: string;
+  dueDate?: string;
   dependencyType?: string;
   blockingOwnerId?: number;
   blockingDept?: string;

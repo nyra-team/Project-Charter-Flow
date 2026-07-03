@@ -9,7 +9,25 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { AutoTextarea } from "@/components/ui/auto-textarea";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Info } from "lucide-react";
+import { HoverHint } from "@/components/ui-kit";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+
+// Click the "i" → a small box with the explanation (vs HoverHint which is hover).
+function ClickHint({ label }: { label: string }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button type="button" aria-label="More info" className="inline-flex">
+          <Info size={13} className="text-muted-foreground hover:text-foreground cursor-pointer" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="start" className="w-60 p-2.5 text-xs leading-snug text-popover-foreground">
+        {label}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 type CreateBody = {
   type: "rfi" | "rfp" | "rfq" | "eauction";
@@ -78,13 +96,20 @@ export default function RfxNewPage() {
             <Input type="datetime-local" value={form.closesAt ?? ""} onChange={e => set("closesAt", e.target.value ? new Date(e.target.value).toISOString() : undefined)} />
           </div>
           <div className="space-y-1">
-            <Label>Commercial threshold (%)</Label>
+            <Label className="flex items-center gap-1.5">
+              Commercial threshold (%)
+              <HoverHint label="Minimum commercial (price) score a bid must reach to qualify. Bids scoring below this percentage are screened out before the final comparison.">
+                <Info size={13} className="text-muted-foreground hover:text-foreground cursor-help" />
+              </HoverHint>
+            </Label>
             <Input type="number" min={0} max={100} value={form.evaluationThresholdPct ?? 60} onChange={e => set("evaluationThresholdPct", Number(e.target.value))} />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-border">
-          <ToggleRow label="Surrogate bidding" v={!!form.surrogateBiddingAllowed} onChange={v => set("surrogateBiddingAllowed", v)} />
-          <ToggleRow label="Alternative bids" v={!!form.alternativeBidsAllowed} onChange={v => set("alternativeBidsAllowed", v)} />
+          <ToggleRow label="Surrogate bidding" v={!!form.surrogateBiddingAllowed} onChange={v => set("surrogateBiddingAllowed", v)}
+            hint="Lets a bidder quote on behalf of another party (e.g. a parent company or authorised agent bids in place of the actual supplier). Allow when proxy or consortium bidding is acceptable for this RFx." />
+          <ToggleRow label="Alternative bids" v={!!form.alternativeBidsAllowed} onChange={v => set("alternativeBidsAllowed", v)}
+            hint="Lets a bidder submit one or more variant offers alongside the compliant base bid — different specs, scope, or commercial terms than asked for. Allow when you want to consider supplier-proposed alternatives." />
         </div>
         <div className="flex justify-end gap-2 pt-2 border-t border-border">
           <Button variant="ghost" onClick={() => navigate("/rfx")}>Cancel</Button>
@@ -97,10 +122,13 @@ export default function RfxNewPage() {
   );
 }
 
-function ToggleRow({ label, v, onChange }: { label: string; v: boolean; onChange: (v: boolean) => void }) {
+function ToggleRow({ label, v, onChange, hint }: { label: string; v: boolean; onChange: (v: boolean) => void; hint?: string }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border p-2">
-      <span className="text-sm">{label}</span>
+      <span className="text-sm flex items-center gap-1.5">
+        {label}
+        {hint && <ClickHint label={hint} />}
+      </span>
       <Switch checked={v} onCheckedChange={onChange} />
     </div>
   );

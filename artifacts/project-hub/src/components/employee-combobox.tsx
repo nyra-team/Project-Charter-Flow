@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "./ui/command";
@@ -14,10 +14,14 @@ export function EmployeeCombobox({
   value,
   onSelect,
   placeholder = "Select member…",
+  trigger,
 }: {
   value?: string;
   onSelect: (hit: EmployeeHit) => void;
   placeholder?: string;
+  /** Custom trigger element (e.g. a compact table-cell control). Falls back to
+   *  the default bordered combobox button when omitted. */
+  trigger?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -45,6 +49,7 @@ export function EmployeeCombobox({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
+        {trigger ?? (
         <button
           type="button"
           role="combobox"
@@ -54,6 +59,7 @@ export function EmployeeCombobox({
           <span className={value ? "" : "text-muted-foreground"}>{value || placeholder}</span>
           <ChevronsUpDown size={14} className="opacity-50 shrink-0" />
         </button>
+        )}
       </PopoverTrigger>
       <PopoverContent className="p-0 w-[--radix-popover-trigger-width] min-w-[260px]" align="start">
         <Command shouldFilter={false}>

@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, numeric, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -20,6 +20,7 @@ export const projectsTable = pgTable("pmo_projects", {
   category: text("category"),
   strategicTheme: text("strategic_theme").default(""),
   ragStatus: text("rag_status").notNull().default("green"),
+  confidential: boolean("confidential").notNull().default(false),
   ragOverrideJustification: text("rag_override_justification").default(""),
   capexBudget: numeric("capex_budget", { precision: 15, scale: 2 }).notNull().default("0"),
   opexBudget: numeric("opex_budget", { precision: 15, scale: 2 }).notNull().default("0"),
@@ -28,6 +29,10 @@ export const projectsTable = pgTable("pmo_projects", {
   siteRegion: text("site_region").default(""),
   function: text("function").default(""),
   projectManagerId: integer("project_manager_id"),
+  // Project owner (pmo_users.id). Assignable from the projects table even when
+  // the project has no linked charter; for charter-backed projects it's kept in
+  // sync with the charter's projectOwnerId. Read project-first, charter-fallback.
+  projectOwnerId: integer("project_owner_id"),
   // Email address of the project's Microsoft Teams channel (Channel → ⋯ → Get email
   // address). All project alerts are mirrored there via plain SMTP. Null = no mirror.
   teamsChannelEmail: text("teams_channel_email"),

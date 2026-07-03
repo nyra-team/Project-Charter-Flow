@@ -35,3 +35,25 @@ export const api = {
 
 export type AiStatus = { configured: boolean; provider: string; model: string };
 export const getAiStatus = () => api.get<AiStatus>("/api/ai/status");
+
+/**
+ * Open/download an authenticated API file (PDF, docx). Plain <a href> links
+ * NAVIGATE — they bypass window.fetch, so the interceptor never attaches the
+ * bearer token and the API answers 401 "Missing bearer token". Fetching first
+ * (token attached) and opening the blob URL keeps downloads authed.
+ */
+export async function openApiFile(path: string, filename?: string): Promise<void> {
+  const res = await fetch(path, { credentials: "include", cache: "no-store" });
+  if (!res.ok) throw new Error(`Download failed (HTTP ${res.status})`);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  if (filename) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+  } else {
+    window.open(url, "_blank", "noopener");
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}

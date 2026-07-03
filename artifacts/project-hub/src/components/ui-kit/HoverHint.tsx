@@ -36,18 +36,18 @@ export function HoverHint({
   return (
     <Tooltip delayDuration={150}>
       <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent side={side} align={align} className={rich ? `max-w-[240px] p-0 ${className ?? ""}` : className}>
+      <TooltipContent side={side} align={align} className={rich ? `max-w-[180px] p-0 ${className ?? ""}` : className}>
         {rich ? (
           <div className="text-left">
             {title && (
-              <p className="px-2.5 pt-2 pb-1 text-[10px] font-semibold text-popover-foreground border-b border-popover-border/60">
+              <p className="px-2 pt-1.5 pb-0.5 text-[9px] font-semibold text-popover-foreground border-b border-popover-border/60">
                 {title}
               </p>
             )}
             {rows && rows.length > 0 && (
-              <div className="px-2.5 py-1.5 space-y-0.5">
+              <div className="px-2 py-1 space-y-0.5">
                 {rows.map((r, i) => (
-                  <div key={i} className="flex items-baseline justify-between gap-3 text-[10px]">
+                  <div key={i} className="flex items-baseline justify-between gap-2 text-[9px]">
                     <span className="text-muted-foreground">{r.label}</span>
                     <span className="font-medium text-popover-foreground text-right num-tabular">{r.value}</span>
                   </div>
@@ -55,8 +55,8 @@ export function HoverHint({
               </div>
             )}
             {footer && (
-              <p className="px-2.5 pb-2 pt-1 text-[9px] leading-snug text-muted-foreground border-t border-popover-border/60 flex items-start gap-1">
-                <Info size={9} className="mt-0.5 flex-shrink-0 text-primary" />
+              <p className="px-2 pb-1.5 pt-0.5 text-[8px] leading-snug text-muted-foreground border-t border-popover-border/60 flex items-start gap-1">
+                <Info size={8} className="mt-0.5 flex-shrink-0 text-primary" />
                 <span>{footer}</span>
               </p>
             )}
