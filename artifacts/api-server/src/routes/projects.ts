@@ -39,6 +39,10 @@ import { notify } from "../lib/notify";
 import { resolveRole, type Recipient } from "../lib/role-resolver";
 import type { EmailBanner } from "../lib/mailer";
 
+// Investment categories a project can be filed under. Mirrors CLASS_KEYS in the
+// hub's projects board, which groups the list by this column.
+const PROJECT_CATEGORIES = ["CAPEX", "OPEX", "NPL", "NPD", "CIP", "IT"];
+
 // Fan a task-level event out to in-app bell + email + the project's Teams
 // channel. Recipients = assignee (when given) + the project manager
 // (role-resolved with charter fallback). Detached: called AFTER res.json so a
@@ -329,9 +333,14 @@ router.delete("/projects/:id", requireRole(...WRITE_ROLES), async (req, res): Pr
 // schedule (gate milestones + delivery milestones + tasks).
 router.post("/projects/import", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   try {
-    const body = (req.body || {}) as { fileBase64?: string; fileName?: string };
+    const body = (req.body || {}) as { fileBase64?: string; fileName?: string; category?: string };
     const b64 = String(body.fileBase64 || "");
     const fileName = String(body.fileName || "upload");
+    // Investment category (CAPEX | OPEX | NPL | NPD | CIP | IT) applied to every
+    // project in the file, so an import lands under one heading on the board.
+    const category = PROJECT_CATEGORIES.includes(String(body.category || "").toUpperCase())
+      ? String(body.category).toUpperCase()
+      : null;
     if (!b64) { res.status(400).json({ error: "No file provided." }); return; }
     const buffer = Buffer.from(b64, "base64");
     if (!buffer.length) { res.status(400).json({ error: "Empty file." }); return; }
@@ -349,8 +358,10 @@ router.post("/projects/import", requireRole(...WRITE_ROLES), async (req, res): P
         startDate: p.startDate ?? undefined,
         endDate: p.endDate ?? undefined,
         stage: "initiation",
+        category,
       }).returning();
-      try { await generateGateMilestones(project.id); } catch { /* non-fatal */ }
+      try { await generateGateMilestones(project.id); }
+      catch (e) { console.error(`[projects import] gate milestones failed for "${project.name}":`, (e as Error)?.message); }
       let counts = { milestones: 0, tasks: 0 };
       try {
         // Faithful import — persist exactly the milestones/tasks/subtasks in the
@@ -358,7 +369,11 @@ router.post("/projects/import", requireRole(...WRITE_ROLES), async (req, res): P
         counts = await scheduleImportedProject(project.id, (p.milestones ?? []) as never, {
           name: project.name, description: p.description, startDate: p.startDate, endDate: p.endDate,
         });
-      } catch { /* non-fatal */ }
+      } catch (e) {
+        // Non-fatal: the project row exists, but say so rather than reporting a
+        // clean import that silently dropped every milestone.
+        console.error(`[projects import] milestones/tasks failed for "${project.name}":`, (e as Error)?.message);
+      }
       await logActivity("project_imported", `Project "${project.name}" imported from ${fileName}`, project.id, "project");
       created.push({ id: project.id, name: project.name, ...counts });
     }

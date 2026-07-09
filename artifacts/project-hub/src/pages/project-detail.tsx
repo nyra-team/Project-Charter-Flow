@@ -2119,7 +2119,12 @@ export default function ProjectDetail() {
     const pr = getPriorityMeta(String(ms.priority ?? ""));
     const msCode = `MS-${String(ms.id).padStart(4, "0")}`;
     const fmt = (d: unknown) => (typeof d === "string" && d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : null);
-    const startIso = typeof ms.actualStart === "string" && ms.actualStart ? ms.actualStart.slice(0, 10) : "";
+    // The bar shows when the milestone really began; until it has, fall back to
+    // when it was *planned* to begin, so an imported plan isn't invisible. Only
+    // actualStart is ever written back — planStartIso is display/seed material.
+    const actualStartIso = typeof ms.actualStart === "string" && ms.actualStart ? ms.actualStart.slice(0, 10) : "";
+    const planStartIso = typeof ms.startDate === "string" && ms.startDate ? ms.startDate.slice(0, 10) : "";
+    const startIso = actualStartIso || planStartIso;
     const dueIso = typeof ms.dueDate === "string" && ms.dueDate ? ms.dueDate.slice(0, 10) : "";
     const justification = typeof ms.justification === "string" ? ms.justification : "";
     const todayIso = racToday(getLocalTimeZone()).toString();
@@ -2153,9 +2158,11 @@ export default function ProjectDetail() {
       requestDateChange({
         taskId: Number(ms.id),
         skipComment: true,
-        firstAssignment: !startIso && !dueIso,
+        // Seeding the picker from the plan doesn't make this an edit of the
+        // plan: what's being set is the actual start, which may still be unset.
+        firstAssignment: !actualStartIso && !dueIso,
         changes: [
-          { label: "Start", from: startIso || null, to: s },
+          { label: "Start", from: actualStartIso || null, to: s },
           { label: "Due", from: dueIso || null, to: e },
         ],
         apply: (reason) => updateMilestone.mutate({ id: Number(ms.id), data: { actualStart: s, dueDate: e, justification: reason || undefined } as never }),
@@ -2194,7 +2201,12 @@ export default function ProjectDetail() {
                 className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-800 whitespace-nowrap hover:text-primary transition-colors"
               >
                 <CalendarDays size={13} className="text-gray-500 shrink-0" />
-                {fmt(ms.actualStart) ?? "—"} <span className="text-gray-400">→</span> {fmt(ms.dueDate) ?? "—"}
+                {actualStartIso
+                  ? fmt(actualStartIso)
+                  : planStartIso
+                    ? <span className="font-normal text-gray-500" title="Planned start — not started yet">{fmt(planStartIso)}</span>
+                    : "—"}
+                {" "}<span className="text-gray-400">→</span> {fmt(ms.dueDate) ?? "—"}
               </button>
               {open && pos && createPortal(
                 <div ref={menuRef} style={{ position: "fixed", top: pos.top, right: pos.right }} className="z-[300] rounded-lg bg-white border border-gray-200 shadow-xl select-none p-2" onClick={(e) => e.stopPropagation()}>
@@ -2678,9 +2690,12 @@ export default function ProjectDetail() {
           {groups.map((group) => {
             const open = !collapsed[group.key];
             const groupMs = group.key === "__none__" ? null : milestoneById.get(Number(group.key));
+            // Mirrors the server's rollup (api-server/src/lib/rollup.ts): with no
+            // tasks to average, a milestone reports its own status — otherwise a
+            // "Completed" milestone with no tasks renders at 0%.
             const groupMsProgress = group.rows.length
               ? Math.round(group.rows.reduce((s, t) => s + (t.status === "completed" ? 100 : Number((t as Record<string, unknown>).progressPct ?? 0)), 0) / group.rows.length)
-              : 0;
+              : groupMs?.status === "completed" ? 100 : 0;
             return (
               <div key={group.key}>
                 {/* Milestone header — chevron toggles the table; the milestone

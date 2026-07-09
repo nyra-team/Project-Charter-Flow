@@ -47,8 +47,8 @@ export interface LLMCallOptions<T = string> {
 }
 
 export type LLMResult<T = string> =
-  | { ok: true; data: T; raw: string; usage?: { inputTokens?: number; outputTokens?: number } }
-  | { ok: false; reason: "no_api_key" | "llm_error" | "parse_error" | "validation_error"; message: string };
+  | { ok: true; data: T; raw: string; stopReason?: string; usage?: { inputTokens?: number; outputTokens?: number } }
+  | { ok: false; reason: "no_api_key" | "llm_error" | "parse_error" | "validation_error" | "truncated"; message: string };
 
 const DEFAULT_MODEL = process.env.LLM_DEFAULT_MODEL || "claude-sonnet-4-6";
 
@@ -85,6 +85,7 @@ type StdMessagesBody = {
 
 type StdMessagesResponse = {
   content?: Array<{ type: string; text?: string }>;
+  stop_reason?: string;
   usage?: { input_tokens?: number; output_tokens?: number };
 };
 
@@ -208,7 +209,18 @@ export async function llm<T = string>(opts: LLMCallOptions<T>): Promise<LLMResul
       outputTokens: data.usage?.output_tokens,
     };
 
+    const stopReason = data.stop_reason;
+
     if (opts.jsonSchema) {
+      // A max_tokens stop means the JSON is cut off mid-token. Parsing it would
+      // fail with a misleading "did not return valid JSON" — say what happened.
+      if (stopReason === "max_tokens") {
+        return {
+          ok: false,
+          reason: "truncated",
+          message: `The response hit the ${body.max_tokens}-token output limit before the JSON was complete.`,
+        };
+      }
       const parsed = extractJson(textBlocks);
       if (parsed === null) {
         return { ok: false, reason: "parse_error", message: `LLM did not return valid JSON: ${textBlocks.slice(0, 200)}` };
@@ -221,10 +233,10 @@ export async function llm<T = string>(opts: LLMCallOptions<T>): Promise<LLMResul
           message: `LLM JSON failed schema: ${validated.error.message}`,
         };
       }
-      return { ok: true, data: validated.data as T, raw: textBlocks, usage };
+      return { ok: true, data: validated.data as T, raw: textBlocks, stopReason, usage };
     }
 
-    return { ok: true, data: textBlocks as T, raw: textBlocks, usage };
+    return { ok: true, data: textBlocks as T, raw: textBlocks, stopReason, usage };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, reason: "llm_error", message };

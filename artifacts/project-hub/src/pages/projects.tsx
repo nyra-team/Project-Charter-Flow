@@ -1469,13 +1469,14 @@ function ProjectFullCalendar({ rows, onOpen }: { rows: ProjectRow[]; onOpen: (id
 }
 
 // Investment / type classification for the toolbar filter.
-// ponytail: name-based — the CIP (pharma special-project) tracker imports are
-// the only real members today; everything else is IT. CAPEX / OPEX / NPL stay
-// as filter options but have no members yet (kept so the dropdown is complete).
-// Revisit if the budget / category fields start carrying real data.
-const CLASS_KEYS = ["CAPEX", "OPEX", "NPL", "CIP", "IT"] as const;
+// A project's own `category` column wins when it carries one (set on import, or
+// by an admin). The CIP name match below is the legacy path: those tracker
+// imports predate the category column and have no category to read.
+const CLASS_KEYS = ["CAPEX", "OPEX", "NPL", "NPD", "CIP", "IT"] as const;
 const CIP_NAME_RE = /metoprolol|potassium chloride|klorcon|\bkcl\b/;
 function classifyProject(p: Record<string, unknown>): string[] {
+  const category = `${p.category ?? ""}`.trim().toUpperCase();
+  if ((CLASS_KEYS as readonly string[]).includes(category)) return [category];
   const hay = `${p.name ?? ""}`.toLowerCase();
   return CIP_NAME_RE.test(hay) ? ["CIP"] : ["IT"];
 }

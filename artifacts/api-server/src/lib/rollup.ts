@@ -60,7 +60,7 @@ export async function recomputeRollups(projectId: number): Promise<void> {
     .where(eq(tasksTable.projectId, projectId));
 
   const milestones = await db
-    .select({ id: milestonesTable.id, progressPct: milestonesTable.progressPct })
+    .select({ id: milestonesTable.id, progressPct: milestonesTable.progressPct, status: milestonesTable.status })
     .from(milestonesTable)
     .where(eq(milestonesTable.projectId, projectId));
 
@@ -110,7 +110,13 @@ export async function recomputeRollups(projectId: number): Promise<void> {
   const milestonePct = new Map<number, number>();
   for (const m of milestones) {
     const ts = topByMilestone.get(m.id) ?? [];
-    const val = ts.length ? Math.round(ts.reduce((s, t) => s + effective(t), 0) / ts.length) : 0;
+    // With no tasks to average, fall back to the milestone's own status — the
+    // same rule leafProgress() applies to tasks. Milestones legitimately carry
+    // no tasks (imported plans, gates), and forcing those to 0 renders a
+    // "Completed" milestone at 0%.
+    const val = ts.length
+      ? Math.round(ts.reduce((s, t) => s + effective(t), 0) / ts.length)
+      : m.status === "completed" ? 100 : 0;
     milestonePct.set(m.id, val);
     if (val !== (m.progressPct ?? 0)) {
       await db.update(milestonesTable).set({ progressPct: val }).where(eq(milestonesTable.id, m.id));
@@ -124,6 +130,15 @@ export async function recomputeRollups(projectId: number): Promise<void> {
   if (contributing.length > 0) {
     projectPct = Math.round(
       contributing.reduce((s, m) => s + (milestonePct.get(m.id) ?? 0), 0) / contributing.length,
+    );
+  } else if (milestones.some((m) => (milestonePct.get(m.id) ?? 0) > 0)) {
+    // A plan tracked purely at milestone level (imported schedules): no tasks
+    // anywhere, but some milestones are done. Average all of them, so progress
+    // isn't stuck at 0. Guarded on "some milestone is non-zero" so a project of
+    // empty, not-started gates still falls through to the task math below and
+    // keeps its existing behaviour.
+    projectPct = Math.round(
+      milestones.reduce((s, m) => s + (milestonePct.get(m.id) ?? 0), 0) / milestones.length,
     );
   } else {
     // Fallback: no milestone-bucketed work — average top-level tasks directly.
