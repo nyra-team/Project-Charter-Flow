@@ -3101,7 +3101,7 @@ export default function ProjectsList() {
                           return <td key="progress" className="border border-gray-200 px-2 py-0.5 text-center font-semibold tabular-nums text-gray-700 whitespace-nowrap !overflow-visible">{pct}%</td>;
                         }
                         case "taskStatus": return <td key="taskStatus" className="border border-gray-200 px-2 py-0.5"><TaskStatusBar counts={taskAgg.get(p.id)} /></td>;
-                        case "timeline": { const tl = deriveTimeline(p.id); return <td key="timeline" className="border border-gray-200 px-2 py-0.5 whitespace-nowrap"><TimelineCell start={tl.start} end={tl.end} /></td>; }
+                        case "timeline": return <td key="timeline" className="border border-gray-200 px-2 py-0.5 whitespace-nowrap"><TimelineCell start={p.startDate} end={p.endDate} /></td>;
                         case "currentStatus": {
                           const ds = displayStatusOf(p.status);
                           // Project-specific text only — its lifecycle stage
