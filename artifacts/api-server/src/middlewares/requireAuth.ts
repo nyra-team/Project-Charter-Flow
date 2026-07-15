@@ -11,6 +11,11 @@ export interface PmoUser {
   employeeId: string | null;
   employeeCode: string | null;
   fullName: string | null;
+  /** Master-DB org-unit short code (e.g. "F1"/"A1"/"GLS") of the employee's
+   *  plant/site — lets the frontend default the "Plant" picker to the creator's
+   *  own plant. Null when the master record has no unit. Matches org_units.code
+   *  (the same source /api/plants serves). */
+  unitCode: string | null;
   isAdmin: boolean;
   isSuperAdmin: boolean;
   accessPmo: boolean;
@@ -87,7 +92,7 @@ async function resolvePmoUser(
 ): Promise<{ user: PmoUser } | { error: { status: number; message: string } }> {
   const base = masterDb
     .from("employees")
-    .select("id, employee_code, first_name, middle_name, last_name, office_email, designation_text, business_designation, function, sub_function, grade_code, employee_auth!inner(access_pmo, pmo_role, is_admin, is_super_admin)");
+    .select("id, employee_code, first_name, middle_name, last_name, office_email, designation_text, business_designation, function, sub_function, grade_code, unit_code, employee_auth!inner(access_pmo, pmo_role, is_admin, is_super_admin)");
   const { data: employee, error: empError } = await (
     "code" in filter ? base.eq("employee_code", filter.code) : base.ilike("office_email", filter.email)
   ).maybeSingle();
@@ -157,6 +162,7 @@ async function resolvePmoUser(
       employeeId: employee.id ?? null,
       employeeCode: employee.employee_code ?? null,
       fullName: composedFullName,
+      unitCode: (employee.unit_code ?? "").trim() || null,
       isAdmin,
       isSuperAdmin,
       accessPmo,

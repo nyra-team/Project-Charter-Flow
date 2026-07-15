@@ -5,6 +5,7 @@ import { ArrowUpDown, AlertTriangle, Search, Plus } from "lucide-react";
 import { StatusSelect, PrioritySelect, RagDot } from "./task-status-chip";
 import { fmtVariance, getStatusMeta, TASK_STATUSES, TASK_PRIORITIES } from "../lib/task-constants";
 import { IssueRaiseModal } from "./issue-raise-modal";
+import { InlineDateCell } from "./inline-date-cell";
 
 export interface GridMilestone {
   id: number;
@@ -63,40 +64,6 @@ function ConsolidatedStatusPill({ tasks }: { tasks: GridTask[] }) {
     >
       {meta.label}
     </span>
-  );
-}
-
-function InlineDateCell({ value, onSave }: { value?: string | null; onSave: (v: string) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [local, setLocal] = useState(value ?? "");
-
-  if (!editing) {
-    return (
-      <span
-        className="text-xs text-foreground cursor-pointer hover:bg-primary/10 px-1 rounded block truncate"
-        onClick={() => { setLocal(value ?? ""); setEditing(true); }}
-      >
-        {value
-          ? new Date(value).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" })
-          : <span className="text-muted-foreground/60 italic">—</span>}
-      </span>
-    );
-  }
-
-  return (
-    <input
-      autoFocus
-      type="date"
-      value={local}
-      onChange={e => setLocal(e.target.value)}
-      onBlur={() => { setEditing(false); onSave(local); }}
-      onKeyDown={e => {
-        if (e.key === "Enter") { setEditing(false); onSave(local); }
-        if (e.key === "Escape") setEditing(false);
-      }}
-      className="text-xs border border-input bg-background text-foreground rounded-md px-1.5 py-0.5 w-full outline-none focus:ring-2 focus:ring-ring/40"
-      style={{ maxWidth: 110 }}
-    />
   );
 }
 

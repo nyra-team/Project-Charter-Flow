@@ -350,7 +350,9 @@ export interface CreateMilestoneBody {
   workstreamId?: number;
   name: string;
   description?: string;
+  startDate?: string;
   dueDate?: string;
+  ownerId?: number;
   priority?: string;
   order?: number;
 }

@@ -855,6 +855,48 @@
   color: hsl(var(--primary)) !important;
 }
 
+/* Dropdown-family skin for the shared `@granules/shared` SearchableSelect
+   (consumed source-side via the vite alias). Ported from the same
+   design-system.css section as the rules above, with v3 `!x` @apply syntax
+   rewritten to v4's trailing `x!`. Only the classes SearchableSelect uses —
+   add the -multi rules from design-system.css if MultiSelect is ever consumed. */
+.dropdown-trigger {
+  @apply w-full p-2.5 px-4 bg-muted/50 border border-border
+         rounded-full text-sm text-left flex items-center gap-2
+         transition-all focus:ring-2 focus:ring-primary/20 outline-none;
+}
+.dropdown-trigger-sm {
+  @apply inline-flex w-56 h-8 px-3
+         bg-white border border-slate-200 hover:bg-slate-50
+         rounded-full text-xs font-semibold text-left items-center gap-1.5
+         transition-colors focus:ring-2 focus:ring-primary/20 outline-none;
+}
+.dropdown-trigger-sm.dropdown-trigger-sm-full { @apply w-full; }
+.dropdown-trigger-xs {
+  @apply inline-flex w-40 h-6 px-2.5
+         bg-white border border-slate-200 hover:bg-slate-50
+         rounded-full text-[11px] font-semibold text-left items-center gap-1
+         transition-colors focus:ring-2 focus:ring-primary/20 outline-none;
+}
+.dropdown-trigger-xs.dropdown-trigger-xs-full { @apply w-full; }
+.dropdown-trigger-value { @apply flex-1 truncate font-normal; }
+.dropdown-trigger-value-empty { @apply flex-1 truncate font-normal text-muted-foreground; }
+.dropdown-popover,
+.dropdown-popover-sm {
+  @apply p-0 w-[var(--radix-popover-trigger-width)]! [&_[cmdk-group]]:p-0
+         rounded-2xl! shadow-xl! border-border!;
+}
+.dropdown-popover-attached[data-side="bottom"] { @apply rounded-t-none! border-t-0!; }
+.dropdown-popover-attached[data-side="top"] { @apply rounded-b-none! border-b-0!; }
+.dropdown-popover [cmdk-input-wrapper] { @apply mx-2 mt-2 mb-1 rounded-xl bg-muted/40 border-b-0!; }
+.dropdown-popover [cmdk-input] {
+  @apply h-9! py-2! px-0! border-0! ring-0! shadow-none! bg-transparent! rounded-none! outline-none!;
+}
+.dropdown-item-sm { @apply text-xs py-1.5 px-2 font-normal; }
+.dropdown-item-xs { @apply text-[11px] leading-tight py-1! px-2 font-normal; }
+.dark .dropdown-trigger-sm, .dark .dropdown-trigger-xs { background-color: hsl(var(--card)); border-color: hsl(var(--border)); }
+.dark .dropdown-trigger-sm:hover, .dark .dropdown-trigger-xs:hover { background-color: hsl(var(--muted) / 0.5); }
+
 /* Sidebar nav: keep the active item's TEXT the same colour as the rest — only
    the pill background/ring marks the selection. The shared CollapsibleSidebar
    active class is `text-primary` (blue) in light mode; neutralise just that to

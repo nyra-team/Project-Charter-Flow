@@ -2989,8 +2989,12 @@ components:
           type: string
         description:
           type: string
+        startDate:
+          type: string
         dueDate:
           type: string
+        ownerId:
+          type: integer
         priority:
           type: string
         order:

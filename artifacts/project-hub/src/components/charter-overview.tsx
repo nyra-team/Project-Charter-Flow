@@ -2,18 +2,55 @@
 // project: a title block, an at-a-glance info table (filled from the charter AND
 // the project's own fields), a lead summary, a delivery summary of milestones &
 // tasks, and the conventional charter sections. Plain text (no boxes).
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { FileText, Info, Activity, ListChecks, Flag, HeartPulse } from "lucide-react";
 import { KPITile } from "./dashboard/primitives";
 import { HoverHint } from "./ui-kit/HoverHint";
 import { AttachmentPopover } from "./AttachmentPopover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/extra-api";
 import { formatCurrency } from "../lib/format";
 import { getStatusMeta } from "../lib/task-constants";
 
 type AnyRec = Record<string, unknown>;
+
+// Inline dropdown for an editable Overview meta field (Department · Plant). Shows
+// the current value (or a placeholder when unset — so a project that skipped it
+// at creation can still be filled here), and saves the pick immediately. Keeps a
+// local optimistic value so the change shows before the project refetches.
+const META_NONE = "__none";
+function MetaSelect({ current, placeholder, options, onSave }: {
+  current: string;
+  placeholder: string;
+  options: { value: string; label: string }[];
+  onSave: (value: string) => void;
+}) {
+  const [val, setVal] = useState(current);
+  useEffect(() => setVal(current), [current]);
+  // Keep a legacy free-text value visible even if it's not in the master list.
+  const opts = current && !options.some((o) => o.value === current)
+    ? [{ value: current, label: current }, ...options]
+    : options;
+  return (
+    <Select
+      // undefined (not the None sentinel) when unset, so the trigger shows the
+      // placeholder — the field name — instead of a filled-in "None".
+      value={val || undefined}
+      onValueChange={(v) => { const nv = v === META_NONE ? "" : v; setVal(nv); onSave(nv); }}
+    >
+      <SelectTrigger className="h-7 w-full max-w-[240px] text-[13px]">
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent className="max-h-72">
+        <SelectItem value={META_NONE}>None</SelectItem>
+        {opts.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
 type TaskLite = { id?: number; name?: string; status: string; parentTaskId?: number | null; milestoneId?: number | null };
 type MsLite = { id: number; name: string; dueDate?: string | null; startDate?: string | null; status: string; progressPct?: number | null; dueDateHistory?: string | null };
 
@@ -161,7 +198,7 @@ function TaskUpdatesSection({ top, subsByParent }: { top: TaskLite[]; subsByPare
 }
 
 export function CharterOverview({
-  project, projectName, pmName, ownerName, tasks = [], milestones = [], isCip = false,
+  project, projectName, pmName, ownerName, tasks = [], milestones = [], isCip = false, onMetaUpdated,
 }: {
   project: AnyRec | null | undefined;
   projectName?: string;
@@ -171,8 +208,47 @@ export function CharterOverview({
   milestones?: MsLite[];
   /** CIP project — shows the product/strength/customer/market header block. */
   isCip?: boolean;
+  /** Called after Department / Plant are saved so the parent can refetch. */
+  onMetaUpdated?: () => void;
 }) {
   const p = (project ?? {}) as AnyRec;
+  const projectId = Number(p.id ?? 0);
+  // Department (project.function) and Plant (project.siteRegion) are editable
+  // straight from the Overview — the same fields the Create Project modal sets,
+  // and the same option sources — so a project that skipped them at creation can
+  // be filled in here.
+  const canEditMeta = projectId > 0;
+  const deptsQ = useQuery({
+    queryKey: ["/api/departments"],
+    queryFn: () => api.get<string[]>("/api/departments"),
+    enabled: canEditMeta, staleTime: 10 * 60_000,
+  });
+  const plantsQ = useQuery({
+    queryKey: ["/api/plants"],
+    queryFn: () => api.get<Array<{ code: string; label: string }>>("/api/plants"),
+    enabled: canEditMeta, staleTime: 10 * 60_000,
+  });
+  const deptOptions = (deptsQ.data ?? []).map((d) => ({ value: d, label: d }));
+  const plantOptions = (plantsQ.data ?? []).map((pl) => ({ value: pl.label, label: pl.label }));
+  const { toast } = useToast();
+  // Auto-save on select — no separate save button; the pick persists straight to
+  // the project and a toast confirms it (or surfaces a failure).
+  const saveMeta = (field: "function" | "siteRegion", value: string) => {
+    if (!canEditMeta) return;
+    const label = field === "function" ? "Department" : "Plant";
+    // The PATCH body validates function/siteRegion as an optional STRING (not
+    // nullable), so send "" to clear — never null, which the schema would reject.
+    void fetch(`/api/projects/${projectId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: value }),
+    })
+      .then((r) => {
+        if (r.ok) { onMetaUpdated?.(); toast({ title: value ? `${label} saved` : `${label} cleared`, className: "bg-blue-100 border-blue-300 border-l-blue-600 text-blue-900" }); }
+        else toast({ title: `Couldn't save ${label.toLowerCase()}`, variant: "destructive" });
+      })
+      .catch(() => toast({ title: `Couldn't save ${label.toLowerCase()}`, variant: "destructive" }));
+  };
   const charterId = Number(p.charterId ?? 0);
   const { data: charter, isLoading } = useQuery({
     queryKey: [`/api/charters/${charterId}`],
@@ -590,7 +666,43 @@ export function CharterOverview({
 
       {budgetRows.length > 0 && <Section title="Budget & Investment"><FactList rows={budgetRows} /></Section>}
 
-      <Section title="Project Head">
+      {/* Project Details — Department (project.function) and Plant
+          (project.siteRegion), the same fields the Create Project modal sets.
+          Editable here so a project that skipped them at creation can be filled
+          in; the pick saves straight to the project. */}
+      {canEditMeta && (
+        <Section title="Project Details">
+          <FactList rows={[
+            ["Department", <MetaSelect current={str(p, "function")} placeholder="Department" options={deptOptions} onSave={(v) => saveMeta("function", v)} />],
+            ["Plant", <MetaSelect current={str(p, "siteRegion")} placeholder="Plant" options={plantOptions} onSave={(v) => saveMeta("siteRegion", v)} />],
+            ["Go-live date", (
+              <span className="inline-flex items-center gap-1.5">
+                <Flag size={13} style={{ color: "#7c3aed" }} />
+                <input
+                  type="date"
+                  value={str(p, "goLiveDate")}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    void fetch(`/api/projects/${projectId}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ goLiveDate: v || "" }),
+                    })
+                      .then((r) => {
+                        if (r.ok) { onMetaUpdated?.(); toast({ title: v ? "Go-live date saved" : "Go-live date cleared", className: "bg-blue-100 border-blue-300 border-l-blue-600 text-blue-900" }); }
+                        else toast({ title: "Couldn't save go-live date", variant: "destructive" });
+                      })
+                      .catch(() => toast({ title: "Couldn't save go-live date", variant: "destructive" }));
+                  }}
+                  className="rounded-md border border-input bg-background px-2 py-1 text-[13px] outline-none focus:ring-2 focus:ring-ring/40"
+                />
+              </span>
+            )],
+          ]} />
+        </Section>
+      )}
+
+      <Section title="Project Leadership">
         <FactList rows={[
           ["Project Manager", pm || "—"],
           ["Project Owner", ownerName ? <span className="inline-flex items-center rounded px-1.5 py-0.5 bg-primary/10 text-primary font-semibold">{ownerName}</span> : "—"],
@@ -726,7 +838,7 @@ export function CharterOverview({
             : <Para>No insights available yet — add tasks and milestones to generate them.</Para>}
       </Section>
 
-      <Section title="Project Head">
+      <Section title="Project Leadership">
         <FactList rows={[
           ["Project Manager", pm || "—"],
           ["Project Owner", ownerName ? <span className="inline-flex items-center rounded px-1.5 py-0.5 bg-primary/10 text-primary font-semibold">{ownerName}</span> : "—"],

@@ -23,6 +23,8 @@ import ApprovalsList from "./pages/approvals";
 import IssuesList from "./pages/issues";
 import ProjectsList from "./pages/projects";
 import ProjectDetail from "./pages/project-detail";
+import ProjectDocumentsPage from "./pages/project-documents";
+import ProjectChatPage from "./pages/project-chat";
 import NewTask from "./pages/task-new";
 import PortfolioView from "./pages/portfolio";
 import PortfolioOverview from "./pages/portfolio-overview";
@@ -39,6 +41,7 @@ import AdminCip from "./pages/admin-cip";
 import AdminStageEscalation from "./pages/admin-stage-escalation";
 import AdminDoaMatrix from "./pages/admin-doa-matrix";
 import DocumentsPage from "./pages/documents";
+import PersonProjects from "./pages/person-projects";
 import LessonsLearnedPage from "./pages/lessons-learned";
 import TemplatesPage from "./pages/templates";
 import PifsList from "./pages/pifs";
@@ -104,10 +107,13 @@ function Router() {
         <Route path="/projects" component={ProjectsList} />
         <Route path="/projects/tree" component={ProjectsTreeView} />
         <Route path="/projects/:id/tasks/new" component={NewTask} />
+        <Route path="/projects/:id/documents" component={ProjectDocumentsPage} />
+        <Route path="/projects/:id/chat" component={ProjectChatPage} />
         <Route path="/projects/:id" component={ProjectDetail} />
         <Route path="/portfolio" component={PortfolioOverview} />
         <Route path="/portfolio-legacy" component={PortfolioView} />
         <Route path="/my-tasks" component={MyTasksPage} />
+        <Route path="/people/:id" component={PersonProjects} />
         <Route path="/resources" component={ResourceManagement} />
         <Route path="/tasks" component={TasksPage} />
         <Route path="/admin/scoring" component={AdminScoring} />

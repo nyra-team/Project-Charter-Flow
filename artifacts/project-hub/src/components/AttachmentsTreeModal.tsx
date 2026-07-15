@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Paperclip, FileText, Trash2, Flag, ListChecks, CornerDownRight, FolderKanban, ChevronDown, ChevronRight } from "lucide-react";
+import { Paperclip, FileText, Trash2, Flag, ListChecks, CornerDownRight, FolderKanban, ChevronDown, ChevronRight, Download } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useProjectAttachments, fmtAttSize, type AttachmentRow } from "./AttachmentPopover";
+import { FilePreviewModal } from "./FilePreviewBody";
 
 type TaskLite = { id: number; name: string; milestoneId?: number | null; parentTaskId?: number | null };
 type MilestoneLite = { id: number; name: string };
@@ -62,17 +63,17 @@ export function AttachmentsTree({
   const msName = useMemo(() => new Map(milestones.map((m) => [m.id, m.name])), [milestones]);
   const msOrder = useMemo(() => new Map(milestones.map((m, i) => [m.id, i])), [milestones]);
 
-  const projectLevel = all.filter((a) => a.taskId == null);
+  const projectLevel = all.filter((a) => a.taskId == null && a.milestoneId == null);
 
   type SubNode = { code: string; name: string; atts: AttachmentRow[] };
   type TaskNode = { code: string; name: string; atts: AttachmentRow[]; subs: Map<number, SubNode> };
-  type MsNode = { key: string; name: string; order: number; tasks: Map<number, TaskNode> };
+  type MsNode = { key: string; name: string; order: number; atts: AttachmentRow[]; tasks: Map<number, TaskNode> };
 
   const tree = useMemo(() => {
     const ms = new Map<string, MsNode>();
     const ensureMs = (mid: number | null) => {
       const key = mid == null ? "none" : String(mid);
-      if (!ms.has(key)) ms.set(key, { key, name: mid == null ? "No milestone" : (msName.get(mid) ?? `Milestone ${mid}`), order: mid == null ? 1e9 : (msOrder.get(mid) ?? 1e8), tasks: new Map() });
+      if (!ms.has(key)) ms.set(key, { key, name: mid == null ? "No milestone" : (msName.get(mid) ?? `Milestone ${mid}`), order: mid == null ? 1e9 : (msOrder.get(mid) ?? 1e8), atts: [], tasks: new Map() });
       return ms.get(key)!;
     };
     const ensureTask = (g: MsNode, id: number, name: string) => {
@@ -81,7 +82,12 @@ export function AttachmentsTree({
     };
 
     for (const a of all) {
-      if (a.taskId == null) continue;
+      if (a.taskId == null) {
+        // Milestone-general attachment (no task): list it directly under its
+        // milestone; fully-general rows are handled by projectLevel above.
+        if (a.milestoneId != null) ensureMs(a.milestoneId).atts.push(a);
+        continue;
+      }
       const t = tasksById.get(a.taskId);
       if (t && t.parentTaskId != null) {
         // Subtask: nest under its parent task, under the parent's milestone.
@@ -102,11 +108,12 @@ export function AttachmentsTree({
 
   // Accordion open-state — milestones + tasks collapse independently.
   const [openMs, setOpenMs] = useState<Set<string>>(() => new Set());
+  const [preview, setPreview] = useState<AttachmentRow | null>(null);
   const [openTasks, setOpenTasks] = useState<Set<string>>(() => new Set());
   const toggle = (set: React.Dispatch<React.SetStateAction<Set<string>>>, k: string) =>
     set((p) => { const n = new Set(p); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const subCount = (tn: TaskNode) => tn.atts.length + [...tn.subs.values()].reduce((z, sn) => z + sn.atts.length, 0);
-  const msCount = (g: MsNode) => [...g.tasks.values()].reduce((z, tn) => z + subCount(tn), 0);
+  const msCount = (g: MsNode) => g.atts.length + [...g.tasks.values()].reduce((z, tn) => z + subCount(tn), 0);
 
   const CountPill = ({ n }: { n: number }) => (
     <span className="shrink-0 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary/10 text-primary text-[10px] font-semibold tabular-nums">{n}</span>
@@ -115,8 +122,9 @@ export function AttachmentsTree({
   const AttRow = ({ a }: { a: AttachmentRow }) => (
     <li className="flex items-center gap-1.5 text-[11px] group py-0.5">
       <FileText size={12} className="text-muted-foreground shrink-0" />
-      <a href={a.fileUrl} target="_blank" rel="noreferrer" className="truncate flex-1 hover:text-primary hover:underline" title={a.fileName}>{a.fileName}</a>
+      <button type="button" onClick={() => setPreview(a)} className="truncate flex-1 text-left hover:text-primary hover:underline" title={`Preview ${a.fileName}`}>{a.fileName}</button>
       {a.fileSize ? <span className="text-[9px] text-muted-foreground shrink-0">{fmtAttSize(a.fileSize)}</span> : null}
+      <a href={a.fileUrl} download={a.fileName} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary shrink-0" title="Download"><Download size={11} /></a>
       <button type="button" onClick={() => void remove(a.id)} className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive shrink-0" title="Remove attachment"><Trash2 size={11} /></button>
     </li>
   );
@@ -155,6 +163,7 @@ export function AttachmentsTree({
               </button>
               {msOpen && (
                 <div className="px-2 pb-2 space-y-1.5">
+                  {g.atts.length > 0 && <ul className="pl-8">{g.atts.map((a) => <AttRow key={a.id} a={a} />)}</ul>}
                   {[...g.tasks.values()].map((tn) => {
                     const tKey = `${g.key}:${tn.code}`;
                     const tOpen = openTasks.has(tKey);
@@ -190,6 +199,15 @@ export function AttachmentsTree({
             </div>
           );
         })}
+        {/* In-app quick view — same renderer as the documents repository. */}
+        {preview && (
+          <FilePreviewModal
+            name={preview.fileName}
+            url={preview.fileUrl}
+            fileType={preview.fileType}
+            onClose={() => setPreview(null)}
+          />
+        )}
       </div>
     )
   );

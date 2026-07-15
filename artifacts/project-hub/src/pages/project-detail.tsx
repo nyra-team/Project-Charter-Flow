@@ -4,13 +4,13 @@
 // but the rows are this project's top-level tasks, each expandable to show
 // its subtasks indented beneath it.
 // The previous full detail page is preserved at ./project-detail.legacy.tsx.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/extra-api";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "../lib/format";
-import { useRoute } from "wouter";
+import { useRoute, useLocation } from "wouter";
 import { useGoBack } from "../lib/back";
 import {
   useGetProject, useListMilestones, useListTasks, useListUsers, useUpdateTask, useUpdateMilestone, useCreateMilestone, useCreateTask, useDeleteTask, useDeleteMilestone,
@@ -21,24 +21,28 @@ import { Input } from "@/components/ui/input";
 import {
   Check, ChevronDown, ChevronLeft, Flag, GanttChartSquare,
   ListTree, Search, Table2, Zap, Milestone, MessageSquare, Users,
-  GitBranch, X, Plus, Trash2, Copy, LayoutDashboard, FileDown, Loader2, FolderOpen, Paperclip, Upload,
-  LayoutGrid, CalendarDays, Info, AlertTriangle, ShieldAlert, Group,
+  GitBranch, X, Plus, Trash2, Copy, LayoutDashboard, FileDown, Loader2, FolderOpen,
+  LayoutGrid, CalendarDays, Info, AlertTriangle, ShieldAlert, Group, History, Filter,
+  SlidersHorizontal, type LucideIcon,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
-import { TASK_PRIORITIES, TASK_STATUSES, getStatusMeta, getPriorityMeta, DEPARTMENTS, CIP_DEPARTMENTS } from "../lib/task-constants";
+import { TASK_PRIORITIES, TASK_STATUSES, getStatusMeta, DEPARTMENTS, CIP_DEPARTMENTS } from "../lib/task-constants";
 import { PersonCell, TimelineCell, projectCode, SCALE_PRESETS } from "./projects";
 import { HoverHint } from "@/components/ui-kit";
 import { MondayGantt, type GanttGroup, type GanttItem } from "@/components/monday-gantt";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ExcelGroupTable, type ExcelCol } from "@/components/excel-group-table";
 import { TaskCreateModal } from "@/components/task-create-modal";
+import { MilestoneCreateModal, type NewMilestone } from "@/components/milestone-create-modal";
 import { AttachmentPopover } from "@/components/AttachmentPopover";
-import { AttachmentsTree } from "@/components/AttachmentsTreeModal";
+import { ProjectAttachmentsButton } from "@/components/ProjectAttachmentsButton";
 import { KanbanView } from "@/components/monday/KanbanView";
 import { GroupByPill } from "@/components/monday/GroupByPill";
 import { ActionCard } from "@/components/monday/ActionCard";
 import { CalendarView, type CalendarItem } from "@/components/monday/CalendarView";
-import { PriorityCell, OwnerCell, DateCell, type BoardColumn } from "@/components/monday";
+import { PriorityCell, OwnerCell, DateCell, type BoardColumn, type BoardGroupStat } from "@/components/monday";
+import { TaskStatusBar, countByStatus } from "../components/task-status-bar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RangeCalendar } from "@/components/ui/calendar-rac";
 import { useDateJustify } from "@/components/date-justify";
 import { MilestoneHistoryModal, type HistoryMilestone } from "@/components/milestone-history-modal";
@@ -51,12 +55,9 @@ import { CharterOverview } from "../components/charter-overview";
 import { TaskCommsDrawer, type TaskCommsTarget } from "../components/TaskCommsDrawer";
 import { MoveJustifyModal } from "../components/MoveJustifyModal";
 import { useReasonPrompt } from "../components/CompletionApproval";
-import { ProjectCommentsModal } from "../components/project-comments-modal";
 import { TeamTab } from "../components/team-tab";
-import { DocumentsTab } from "../components/documents-tab";
 import { TaskDetailModal } from "../components/task-detail-modal";
-import { IssuesTab } from "../components/issues-tab";
-import { RaiseIssueForm } from "../components/raise-issue-form";
+import { IssuesPanel } from "../components/issues-panel";
 import type { AggTask } from "../lib/work-types";
 
 // Structural subset of what useListTasks returns — the fields this table reads.
@@ -72,10 +73,29 @@ type TaskRow = {
   cftDept?: string | null;
   startDate?: string | null;
   endDate?: string | null;
+  actualStart?: string | null;
+  actualEnd?: string | null;
   endDateHistory?: string | null;
   justification?: string | null;
   description?: string | null;
 };
+
+// Counts shown in the corner of a Kanban lane header. A task is overdue when it
+// is past its end date and still open — or explicitly flagged delayed, since a
+// task can be behind before anyone moves its due date.
+function taskLaneStats(rows: TaskRow[]): BoardGroupStat[] {
+  const today = new Date().toISOString().slice(0, 10);
+  let overdue = 0, completed = 0;
+  for (const t of rows) {
+    if (t.status === "completed") { completed++; continue; }
+    if (t.status === "delayed" || (t.endDate && t.endDate.slice(0, 10) < today)) overdue++;
+  }
+  return [
+    { label: "total", value: rows.length },
+    { label: "overdue", value: overdue, tone: "danger" },
+    { label: "completed", value: completed, tone: "success" },
+  ];
+}
 
 // CIP-sheet import stashes a few source columns as labeled lines in the task
 // description (e.g. "Dependency status: Blocking tasks", "Source Task ID: VE3-T5").
@@ -116,9 +136,37 @@ function taskRagColor(status: string): string {
     default: return RAG_HEX.grey;
   }
 }
+// Local (not UTC) today, YYYY-MM-DD, for overdue comparisons against date-only strings.
+function localTodayISO(): string {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+}
+// RAG colour for a milestone summary bar — rolled up from its own status/due plus
+// its tasks, so every milestone bar reads on the same scale as the task bars
+// (GREEN done · RED overdue · AMBER in progress · GREY not started), not a
+// per-milestone rainbow. `ms` is the milestone record; `rows` its top-level tasks.
+function milestoneBarColor(ms: Record<string, unknown> | undefined, rows: { status: string; endDate?: string | null }[]): string {
+  const status = ms?.status as string | undefined;
+  const due = (ms?.dueDate as string | null | undefined) ?? null;
+  const allDone = status === "completed" || (rows.length > 0 && rows.every((t) => t.status === "completed"));
+  if (allDone) return RAG_HEX.green;
+  const today = localTodayISO();
+  const overdue =
+    (!!due && due.slice(0, 10) < today) ||
+    rows.some((t) => t.status !== "completed" && t.endDate && t.endDate.slice(0, 10) < today);
+  if (overdue) return RAG_HEX.red;
+  const started =
+    status === "in_progress" || status === "on_hold" ||
+    rows.some((t) => t.status === "in_progress" || t.status === "on_hold" || t.status === "completed");
+  return started ? RAG_HEX.amber : RAG_HEX.grey;
+}
 
 // Fixed column widths (px) — same resizable-weights scheme as the Projects table.
-const COLS: { key: string; header: string; width: number; align?: "left" | "center"; info?: string }[] = [
+type ColDef = { key: string; header: string; width: number; align?: "left" | "center"; info?: string };
+// The columns shown when the table first opens (the DEFAULT set). Everything in
+// ALL_TASK_COLS that is NOT here starts hidden and is turned on from the Columns
+// menu — same model as the Projects list table.
+const COLS: ColDef[] = [
   { key: "code", header: "Task Code", width: 150 },
   { key: "name", header: "Task Name", width: 300, info: "Task title — click to open task details." },
   { key: "owner", header: "Assignee", width: 70, align: "center", info: "Person responsible for the task." },
@@ -127,40 +175,105 @@ const COLS: { key: string; header: string; width: number; align?: "left" | "cent
   { key: "priority", header: "Priority", width: 110, align: "center", info: "Task priority, P0 (highest) to P3 (lowest)." },
   { key: "progress", header: "Progress", width: 100, align: "center", info: "Percent complete; rolls up from subtasks where present." },
   { key: "subtasks", header: "Subtasks", width: 80, align: "center", info: "Completed subtasks out of total." },
+  // Roll-up of the row's children by status — a milestone's tasks, a task's
+  // subtasks. Same bar the Projects list shows per project.
+  { key: "taskStatus", header: "Task Status", width: 170, info: "Breakdown of the row's tasks by status (a milestone's tasks; a task's subtasks)." },
   { key: "dependency", header: "Predecessors", width: 160, info: "Tasks that must finish before this one can proceed." },
   { key: "timeline", header: "Timeline", width: 180, info: "Planned start and end dates." },
   { key: "justification", header: "Justification", width: 200, info: "Reason logged for the latest date change (auto-extends the milestone when a task runs past it)." },
+  // Per-row delete — a milestone, a task or a subtask, each removable from its
+  // own row (the milestone header's Delete only ever removed the milestone).
+  { key: "__del__", header: "", width: 44, align: "center" },
 ];
-
-// Resolve the EXACT columns an ExcelGroupTable renders for a given storageKey —
-// its persisted order (`:order2`) and resized widths (`:w`) — so the standalone
-// milestone row can mirror the task table column-for-column (order + widths +
-// the trailing Justification column). Falls back to the canonical COLS.
-function resolveTableCols(storageKey: string, base: ExcelCol[]): ExcelCol[] {
-  const keys = base.map((c) => c.key);
-  let order = keys;
-  let widths: Record<string, number> = {};
-  if (typeof window !== "undefined") {
-    try {
-      const savedOrder = JSON.parse(window.localStorage.getItem(`${storageKey}:order2`) || "null");
-      if (Array.isArray(savedOrder) && savedOrder.every((k) => typeof k === "string")) {
-        const merged = savedOrder.filter((k: string) => keys.includes(k));
-        keys.forEach((k, idx) => {
-          if (merged.includes(k)) return;
-          let at = merged.length;
-          for (let j = idx - 1; j >= 0; j--) { const p = merged.indexOf(keys[j]!); if (p !== -1) { at = p + 1; break; } }
-          merged.splice(at, 0, k);
-        });
-        order = merged;
-      }
-    } catch { /* ignore */ }
-    try {
-      const savedW = JSON.parse(window.localStorage.getItem(`${storageKey}:w`) || "null");
-      if (savedW && typeof savedW === "object") widths = savedW;
-    } catch { /* ignore */ }
+// Schedule-date columns — the planned pair beside the actual pair, so slippage
+// reads at a glance. Hidden by default; turned on from the Columns menu. Shown
+// read-only here (edit planned dates via the Timeline column's range picker).
+const DATE_COLS: ColDef[] = [
+  { key: "startDate", header: "Start Date", width: 112, align: "center", info: "Planned start date." },
+  { key: "endDate", header: "End Date", width: 112, align: "center", info: "Planned end / due date." },
+  { key: "actualStart", header: "Actual Start", width: 120, align: "center", info: "The date work actually started." },
+  { key: "actualEnd", header: "Actual End", width: 120, align: "center", info: "The date work actually finished." },
+];
+// Further opt-in columns. Comments shows the thread count; click to open it.
+const OPTIONAL_TASK_COLS: ColDef[] = [
+  { key: "comments", header: "Comments", width: 100, align: "center", info: "Task comments — click to open the discussion thread." },
+];
+// Every column the table can offer, in canonical display order: the schedule
+// quartet sits right after Timeline, Comments just before the row-delete column.
+const ALL_TASK_COLS: ColDef[] = (() => {
+  const out: ColDef[] = [];
+  for (const c of COLS) {
+    if (c.key === "justification") out.push(...DATE_COLS); // date cols right after Timeline
+    if (c.key === "__del__") out.push(...OPTIONAL_TASK_COLS); // Comments before Delete
+    out.push(c);
   }
-  const byKey = new Map(base.map((c) => [c.key, c]));
-  return order.map((k) => byKey.get(k)).filter(Boolean).map((c) => ({ ...(c as ExcelCol), width: widths[(c as ExcelCol).key] ?? (c as ExcelCol).width }));
+  return out;
+})();
+const DEFAULT_TASK_COL_KEYS = COLS.map((c) => c.key);
+// The keys hidden when the table first opens (the schedule + optional columns).
+const defaultHiddenTaskCols = () => new Set(ALL_TASK_COLS.filter((c) => !DEFAULT_TASK_COL_KEYS.includes(c.key)).map((c) => c.key));
+const HIDDEN_TASK_COLS_KEY = "ph:project-tasks:hidden";
+// Compact, neutral date for the read-only Actual Start/End columns (no urgency
+// colouring — an actual date is a recorded fact, not a deadline).
+const fmtDay = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : null);
+
+// Action-Centre style "+ Add …" line: a quiet, left-aligned row that unfolds into
+// an inline name field (Enter adds, Escape closes, blur adds what you typed). Used
+// for both tasks (under each milestone) and milestones (at the foot of the list),
+// so adding anything on this page is the same gesture. `onMore` — when given —
+// offers the full form for the fields the inline field can't cover.
+function InlineAdd({ label, placeholder, onAdd, onMore, icon }: {
+  label: string;
+  placeholder: string;
+  onAdd: (name: string) => void;
+  onMore?: () => void;
+  icon?: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState("");
+  const commit = () => {
+    const name = val.trim();
+    setVal("");
+    setOpen(false);
+    if (name) onAdd(name);
+  };
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-1 flex items-center gap-1.5 px-1 py-1.5 text-[11px] font-medium text-muted-foreground/70 hover:text-primary transition-colors"
+      >
+        {icon ?? <Plus size={13} />} {label}
+      </button>
+    );
+  }
+  return (
+    <div className="mt-1 flex items-center gap-1.5">
+      <input
+        autoFocus
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") { setVal(""); setOpen(false); }
+        }}
+        placeholder={placeholder}
+        className="h-7 w-72 max-w-full text-xs border border-primary/40 bg-background text-foreground rounded-md px-2.5 outline-none focus:ring-2 focus:ring-primary/20"
+      />
+      {onMore && (
+        // mousedown, not click: the input's blur would unmount this button first.
+        <button
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); setVal(""); setOpen(false); onMore(); }}
+          className="text-[11px] font-medium text-primary hover:underline"
+        >
+          More options…
+        </button>
+      )}
+    </div>
+  );
 }
 
 // Card cells for the per-project Tasks Kanban (mirrors the Projects board).
@@ -191,6 +304,16 @@ const KANBAN_STATUS_COLOR: Record<string, string> = {
   on_hold: "#F87171",
   completed: "#16A34A",
 };
+// …and the AC lane NAMES to go with those colours. Board-scoped like the palette
+// above: the task statuses themselves (and their labels everywhere else — chips,
+// selects, the table) keep the project's own vocabulary.
+const KANBAN_STATUS_LABEL: Record<string, string> = {
+  not_started: "Not Started",
+  in_progress: "In Progress",
+  delayed: "Overdue",
+  on_hold: "Hold",
+  completed: "Completed",
+};
 const OWNER_LANE_COLOR = "#3B82F6";   // blue lane dot per owner (AC parity)
 const UNGROUPED_COLOR = "#94A3B8";    // slate — Unassigned / No-priority lanes
 
@@ -205,6 +328,22 @@ const PRIORITY_CHIPS: { value: string; label: string }[] = [
   { value: "", label: "All" },
   ...TASK_PRIORITIES.map((p) => ({ value: p.value, label: p.label })),
 ];
+
+// Radix <Select> can't hold an empty-string value, so the "All" reset maps to
+// this sentinel in the trigger and back to "" (facet off) on pick — matching
+// the single Filter menu on the Projects list view.
+const ALL_OPTION = "__all";
+
+// One row of the consolidated Filter menu (Milestone · Priority · Department),
+// mirroring the Projects-list facet shape.
+type TaskFacet = {
+  key: string;
+  label: string;
+  Icon: LucideIcon;
+  value: string;                                // "" = facet off (All)
+  onPick: (v: string) => void;
+  options: { value: string; label: string }[]; // first entry is the "All" reset
+};
 
 // ── Gantt view — tasks (and indented subtasks) as bars on a pixel-based
 //    timeline, coloured by task status. Mirrors the Projects-view Gantt: a
@@ -396,21 +535,33 @@ function PriorityDropdown({ task, updateTask }: { task: TaskRow; updateTask: Ret
 // Native <input type="date"> carries its own picker; the icon just toggles the editor.
 // Inline department picker — a dropdown of the canonical department list. Edits
 // the task's cftDept (same field the Kanban "Group by → Department" reads).
-function DepartmentSelect({ task, updateTask, departments }: { task: TaskRow; updateTask: ReturnType<typeof useUpdateTask>; departments: string[] }) {
-  const value = task.cftDept ?? "";
+const DEPT_NONE = "__none";
+
+function DepartmentSelect({ value, onChange, departments, muted, placeholder = "\u2014" }: {
+  /** Department set on this row, or "" when unset. */
+  value: string;
+  onChange: (v: string) => void;
+  departments: string[];
+  /** The placeholder is an inherited value (project function), not this row's. */
+  muted?: boolean;
+  placeholder?: string;
+}) {
   // Keep a non-standard existing value selectable rather than silently dropping it.
   const extra = value && !departments.includes(value) ? [value] : [];
   return (
-    <select
-      value={value}
-      onClick={(e) => e.stopPropagation()}
-      onChange={(e) => { const v = e.target.value; if (v !== value) updateTask.mutate({ id: task.id, data: { cftDept: v || null } as never }); }}
-      title={value || "Set department"}
-      className="w-full max-w-full bg-transparent text-[10px] text-gray-700 rounded px-0.5 py-0.5 outline-none hover:bg-gray-50 focus:ring-1 focus:ring-primary/30 cursor-pointer truncate"
-    >
-      <option value="">—</option>
-      {[...extra, ...departments].map((d) => <option key={d} value={d}>{d}</option>)}
-    </select>
+    <Select value={value || DEPT_NONE} onValueChange={(v) => onChange(v === DEPT_NONE ? "" : v)}>
+      <SelectTrigger
+        onClick={(e) => e.stopPropagation()}
+        title={value || (muted ? `${placeholder} (from the project) \u2014 click to set this row's own department` : "Set department")}
+        className={`h-6 w-full border-0 bg-transparent px-1 text-[10px] text-gray-700 shadow-none hover:bg-gray-50 focus:ring-1 focus:ring-primary/30 ${muted && !value ? "opacity-50" : ""}`}
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="max-h-72">
+        <SelectItem value={DEPT_NONE} className="text-xs text-muted-foreground">{placeholder}</SelectItem>
+        {[...extra, ...departments].map((d) => <SelectItem key={d} value={d} className="text-xs">{d}</SelectItem>)}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -551,11 +702,16 @@ function ProgressInput({ task }: { task: TaskRow; updateTask: ReturnType<typeof 
 
 // Inline owner picker — click the avatar to assign/reassign right in the row
 // (subtasks included), no need to open the task popup. Searchable people list.
-function OwnerSelect({ task, users, updateTask, currentName }: {
-  task: TaskRow;
+function OwnerSelect({ value, users, onChange, currentName, muted }: {
+  /** Currently assigned person, or null. */
+  value: number | null;
   users: { id: number; name: string; photoUrl?: string | null }[];
-  updateTask: ReturnType<typeof useUpdateTask>;
+  onChange: (id: number | null) => void;
+  /** Name to show on the trigger — may be an inherited name (see `muted`). */
   currentName: string | null;
+  /** The shown name is inherited (e.g. a milestone falling back to the project
+   *  owner) rather than set on this row — render it faded so the two read apart. */
+  muted?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -588,11 +744,17 @@ function OwnerSelect({ task, users, updateTask, currentName }: {
   const list = needle ? users.filter((u) => u.name.toLowerCase().includes(needle)) : users;
   const pick = (id: number | null) => {
     setOpen(false); setQ("");
-    if (id !== (task.assigneeId ?? null)) updateTask.mutate({ id: task.id, data: { assigneeId: id } as never });
+    if (id !== value) onChange(id);
   };
   return (
     <div className="inline-flex">
-      <button ref={btnRef} type="button" title="Assign owner" onClick={(e) => { e.stopPropagation(); if (!open) place(); setOpen((o) => !o); }} className="cursor-pointer hover:opacity-80">
+      <button
+        ref={btnRef}
+        type="button"
+        title={muted && currentName ? `${currentName} (from the project) — click to set this row's own owner` : "Assign owner"}
+        onClick={(e) => { e.stopPropagation(); if (!open) place(); setOpen((o) => !o); }}
+        className={`cursor-pointer hover:opacity-80 ${muted ? "opacity-50" : ""}`}
+      >
         <PersonCell name={currentName} />
       </button>
       {open && pos && createPortal(
@@ -606,7 +768,7 @@ function OwnerSelect({ task, users, updateTask, currentName }: {
               <button key={u.id} type="button" onClick={() => pick(u.id)} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-50">
                 <PersonCell name={u.name} photoUrl={u.photoUrl} />
                 <span className="text-gray-700 truncate">{u.name}</span>
-                {u.id === task.assigneeId && <Check size={12} className="ml-auto text-gray-500" />}
+                {u.id === value && <Check size={12} className="ml-auto text-gray-500" />}
               </button>
             ))}
             {list.length === 0 && <div className="px-3 py-2 text-xs text-gray-400">No matches</div>}
@@ -752,10 +914,15 @@ function DependencyCell({ task, allTasks, onAdd, onRemove, codeOf, mode = "prede
   );
 }
 
-function TaskGanttView({ groups, onOpen, onLink, showCritical, setShowCritical, criticalLoading }: {
+function TaskGanttView({ groups, onOpen, onLink, onUnlink, onUnlinkMilestone, onRescheduleTask, onRescheduleMilestone, goLive, showCritical, setShowCritical, criticalLoading }: {
   groups: GanttGroup[];
   onOpen?: (id: number) => void;
   onLink?: (predecessorId: number, successorId: number) => void;
+  onUnlink?: (predecessorId: number, successorId: number) => void;
+  onUnlinkMilestone?: (predecessorMilestoneId: number, successorMilestoneId: number) => void;
+  onRescheduleTask?: (id: number, startISO: string | null, endISO: string | null) => void;
+  onRescheduleMilestone?: (id: number, startISO: string | null, endISO: string | null) => void;
+  goLive?: string | null;
   showCritical: boolean;
   setShowCritical: React.Dispatch<React.SetStateAction<boolean>>;
   criticalLoading: boolean;
@@ -777,7 +944,7 @@ function TaskGanttView({ groups, onOpen, onLink, showCritical, setShowCritical, 
     return <div className="glass-surface rounded-2xl text-sm text-muted-foreground text-center py-10">No task start / end dates to chart.</div>;
   }
 
-  return <MondayGantt groups={groups} onOpen={onOpen} onLink={onLink} showDeps labelWidth={300} labelHeader="Milestones" labelHeaderExpanded="Tasks" extraControls={critToggle} autoFitOnLoad defaultCollapsed />;
+  return <MondayGantt groups={groups} onOpen={onOpen} onLink={onLink} onUnlink={onUnlink} onUnlinkMilestone={onUnlinkMilestone} onRescheduleTask={onRescheduleTask} onRescheduleMilestone={onRescheduleMilestone} goLive={goLive} showDeps labelWidth={300} labelHeader="Milestones" labelHeaderExpanded="Tasks" extraControls={critToggle} autoFitOnLoad defaultCollapsed />;
 }
 
 export default function ProjectDetail() {
@@ -791,13 +958,8 @@ export default function ProjectDetail() {
     typeof window !== "undefined" && new URLSearchParams(window.location.search).get("section") === "team" ? "team" : "tasks",
   );
 
-  // Project Documents — surfaced as a header button (next to Generate Live
-  // Charter) that opens this project's document repository in a modal. The
-  // upload modal inside DocumentsTab is driven from here so the modal header
-  // can carry its own "Upload Document" button.
-  const [docsOpen, setDocsOpen] = useState(false);
-  const [docsUploadOpen, setDocsUploadOpen] = useState(false);
-  const [docsSection, setDocsSection] = useState<"template" | "documents">("documents");
+  // Forward navigation (e.g. header Documents button → /projects/:id/documents).
+  const [, navigate] = useLocation();
 
   const { data: project, isLoading: loadingProject } = useGetProject(projectId);
   const { data: rawTasks, isLoading: loadingTasks, refetch: refetchTasks } = useListTasks(projectId);
@@ -831,8 +993,38 @@ export default function ProjectDetail() {
   // Confidential is driven ONLY by the explicit per-project flag (not CIP
   // auto-detection, which is department-heuristic and can false-trigger).
   const confidentialStored = !!(project as { confidential?: boolean } | undefined)?.confidential;
+  const goLiveStored = ((project as { goLiveDate?: string | null } | undefined)?.goLiveDate ?? "") as string;
 
-  const activeCols = COLS;
+  // ── Column visibility (Columns menu). Stored as the set of HIDDEN keys — like
+  //    the Projects list table — so "Show all" is just an empty set and the
+  //    schedule/comments columns start hidden (DEFAULT). Persisted to localStorage.
+  const [hiddenCols, setHiddenCols] = useState<Set<string>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = JSON.parse(window.localStorage.getItem(HIDDEN_TASK_COLS_KEY) || "null");
+        if (Array.isArray(saved) && saved.every((k) => typeof k === "string")) {
+          const live = new Set(ALL_TASK_COLS.map((c) => c.key));
+          return new Set(saved.filter((k: string) => live.has(k)));
+        }
+      } catch { /* ignore */ }
+    }
+    return defaultHiddenTaskCols();
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem(HIDDEN_TASK_COLS_KEY, JSON.stringify([...hiddenCols])); } catch { /* ignore */ }
+  }, [hiddenCols]);
+  const toggleCol = (key: string) =>
+    setHiddenCols((h) => { const n = new Set(h); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const activeCols = useMemo(() => ALL_TASK_COLS.filter((c) => !hiddenCols.has(c.key)), [hiddenCols]);
+  const [colsOpen, setColsOpen] = useState(false);
+  const colsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (colsRef.current && !colsRef.current.contains(e.target as Node)) setColsOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
 
   // Project-local WBS codes (1, 2, 2.1 …) so task/subtask numbers are sequential
   // and a subtask carries its parent task's number, instead of the random-looking
@@ -863,16 +1055,17 @@ export default function ProjectDetail() {
   const [delMsBusy, setDelMsBusy] = useState(false);
   // Milestone timeline-history popup (previous due dates + justification log).
   const [historyMs, setHistoryMs] = useState<HistoryMilestone | null>(null);
-  // Manual add-milestone (inline name entry in the milestone table view).
-  const [addingMs, setAddingMs] = useState(false);
-  const [newMsName, setNewMsName] = useState("");
-  const addMilestone = () => {
-    const name = newMsName.trim();
-    if (!name) { setAddingMs(false); return; }
-    createMilestone.mutate(
-      { id: projectId, data: { name } } as never,
-      { onSuccess: () => { setNewMsName(""); setAddingMs(false); }, onError: () => toast({ title: "Couldn't add milestone", variant: "destructive" }) },
-    );
+  // Manual add-milestone — a popup with the milestone fields (name, target
+  // date, priority, description). Name is the only required field.
+  const [addMsOpen, setAddMsOpen] = useState(false);
+  const submitMilestone = async (data: NewMilestone) => {
+    try {
+      await createMilestone.mutateAsync({ id: projectId, data } as never);
+      toast({ title: "Milestone added" });
+    } catch {
+      toast({ title: "Couldn't add milestone", variant: "destructive" });
+      throw new Error("create failed");
+    }
   };
   const runDeleteMilestone = async () => {
     if (!delMs) return;
@@ -1075,6 +1268,10 @@ export default function ProjectDetail() {
   const assigneeName = (t: TaskRow) =>
     t.assigneeName ?? (t.assigneeId != null ? usersById.get(t.assigneeId) ?? null : null);
 
+  // What a milestone's Owner / Dept fall back to until it carries its own.
+  const projectOwnerId = Number((project as { projectOwnerId?: number | null } | undefined)?.projectOwnerId ?? 0) || null;
+  const projectDept = ((project as { function?: string | null } | undefined)?.function ?? "").trim();
+
   // ── Per-task comments + attachments (right-side drawer). Backed by the
   //    project's messages; the count map drives the per-row badge, and the
   //    drawer shares the same query key so posting refreshes both.
@@ -1103,7 +1300,6 @@ export default function ProjectDetail() {
 
   // ── Project-level communication + attachments (right-side drawer). Backed by
   //    project-scoped messages (taskId == null), opened from the header.
-  const [chatOpen, setChatOpen] = useState(false);
   const projectMsgCount = useMemo(
     () => (projectMessages as { taskId?: number | null }[]).filter((m) => m.taskId == null).length,
     [projectMessages],
@@ -1559,6 +1755,83 @@ export default function ProjectDetail() {
       toast({ title: (e as Error)?.message || "Couldn't remove dependency", variant: "destructive" });
     }
   };
+  // ── Milestone dependency removal (cascade). Removing the M(pred) to M(succ)
+  //    chain arrow also cuts every task dependency that crosses the two milestones
+  //    (a task in succ depending on a task in pred). A warning modal shows the
+  //    count first, then clears the milestone chain link and the crossing task deps.
+  const [unlinkMs, setUnlinkMs] = useState<{ predId: number; succId: number; predName: string; succName: string; crossing: { succTaskId: number; predTaskId: number }[] } | null>(null);
+  const [unlinkMsBusy, setUnlinkMsBusy] = useState(false);
+  const requestUnlinkMilestone = (predMsId: number, succMsId: number) => {
+    const parseIds = (raw: unknown): number[] =>
+      typeof raw === "string" ? (raw.match(/\d+/g)?.map(Number) ?? []) : Array.isArray(raw) ? (raw as unknown[]).map(Number) : [];
+    const msOf = new Map<number, number | null>();
+    for (const t of tasks) msOf.set(t.id, ((t as Record<string, unknown>).milestoneId as number | null) ?? null);
+    const crossing: { succTaskId: number; predTaskId: number }[] = [];
+    for (const t of tasks) {
+      if ((((t as Record<string, unknown>).milestoneId as number | null) ?? null) !== succMsId) continue;
+      for (const pid of parseIds((t as Record<string, unknown>).predecessorIds)) {
+        if (msOf.get(pid) === predMsId) crossing.push({ succTaskId: t.id, predTaskId: pid });
+      }
+    }
+    const nameOf = (id: number) => ((milestoneById.get(id) as Record<string, unknown> | undefined)?.name as string) ?? `Milestone ${id}`;
+    setUnlinkMs({ predId: predMsId, succId: succMsId, predName: nameOf(predMsId), succName: nameOf(succMsId), crossing });
+  };
+  const runUnlinkMilestone = async () => {
+    if (!unlinkMs) return;
+    setUnlinkMsBusy(true);
+    try {
+      for (const c of unlinkMs.crossing) {
+        await api.del(`/api/tasks/${c.succTaskId}/dependencies/${c.predTaskId}`);
+      }
+      await fetch(`/api/milestones/${unlinkMs.succId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ predecessorId: null }),
+      });
+      await Promise.all([refetchTasks(), refetchMilestones()]);
+      toast({ title: "Milestone dependency removed", description: unlinkMs.crossing.length ? `${unlinkMs.crossing.length} crossing task dependenc${unlinkMs.crossing.length === 1 ? "y" : "ies"} also removed.` : undefined });
+      setUnlinkMs(null);
+    } catch (e) {
+      toast({ title: (e as Error)?.message || "Couldn't remove milestone dependency", variant: "destructive" });
+    } finally {
+      setUnlinkMsBusy(false);
+    }
+  };
+  // Gantt drag-to-reschedule. Both funnel through the SAME justification gate as
+  // the table's date editors — so a dragged date still logs a reason, keeps the
+  // due-date history trail, and cascades to the parent task / milestone. No bypass.
+  const rescheduleTaskFromGantt = (id: number, startISO: string | null, endISO: string | null) => {
+    const task = tasks.find((t) => t.id === id);
+    requestDateChange({
+      taskId: id,
+      firstAssignment: task ? !task.startDate && !task.endDate : false,
+      changes: [
+        { label: "Start", from: task?.startDate ?? null, to: startISO },
+        { label: "Due", from: task?.endDate ?? null, to: endISO },
+      ],
+      apply: (reason: string) => {
+        updateTask.mutate({ id, data: { startDate: startISO, endDate: endISO, justification: reason || undefined } as never });
+        const parent = task?.parentTaskId != null ? tasks.find((t) => t.id === task.parentTaskId) : null;
+        const ext = parent && parentEndToExtend(parent.endDate, endISO);
+        if (parent && ext) updateTask.mutate({ id: parent.id, data: { endDate: ext } as never });
+      },
+    });
+  };
+  const rescheduleMilestoneFromGantt = (id: number, startISO: string | null, endISO: string | null) => {
+    const ms = milestoneById.get(id);
+    const curStart = (ms?.actualStart ?? ms?.startDate) as string | null | undefined;
+    const curDue = ms?.dueDate as string | null | undefined;
+    requestDateChange({
+      taskId: id,
+      skipComment: true,
+      firstAssignment: !curStart && !curDue,
+      changes: [
+        { label: "Start", from: curStart ?? null, to: startISO },
+        { label: "Due", from: curDue ?? null, to: endISO },
+      ],
+      apply: (reason: string) => updateMilestone.mutate({ id, data: { actualStart: startISO, dueDate: endISO, justification: reason || undefined } as never }),
+    });
+  };
 
   // ── Filters (search · milestone · priority). Milestone replaces the old
   //    status filter — the project view is now organised by milestone.
@@ -1580,20 +1853,21 @@ export default function ProjectDetail() {
   );
   const [priority, setPriority] = useState("");
   const [dept, setDept] = useState("");
+  // One consolidated Filter menu (Milestone · Priority · Department), same as
+  // the Projects list view — replaces the three separate dropdown buttons.
   const [filterOpen, setFilterOpen] = useState(false);
-  const [prioOpen, setPrioOpen] = useState(false);
-  const [deptOpen, setDeptOpen] = useState(false);
   const [issuesPanelOpen, setIssuesPanelOpen] = useState(false);
   // Kanban "Group by" axis (Status/Owner/Priority/Department) — Action Centre parity.
   const [groupBy, setGroupBy] = useState<GroupByAxis>("status");
   const filterRef = useRef<HTMLDivElement | null>(null);
-  const prioRef = useRef<HTMLDivElement | null>(null);
-  const deptRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     function onDoc(e: MouseEvent) {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false);
-      if (prioRef.current && !prioRef.current.contains(e.target as Node)) setPrioOpen(false);
-      if (deptRef.current && !deptRef.current.contains(e.target as Node)) setDeptOpen(false);
+      // The panel's facet dropdowns are Radix Selects that portal their list to
+      // <body> (outside filterRef); ignore those so picking an option doesn't
+      // slam the panel shut.
+      const target = e.target as HTMLElement;
+      if (target.closest("[data-radix-select-content]") || target.closest("[data-radix-popper-content-wrapper]")) return;
+      if (filterRef.current && !filterRef.current.contains(target)) setFilterOpen(false);
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -1648,6 +1922,17 @@ export default function ProjectDetail() {
     return opts;
   }, [tasks]);
 
+  // ── One Filter menu, three stacked facet rows (Milestone · Priority ·
+  //    Department), each a single-select dropdown with an "All" reset —
+  //    identical chrome to the Projects list view. "" means the facet is off.
+  const facets: TaskFacet[] = useMemo(() => [
+    { key: "milestone", label: "Milestone", Icon: Milestone, value: milestone, onPick: setMilestone, options: MILESTONE_CHIPS },
+    { key: "priority", label: "Priority", Icon: Flag, value: priority, onPick: setPriority, options: PRIORITY_CHIPS },
+    { key: "department", label: "Department", Icon: Group, value: dept, onPick: setDept, options: DEPT_CHIPS },
+  ], [milestone, priority, dept, MILESTONE_CHIPS, DEPT_CHIPS]);
+  const activeFilterCount = facets.filter((f) => f.value).length;
+  const clearFilters = () => { setMilestone(""); setPriority(""); setDept(""); };
+
   // Top-level rows: tasks without a parent, plus orphaned subtasks whose parent
   // isn't in this project's list (so nothing silently disappears).
   const topLevel = useMemo(
@@ -1699,6 +1984,10 @@ export default function ProjectDetail() {
   //    status = the 5 fixed RAG columns; priority = P0–P3 (+ No priority);
   //    owner = one lane per assignee present, busiest first, Unassigned last.
   const kanbanGroups = useMemo(() => {
+    // Roll-up in the corner of each lane header — the lane's own tasks: total,
+    // overdue (past the end date and still open, or flagged delayed) and completed.
+    const withStats = <G extends { rows: TaskRow[] }>(lanes: G[]) =>
+      lanes.map((g) => ({ ...g, stats: taskLaneStats(g.rows) }));
     if (groupBy === "priority") {
       const cols = TASK_PRIORITIES.map((p) => ({
         key: p.value, label: p.label, color: p.solid,
@@ -1706,7 +1995,7 @@ export default function ProjectDetail() {
       })) as { key: string; label: string; color: string; rows: TaskRow[] }[];
       const none = filtered.filter((t) => !PRIORITY_BY_VALUE.has(t.priority as never));
       if (none.length > 0) cols.push({ key: "__none__", label: "No priority", color: UNGROUPED_COLOR, rows: none });
-      return cols;
+      return withStats(cols);
     }
     if (groupBy === "owner") {
       const byKey = new Map<string, TaskRow[]>();
@@ -1727,7 +2016,7 @@ export default function ProjectDetail() {
         }));
       const none = byKey.get("__none__");
       if (none && none.length > 0) lanes.push({ key: "__none__", label: "Unassigned", color: UNGROUPED_COLOR, rows: none });
-      return lanes;
+      return withStats(lanes);
     }
     if (groupBy === "department") {
       const byKey = new Map<string, TaskRow[]>();
@@ -1741,7 +2030,7 @@ export default function ProjectDetail() {
         .map(([k, rows]) => ({ key: k, label: k, color: "#6366F1", rows }));
       const none = byKey.get("__none__");
       if (none && none.length > 0) lanes.push({ key: "__none__", label: "No department", color: UNGROUPED_COLOR, rows: none });
-      return lanes;
+      return withStats(lanes);
     }
     if (groupBy === "milestone") {
       // One lane per milestone (in the project's milestone order), + No milestone.
@@ -1758,13 +2047,13 @@ export default function ProjectDetail() {
         .map((ms) => ({ key: String(ms.id), label: ms.name, color: "#6366F1", rows: byKey.get(String(ms.id)) ?? [] }));
       const none = byKey.get("__none__");
       if (none && none.length > 0) lanes.push({ key: "__none__", label: "No milestone", color: UNGROUPED_COLOR, rows: none });
-      return lanes;
+      return withStats(lanes);
     }
     // status (default) — one lane per status, Delayed included.
-    return TASK_STATUSES.map((s) => ({
-      key: s.value, label: s.label, color: KANBAN_STATUS_COLOR[s.value] ?? s.solid,
+    return withStats(TASK_STATUSES.map((s) => ({
+      key: s.value, label: KANBAN_STATUS_LABEL[s.value] ?? s.label, color: KANBAN_STATUS_COLOR[s.value] ?? s.solid,
       rows: filtered.filter((t) => t.status === s.value),
-    }));
+    })));
   }, [groupBy, filtered, usersById, rawMilestones, search, priority, dept]);
 
   // Gantt data — the milestone groups mapped to the shared MondayGantt model.
@@ -1790,7 +2079,13 @@ export default function ProjectDetail() {
         // Critical path: critical tasks turn red + ringed; everything off the
         // chain dims out so the critical path is distinguishable from the rest
         // of the dependency linkages (MondayGantt fades dim bars + their arrows).
-        color: showCritical && crit ? "#e2445c" : taskRagColor(task.status),
+        // Off the critical path, colour is RAG: overdue-and-not-done → red even if
+        // the stored status is still in_progress, so "delayed" reads on the bar.
+        color: showCritical && crit
+          ? "#e2445c"
+          : (task.status !== "completed" && task.endDate && task.endDate.slice(0, 10) < localTodayISO())
+            ? RAG_HEX.red
+            : taskRagColor(task.status),
         emphasise: showCritical && crit,
         dim: showCritical && !crit,
         predecessorIds: parseIds((task as Record<string, unknown>).predecessorIds),
@@ -1807,14 +2102,21 @@ export default function ProjectDetail() {
         // Milestone-chain arrows: carry this lane's milestone id + its stored
         // predecessor so the Gantt links summary bar → summary bar (M1→M2→M3).
         const mid = Number(g.key);
-        const predId = Number.isFinite(mid) ? (milestoneById.get(mid)?.predecessorId as number | null | undefined) : undefined;
-        // CIP Gantt: milestones completed (every task done) show a green summary
-        // bar, so the timeline is green up to the completed milestones.
-        const complete = g.rows.length > 0 && g.rows.every((t) => t.status === "completed");
+        const ms = Number.isFinite(mid) ? milestoneById.get(mid) : undefined;
+        const predId = ms?.predecessorId as number | null | undefined;
+        // The milestone's OWN target dates drive the (drag-resizable) summary bar,
+        // matching the timeline editor: start = actualStart ?? planned start, end = due.
+        const msStart = (ms?.actualStart ?? ms?.startDate) as string | null | undefined;
+        const msEnd = ms?.dueDate as string | null | undefined;
+        // Milestone summary bar is RAG-coloured (rolled up from its status + tasks),
+        // same scale as the task bars — not the per-milestone palette the table rail
+        // uses. `g.color` (the palette) stays on the table's milestone rail untouched.
         return {
-          key: g.key, label: g.label, color: (isCip && complete) ? RAG_HEX.green : g.color, items,
+          key: g.key, label: g.label, color: milestoneBarColor(ms, g.rows), items,
           id: Number.isFinite(mid) ? mid : undefined,
           predecessorIds: predId != null ? [predId] : undefined,
+          start: msStart ?? null,
+          end: msEnd ?? null,
         };
       })
       // Keep lanes with bars, plus empty milestone lanes (numeric key) that
@@ -1826,26 +2128,56 @@ export default function ProjectDetail() {
   // Collapsible status sections — default: all expanded.
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggleGroup = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
+  // Default: EVERY milestone starts collapsed, so only the milestone rows show
+  // and their tasks/subtasks stay hidden until the user opens one (or hits
+  // "Expand all"). Seed once per key so it never fights a manual toggle, and so
+  // a newly created milestone also starts collapsed.
+  const seededGroupsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const seed: Record<string, boolean> = {};
+    for (const g of groups) {
+      if (seededGroupsRef.current.has(g.key)) continue;
+      seededGroupsRef.current.add(g.key);
+      seed[g.key] = true; // collapse every milestone by default — only milestone rows visible
+    }
+    // Existing state wins, so a manual toggle (or an earlier seed) is preserved.
+    if (Object.keys(seed).length) setCollapsed((c) => ({ ...seed, ...c }));
+  }, [groups]);
 
   // Per-task subtask expansion — default: collapsed (subtasks hidden until clicked).
   // Map now tracks *opened* tasks; absence = collapsed.
   const [closedTasks, setClosedTasks] = useState<Record<number, boolean>>({});
   const toggleTask = (id: number) => setClosedTasks((c) => ({ ...c, [id]: !c[id] }));
 
+  // Expand / collapse EVERYTHING at once — open every milestone AND every task's
+  // subtasks, or collapse back to the default (just the milestone rows). Drives
+  // the toolbar's accordion toggle. `closedTasks[id] === true` means that task is
+  // OPEN, so expanding sets every parent task's id true.
+  const parentTaskIds = useMemo(
+    () => [...subtasksByParent].filter(([, s]) => s.length > 0).map(([id]) => id),
+    [subtasksByParent],
+  );
+  const groupsWithRows = useMemo(() => groups.filter((g) => g.rows.length > 0), [groups]);
+  const allExpanded = groupsWithRows.length > 0
+    && groupsWithRows.every((g) => !collapsed[g.key])
+    && parentTaskIds.every((id) => closedTasks[id]);
+  const toggleExpandAll = () => {
+    if (allExpanded) {
+      const allClosed: Record<string, boolean> = {};
+      for (const g of groups) allClosed[g.key] = true;
+      setCollapsed(allClosed);
+      setClosedTasks({});
+    } else {
+      setCollapsed({}); // every milestone open
+      setClosedTasks(Object.fromEntries(parentTaskIds.map((id) => [id, true]))); // every task's subtasks open
+    }
+  };
+
   // Column order + widths are owned per-table by each <ExcelGroupTable> instance
   // (keyed by milestone group), so reordering / resizing one milestone's table
   // never affects the others.
 
   const subtaskCount = filtered.reduce((s, t) => s + (subtasksByParent.get(t.id)?.length ?? 0), 0);
-
-  // Every task id (any depth) that has subtasks — the set toggled by "Expand all".
-  const parentIdsWithSubs = useMemo(
-    () => [...subtasksByParent].filter(([, s]) => s.length > 0).map(([id]) => id),
-    [subtasksByParent],
-  );
-  const allSubsOpen = parentIdsWithSubs.length > 0 && parentIdsWithSubs.every((id) => closedTasks[id]);
-  const toggleAllSubs = () =>
-    setClosedTasks(allSubsOpen ? {} : Object.fromEntries(parentIdsWithSubs.map((id) => [id, true])));
 
   // One <tr> — shared by parent tasks and (indented) subtasks.
   const TaskTr = ({ t, depth, cols, isLast }: { t: TaskRow; depth: number; cols: ExcelCol[]; isLast?: boolean }) => {
@@ -1906,9 +2238,9 @@ export default function ProjectDetail() {
               <span className="flex items-center gap-1 min-w-0" style={{ paddingLeft: depth * 14 }}>
                 {depth === 0 ? (
                   // Top-level rows are always expandable (to reveal subtasks or the
-                  // "add subtask" row), so show the chevron on every parent — on
-                  // hover when collapsed, persistent when open.
-                  <ChevronDown size={12} className={`shrink-0 text-gray-400 transition-all ${open ? "" : "-rotate-90"} ${open ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`} />
+                  // "add subtask" row), so the chevron is always visible — a clear
+                  // "click to expand" affordance, brighter once open.
+                  <ChevronDown size={12} className={`shrink-0 transition-all ${open ? "-rotate-0 text-gray-500" : "-rotate-90 text-gray-400"}`} />
                 ) : (
                   <span className="w-3 shrink-0 mr-0.5" />
                 )}
@@ -1965,9 +2297,9 @@ export default function ProjectDetail() {
             </td>
           );
         case "owner":
-          return <td key="owner" className="border border-gray-200 px-2 py-0.5 text-center"><OwnerSelect task={t} users={users} updateTask={updateTask} currentName={assigneeName(t)} /></td>;
+          return <td key="owner" className="border border-gray-200 px-2 py-0.5 text-center"><OwnerSelect value={t.assigneeId ?? null} users={users} onChange={(id) => updateTask.mutate({ id: t.id, data: { assigneeId: id } as never })} currentName={assigneeName(t)} /></td>;
         case "department":
-          return <td key="department" className="border border-gray-200 px-1 py-0.5 text-center"><DepartmentSelect task={t} updateTask={updateTask} departments={departmentOptions} /></td>;
+          return <td key="department" className="border border-gray-200 px-1 py-0.5 text-center"><DepartmentSelect value={t.cftDept ?? ""} onChange={(v) => updateTask.mutate({ id: t.id, data: { cftDept: v || null } as never })} departments={departmentOptions} /></td>;
         case "status":
           return (
             <td key="status" className="border border-gray-200 px-0 py-0 text-center whitespace-nowrap relative" style={{ background: st.bg, color: st.color }}>
@@ -1988,6 +2320,30 @@ export default function ProjectDetail() {
               {depth === 0 ? subs.length : <span className="text-gray-400 font-normal">—</span>}
             </td>
           );
+        case "taskStatus":
+          // A task rolls up its subtasks here, the same way a milestone rolls up
+          // its tasks and a project rolls up everything on the Projects list.
+          return (
+            <td key="taskStatus" className="border border-gray-200 px-2 py-0.5">
+              {depth === 0 && subs.length > 0
+                ? <TaskStatusBar counts={countByStatus(subs)} />
+                : <span className="text-[10px] text-gray-400">—</span>}
+            </td>
+          );
+        case "__del__":
+          return (
+            <td key="__del__" className="border border-gray-200 px-1 py-0.5 text-center">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setDelTask(t); }}
+                title={depth === 0 ? `Delete task "${t.name}"` : `Delete subtask "${t.name}"`}
+                aria-label={depth === 0 ? "Delete task" : "Delete subtask"}
+                className="inline-flex items-center justify-center rounded p-1 text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors"
+              >
+                <Trash2 size={13} />
+              </button>
+            </td>
+          );
         case "dependency":
           return (
             <td key="dependency" className="border border-gray-200 px-0 py-0 align-middle relative">
@@ -1998,6 +2354,30 @@ export default function ProjectDetail() {
           return <td key="timeline" className="border border-gray-200 px-2 py-0.5 whitespace-nowrap"><TimelineEditCell task={t} allTasks={tasks} updateTask={updateTask} requestDateChange={requestDateChange} /></td>;
         case "justification":
           return <td key="justification" className="border border-gray-200 px-2 py-0.5 text-[11px] text-gray-600"><span title={t.justification ?? undefined} className="line-clamp-2">{t.justification || <span className="text-gray-400">—</span>}</span></td>;
+        case "startDate":
+          return <td key="startDate" className="border border-gray-200 px-2 py-0.5 text-center"><DateCell value={t.startDate} /></td>;
+        case "endDate":
+          return <td key="endDate" className="border border-gray-200 px-2 py-0.5 text-center"><DateCell value={t.endDate} /></td>;
+        case "actualStart":
+          return <td key="actualStart" className="border border-gray-200 px-2 py-0.5 text-center text-[11px] font-medium text-gray-600 whitespace-nowrap">{fmtDay(t.actualStart) ?? <span className="text-gray-400">—</span>}</td>;
+        case "actualEnd":
+          return <td key="actualEnd" className="border border-gray-200 px-2 py-0.5 text-center text-[11px] font-medium text-gray-600 whitespace-nowrap">{fmtDay(t.actualEnd) ?? <span className="text-gray-400">—</span>}</td>;
+        case "comments": {
+          const n = commsCount.get(t.id) ?? 0;
+          return (
+            <td key="comments" className="border border-gray-200 px-2 py-0.5 text-center">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setCommsTask({ id: t.id, code: codeOf(t.id), name: t.name, milestoneId: t.milestoneId ?? null }); }}
+                title={n > 0 ? `${n} comment${n === 1 ? "" : "s"} — open thread` : "Add a comment"}
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-gray-500 hover:text-primary hover:bg-primary/10 transition-colors"
+              >
+                <MessageSquare size={12} />
+                {n > 0 ? <span className="tabular-nums font-semibold">{n}</span> : null}
+              </button>
+            </td>
+          );
+        }
         default:
           return <td key={key} className="border border-gray-200 px-2 py-0.5" />;
       }
@@ -2019,209 +2399,195 @@ export default function ProjectDetail() {
     );
   };
 
-  // Milestone-level "add dependency" — an icon-only "+" that sits above the
-  // milestone table (far-right of the group header). Two-step picker: choose a
-  // successor task in this milestone, then the predecessor that must finish
-  // first. Writes through the same /tasks/:id/dependencies path the per-task
-  // Predecessors cell + the Gantt drag-to-link use (linkTasks), so there's no
-  // new backend surface. ponytail: task-level link, not a milestone→milestone
-  // predecessor (those auto-chain by order and would be clobbered on reorder).
-  const MilestoneDepAdder = ({ rows }: { rows: TaskRow[] }) => {
-    const [open, setOpen] = useState(false);
-    const [pos, setPos] = useState<{ right: number; top: number } | null>(null);
-    const [succId, setSuccId] = useState<number | null>(null);
-    const [q, setQ] = useState("");
-    const btnRef = useRef<HTMLButtonElement>(null);
-    const menuRef = useRef<HTMLDivElement>(null);
-    const place = () => {
-      const r = btnRef.current?.getBoundingClientRect();
-      if (r) setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
-    };
-    useEffect(() => {
-      if (!open) return;
-      const onDoc = (e: MouseEvent) => {
-        const t = e.target as Node;
-        if (!btnRef.current?.contains(t) && !menuRef.current?.contains(t)) { setOpen(false); setSuccId(null); setQ(""); }
-      };
-      document.addEventListener("mousedown", onDoc);
-      return () => document.removeEventListener("mousedown", onDoc);
-    }, [open]);
-    const needle = q.trim().toLowerCase();
-    // Step 1: pick successor from this milestone's tasks. Step 2: pick the
-    // predecessor from any project task except the chosen successor.
-    const options = (succId == null ? rows : tasks.filter((t) => t.id !== succId))
-      .filter((t) => !needle || `${t.name} ${codeOf(t.id)}`.toLowerCase().includes(needle));
-    return (
-      <>
-        <button
-          ref={btnRef}
-          type="button"
-          onClick={() => { if (!open) place(); setOpen((o) => !o); setSuccId(null); setQ(""); }}
-          title="Add a task dependency in this milestone"
-          className="inline-flex items-center justify-center w-6 h-6 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
-        >
-          <Plus size={14} />
-        </button>
-        {open && pos && createPortal(
-          <div ref={menuRef} style={{ position: "fixed", top: pos.top, right: pos.right }} className="z-[300] w-72 rounded-lg bg-white border border-gray-200 shadow-xl py-1 animate-in fade-in-0 zoom-in-95" onClick={(e) => e.stopPropagation()}>
-            <div className="px-2.5 py-1.5 text-[11px] font-semibold text-gray-500 border-b border-gray-100 flex items-center gap-1.5">
-              <GitBranch size={12} /> {succId == null ? "Pick the task that depends on another" : "Pick the task that must finish first"}
-            </div>
-            <div className="px-2 pt-1.5 pb-1">
-              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search tasks…" className="w-full h-7 px-2 text-xs rounded border border-gray-200 outline-none focus:ring-1 focus:ring-primary" />
-            </div>
-            <div className="max-h-56 overflow-y-auto">
-              {options.length === 0 && <div className="px-3 py-2 text-[11px] text-gray-400">No matching tasks</div>}
-              {options.slice(0, 50).map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => {
-                    if (succId == null) { setSuccId(c.id); setQ(""); return; }
-                    linkTasks(c.id, succId); // (predecessorId, successorId)
-                    setOpen(false); setSuccId(null); setQ("");
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-gray-50 transition-colors"
-                >
-                  <span className="font-mono text-[10px] text-gray-400 shrink-0">{codeOf(c.id)}</span>
-                  <span className="truncate text-gray-700">{c.name}</span>
-                </button>
-              ))}
-            </div>
-          </div>,
-          document.body,
-        )}
-      </>
-    );
-  };
-
-  // Standalone milestone summary band — the same details as MilestoneRow, but
-  // pulled OUT of the table so it sits between the milestone name and the task
-  // table as its own strip (not a header <tr>).
-  // Milestone summary as a one-row table that mirrors the task-table columns
-  // (code · name · assignee · status · priority · progress · subtasks ·
-  // predecessors · timeline · justification). Timeline is editable via a single
-  // range calendar and routes through the justification gate, so the reason
-  // lands in the milestone's own Justification cell — exactly like a task row.
-  const MilestoneBand = ({ ms, progress, taskCount, storageKey }: { ms: Record<string, unknown>; progress: number; taskCount: number; storageKey: string }) => {
-    // Mirror the task table's exact rendered columns (persisted order + widths).
-    const cols = resolveTableCols(storageKey, activeCols);
-    // Derive the milestone status from its tasks (the stored status field isn't
-    // auto-maintained): all done → Completed, any overdue → Delayed, any active
-    // → In Progress, else To be Started.
-    const msTop = tasks.filter((t) => t.milestoneId === Number(ms.id) && t.parentTaskId == null);
-    const derivedMsStatus = msTop.length === 0 ? String(ms.status ?? "not_started")
-      : msTop.every((t) => t.status === "completed") ? "completed"
-      : msTop.some((t) => t.status === "delayed") ? "delayed"
-      : msTop.some((t) => t.status === "in_progress" || t.status === "completed") ? "in_progress"
-      : "not_started";
-    const st = getStatusMeta(derivedMsStatus);
-    const pr = getPriorityMeta(String(ms.priority ?? ""));
-    const msCode = `MS-${String(ms.id).padStart(4, "0")}`;
+  // Milestone header ROW — a COLUMNAR, collapsible gray header row in the ONE
+  // unified table, sharing the same task column grid as the rows beneath it. It
+  // carries the milestone's own data (owner · dept · derived status · rolled-up
+  // progress · task-status breakdown · editable date range · justification ·
+  // delete); the task-only columns (Priority · Subtasks · Predecessors) fall
+  // through to a blank cell. Clicking the Code / Name cell (or the chevron)
+  // toggles the group. Hierarchy: milestone → tasks → subtasks, each collapsible.
+  const MilestoneHeaderRow = ({ group, groupMs, open, progress, st, counts, cols }: {
+    group: { key: string; label: string; color: string; rows: TaskRow[] };
+    groupMs: Record<string, unknown> | null | undefined;
+    open: boolean;
+    progress: number;
+    st: { bg: string; color: string; label: string };
+    counts: ReturnType<typeof countByStatus>;
+    cols: ExcelCol[];
+  }) => {
+    const isReal = group.key !== "__none__";
+    const msId = Number(group.key);
+    const msDeptVal = typeof groupMs?.dept === "string" ? groupMs.dept : "";
+    const msOwnerId = groupMs?.ownerId != null ? Number(groupMs.ownerId) : null;
+    const shownOwnerId = msOwnerId ?? projectOwnerId;
     const fmt = (d: unknown) => (typeof d === "string" && d ? new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) : null);
-    const startIso = typeof ms.actualStart === "string" && ms.actualStart ? ms.actualStart.slice(0, 10) : "";
-    const dueIso = typeof ms.dueDate === "string" && ms.dueDate ? ms.dueDate.slice(0, 10) : "";
-    const justification = typeof ms.justification === "string" ? ms.justification : "";
+    const actualStartIso = typeof groupMs?.actualStart === "string" && groupMs.actualStart ? (groupMs.actualStart as string).slice(0, 10) : "";
+    const planStartIso = typeof groupMs?.startDate === "string" && groupMs.startDate ? (groupMs.startDate as string).slice(0, 10) : "";
+    const startIso = actualStartIso || planStartIso;
+    const dueIso = typeof groupMs?.dueDate === "string" && groupMs.dueDate ? (groupMs.dueDate as string).slice(0, 10) : "";
+    const actualEndIso = typeof groupMs?.actualEnd === "string" && groupMs.actualEnd ? (groupMs.actualEnd as string).slice(0, 10) : "";
+    const justification = typeof groupMs?.justification === "string" ? groupMs.justification : "";
     const todayIso = racToday(getLocalTimeZone()).toString();
-    // The whole range can be pushed forward but never into the past.
     const minIso = startIso && startIso < todayIso ? startIso : todayIso;
-    const [open, setOpen] = useState(false);
+    const [dOpen, setDOpen] = useState(false);
     const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
     const btnRef = useRef<HTMLButtonElement>(null);
     const menuRef = useRef<HTMLDivElement>(null);
-    const place = () => {
-      const r = btnRef.current?.getBoundingClientRect();
-      if (r) setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
-    };
+    const place = () => { const r = btnRef.current?.getBoundingClientRect(); if (r) setPos({ top: r.bottom + 4, right: window.innerWidth - r.right }); };
     useEffect(() => {
-      if (!open) return;
-      const onDoc = (e: MouseEvent) => {
-        const t = e.target as Node;
-        if (!btnRef.current?.contains(t) && !menuRef.current?.contains(t)) setOpen(false);
-      };
+      if (!dOpen) return;
+      const onDoc = (e: MouseEvent) => { const t = e.target as Node; if (!btnRef.current?.contains(t) && !menuRef.current?.contains(t)) setDOpen(false); };
       document.addEventListener("mousedown", onDoc);
       return () => document.removeEventListener("mousedown", onDoc);
-    }, [open]);
+    }, [dOpen]);
     const parse = (iso: string): CalendarDate | null => { try { return iso ? parseDate(iso) : null; } catch { return null; } };
     const rangeValue = startIso && dueIso ? { start: parse(startIso)!, end: parse(dueIso)! } : null;
+    // Same justification gate as a task date change — the reason is saved onto the
+    // milestone's own justification column (skipComment: not a task).
     const onRangeChange = (val: { start: DateValue; end: DateValue }) => {
       const s = val.start.toString(), e = val.end.toString();
       if (s < minIso) return; // never let the range slip into the past
-      setOpen(false);
-      // Same justification gate as a task date change — the typed reason is saved
-      // onto the milestone's justification column (skipComment: not a task).
+      setDOpen(false);
       requestDateChange({
-        taskId: Number(ms.id),
+        taskId: msId,
         skipComment: true,
-        firstAssignment: !startIso && !dueIso,
+        firstAssignment: !actualStartIso && !dueIso,
         changes: [
-          { label: "Start", from: startIso || null, to: s },
+          { label: "Start", from: actualStartIso || null, to: s },
           { label: "Due", from: dueIso || null, to: e },
         ],
-        apply: (reason) => updateMilestone.mutate({ id: Number(ms.id), data: { actualStart: s, dueDate: e, justification: reason || undefined } as never }),
+        apply: (reason) => updateMilestone.mutate({ id: msId, data: { actualStart: s, dueDate: e, justification: reason || undefined } as never }),
       });
     };
+    const toggle = () => toggleGroup(group.key);
     const cell = (key: string) => {
       switch (key) {
-        case "code": return <td key="code" className="border border-gray-200 px-2 py-1 font-mono text-[11px] font-bold text-gray-800 whitespace-nowrap">{msCode}</td>;
-        case "name": return (
-          <td key="name" className="border border-gray-200 px-2 py-1 font-semibold text-gray-900">
-            <span className="flex items-center gap-1.5 min-w-0"><Milestone size={13} className="shrink-0 text-primary" /><span className="truncate" title={String(ms.name ?? "")}>{String(ms.name ?? "")}</span></span>
-          </td>
-        );
-        case "owner": return <td key="owner" className="border border-gray-200 px-2 py-1 text-center text-gray-400" />;
-        case "department": return <td key="department" className="border border-gray-200 px-2 py-1 text-center text-gray-400" />;
-        case "status": return <td key="status" className="border border-gray-200 px-1 py-1 text-[11px] font-semibold" style={{ background: st.bg, color: st.color }}><span className="block truncate text-center">{st.label}</span></td>;
-        case "priority": return <td key="priority" className="border border-gray-200 px-2 py-1 text-center text-[11px] font-semibold whitespace-nowrap" style={{ background: pr.bg, color: pr.color }}>{pr.label}</td>;
-        case "progress": return (
-          <td key="progress" className="border border-gray-200 px-2 py-1">
-            <div className="flex items-center gap-1.5">
-              <div className="flex-1 h-1.5 rounded-full bg-gray-200 overflow-hidden"><div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} /></div>
-              <span className="text-[11px] font-semibold tabular-nums text-gray-700 w-8 text-right shrink-0">{progress}%</span>
-            </div>
-          </td>
-        );
-        case "subtasks": return <td key="subtasks" className="border border-gray-200 px-2 py-1 text-center font-semibold tabular-nums text-gray-800">{taskCount}</td>;
-        case "dependency": return <td key="dependency" className="border border-gray-200 px-2 py-1 text-center text-gray-400" />;
-        case "timeline": return (
-          <td key="timeline" className="border border-gray-200 px-2 py-1 whitespace-nowrap">
-            <div className="relative">
-              <button
-                ref={btnRef}
-                type="button"
-                onClick={(e) => { e.stopPropagation(); if (!open) place(); setOpen((o) => !o); }}
-                title="Edit milestone date range (cannot move to the past)"
-                className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-800 whitespace-nowrap hover:text-primary transition-colors"
-              >
-                <CalendarDays size={13} className="text-gray-500 shrink-0" />
-                {fmt(ms.actualStart) ?? "—"} <span className="text-gray-400">→</span> {fmt(ms.dueDate) ?? "—"}
-              </button>
-              {open && pos && createPortal(
-                <div ref={menuRef} style={{ position: "fixed", top: pos.top, right: pos.right }} className="z-[300] rounded-lg bg-white border border-gray-200 shadow-xl select-none p-2" onClick={(e) => e.stopPropagation()}>
-                  <RangeCalendar aria-label="Milestone date range" value={rangeValue as never} onChange={onRangeChange as never} minValue={parse(minIso) ?? undefined} />
-                </div>,
-                document.body,
+        // Code — carries the disclosure chevron, the milestone's colour rail and
+        // its code; clicking toggles the group.
+        case "code":
+          return (
+            <td key="code" onClick={toggle} className="border border-gray-200 px-2 py-1 font-mono text-[11px] font-bold text-gray-800 whitespace-nowrap cursor-pointer" style={{ borderLeft: `3px solid ${group.color}` }}>
+              <span className="flex items-center gap-1.5">
+                <ChevronDown size={13} className={`shrink-0 text-gray-400 transition-transform ${open ? "" : "-rotate-90"}`} />
+                {isReal ? (
+                  <>
+                    <span>MS-{String(group.key).padStart(4, "0")}</span>
+                    <span onClick={(e) => e.stopPropagation()} className="inline-flex">
+                      <AttachmentPopover projectId={projectId} milestoneId={msId} label={`${group.label} attachments`} />
+                    </span>
+                  </>
+                ) : <span className="text-gray-400 font-sans font-normal">—</span>}
+              </span>
+            </td>
+          );
+        // Name — milestone icon + name + count; clicking toggles; a history icon
+        // (hover) opens the timeline / justification log.
+        case "name":
+          return (
+            <td key="name" onClick={toggle} className="border border-gray-200 px-2 py-1 font-semibold text-gray-900 cursor-pointer">
+              <span className="group/msname flex items-center gap-1.5 min-w-0">
+                <Milestone size={13} className="shrink-0 text-primary" />
+                <span className="truncate" title={group.label}>{group.label}</span>
+                {typeof groupMs?.phase === "string" && groupMs.phase && (
+                  <span className="shrink-0 inline-flex items-center rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 ring-1 ring-inset ring-violet-200" title={`Phase: ${groupMs.phase}`}>{groupMs.phase as string}</span>
+                )}
+                <span className="text-[10px] font-normal text-gray-400 shrink-0">({group.rows.length})</span>
+                {isReal && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setHistoryMs({ id: msId, name: group.label, startDate: groupMs?.startDate as string | null | undefined, dueDate: groupMs?.dueDate as string | null | undefined, justification: groupMs?.justification as string | null | undefined }); }}
+                    title={`Timeline history & justifications for "${group.label}"`}
+                    aria-label="Milestone timeline history"
+                    className="ml-1 shrink-0 opacity-0 group-hover/msname:opacity-100 inline-flex items-center justify-center w-5 h-5 rounded text-gray-400 hover:text-primary hover:bg-primary/10 transition"
+                  >
+                    <History size={12} />
+                  </button>
+                )}
+              </span>
+            </td>
+          );
+        // Owner — the milestone's own; unset inherits the project owner (shown faded).
+        case "owner":
+          return (
+            <td key="owner" className="border border-gray-200 px-2 py-1 text-center" onClick={(e) => e.stopPropagation()}>
+              {isReal
+                ? <OwnerSelect value={msOwnerId} users={users} muted={msOwnerId == null && shownOwnerId != null} currentName={shownOwnerId != null ? (usersById.get(shownOwnerId) ?? null) : null} onChange={(id) => updateMilestone.mutate({ id: msId, data: { ownerId: id } as never })} />
+                : <span className="text-gray-400">—</span>}
+            </td>
+          );
+        case "department":
+          return (
+            <td key="department" className="border border-gray-200 px-1 py-1 text-center" onClick={(e) => e.stopPropagation()}>
+              {isReal
+                ? <DepartmentSelect value={msDeptVal} departments={departmentOptions} muted={!msDeptVal && !!projectDept} placeholder={projectDept || "—"} onChange={(v) => updateMilestone.mutate({ id: msId, data: { dept: v || null } as never })} />
+                : <span className="text-gray-400">—</span>}
+            </td>
+          );
+        case "status":
+          return <td key="status" className="border border-gray-200 px-1 py-1 text-[11px] font-semibold" style={{ background: st.bg, color: st.color }}><span className="block truncate text-center">{st.label}</span></td>;
+        case "progress":
+          return (
+            <td key="progress" className="border border-gray-200 px-2 py-1">
+              <div className="flex items-center gap-1.5">
+                <div className="flex-1 h-1.5 rounded-full bg-gray-200 overflow-hidden"><div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} /></div>
+                <span className="text-[11px] font-semibold tabular-nums text-gray-700 w-8 text-right shrink-0">{progress}%</span>
+              </div>
+            </td>
+          );
+        case "tasks":
+          return <td key="tasks" className="border border-gray-200 px-2 py-1 text-center font-semibold tabular-nums text-gray-800">{group.rows.length}</td>;
+        case "taskStatus":
+          return <td key="taskStatus" className="border border-gray-200 px-2 py-1">{group.rows.length > 0 ? <TaskStatusBar counts={counts} /> : <span className="text-[10px] text-gray-400">—</span>}</td>;
+        case "timeline":
+          return (
+            <td key="timeline" className="border border-gray-200 px-2 py-1 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+              {isReal ? (
+                <div className="relative">
+                  <button ref={btnRef} type="button" onClick={(e) => { e.stopPropagation(); if (!dOpen) place(); setDOpen((o) => !o); }} title="Edit milestone date range (cannot move to the past)" className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-800 whitespace-nowrap hover:text-primary transition-colors">
+                    <CalendarDays size={13} className="text-gray-500 shrink-0" />
+                    {actualStartIso ? fmt(actualStartIso) : planStartIso ? <span className="font-normal text-gray-500" title="Planned start — not started yet">{fmt(planStartIso)}</span> : "—"}
+                    {" "}<span className="text-gray-400">→</span> {fmt(dueIso) ?? "—"}
+                  </button>
+                  {dOpen && pos && createPortal(
+                    <div ref={menuRef} style={{ position: "fixed", top: pos.top, right: pos.right }} className="z-[300] rounded-lg bg-white border border-gray-200 shadow-xl select-none p-2" onClick={(e) => e.stopPropagation()}>
+                      <RangeCalendar aria-label="Milestone date range" value={rangeValue as never} onChange={onRangeChange as never} minValue={parse(minIso) ?? undefined} />
+                    </div>,
+                    document.body,
+                  )}
+                </div>
+              ) : <span className="text-gray-400">—</span>}
+            </td>
+          );
+        case "justification":
+          return <td key="justification" className="border border-gray-200 px-2 py-1 text-[11px] text-gray-600"><span title={justification || undefined} className="line-clamp-2">{justification || <span className="text-gray-400">—</span>}</span></td>;
+        // Schedule dates — the milestone's own planned pair + actual pair, so a
+        // milestone row lines up with its tasks under the same date columns.
+        case "startDate":
+          return <td key="startDate" className="border border-gray-200 px-2 py-1 text-center text-[11px] font-semibold text-gray-700 whitespace-nowrap">{fmt(planStartIso) ?? <span className="text-gray-400 font-normal">—</span>}</td>;
+        case "endDate":
+          return <td key="endDate" className="border border-gray-200 px-2 py-1 text-center text-[11px] font-semibold text-gray-700 whitespace-nowrap">{fmt(dueIso) ?? <span className="text-gray-400 font-normal">—</span>}</td>;
+        case "actualStart":
+          return <td key="actualStart" className="border border-gray-200 px-2 py-1 text-center text-[11px] font-semibold text-gray-700 whitespace-nowrap">{fmt(actualStartIso) ?? <span className="text-gray-400 font-normal">—</span>}</td>;
+        case "actualEnd":
+          return <td key="actualEnd" className="border border-gray-200 px-2 py-1 text-center text-[11px] font-semibold text-gray-700 whitespace-nowrap">{fmt(actualEndIso) ?? <span className="text-gray-400 font-normal">—</span>}</td>;
+        case "__del__":
+          return (
+            <td key="__del__" className="border border-gray-200 px-1 py-1 text-center" onClick={(e) => e.stopPropagation()}>
+              {isReal && (
+                <button type="button" onClick={(e) => { e.stopPropagation(); setDelMs({ id: msId, label: group.label }); }} title={`Delete the "${group.label}" milestone and all its tasks`} aria-label="Delete milestone" className="inline-flex items-center justify-center rounded p-1 text-gray-300 hover:text-red-600 hover:bg-red-50 transition-colors">
+                  <Trash2 size={13} />
+                </button>
               )}
-            </div>
-          </td>
-        );
-        case "justification": return <td key="justification" className="border border-gray-200 px-2 py-1 text-[11px] text-gray-600"><span title={justification || undefined} className="line-clamp-2">{justification || <span className="text-gray-400">—</span>}</span></td>;
-        default: return <td key={key} className="border border-gray-200 px-2 py-1" />;
+            </td>
+          );
+        default:
+          return <td key={key} className="border border-gray-200 px-2 py-1" />;
       }
     };
-    // Standalone one-row table sitting ABOVE the task table (between the group
-    // header and the table). Columns use the SAME percentage-of-container widths
-    // as ExcelGroupTable (which lays out by proportion, not absolute px), so the
-    // cells — including the trailing Justification column — line up with the task
-    // rows below.
-    const totalW = cols.reduce((s, c) => s + c.width, 0) || 1;
     return (
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white mb-2">
-        <table className="w-full border-collapse table-fixed [&_td]:overflow-hidden">
-          <colgroup>{cols.map((c) => <col key={c.key} style={{ width: `${(c.width / totalW) * 100}%` }} />)}</colgroup>
-          <tbody><tr className="bg-primary/[0.06]">{cols.map((c) => cell(c.key))}</tr></tbody>
-        </table>
-      </div>
+      <tr className="group/msrow bg-gray-100/70 hover:bg-gray-100 transition-colors">
+        {cols.map((c) => cell(c.key))}
+      </tr>
     );
   };
 
@@ -2243,7 +2609,15 @@ export default function ProjectDetail() {
           <div className="min-w-0">
             <div className="flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
               {project ? projectCode(project as { id: number; jiraKey?: string | null }) : ""}
-              {projectId > 0 && <AttachmentPopover projectId={projectId} label="Project attachments" />}
+              {projectId > 0 && (
+                <ProjectAttachmentsButton
+                  projectId={projectId}
+                  projectName={project?.name}
+                  projectCode={project ? projectCode(project as { id: number; jiraKey?: string | null }) : undefined}
+                  tasks={(rawTasks ?? []) as { id: number; name: string; milestoneId?: number | null; parentTaskId?: number | null }[]}
+                  milestones={(rawMilestones ?? []) as { id: number; name: string }[]}
+                />
+              )}
             </div>
             <div className="flex items-center gap-2 min-w-0">
               <h2 className="text-xl font-bold text-foreground truncate">{project?.name ?? (loadingProject ? "…" : "Project")}</h2>
@@ -2262,6 +2636,24 @@ export default function ProjectDetail() {
               >
                 <ShieldAlert size={11} /> {confidentialStored ? (isCip ? "CIP · Confidential" : "Confidential") : "Mark confidential"}
               </button>
+              {/* Go-live date — project launch target, drawn as a flag in the Gantt.
+                  Editable inline: pick a date to set, clear it to remove. */}
+              <div
+                className="shrink-0 inline-flex items-center gap-1 rounded-full border border-border pl-2 pr-1 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                title="Project go-live date. Shown as a flag marker in the Gantt."
+              >
+                <Flag size={11} style={{ color: "#7c3aed" }} />
+                <span>Go-live:</span>
+                <input
+                  type="date"
+                  value={goLiveStored}
+                  onChange={async (e) => {
+                    await fetch(`/api/projects/${projectId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ goLiveDate: e.target.value || "" }) });
+                    void qc.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) });
+                  }}
+                  className="bg-transparent outline-none text-[10px] font-semibold text-foreground cursor-pointer"
+                />
+              </div>
             </div>
             <p className="text-sm text-muted-foreground mt-0.5">
               {section === "team" ? "Team & RACI" : "Milestones, tasks & subtasks"}
@@ -2273,10 +2665,10 @@ export default function ProjectDetail() {
         {/* Section switcher — Tasks · Team */}
         <div className="flex items-center gap-2 flex-wrap ml-auto justify-end">
           {/* Project Documents — opens this project's document repository
-              (versioning, stages, access controls) in a modal. */}
+              (versioning, stages, access controls) as a full page. */}
           <button
             type="button"
-            onClick={() => setDocsOpen(true)}
+            onClick={() => navigate(`/projects/${projectId}/documents`)}
             title="View this project's documents — organised by lifecycle stage, with versioning and access controls"
             className="h-7 px-2 rounded-lg flex items-center gap-1 text-[11px] font-semibold glass-surface lift-card text-primary hover:bg-primary/10 transition-colors"
           >
@@ -2287,7 +2679,7 @@ export default function ProjectDetail() {
           {/* Chat — opens this project's communication thread (@-mentions, files). */}
           <button
             type="button"
-            onClick={() => setChatOpen(true)}
+            onClick={() => navigate(`/projects/${projectId}/chat`)}
             title="Open this project's chat — discuss, @-mention people, share files"
             className="h-7 px-2 rounded-lg flex items-center gap-1 text-[11px] font-semibold glass-surface lift-card text-primary hover:bg-primary/10 transition-colors"
           >
@@ -2334,7 +2726,11 @@ export default function ProjectDetail() {
       {section === "team" && <TeamTab projectId={projectId} />}
 
       {section === "tasks" && (<>
-      {/* ── Toolbar: Search + View switcher (left) · Filters (right) ───────── */}
+      {/* Toolbar with Expand all beside it (left), Columns (right), on one line. */}
+      <div className="flex flex-wrap items-start justify-between gap-2 w-full">
+      {/* Left group: the toolbar pill and the Expand all button sit side by side. */}
+      <div className="flex flex-wrap items-start gap-2 min-w-0">
+      {/* Toolbar: Search, View switcher, Filters */}
       <div className="glass-surface lift-card ph-rise rounded-xl px-2.5 py-1.5 flex flex-wrap items-center gap-x-2 gap-y-2 w-fit max-w-full relative z-50">
         {/* Search — icon button that expands into an inline field, left of the toggles */}
         {searchOpen ? (
@@ -2367,8 +2763,8 @@ export default function ProjectDetail() {
         <div className="flex items-center gap-0.5 rounded-lg p-0.5">
           {([
             { key: "overview", label: "Overview", Icon: LayoutDashboard },
-            { key: "table", label: "Table", Icon: Table2 },
-            { key: "kanban", label: "Kanban", Icon: LayoutGrid },
+            { key: "table", label: "List", Icon: Table2 },
+            { key: "kanban", label: "Board", Icon: LayoutGrid },
             { key: "gantt", label: "Gantt", Icon: GanttChartSquare },
             { key: "calendar", label: "Calendar", Icon: CalendarDays },
           ] as const).map(({ key, label, Icon }) => (
@@ -2387,19 +2783,6 @@ export default function ProjectDetail() {
             </button>
           ))}
 
-          {/* Expand / collapse every task's subtasks at once (Table view). */}
-          {view === "table" && subtaskCount > 0 && (
-            <button
-              type="button"
-              onClick={toggleAllSubs}
-              title={allSubsOpen ? "Collapse all subtasks" : "Open all subtasks of every task"}
-              className="h-6 px-2 rounded-md flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              <ListTree size={13} />
-              {allSubsOpen ? "Collapse all" : "Expand all"}
-            </button>
-          )}
-
           {/* Group by (Kanban only) — Action Centre PillSelect: Status / Owner / Priority / Department */}
           {view === "kanban" && (
             <div className="ml-1">
@@ -2411,103 +2794,67 @@ export default function ProjectDetail() {
             </div>
           )}
 
-          {/* Divider, then the two filters — same grey group as the view tabs */}
+          {/* Divider, then the single Filter menu — same grey group as the view tabs */}
           <span className="w-px h-4 bg-border/70 mx-1 self-center" />
 
-          {/* Milestone filter — hidden on Kanban (Group-by covers it). */}
+          {/* One Filter menu for all three facets (Milestone · Priority · Department) —
+              hidden on Kanban, where Group-by covers the same axes. Mirrors the
+              Projects list view: a stacked panel of single-select dropdowns with a
+              badge counting the facets currently narrowing the list. */}
           {view !== "kanban" && (
           <div className="relative" ref={filterRef}>
             <button
               type="button"
-              onClick={() => { setFilterOpen((o) => !o); setPrioOpen(false); }}
-              title="Filter tasks by milestone"
-              className={`h-6 pl-2 pr-1.5 rounded-md flex items-center gap-1 text-[11px] transition-colors ${
-                milestone ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              onClick={() => setFilterOpen((o) => !o)}
+              title="Filter tasks"
+              className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
+                activeFilterCount ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
               }`}
             >
-              <Milestone size={12} />
-              <span className="font-medium">Milestone</span>
-              <ChevronDown size={12} className={`opacity-60 transition-transform ${filterOpen ? "rotate-180" : ""}`} />
+              <Filter size={13} /> Filter
+              {activeFilterCount > 0 && (
+                <span className="ml-0.5 h-3.5 min-w-3.5 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-semibold leading-none flex items-center justify-center">
+                  {activeFilterCount}
+                </span>
+              )}
+              <ChevronDown size={11} className={`opacity-70 transition-transform ${filterOpen ? "rotate-180" : ""}`} />
             </button>
             {filterOpen && (
-              <div className="absolute left-0 top-full mt-1.5 z-50 w-56 max-h-72 overflow-y-auto rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
-                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Filter by milestone</div>
-                {MILESTONE_CHIPS.map((c) => (
-                  <button
-                    key={c.value || "all"}
-                    onClick={() => { setMilestone(c.value); setFilterOpen(false); }}
-                    className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${milestone === c.value ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
-                  >
-                    <span className="truncate">{c.label}</span>
-                    {milestone === c.value && <Check size={13} className="shrink-0" />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* Priority filter — hidden on Kanban (Group-by covers it). */}
-          {view !== "kanban" && (
-          <div className="relative" ref={prioRef}>
-            <button
-              type="button"
-              onClick={() => { setPrioOpen((o) => !o); setFilterOpen(false); }}
-              title="Filter tasks by priority"
-              className={`h-6 pl-2 pr-1.5 rounded-md flex items-center gap-1 text-[11px] transition-colors ${
-                priority ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-              }`}
-            >
-              <Flag size={12} />
-              <span className="font-medium">Priority</span>
-              <ChevronDown size={12} className={`opacity-60 transition-transform ${prioOpen ? "rotate-180" : ""}`} />
-            </button>
-            {prioOpen && (
-              <div className="absolute left-0 top-full mt-1.5 z-50 w-48 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
-                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Filter by priority</div>
-                {PRIORITY_CHIPS.map((c) => (
-                  <button
-                    key={c.value || "all"}
-                    onClick={() => { setPriority(c.value); setPrioOpen(false); }}
-                    className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${priority === c.value ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
-                  >
-                    {c.label}
-                    {priority === c.value && <Check size={13} />}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* Department filter — hidden on Kanban (Group-by covers it). */}
-          {view !== "kanban" && (
-          <div className="relative" ref={deptRef}>
-            <button
-              type="button"
-              onClick={() => { setDeptOpen((o) => !o); setFilterOpen(false); setPrioOpen(false); }}
-              title="Filter tasks by department"
-              className={`h-6 pl-2 pr-1.5 rounded-md flex items-center gap-1 text-[11px] transition-colors ${
-                dept ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-              }`}
-            >
-              <Group size={12} />
-              <span className="font-medium">Department</span>
-              <ChevronDown size={12} className={`opacity-60 transition-transform ${deptOpen ? "rotate-180" : ""}`} />
-            </button>
-            {deptOpen && (
-              <div className="absolute left-0 top-full mt-1.5 z-50 w-56 max-h-72 overflow-y-auto rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
-                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Filter by department</div>
-                {DEPT_CHIPS.map((c) => (
-                  <button
-                    key={c.value || "all"}
-                    onClick={() => { setDept(c.value); setDeptOpen(false); }}
-                    className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${dept === c.value ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
-                  >
-                    <span className="truncate">{c.label}</span>
-                    {dept === c.value && <Check size={13} className="shrink-0" />}
-                  </button>
-                ))}
+              <div className="absolute left-0 top-full mt-1.5 z-50 w-72 rounded-md overflow-hidden bg-popover text-popover-foreground border border-popover-border shadow-lg">
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/60">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Filters</span>
+                  {activeFilterCount > 0 && (
+                    <button type="button" onClick={clearFilters} className="text-[11px] font-medium text-primary hover:underline">
+                      Clear all
+                    </button>
+                  )}
+                </div>
+                {/* One row per facet — name on the left, its dropdown on the right. */}
+                <div className="p-2 flex flex-col gap-1.5">
+                  {facets.map((f) => (
+                    <div key={f.key} className="flex items-center gap-2">
+                      <span className="flex items-center gap-1.5 w-24 shrink-0 text-[11px] font-medium">
+                        <f.Icon size={12} className={f.value ? "text-primary" : "text-muted-foreground"} />
+                        {f.label}
+                      </span>
+                      <Select
+                        value={f.value || ALL_OPTION}
+                        onValueChange={(v) => f.onPick(v === ALL_OPTION ? "" : v)}
+                      >
+                        <SelectTrigger className={`h-7 flex-1 min-w-0 text-[11px] ${f.value ? "border-primary/40 text-primary" : ""}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-72">
+                          {f.options.map((o) => (
+                            <SelectItem key={o.value || ALL_OPTION} value={o.value || ALL_OPTION} className="text-[11px]">
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -2523,45 +2870,21 @@ export default function ProjectDetail() {
             <AlertTriangle size={12} />
             <span className="font-medium">Issues</span>
           </button>
-
-          {/* Clear filters — only when a filter is active */}
-          {(milestone || priority || dept) && (
-            <button
-              type="button"
-              onClick={() => { setMilestone(""); setPriority(""); setDept(""); }}
-              title="Clear all filters"
-              className="h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-            >
-              <X size={12} /> Clear
-            </button>
-          )}
         </div>
 
-        {/* Add Milestone — manual add (auto milestones come from the charter). A
-            direct child of the flex-wrap toolbar so it always stays visible. */}
-        {addingMs ? (
-          <input
-            autoFocus
-            value={newMsName}
-            onChange={(e) => setNewMsName(e.target.value)}
-            onBlur={addMilestone}
-            onKeyDown={(e) => { if (e.key === "Enter") addMilestone(); if (e.key === "Escape") { setNewMsName(""); setAddingMs(false); } }}
-            placeholder="Milestone name, Enter to add"
-            className="h-7 text-[11px] border border-primary/40 bg-background text-foreground rounded-lg px-2.5 outline-none focus:ring-2 focus:ring-primary/20"
-            style={{ minWidth: 200 }}
-          />
-        ) : (
-          <button
-            type="button"
-            onClick={() => setAddingMs(true)}
-            disabled={createMilestone.isPending}
-            title="Add a milestone to this project"
-            className="h-7 px-2.5 rounded-lg flex items-center gap-1 text-[11px] font-semibold border border-primary/40 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50 shrink-0"
-          >
-            <Plus size={13} />
-            Add Milestone
-          </button>
-        )}
+        {/* Add Milestone — manual add (auto milestones come from the charter).
+            Opens a popup with the milestone fields. A direct child of the
+            flex-wrap toolbar so it always stays visible. */}
+        <button
+          type="button"
+          onClick={() => setAddMsOpen(true)}
+          disabled={createMilestone.isPending}
+          title="Add a milestone to this project"
+          className="h-7 px-2.5 rounded-lg flex items-center gap-1 text-[11px] font-semibold border border-primary/40 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50 shrink-0"
+        >
+          <Plus size={13} />
+          Add Milestone
+        </button>
 
         {/* Task-Gantt legend — one hover explainer per bar colour (Gantt only) */}
         {view === "gantt" && (
@@ -2580,6 +2903,87 @@ export default function ProjectDetail() {
 
       </div>
 
+        {/* Expand all, prominent, just beside the toolbar. Table view only. */}
+        {view === "table" && (
+        <HoverHint label={allExpanded
+          ? "Collapse everything back to just the milestones."
+          : "Open every milestone to reveal all its tasks and subtasks at once. Click again to collapse back to milestones only."}>
+          <button
+            type="button"
+            onClick={toggleExpandAll}
+            aria-label={allExpanded ? "Collapse all milestones" : "Expand all milestones"}
+            className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border text-[12px] font-semibold shadow-sm transition-colors ${
+              allExpanded ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15" : "border-border bg-card text-foreground hover:bg-accent"
+            }`}
+          >
+            <ListTree size={14} />
+            {allExpanded ? "Collapse all" : "Expand all"}
+          </button>
+        </HoverHint>
+        )}
+      </div>
+
+        {/* Columns, right of the toolbar row. The schedule-date quartet (Start,
+            End, Actual Start, Actual End) and Comments start hidden, the current
+            set is the default. Table view only. */}
+        {view === "table" && (
+        <div className="relative shrink-0" ref={colsRef}>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setColsOpen((o) => !o); }}
+            title="Show / hide columns"
+            aria-label="Columns"
+            className="inline-flex items-center gap-1 h-7 px-2 rounded-lg border border-border bg-card/70 text-[11px] font-medium text-foreground hover:bg-accent transition-colors"
+          >
+            <SlidersHorizontal size={13} />
+            Columns
+            <span className="tabular-nums text-muted-foreground">({activeCols.length}/{ALL_TASK_COLS.length})</span>
+            <ChevronDown size={11} className={`opacity-70 transition-transform ${colsOpen ? "rotate-180" : ""}`} />
+          </button>
+          {colsOpen && (
+            <div className="absolute right-0 top-full mt-1.5 z-50 w-60 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
+              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Show / hide columns</div>
+              <div className="max-h-64 overflow-y-auto">
+                {ALL_TASK_COLS.filter((c) => c.key !== "__del__").map((c) => {
+                  const shown = !hiddenCols.has(c.key);
+                  return (
+                    <button
+                      key={c.key}
+                      type="button"
+                      onClick={() => toggleCol(c.key)}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-sm text-left hover:bg-accent/60 transition-colors"
+                    >
+                      <span className="truncate">{c.header || c.key}</span>
+                      <span className={`shrink-0 w-4 h-4 rounded border flex items-center justify-center ${shown ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}>
+                        {shown && <Check size={11} />}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="my-1 border-t border-border/60" />
+              <div className="flex items-center justify-between px-2 pb-1">
+                <button
+                  type="button"
+                  onClick={() => setHiddenCols(defaultHiddenTaskCols())}
+                  className="px-2 py-1 rounded text-[12px] font-medium text-primary hover:bg-primary/10 transition-colors"
+                >
+                  Default columns
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHiddenCols(new Set())}
+                  className="px-2 py-1 rounded text-[12px] font-medium text-primary hover:bg-primary/10 transition-colors"
+                >
+                  Show all
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+        )}
+      </div>
+
       {/* ── One Excel-style table per task status, Projects-view style ─────── */}
       {isLoading ? (
         <div className="space-y-3">
@@ -2594,6 +2998,7 @@ export default function ProjectDetail() {
           tasks={tasks as unknown as Array<{ name?: string; status: string; parentTaskId?: number | null; milestoneId?: number | null }>}
           milestones={(rawMilestones ?? []) as unknown as Array<{ id: number; name: string; dueDate?: string | null; startDate?: string | null; status: string; progressPct?: number | null; dueDateHistory?: string | null }>}
           isCip={isCip}
+          onMetaUpdated={() => { void qc.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) }); }}
         />
       ) : view === "kanban" ? (
         <KanbanView<TaskRow>
@@ -2656,7 +3061,7 @@ export default function ProjectDetail() {
         />
       ) : groups.length > 0 ? (
         view === "gantt" ? (
-          <TaskGanttView groups={ganttGroups} onOpen={(id) => setOpenTaskId(id)} onLink={linkTasks} showCritical={showCritical} setShowCritical={setShowCritical} criticalLoading={criticalLoading} />
+          <TaskGanttView groups={ganttGroups} onOpen={(id) => setOpenTaskId(id)} onLink={linkTasks} onUnlink={unlinkTasks} onUnlinkMilestone={requestUnlinkMilestone} onRescheduleTask={rescheduleTaskFromGantt} onRescheduleMilestone={rescheduleMilestoneFromGantt} goLive={(project as Record<string, unknown> | undefined)?.goLiveDate as string | null | undefined} showCritical={showCritical} setShowCritical={setShowCritical} criticalLoading={criticalLoading} />
         ) : (
         <div ref={tableWrapRef} onMouseDown={onMarqueeDown} className={`space-y-3 ${marquee ? "select-none" : ""}`} data-tour="tour-project-milestones">
           {/* Bulk-select action bar — appears once any task is selected. */}
@@ -2675,101 +3080,94 @@ export default function ProjectDetail() {
             <div className="fixed z-50 border border-blue-400 bg-blue-400/10 pointer-events-none rounded-sm"
               style={{ left: marquee.x1, top: marquee.y1, width: marquee.x2 - marquee.x1, height: marquee.y2 - marquee.y1 }} />
           )}
-          {groups.map((group) => {
-            const open = !collapsed[group.key];
-            const groupMs = group.key === "__none__" ? null : milestoneById.get(Number(group.key));
-            const groupMsProgress = group.rows.length
-              ? Math.round(group.rows.reduce((s, t) => s + (t.status === "completed" ? 100 : Number((t as Record<string, unknown>).progressPct ?? 0)), 0) / group.rows.length)
-              : 0;
-            return (
-              <div key={group.key}>
-                {/* Milestone header — chevron toggles the table; the milestone
-                    name opens its timeline history + justification log. */}
-                <div className="flex items-center gap-2 mb-2 px-0.5 group/header">
-                  <button
-                    type="button"
-                    onClick={() => toggleGroup(group.key)}
-                    title={open ? "Collapse" : "Expand"}
-                    className="shrink-0"
-                  >
-                    <ChevronDown size={15} className={`text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
-                  </button>
-                  <Milestone size={14} className="shrink-0" style={{ color: group.color }} />
-                  {group.key !== "__none__" ? (
-                    <button
-                      type="button"
-                      onClick={() => setHistoryMs({
-                        id: Number(group.key), name: group.label,
-                        startDate: groupMs?.startDate as string | null | undefined,
-                        dueDate: groupMs?.dueDate as string | null | undefined,
-                        justification: groupMs?.justification as string | null | undefined,
-                      })}
-                      title={`Timeline history & justifications for "${group.label}"`}
-                      className="flex items-center gap-2 flex-1 min-w-0 text-left"
-                    >
-                      <h3 className="text-sm font-semibold text-foreground hover:text-primary hover:underline underline-offset-2 truncate">{group.label}</h3>
-                      <span className="text-xs text-muted-foreground shrink-0">({group.rows.length} task{group.rows.length === 1 ? "" : "s"})</span>
-                    </button>
-                  ) : (
-                    <button type="button" onClick={() => toggleGroup(group.key)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
-                      <h3 className="text-sm font-semibold text-foreground truncate">{group.label}</h3>
-                      <span className="text-xs text-muted-foreground shrink-0">({group.rows.length} task{group.rows.length === 1 ? "" : "s"})</span>
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setAddFor({ milestoneId: group.key === "__none__" ? null : Number(group.key) })}
-                    title={`Add a task to ${group.label}`}
-                    className="inline-flex items-center gap-1 px-2 h-6 rounded-md text-[11px] font-medium text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors shrink-0"
-                  >
-                    <Plus size={13} /> Add task
-                  </button>
-                  {group.key !== "__none__" && (
-                    <button
-                      type="button"
-                      onClick={() => setDelMs({ id: Number(group.key), label: group.label })}
-                      title={`Delete the entire "${group.label}" milestone and all its tasks`}
-                      className="inline-flex items-center gap-1 px-2 h-6 rounded-md text-[11px] font-medium text-muted-foreground hover:text-red-600 hover:bg-red-50 transition-colors shrink-0"
-                    >
-                      <Trash2 size={13} /> Delete
-                    </button>
-                  )}
-                  <MilestoneDepAdder rows={group.rows} />
-                </div>
+          {/* One unified grouped table — milestones, tasks and subtasks are all
+              rows in the SAME table under ONE shared column grid, so every level
+              lines up on the same left margin (no nested/inset box for tasks). A
+              milestone is a collapsible gray header row; expanding it reveals its
+              tasks (and their indented subtasks) directly beneath, aligned to the
+              same columns. Milestone-irrelevant task columns (Priority, Subtasks,
+              Predecessors) render blank on the milestone row. */}
+          <ExcelGroupTable
+            cols={activeCols}
+            storageKey="ph:project-unified:tbl"
+            renderHeaderLabel={(c) => c.key === "code" ? (
+              <span className="inline-flex items-center gap-1">
+                Code
+                <HoverHint
+                  title="How task codes are formed"
+                  footer={<>“TSK-” + the task's zero-padded database ID (e.g. <b className="text-popover-foreground">TSK-0042</b>) — generated automatically and stable for the life of the task.</>}
+                >
+                  <span className="inline-flex cursor-help pointer-events-auto" aria-label="How task codes are formed">
+                    <Info size={10} className="opacity-60" />
+                  </span>
+                </HoverHint>
+              </span>
+            ) : c.key === "name" ? "Name" : c.header}
+          >
+            {(cols) => (
+              <tbody>
+                {groups.map((group) => {
+                  const open = !collapsed[group.key];
+                  const groupMs = group.key === "__none__" ? null : milestoneById.get(Number(group.key));
+                  // Mirrors the server's rollup (api-server/src/lib/rollup.ts):
+                  // with no tasks to average, a milestone reports its own status.
+                  const groupMsProgress = group.rows.length
+                    ? Math.round(group.rows.reduce((s, t) => s + (t.status === "completed" ? 100 : Number((t as Record<string, unknown>).progressPct ?? 0)), 0) / group.rows.length)
+                    : groupMs?.status === "completed" ? 100 : 0;
+                  // Derive the milestone's status from its tasks (the stored
+                  // status field isn't auto-maintained) for the status cell.
+                  const counts = countByStatus(group.rows);
+                  const msStatus = group.rows.length === 0
+                    ? String(groupMs?.status ?? "not_started")
+                    : counts.done === counts.total ? "completed"
+                    : counts.delayed > 0 ? "delayed"
+                    : (counts.in_progress > 0 || counts.done > 0) ? "in_progress"
+                    : "not_started";
+                  const st = getStatusMeta(msStatus);
+                  return (
+                    <Fragment key={group.key}>
+                      <MilestoneHeaderRow group={group} groupMs={groupMs} open={open} progress={groupMsProgress} st={st} counts={counts} cols={cols} />
+                      {/* Tasks + subtasks — rows in the SAME table/grid as the
+                          milestone header, so they share its columns and margin. */}
+                      {open && group.rows.map((t) => <TaskTr key={t.id} t={t} depth={0} cols={cols} />)}
+                      {open && (
+                        <tr>
+                          <td colSpan={cols.length} className="border border-gray-200 px-2 py-0.5" style={{ borderLeft: `3px solid ${group.color}` }}>
+                            <InlineAdd
+                              label="Add task"
+                              placeholder={`New task in ${group.label}…`}
+                              onAdd={(name) => createTask.mutate({
+                                id: projectId,
+                                data: {
+                                  name,
+                                  milestoneId: group.key === "__none__" ? undefined : Number(group.key),
+                                  status: "not_started", priority: "P2", rag: "green",
+                                },
+                              } as never)}
+                              onMore={() => setAddFor({ milestoneId: group.key === "__none__" ? null : Number(group.key) })}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            )}
+          </ExcelGroupTable>
 
-                {open && groupMs && (
-                  <MilestoneBand ms={groupMs} progress={groupMsProgress} taskCount={group.rows.length} storageKey={`ph:project-tasks:tbl:${group.key}`} />
-                )}
-
-                {open && (
-                  <ExcelGroupTable
-                    cols={activeCols}
-                    accent={group.color}
-                    storageKey={`ph:project-tasks:tbl:${group.key}`}
-                    renderHeaderLabel={(c) => c.key === "code" ? (
-                      <span className="inline-flex items-center gap-1">
-                        {c.header}
-                        <HoverHint
-                          title="How task codes are formed"
-                          footer={<>“TSK-” + the task's zero-padded database ID (e.g. <b className="text-popover-foreground">TSK-0042</b>) — generated automatically and stable for the life of the task.</>}
-                        >
-                          <span className="inline-flex cursor-help pointer-events-auto" aria-label="How task codes are formed">
-                            <Info size={10} className="opacity-60" />
-                          </span>
-                        </HoverHint>
-                      </span>
-                    ) : c.header}
-                  >
-                    {(cols) => (
-                      <tbody>
-                        {group.rows.map((t) => <TaskTr key={t.id} t={t} depth={0} cols={cols} />)}
-                      </tbody>
-                    )}
-                  </ExcelGroupTable>
-                )}
-              </div>
-            );
-          })}
+          {/* Add milestone — same accordion line, at the foot of the list.
+              Quick name-only add inline; "More options…" opens the full popup. */}
+          <InlineAdd
+            label="Add milestone"
+            placeholder="New milestone name…"
+            icon={<Milestone size={13} />}
+            onMore={() => setAddMsOpen(true)}
+            onAdd={(name) => createMilestone.mutate(
+              { id: projectId, data: { name } } as never,
+              { onError: () => toast({ title: "Couldn't add milestone", variant: "destructive" }) },
+            )}
+          />
         </div>
         )
       ) : (
@@ -2824,21 +3222,36 @@ export default function ProjectDetail() {
         />
       )}
 
-      {chatOpen && (
-        <ProjectCommentsModal
-          projectId={projectId}
-          projectCode={project ? projectCode(project as { id: number; jiraKey?: string | null }) : ""}
-          projectName={project?.name ?? "Project"}
-          senderId={currentUserId}
-          resolveName={(id) => usersById.get(id) ?? `User ${id}`}
-          people={users}
-          onClose={() => setChatOpen(false)}
-        />
-      )}
 
       {dateJustifyModal}
 
       <MilestoneHistoryModal open={!!historyMs} onClose={() => setHistoryMs(null)} projectId={projectId} milestone={historyMs} />
+
+      <AlertDialog open={!!unlinkMs} onOpenChange={(o) => { if (!o && !unlinkMsBusy) setUnlinkMs(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove milestone dependency?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the link <b>{unlinkMs?.predName}</b> to <b>{unlinkMs?.succName}</b>.
+              {unlinkMs && unlinkMs.crossing.length > 0 ? (
+                <> It will <b>also remove {unlinkMs.crossing.length} task dependenc{unlinkMs.crossing.length === 1 ? "y" : "ies"}</b> that cross these two milestones (tasks in {unlinkMs.succName} that depend on tasks in {unlinkMs.predName}). This cannot be undone.</>
+              ) : (
+                <> No task dependencies cross these two milestones, so only the milestone link is removed.</>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={unlinkMsBusy}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={unlinkMsBusy}
+              onClick={(e) => { e.preventDefault(); void runUnlinkMilestone(); }}
+            >
+              {unlinkMsBusy ? "Removing…" : (unlinkMs && unlinkMs.crossing.length > 0 ? `Remove link + ${unlinkMs.crossing.length} task dep${unlinkMs.crossing.length === 1 ? "" : "s"}` : "Remove link")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!delMs} onOpenChange={(o) => { if (!o && !delMsBusy) setDelMs(null); }}>
         <AlertDialogContent>
@@ -2926,97 +3339,27 @@ export default function ProjectDetail() {
         />
       )}
 
-      {/* Project Documents modal — the full document repository for this
-          project, reusing the same DocumentsTab as the Documents page. */}
-      <Dialog open={docsOpen} onOpenChange={(v) => { if (!v) { setDocsOpen(false); setDocsUploadOpen(false); } }}>
-        <DialogContent className="max-w-5xl w-[92vw] h-[88vh] flex flex-col p-0 gap-0 overflow-hidden">
-          <DialogHeader className="px-5 py-3 border-b border-border/60 flex-shrink-0">
-            <DialogTitle className="flex items-center gap-2 tracking-tight text-base pr-10">
-              <FolderOpen size={16} className="text-primary" />
-              <span className="truncate">Documents · {project?.name ?? "Project"}</span>
-              <button
-                type="button"
-                onClick={() => { setDocsSection("documents"); setDocsUploadOpen(true); }}
-                className="ml-auto mr-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
-              >
-                <Upload size={14} /> Upload Document
-              </button>
-            </DialogTitle>
-          </DialogHeader>
-          {/* Toggle between the two sections */}
-          <div className="flex items-center gap-1 px-5 pt-3 flex-shrink-0">
-            {([
-              { key: "template", label: "Project Template", icon: ListTree },
-              { key: "documents", label: "Project Documents", icon: FolderOpen },
-            ] as const).map((t) => {
-              const active = docsSection === t.key;
-              const Icon = t.icon;
-              return (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => setDocsSection(t.key)}
-                  className={`relative flex items-center gap-2 px-4 py-2 text-sm font-semibold transition-colors border-b-2 -mb-px ${active ? "text-primary border-primary" : "text-muted-foreground border-transparent hover:text-foreground"}`}
-                >
-                  <Icon size={14} className="flex-shrink-0" /> {t.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="h-px bg-border/60 flex-shrink-0" />
-          <div className="flex-1 min-h-0 overflow-auto scrollbar-thin p-5 space-y-4">
-            {docsSection === "template" ? (
-              /* Project Template — the standard CIP milestone/task skeleton (download). */
-              <div className="rounded-xl border border-border/70 bg-card/60 p-4 flex items-center gap-4">
-                <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-amber-accent/10 border border-amber-accent/30 shrink-0">
-                  <FileDown size={20} className="text-amber-accent" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-foreground">CIP Project Plan Template</p>
-                </div>
-                <a href="/CIP_Project_Template.xlsx" download className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold text-primary-foreground bg-primary hover:bg-primary/90 transition-colors shrink-0">
-                  <FileDown size={13} /> Download
-                </a>
-              </div>
-            ) : (
-              /* Project Documents — uploaded documents + all attachments,
-                 segregated into milestone / task accordions. */
-              <>
-                <DocumentsTab
-                  projectId={projectId}
-                  uploadOpen={docsUploadOpen}
-                  onUploadOpenChange={setDocsUploadOpen}
-                  showUploadButton={false}
-                  showSearch={false}
-                />
-                <div className="border-t border-border/60 pt-4">
-                  <p className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                    <Paperclip size={12} className="text-primary" /> Attachments by milestone &amp; task
-                  </p>
-                  <AttachmentsTree
-                    projectId={projectId}
-                    tasks={tasks}
-                    milestones={(rawMilestones ?? []) as Array<{ id: number; name: string }>}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <MilestoneCreateModal
+        open={addMsOpen}
+        onOpenChange={setAddMsOpen}
+        onSubmit={submitMilestone}
+        users={users}
+        projectOwnerName={projectOwnerId != null ? (usersById.get(projectOwnerId) ?? null) : null}
+      />
 
-      {/* Issues — raise + manage this project's issues */}
+      {/* Issues — this project's register, with every other project's issues one
+          click away in the panel's sidebar. Near-full-screen: the list, the
+          filters and the raise form all want the room. */}
       <Dialog open={issuesPanelOpen} onOpenChange={(v) => { if (!v) setIssuesPanelOpen(false); }}>
-        <DialogContent className="max-w-3xl w-[72vw] max-h-[80vh] flex flex-col p-0 gap-0 overflow-hidden">
-          <DialogHeader className="px-4 py-1.5 border-b border-border/60 flex-shrink-0">
+        <DialogContent className="max-w-[1600px] w-[96vw] h-[92vh] flex flex-col p-0 gap-0 overflow-hidden">
+          <DialogHeader className="px-4 py-2 border-b border-border/60 flex-shrink-0">
             <DialogTitle className="flex items-center gap-2 tracking-tight text-sm pr-10">
-              <AlertTriangle size={12} className="text-primary" />
+              <AlertTriangle size={13} className="text-primary" />
               <span className="truncate">Issues · {project?.name ?? "Project"}</span>
             </DialogTitle>
           </DialogHeader>
-          <div className="flex-1 min-h-0 overflow-auto scrollbar-thin p-2.5 space-y-1.5">
-            <RaiseIssueForm projectId={projectId} />
-            <IssuesTab projectId={projectId} />
+          <div className="flex-1 min-h-0">
+            <IssuesPanel projectId={projectId} />
           </div>
         </DialogContent>
       </Dialog>

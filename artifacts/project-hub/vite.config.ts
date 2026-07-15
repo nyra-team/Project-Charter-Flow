@@ -18,9 +18,6 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-// My Team Actions (org chart + action-item progress) is served by the CXO
-// backend, not PMO's :3008. Override with CXO_TARGET if its port changes.
-const CXO_TARGET = process.env.CXO_TARGET ?? "http://localhost:5190";
 
 const basePath = process.env.BASE_PATH;
 
@@ -62,10 +59,10 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: true,
     proxy: {
-      // These prefixes go to the CXO backend; must precede the /api catch-all.
-      "/api/org": { target: CXO_TARGET, changeOrigin: true },
-      "/api/action-items": { target: CXO_TARGET, changeOrigin: true },
-      "/api/kpi-approvers": { target: CXO_TARGET, changeOrigin: true },
+      // Everything — including /api/org — is served by PMO's own api-server. It
+      // used to proxy /api/org, /api/action-items and /api/kpi-approvers to the
+      // CXO backend, which broke the moment that separate server was down (and
+      // never worked in prod, where nginx sends all of /api/ to :3008).
       "/api": process.env.API_TARGET ?? "http://localhost:3008",
     },
     fs: {
@@ -78,9 +75,6 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: true,
     proxy: {
-      "/api/org": { target: CXO_TARGET, changeOrigin: true },
-      "/api/action-items": { target: CXO_TARGET, changeOrigin: true },
-      "/api/kpi-approvers": { target: CXO_TARGET, changeOrigin: true },
       "/api": process.env.API_TARGET ?? "http://localhost:3008",
     },
   },

@@ -1,18 +1,28 @@
 import { Router, type IRouter } from "express";
-import { db, attachmentsTable } from "@workspace/db";
-import { eq, desc, isNull, sql } from "drizzle-orm";
+import { db, attachmentsTable, documentsTable } from "@workspace/db";
+import { and, eq, desc, isNull, isNotNull, sql } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-// GET /api/attachments/counts — project-level attachment count per project
-// (task_id IS NULL). One query powers the paperclip badge on the projects table.
+// GET /api/attachments/counts — per-project file count for the projects-table
+// paperclip badge: project-general attachments (task_id AND milestone_id both
+// NULL — milestone-general files carry their own badge on the milestone
+// header) + uploaded repository documents that have a file, since the
+// project-level popover lists both.
 router.get("/attachments/counts", async (_req, res): Promise<void> => {
-  const rows = await db
+  const attRows = await db
     .select({ projectId: attachmentsTable.projectId, count: sql<number>`count(*)::int` })
     .from(attachmentsTable)
-    .where(isNull(attachmentsTable.taskId))
+    .where(and(isNull(attachmentsTable.taskId), isNull(attachmentsTable.milestoneId)))
     .groupBy(attachmentsTable.projectId);
-  res.json(rows);
+  const docRows = await db
+    .select({ projectId: documentsTable.projectId, count: sql<number>`count(*)::int` })
+    .from(documentsTable)
+    .where(isNotNull(documentsTable.fileUrl))
+    .groupBy(documentsTable.projectId);
+  const total = new Map<number, number>();
+  for (const r of [...attRows, ...docRows]) total.set(r.projectId, (total.get(r.projectId) ?? 0) + r.count);
+  res.json([...total.entries()].map(([projectId, count]) => ({ projectId, count })));
 });
 
 // GET /api/projects/:id/attachments — every attachment for a project (project,

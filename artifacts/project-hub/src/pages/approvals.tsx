@@ -7,15 +7,15 @@ import { LIFECYCLE_STAGES } from "../lib/lifecycle-config";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Link } from "wouter";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CheckSquare, CheckCircle2, XCircle, ChevronRight, Users,
-  Clock, FileText, MessageSquare, AlertCircle, Stamp, AlertOctagon,
+  Clock, FileText, MessageSquare, Stamp, AlertOctagon,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui-kit";
 import { api } from "@/lib/extra-api";
-import { CompletionApprovalBanner } from "@/components/CompletionApproval";
+import { useReasonPrompt } from "@/components/CompletionApproval";
 
 type CompletionApprovalItem = {
   id: number; name: string; projectId: number; projectName: string; parentTaskId: number | null;
@@ -71,15 +71,6 @@ const STAGE_LABELS: Record<string, string> = {
   pmo_review: "PMO Team Selection",
 };
 
-const ROLE_DESCRIPTIONS: Record<string, string> = {
-  hod: "Review and approve/reject charter from a department perspective.",
-  executive_director: "Executive review of strategic alignment.",
-  cfo: "Financial review and budget approval.",
-  scm: "Evaluate vendors and finalize negotiated price.",
-  chairman: "Final executive approval.",
-  finance: "Create SAP internal order number.",
-  pmo: "Select project team and launch execution.",
-};
 
 function DecisionPanel({
   approvalId, onDone,
@@ -223,39 +214,34 @@ function QuickDecideRow({ approval }: { approval: ApprovalLike & Record<string, 
   const charterTitle = (approval.charterTitle as string | undefined) || `Charter #${approval.charterId}`;
 
   return (
-    <div className="flex items-center gap-3 p-3 rounded-xl border border-border bg-card">
-      <div className="flex-1 min-w-0">
-        <Link href={`/charters/${approval.charterId}`}>
-          <p className="text-sm font-medium text-foreground hover:text-primary transition-colors truncate">
-            {charterTitle}
-          </p>
+    <tr className="hover:bg-muted/30">
+      <td className="px-3 py-2">
+        <Link href={`/charters/${approval.charterId}`} className="block min-w-0 truncate text-sm font-medium text-foreground hover:text-primary hover:underline" title={charterTitle}>
+          {charterTitle}
         </Link>
-        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-          <span className="text-[11px] text-muted-foreground">
-            {STAGE_LABELS[approval.stage ?? ""] ?? (approval.stage ?? "Review")}
-          </span>
-          <SlaBadge approval={approval} />
+      </td>
+      <td className="px-2 py-2 text-[12px] text-muted-foreground capitalize truncate">{roleLabel}</td>
+      <td className="px-2 py-2 text-[12px] text-muted-foreground truncate">{STAGE_LABELS[approval.stage ?? ""] ?? (approval.stage ?? "Review")}</td>
+      <td className="px-2 py-2"><SlaBadge approval={approval} /></td>
+      <td className="px-3 py-2">
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={() => decide("rejected")}
+            disabled={decideMutation.isPending}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/15 disabled:opacity-50"
+          >
+            <XCircle size={13} /> Reject
+          </button>
+          <button
+            onClick={() => decide("approved")}
+            disabled={decideMutation.isPending}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-white bg-success hover:bg-success/90 transition-colors disabled:opacity-50"
+          >
+            <CheckCircle2 size={13} /> Approve as {roleLabel.split(" ")[0]}
+          </button>
         </div>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <button
-          onClick={() => decide("rejected")}
-          disabled={decideMutation.isPending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors bg-destructive/10 text-destructive border border-destructive/30 hover:bg-destructive/15 disabled:opacity-50"
-        >
-          <XCircle size={13} />
-          Reject
-        </button>
-        <button
-          onClick={() => decide("approved")}
-          disabled={decideMutation.isPending}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-success hover:bg-success/90 transition-colors disabled:opacity-50"
-        >
-          <CheckCircle2 size={13} />
-          Approve as {roleLabel.split(" ")[0]}
-        </button>
-      </div>
-    </div>
+      </td>
+    </tr>
   );
 }
 
@@ -304,42 +290,39 @@ function StageAdvanceRow({
   };
 
   return (
-    <div className="p-3 rounded-xl border border-border bg-card">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex-1 min-w-0">
-          <Link href={`/projects/${projectId}`}>
-            <p className="text-sm font-medium text-foreground hover:text-primary transition-colors truncate">
-              {projectTitle}
-            </p>
-          </Link>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            Current stage: <span className="font-semibold text-foreground">{meta.label}</span>
-            {meta.advanceLabel ? <> — {meta.advanceLabel}</> : null}
-          </p>
+    <tr className="hover:bg-muted/30">
+      <td className="px-3 py-2">
+        <Link href={`/projects/${projectId}`} className="block min-w-0 truncate text-sm font-medium text-foreground hover:text-primary hover:underline" title={projectTitle}>
+          {projectTitle}
+        </Link>
+      </td>
+      <td className="px-2 py-2 text-[12px] text-muted-foreground truncate">
+        {meta.label}{meta.advanceLabel ? <span className="text-muted-foreground/70"> — {meta.advanceLabel}</span> : null}
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex items-center justify-end gap-2 flex-wrap">
+          {meta.advanceRoles.length === 0 ? (
+            <span className="text-[11px] text-muted-foreground italic">No approver roles configured</span>
+          ) : meta.advanceRoles.map(roleKey => {
+            const roleLabel = APPROVER_ROLE_LABELS[roleKey] ?? roleKey.replace(/_/g, " ");
+            const short = roleLabel.split(" ")[0];
+            const isPending = pendingRole === roleKey;
+            return (
+              <button
+                key={roleKey}
+                onClick={() => advance(roleKey)}
+                disabled={pendingRole !== null}
+                title={`Approve and advance as ${roleLabel}`}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold text-white bg-success hover:bg-success/90 transition-colors disabled:opacity-50"
+              >
+                <CheckCircle2 size={13} />
+                {isPending ? "Advancing..." : `Approve as ${short}`}
+              </button>
+            );
+          })}
         </div>
-      </div>
-      <div className="flex items-center gap-2 flex-wrap mt-2">
-        {meta.advanceRoles.length === 0 ? (
-          <span className="text-[11px] text-muted-foreground italic">No approver roles configured</span>
-        ) : meta.advanceRoles.map(roleKey => {
-          const roleLabel = APPROVER_ROLE_LABELS[roleKey] ?? roleKey.replace(/_/g, " ");
-          const short = roleLabel.split(" ")[0];
-          const isPending = pendingRole === roleKey;
-          return (
-            <button
-              key={roleKey}
-              onClick={() => advance(roleKey)}
-              disabled={pendingRole !== null}
-              title={`Approve and advance as ${roleLabel}`}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-success hover:bg-success/90 transition-colors disabled:opacity-50"
-            >
-              <CheckCircle2 size={13} />
-              {isPending ? "Advancing..." : `Approve as ${short}`}
-            </button>
-          );
-        })}
-      </div>
-    </div>
+      </td>
+    </tr>
   );
 }
 
@@ -348,25 +331,29 @@ function InitiatorStageAdvancePanel() {
   const active = (projects as Array<{ id: number; title: string; stage?: string | null; status?: string | null }>)
     .filter(p => p.status !== "closed" && p.stage);
   return (
-    <div className="glass-surface rounded-2xl p-4 ph-rise ph-rise-3">
-      <div className="flex items-center gap-2 mb-3">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary/10 border border-primary/20">
-          <FileText size={14} className="text-primary" />
-        </div>
-        <div>
-          <h3 className="text-sm font-bold text-foreground">Stage Approvals (All Projects)</h3>
-          <p className="text-[11px] text-muted-foreground">
-            One row per active project. Click any approver button to approve as that role and push the project to the next stage. Bypasses checklist / document gates — testing only.
-          </p>
-        </div>
-      </div>
+    <div>
+      <h3 className="text-sm font-bold text-foreground mb-2 flex items-center gap-2">
+        <FileText size={15} className="text-primary" /> Stage Approvals
+        <span className="text-xs font-normal text-muted-foreground">({active.length})</span>
+      </h3>
       {active.length === 0 ? (
         <p className="text-xs text-muted-foreground italic px-1 py-2">No active projects.</p>
       ) : (
-        <div className="space-y-2">
-          {active.map(p => (
-            <StageAdvanceRow key={p.id} projectId={p.id} projectTitle={p.title} stageKey={p.stage!} />
-          ))}
+        <div className="rounded-xl border border-border overflow-hidden bg-card">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-muted/50 text-muted-foreground text-[11px] uppercase tracking-wide border-b border-border">
+                <th className="text-left font-semibold px-3 py-2">Project</th>
+                <th className="text-left font-semibold px-2 py-2 w-56">Current stage</th>
+                <th className="text-right font-semibold px-3 py-2">Approve &amp; advance</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/60">
+              {active.map(p => (
+                <StageAdvanceRow key={p.id} projectId={p.id} projectTitle={p.title} stageKey={p.stage!} />
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -374,46 +361,30 @@ function InitiatorStageAdvancePanel() {
 }
 
 function InitiatorApproverGroups({ approvals }: { approvals: ApprovalLike[] }) {
-  // Group by approverRole
-  const groups = new Map<string, ApprovalLike[]>();
-  for (const a of approvals) {
-    const key = a.approverRole ?? "unassigned";
-    const list = groups.get(key) ?? [];
-    list.push(a);
-    groups.set(key, list);
-  }
+  // One flat table, ordered by the approver chain (HOD → … → PMO). Each row
+  // carries its own approver column, so no per-role boxes are needed.
   const orderedRoles = ["hod", "executive_director", "cfo", "scm", "chairman", "finance", "pmo"];
-  const sortedKeys = [
-    ...orderedRoles.filter(r => groups.has(r)),
-    ...Array.from(groups.keys()).filter(k => !orderedRoles.includes(k)),
-  ];
+  const rank = (r: string) => { const i = orderedRoles.indexOf(r); return i === -1 ? orderedRoles.length : i; };
+  const sorted = [...approvals].sort((x, y) => rank(x.approverRole ?? "unassigned") - rank(y.approverRole ?? "unassigned"));
 
   return (
-    <div className="space-y-5 stagger-children">
-      {sortedKeys.map(roleKey => {
-        const items = groups.get(roleKey)!;
-        const label = APPROVER_ROLE_LABELS[roleKey] ?? roleKey.replace(/_/g, " ");
-        return (
-          <div key={roleKey} className="glass-surface rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-primary/10 border border-primary/20">
-                  <FileText size={14} className="text-primary" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-foreground capitalize">{label}</h3>
-                  <p className="text-[11px] text-muted-foreground">{items.length} item{items.length === 1 ? "" : "s"} awaiting this approver</p>
-                </div>
-              </div>
-            </div>
-            <div className="space-y-2">
-              {items.map(a => (
-                <QuickDecideRow key={a.id} approval={a as ApprovalLike & Record<string, unknown>} />
-              ))}
-            </div>
-          </div>
-        );
-      })}
+    <div className="rounded-xl border border-border overflow-hidden bg-card">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-muted/50 text-muted-foreground text-[11px] uppercase tracking-wide border-b border-border">
+            <th className="text-left font-semibold px-3 py-2">Item</th>
+            <th className="text-left font-semibold px-2 py-2 w-36">Approver</th>
+            <th className="text-left font-semibold px-2 py-2 w-40">Stage</th>
+            <th className="text-left font-semibold px-2 py-2 w-48">SLA</th>
+            <th className="text-right font-semibold px-3 py-2 w-64">Decision</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/60">
+          {sorted.map(a => (
+            <QuickDecideRow key={a.id} approval={a as ApprovalLike & Record<string, unknown>} />
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -493,6 +464,84 @@ function TeamApprovals() {
   );
 }
 
+// Task/subtask completion sign-offs, as one connected table (matching the other
+// approval queues) instead of a card-with-banner per item.
+function CompletionApprovalsTable({ completions, currentUserId, onDone }: {
+  completions: CompletionApprovalItem[]; currentUserId: number | null; onDone: () => void;
+}) {
+  const { ask, node } = useReasonPrompt();
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  const decide = async (task: CompletionApprovalItem, decision: "accept" | "reject") => {
+    let reason: string | undefined;
+    if (decision === "reject") {
+      const r = await ask({ title: "Reason for rejecting completion", label: "Why is this not complete?", confirmText: "Reject", tone: "danger" });
+      if (r == null) return;
+      reason = r;
+    }
+    setBusyId(task.id);
+    try {
+      await api.post(`/api/tasks/${task.id}/complete-decision`, { decision, reason });
+      onDone();
+    } finally { setBusyId(null); }
+  };
+
+  return (
+    <div className="rounded-xl border border-border overflow-hidden bg-card">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-muted/50 text-muted-foreground text-[11px] uppercase tracking-wide border-b border-border">
+            <th className="text-left font-semibold px-3 py-2">Task</th>
+            <th className="text-left font-semibold px-2 py-2 w-40">Project</th>
+            <th className="text-left font-semibold px-2 py-2">Marked complete by</th>
+            <th className="text-right font-semibold px-3 py-2 w-44">Decision</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border/60">
+          {completions.map((t) => {
+            const isApprover = currentUserId != null && currentUserId === t.completionApproverId;
+            const who = t.completionRequestedByName ?? "Someone";
+            const busy = busyId === t.id;
+            return (
+              <tr key={t.id} className="hover:bg-muted/30">
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded shrink-0 bg-slate-100 text-slate-600">{t.parentTaskId != null ? "subtask" : "task"}</span>
+                    <span className="min-w-0 truncate font-medium text-foreground" title={t.name}>{t.name}</span>
+                  </div>
+                </td>
+                <td className="px-2 py-2">
+                  <Link href={`/projects/${t.projectId}?task=${t.id}`} className="text-[12px] text-primary hover:underline truncate block">{t.projectName}</Link>
+                </td>
+                <td className="px-2 py-2 text-[12px] text-muted-foreground truncate" title={t.completionReason ?? undefined}>
+                  <span className="font-medium text-foreground">{who}</span>{t.completionReason ? ` — “${t.completionReason}”` : ""}
+                </td>
+                <td className="px-3 py-2">
+                  {isApprover ? (
+                    <div className="flex items-center justify-end gap-2">
+                      <button type="button" disabled={busy} onClick={() => decide(t, "accept")}
+                        className="inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 py-1 rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-50">
+                        <CheckCircle2 size={13} /> Accept
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => decide(t, "reject")}
+                        className="inline-flex items-center gap-1 text-[12px] font-semibold px-2.5 py-1 rounded-md border border-rose-300 text-rose-700 hover:bg-rose-50 disabled:opacity-50">
+                        <XCircle size={13} /> Reject
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="block text-right text-[11px] text-muted-foreground italic">Awaiting approver</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {node}
+    </div>
+  );
+}
+
 export default function ApprovalsList() {
   const { role, userId } = useUserStore();
   const qc = useQueryClient();
@@ -534,10 +583,8 @@ export default function ApprovalsList() {
     : 0;
   const totalPending = filteredApprovals.length + stageRowCount + myCompletions.length;
 
-  const roleDesc = ROLE_DESCRIPTIONS[role];
-
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <PageHeader
         title="Approvals"
         subtitle={isInitiator
@@ -552,42 +599,13 @@ export default function ApprovalsList() {
         }
       />
 
-      {/* Role context info */}
-      {isInitiator ? (
-        <div className="flex items-start gap-3 p-4 rounded-xl bg-primary/5 border border-primary/30 ph-rise ph-rise-2">
-          <AlertCircle size={16} className="text-primary flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-foreground/90">
-            Two sections below: <span className="font-semibold">Stage Approvals</span> lets you push any active project to its next stage as any allowed approver (covers every lifecycle stage). <span className="font-semibold">Charter Approvals</span> shows individual sign-offs on the parallel-review / SCM / Chairman / Finance / PMO chain.
-          </p>
-        </div>
-      ) : roleDesc ? (
-        <div className="flex items-start gap-3 p-4 rounded-xl bg-warn/10 border border-warn/30 ph-rise ph-rise-2">
-          <AlertCircle size={16} className="text-warn flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-foreground/90">{roleDesc}</p>
-        </div>
-      ) : null}
-
       {/* Task/subtask completions awaiting my sign-off */}
       {myCompletions.length > 0 && (
         <div>
-          <h3 className="text-sm font-bold text-foreground mb-3 mt-2 flex items-center gap-2">
+          <h3 className="text-sm font-bold text-foreground mb-2 mt-2 flex items-center gap-2">
             <CheckSquare size={15} className="text-primary" /> Task Completions ({myCompletions.length})
           </h3>
-          <div className="space-y-3">
-            {myCompletions.map((t) => (
-              <div key={t.id} className="rounded-xl border border-card-border bg-card p-3">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
-                  <span className="text-sm font-semibold text-foreground truncate">
-                    {t.parentTaskId != null ? "Subtask" : "Task"}: {t.name}
-                  </span>
-                  <Link href={`/projects/${t.projectId}?task=${t.id}`}>
-                    <a className="text-[11px] text-primary hover:underline shrink-0">{t.projectName} →</a>
-                  </Link>
-                </div>
-                <CompletionApprovalBanner task={t} currentUserId={userId} onDone={refreshCompletions} />
-              </div>
-            ))}
-          </div>
+          <CompletionApprovalsTable completions={myCompletions} currentUserId={userId} onDone={refreshCompletions} />
         </div>
       )}
 
@@ -641,78 +659,83 @@ export default function ApprovalsList() {
             <InitiatorApproverGroups approvals={filteredApprovals} />
           </div>
         ) : (() => {
-          // Visual workflow: Escalated (SLA-breached) lane first, then Pending.
-          const escalated = filteredApprovals.filter(a => isEscalated(a as { dueAt?: string | null; breachedAt?: string | null }));
-          const pending = filteredApprovals.filter(a => !isEscalated(a as { dueAt?: string | null; breachedAt?: string | null }));
-          const renderCard = (approval: typeof filteredApprovals[number], lane: "pending" | "escalated") => {
-            const isOpen = expanded === approval.id;
-            const a = approval as unknown as Record<string, unknown>;
-            const roleKey = approval.approverRole ?? "";
-            const roleLbl = APPROVER_ROLE_LABELS[roleKey] ?? roleKey.replace(/_/g, " ");
-            const dp = daysPending((approval as { createdAt?: string }).createdAt);
-            const accent = lane === "escalated" ? "bg-destructive/10 border-destructive/30" : "bg-warn/10 border-warn/30";
-            const accentText = lane === "escalated" ? "text-destructive" : "text-warn";
-            return (
-              <div
-                key={approval.id}
-                className={`glass-surface lift-card rounded-2xl p-4 transition-all ${isOpen ? "ring-1 ring-primary/30 shadow-lg" : ""}`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 border ${accent}`}>
-                    {lane === "escalated" ? <AlertOctagon size={18} className={accentText} /> : <FileText size={18} className={accentText} />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <Link href={`/charters/${approval.charterId}`}>
-                          <h3 className="font-semibold text-foreground hover:text-primary transition-colors truncate">
-                            {(a.charterTitle as string) || `Charter #${approval.charterId}`}
-                          </h3>
-                        </Link>
-                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                          {roleLbl && <span className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{roleLbl}</span>}
-                          <span className="text-xs text-muted-foreground/80 flex items-center gap-1">
-                            <CheckSquare size={11} />
-                            {STAGE_LABELS[approval.stage ?? ""] ?? (approval.stage ?? "Review")}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">· {dp}d pending</span>
-                          <SlaBadge approval={approval as unknown as { slaHours?: number; dueAt?: string | null; breachedAt?: string | null; createdAt?: string }} />
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setExpanded(isOpen ? null : approval.id)}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground flex-shrink-0"
-                      >
-                        <MessageSquare size={12} />
-                        Review
-                        <ChevronRight size={12} className={`transition-transform ${isOpen ? "rotate-90" : ""}`} />
-                      </button>
-                    </div>
-                    {isOpen && <DecisionPanel approvalId={approval.id} onDone={() => setExpanded(null)} />}
-                  </div>
-                </div>
-              </div>
-            );
-          };
+          // One compact table, SLA-breached (escalated) rows first, then pending.
+          // Clicking a row's Review expands the DecisionPanel inline beneath it.
+          const escalatedFirst = [...filteredApprovals].sort((x, y) => {
+            const ex = isEscalated(x as { dueAt?: string | null; breachedAt?: string | null }) ? 0 : 1;
+            const ey = isEscalated(y as { dueAt?: string | null; breachedAt?: string | null }) ? 0 : 1;
+            return ex - ey;
+          });
+          const escalatedCount = filteredApprovals.filter(a => isEscalated(a as { dueAt?: string | null; breachedAt?: string | null })).length;
           return (
-            <div className="space-y-6">
-              {escalated.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 mb-3">
-                    <AlertOctagon size={15} className="text-destructive" />
-                    <h3 className="text-sm font-bold text-destructive">Escalated · SLA breached</h3>
-                    <span className="text-xs font-semibold text-muted-foreground">{escalated.length}</span>
-                  </div>
-                  <div className="space-y-3 stagger-children">{escalated.map(a => renderCard(a, "escalated"))}</div>
-                </div>
-              )}
-              <div>
-                <div className="flex items-center gap-2 mb-3">
-                  <Clock size={15} className="text-warn" />
-                  <h3 className="text-sm font-bold text-foreground">Pending review</h3>
-                  <span className="text-xs font-semibold text-muted-foreground">{pending.length}</span>
-                </div>
-                <div className="space-y-3 stagger-children">{pending.map(a => renderCard(a, "pending"))}</div>
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Clock size={15} className="text-warn" />
+                <h3 className="text-sm font-bold text-foreground">Pending review</h3>
+                <span className="text-xs font-semibold text-muted-foreground">{filteredApprovals.length}</span>
+                {escalatedCount > 0 && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-destructive">
+                    <AlertOctagon size={12} /> {escalatedCount} escalated
+                  </span>
+                )}
+              </div>
+              <div className="rounded-xl border border-border overflow-hidden bg-card">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/50 text-muted-foreground text-[11px] uppercase tracking-wide border-b border-border">
+                      <th className="text-left font-semibold px-3 py-2">Item</th>
+                      <th className="text-left font-semibold px-2 py-2 w-32">Approver</th>
+                      <th className="text-left font-semibold px-2 py-2 w-40">Stage</th>
+                      <th className="text-center font-semibold px-2 py-2 w-20">Pending</th>
+                      <th className="text-left font-semibold px-2 py-2 w-48">SLA</th>
+                      <th className="text-right font-semibold px-3 py-2 w-24">Review</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {escalatedFirst.map(approval => {
+                      const isOpen = expanded === approval.id;
+                      const a = approval as unknown as Record<string, unknown>;
+                      const roleKey = approval.approverRole ?? "";
+                      const roleLbl = APPROVER_ROLE_LABELS[roleKey] ?? roleKey.replace(/_/g, " ");
+                      const dp = daysPending((approval as { createdAt?: string }).createdAt);
+                      const escalated = isEscalated(approval as { dueAt?: string | null; breachedAt?: string | null });
+                      return (
+                        <Fragment key={approval.id}>
+                          <tr className={`hover:bg-muted/30 cursor-pointer ${escalated ? "bg-destructive/5" : ""}`} onClick={() => setExpanded(isOpen ? null : approval.id)}>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                {escalated ? <AlertOctagon size={14} className="text-destructive shrink-0" /> : <FileText size={14} className="text-muted-foreground shrink-0" />}
+                                <Link href={`/charters/${approval.charterId}`} onClick={(e) => e.stopPropagation()} className="min-w-0 truncate font-medium text-foreground hover:text-primary hover:underline" title={(a.charterTitle as string) || `Charter #${approval.charterId}`}>
+                                  {(a.charterTitle as string) || `Charter #${approval.charterId}`}
+                                </Link>
+                              </div>
+                            </td>
+                            <td className="px-2 py-2 text-[12px] text-muted-foreground capitalize truncate">{roleLbl || "—"}</td>
+                            <td className="px-2 py-2 text-[12px] text-muted-foreground truncate">{STAGE_LABELS[approval.stage ?? ""] ?? (approval.stage ?? "Review")}</td>
+                            <td className="px-2 py-2 text-center text-[12px] tabular-nums text-muted-foreground">{dp}d</td>
+                            <td className="px-2 py-2"><SlaBadge approval={approval as unknown as { slaHours?: number; dueAt?: string | null; breachedAt?: string | null; createdAt?: string }} /></td>
+                            <td className="px-3 py-2 text-right">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setExpanded(isOpen ? null : approval.id); }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"
+                              >
+                                <MessageSquare size={12} /> Review
+                                <ChevronRight size={12} className={`transition-transform ${isOpen ? "rotate-90" : ""}`} />
+                              </button>
+                            </td>
+                          </tr>
+                          {isOpen && (
+                            <tr className="bg-muted/20">
+                              <td colSpan={6} className="px-3 pb-3 pt-0">
+                                <DecisionPanel approvalId={approval.id} onDone={() => setExpanded(null)} />
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             </div>
           );

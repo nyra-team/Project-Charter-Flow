@@ -6,7 +6,9 @@ import {
   useListUsers,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { Users, Building2, Plus, Trash2, Download, UserCheck, Check, X, ChevronDown, Info } from "lucide-react";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Command, CommandInput, CommandList, CommandEmpty, CommandItem } from "@/components/ui/command";
+import { Users, Building2, Plus, Trash2, Download, UserCheck, Check, X, ChevronDown, ChevronsUpDown, Info } from "lucide-react";
 
 // ── Domain types (mirror the generated API shapes; kept local so the table code
 //    reads cleanly, same convention as resource-tab.tsx / raci-tab.tsx). ───────
@@ -25,6 +27,60 @@ type Member = {
 };
 type RaciCell = { id: number; projectId: number; memberId: number; deliverable: string; raciType: string };
 type User = { id: number; name: string; role?: string; department?: string; photoUrl?: string | null };
+
+/**
+ * Searchable employee picker for the internal-member draft row — type a name and
+ * the list filters (cmdk does the client-side matching over the project's people
+ * on name / role / department). Replaces the plain <select> so the person is
+ * found by typing instead of scrolling. Portals to <body> so the table cell
+ * doesn't clip it. `value` / onChange carry the pmo_users id as a string.
+ */
+function MemberCombobox({ users, value, onChange, autoFocus }: {
+  users: User[];
+  value: string;
+  onChange: (id: string) => void;
+  autoFocus?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = value ? users.find((u) => String(u.id) === value) ?? null : null;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          autoFocus={autoFocus}
+          className="w-full flex items-center justify-between gap-1 rounded border border-border bg-card px-2 py-0.5 text-left text-xs hover:bg-accent/40 transition-colors"
+        >
+          <span className={selected ? "truncate" : "text-muted-foreground"}>{selected ? selected.name : "Search employee…"}</span>
+          <ChevronsUpDown size={12} className="shrink-0 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[--radix-popover-trigger-width] min-w-[220px] p-0">
+        <Command>
+          <CommandInput placeholder="Type a name…" />
+          <CommandList>
+            <CommandEmpty>No employee found.</CommandEmpty>
+            {users.map((u) => (
+              <CommandItem
+                key={u.id}
+                value={`${u.name} ${u.role ?? ""} ${u.department ?? ""}`}
+                onSelect={() => { onChange(String(u.id)); setOpen(false); }}
+              >
+                <Check size={12} className={`mr-2 shrink-0 ${value === String(u.id) ? "opacity-100" : "opacity-0"}`} />
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-xs">{u.name}</span>
+                  {(u.role || u.department) && (
+                    <span className="truncate text-[10px] text-muted-foreground">{[u.role, u.department].filter(Boolean).join(" · ")}</span>
+                  )}
+                </span>
+              </CommandItem>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 const EXTERNAL_KINDS = ["vendor", "partner", "consultant", "contractor"] as const;
 
@@ -610,15 +666,12 @@ function MemberSection({
               <tr className="align-top">
                 <td className="px-2 py-0.5">
                   {type === "internal" ? (
-                    <select
+                    <MemberCombobox
+                      users={usersArr}
                       value={draft.userId}
-                      onChange={e => onDraftChange({ ...draft, userId: e.target.value })}
-                      className="w-full text-xs border border-border rounded px-2 py-0.5 bg-card"
+                      onChange={(id) => onDraftChange({ ...draft, userId: id })}
                       autoFocus
-                    >
-                      <option value="">Select employee…</option>
-                      {usersArr.map(u => <option key={u.id} value={u.id}>{u.name}{u.role ? ` (${u.role})` : ""}</option>)}
-                    </select>
+                    />
                   ) : (
                     <div className="grid grid-cols-3 gap-1 min-w-[230px]">
                       <input value={draft.externalName} onChange={e => onDraftChange({ ...draft, externalName: e.target.value })} placeholder="Name" autoFocus className="w-full min-w-0 text-xs border border-border rounded px-2 py-0.5 bg-card outline-none" />

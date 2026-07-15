@@ -35,7 +35,7 @@ async function upsertTask(
   projectId: number,
   rels: { milestoneId?: number | null; parentTaskId?: number | null },
 ): Promise<{ id: number; created: boolean }> {
-  const status = jiraStatusToPmo(it.statusCategory);
+  const status = jiraStatusToPmo(it.statusCategory, it.statusName);
   const priority = jiraPriorityToPmo(it.priority);
   const name = it.summary || it.key;
   const description = it.description ?? "";
@@ -86,7 +86,7 @@ async function main() {
   const milestoneIdByEpic = new Map<string, number>();
   let milestonesCreated = 0, milestonesUpdated = 0;
   for (const it of issues.filter(isEpic)) {
-    const status = jiraStatusToPmo(it.statusCategory);
+    const status = jiraStatusToPmo(it.statusCategory, it.statusName);
     const priority = jiraPriorityToPmo(it.priority);
     const name = it.summary || it.key;
     const description = it.description ?? "";

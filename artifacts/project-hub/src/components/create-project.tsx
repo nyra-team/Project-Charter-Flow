@@ -1,34 +1,112 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, X, Loader2, FolderPlus } from "lucide-react";
+import { api } from "@/lib/extra-api";
+import { Loader2, FolderPlus, Info, Type, User, Building2, Factory, FileText, Flag } from "lucide-react";
+import { EmployeeCombobox } from "@/components/employee-combobox";
+import { HoverHint } from "@/components/ui-kit/HoverHint";
 
-type Milestone = { name: string; tasks: string[] };
+type CharterLite = { id: number; title?: string; status?: string; projectId?: number | null };
+type PlantLite = { code: string; label: string };
+type MeLite = { plantCode?: string | null; name?: string | null; email?: string | null };
+
+const NO_CHARTER = "none";
+const NONE = "none";
 
 /**
- * "Create Project" — manually build a project by typing its name, milestones,
- * and each milestone's tasks. No file, no AI. Sits next to the import buttons.
- * POST /api/projects/manual.
+ * "Create Project" — a lightweight form: name the project, set its owner, pick
+ * its department and plant, and optionally link an existing (unlinked)
+ * Charter+NFA so the project Overview is fed from day one. Milestones, tasks,
+ * subtasks and dates are added inside the project afterwards. No file, no AI.
+ * Sits next to the import buttons. POST /api/projects/manual.
+ *
+ * The Owner defaults to the signed-in creator, and the Plant defaults to their
+ * own plant (both resolved from the master employee DB via /api/users/me — the
+ * owner's name/email, the plant's org-unit code). Both stay editable so the
+ * project can be handed to a colleague or filed against a different site.
  */
 export function CreateProjectButton({ onDone }: { onDone?: () => void }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState("");
-  const [milestones, setMilestones] = useState<Milestone[]>([{ name: "", tasks: [""] }]);
+  const [charterId, setCharterId] = useState<string>(NO_CHARTER);
+  const [department, setDepartment] = useState<string>(NONE);
+  const [plant, setPlant] = useState<string>(NONE);
+  // Once the user touches the Plant picker we stop auto-filling it, so the
+  // creator's own-plant default never clobbers a deliberate choice.
+  const [plantTouched, setPlantTouched] = useState(false);
+  // Owner defaults to the signed-in creator, but stays editable so they can
+  // hand the project to a colleague. `ownerTouched` freezes the default once
+  // the user picks someone, mirroring the Plant behaviour above.
+  const [ownerName, setOwnerName] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState<string | null>(null);
+  const [ownerTouched, setOwnerTouched] = useState(false);
+  const [goLiveDate, setGoLiveDate] = useState("");
+
+  const chartersQ = useQuery({
+    queryKey: ["/api/charters"],
+    queryFn: () => api.get<CharterLite[]>("/api/charters"),
+    enabled: open,
+  });
+  const freeCharters = (chartersQ.data ?? []).filter((c) => !c.projectId);
+
+  // Master-DB lookups for the Department / Plant dropdowns (same sources as
+  // the projects-page filters: employees.function and org_units).
+  const departmentsQ = useQuery({
+    queryKey: ["/api/departments"],
+    queryFn: () => api.get<string[]>("/api/departments"),
+    enabled: open,
+    staleTime: 10 * 60_000,
+  });
+  const plantsQ = useQuery({
+    queryKey: ["/api/plants"],
+    queryFn: () => api.get<PlantLite[]>("/api/plants"),
+    enabled: open,
+    staleTime: 10 * 60_000,
+  });
+  // The signed-in creator's identity — used to default the Plant picker to
+  // their own plant (org-unit code → matching plant label).
+  const meQ = useQuery({
+    queryKey: ["/api/users/me"],
+    queryFn: () => api.get<MeLite>("/api/users/me"),
+    enabled: open,
+    staleTime: 10 * 60_000,
+  });
+  const departments = departmentsQ.data ?? [];
+  const plants = plantsQ.data ?? [];
+
+  // Default the Plant to the creator's own plant once both the plant list and
+  // the identity have loaded — unless the user has already picked one.
+  useEffect(() => {
+    if (!open || plantTouched) return;
+    const code = meQ.data?.plantCode;
+    if (!code || !plants.length) return;
+    const mine = plants.find((p) => p.code === code);
+    if (mine) setPlant(mine.label);
+  }, [open, plantTouched, meQ.data?.plantCode, plants]);
+
+  // Default the Owner to the signed-in creator once their identity has loaded —
+  // unless they've already picked someone else.
+  useEffect(() => {
+    if (!open || ownerTouched) return;
+    const me = meQ.data;
+    if (me?.name && me?.email) { setOwnerName(me.name); setOwnerEmail(me.email); }
+  }, [open, ownerTouched, meQ.data?.name, meQ.data?.email]);
 
   function reset() {
     setName("");
-    setMilestones([{ name: "", tasks: [""] }]);
-  }
-
-  function patchMilestone(mi: number, next: Partial<Milestone>) {
-    setMilestones((ms) => ms.map((m, i) => (i === mi ? { ...m, ...next } : m)));
-  }
-  function patchTask(mi: number, ti: number, value: string) {
-    setMilestones((ms) => ms.map((m, i) =>
-      i === mi ? { ...m, tasks: m.tasks.map((t, j) => (j === ti ? value : t)) } : m));
+    setCharterId(NO_CHARTER);
+    setDepartment(NONE);
+    setPlant(NONE);
+    setPlantTouched(false);
+    setOwnerName("");
+    setOwnerEmail(null);
+    setOwnerTouched(false);
+    setGoLiveDate("");
   }
 
   async function run() {
@@ -37,18 +115,20 @@ export function CreateProjectButton({ onDone }: { onDone?: () => void }) {
     try {
       const payload = {
         name: name.trim(),
-        milestones: milestones
-          .filter((m) => m.name.trim())
-          .map((m) => ({ name: m.name.trim(), tasks: m.tasks.map((t) => t.trim()).filter(Boolean) })),
+        charterId: charterId !== NO_CHARTER ? Number(charterId) : null,
+        department: department !== NONE ? department : null,
+        plant: plant !== NONE ? plant : null,
+        goLiveDate: goLiveDate || null,
+        owner: ownerEmail ? { name: ownerName, email: ownerEmail } : null,
       };
       const res = await fetch("/api/projects/manual", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = (await res.json().catch(() => ({}))) as { milestones?: number; tasks?: number; error?: string };
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(data.error || "Could not create the project");
-      toast({ title: `Project created`, description: `${data.milestones ?? 0} milestone(s), ${data.tasks ?? 0} task(s).` });
+      toast({ title: "Project created", description: "Add milestones, tasks and owners inside the project." });
       setOpen(false);
       reset();
       onDone?.();
@@ -70,76 +150,144 @@ export function CreateProjectButton({ onDone }: { onDone?: () => void }) {
         <FolderPlus size={13} /> Create Project
       </button>
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
-        <DialogContent className="max-h-[85vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Create project</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
+        <DialogContent className="p-0 gap-0 overflow-hidden max-w-lg">
+          {/* Soft, light header. */}
+          <div className="border-b border-blue-100 bg-gradient-to-br from-blue-50 to-indigo-50 px-6 py-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-blue-500 ring-1 ring-blue-100 shadow-sm">
+                <FolderPlus size={22} />
+              </div>
+              <div className="min-w-0">
+                <DialogTitle className="text-lg font-bold text-slate-800">Create Project</DialogTitle>
+                <DialogDescription className="sr-only">Create a new project</DialogDescription>
+              </div>
+            </div>
+          </div>
+
+          {/* Body */}
+          <div className="max-h-[58vh] overflow-y-auto px-6 py-5 space-y-4">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">Project name</label>
+              <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-50 text-blue-500"><Type size={13} /></span>
+                Project name <span className="text-rose-400">*</span>
+              </label>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Site B Cold Storage Upgrade"
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
               />
             </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Milestones &amp; tasks</label>
-                <Button variant="ghost" size="sm" onClick={() => setMilestones((ms) => [...ms, { name: "", tasks: [""] }])}>
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Milestone
-                </Button>
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-50 text-blue-500"><User size={13} /></span>
+                Owner
+                <HoverHint label="Defaults to you — the project creator. Pick a colleague to hand the project to them instead.">
+                  <button type="button" aria-label="About the Owner field" className="text-muted-foreground hover:text-foreground">
+                    <Info size={13} />
+                  </button>
+                </HoverHint>
+              </label>
+              <EmployeeCombobox
+                value={ownerName || undefined}
+                placeholder="Select owner"
+                onSelect={(hit) => { setOwnerTouched(true); setOwnerName(hit.name); setOwnerEmail(hit.email); }}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-50 text-blue-500"><Building2 size={13} /></span>
+                  Department <span className="text-muted-foreground font-normal text-[11px]">(optional)</span>
+                </label>
+                <Select value={department} onValueChange={setDepartment}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select department" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    <SelectItem value={NONE}>None</SelectItem>
+                    {departments.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-50 text-blue-500"><Factory size={13} /></span>
+                  Plant <span className="text-muted-foreground font-normal text-[11px]">(optional)</span>
+                  <HoverHint label="Defaults to your plant — change it if this project belongs to another site.">
+                    <button type="button" aria-label="About the Plant field" className="text-muted-foreground hover:text-foreground">
+                      <Info size={13} />
+                    </button>
+                  </HoverHint>
+                </label>
+                <Select value={plant} onValueChange={(v) => { setPlantTouched(true); setPlant(v); }}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select plant" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    <SelectItem value={NONE}>None</SelectItem>
+                    {plants.map((p) => <SelectItem key={p.code} value={p.label}>{p.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
-              {milestones.map((m, mi) => (
-                <div key={mi} className="rounded-lg border border-border p-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={m.name}
-                      onChange={(e) => patchMilestone(mi, { name: e.target.value })}
-                      placeholder={`Milestone ${mi + 1} name`}
-                      className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium"
-                    />
-                    {milestones.length > 1 && (
-                      <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0"
-                        onClick={() => setMilestones((ms) => ms.filter((_, i) => i !== mi))}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-50 text-blue-500"><Flag size={13} /></span>
+                Go-live date <span className="text-muted-foreground font-normal text-[11px]">(optional)</span>
+                <HoverHint label="The date this project is meant to launch. Shown as a flag marker in the Gantt.">
+                  <button type="button" aria-label="About the Go-live date field" className="text-muted-foreground hover:text-foreground">
+                    <Info size={13} />
+                  </button>
+                </HoverHint>
+              </label>
+              <input
+                type="date"
+                value={goLiveDate}
+                onChange={(e) => setGoLiveDate(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring/40"
+              />
+            </div>
 
-                  <div className="space-y-1.5 pl-3">
-                    {m.tasks.map((t, ti) => (
-                      <div key={ti} className="flex items-center gap-2">
-                        <input
-                          value={t}
-                          onChange={(e) => patchTask(mi, ti, e.target.value)}
-                          placeholder={`Task ${ti + 1}`}
-                          className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm"
-                        />
-                        {m.tasks.length > 1 && (
-                          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"
-                            onClick={() => patchMilestone(mi, { tasks: m.tasks.filter((_, j) => j !== ti) })}>
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                    <Button variant="ghost" size="sm" className="text-muted-foreground"
-                      onClick={() => patchMilestone(mi, { tasks: [...m.tasks, ""] })}>
-                      <Plus className="h-3.5 w-3.5 mr-1" /> Task
-                    </Button>
-                  </div>
-                </div>
-              ))}
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-50 text-blue-500"><FileText size={13} /></span>
+                Charter + NFA <span className="text-muted-foreground font-normal text-[11px]">(optional)</span>
+              </label>
+              <Select value={charterId} onValueChange={setCharterId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Link an existing charter" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_CHARTER}>No charter — link later from the project</SelectItem>
+                  {freeCharters.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.title || `Charter #${c.id}`}{c.status ? ` · ${c.status}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="flex items-start gap-1.5 rounded-lg bg-slate-50 px-2.5 py-2 text-[11px] leading-relaxed text-slate-600 ring-1 ring-slate-100">
+                <Info size={13} className="mt-px shrink-0 text-blue-400" />
+                <span>Linking a charter fills the project Overview (business case, scope, budget &amp; ROI). Starting from an approved PIF? Use "Convert to project" on the PIF instead.</span>
+              </p>
             </div>
           </div>
-          <DialogFooter>
+
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 border-t border-border bg-slate-50/60 px-6 py-3">
             <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={run} disabled={!name.trim() || busy}>
-              {busy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null} Create
+            <Button
+              onClick={run}
+              disabled={!name.trim() || busy}
+              className="bg-blue-600 text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+            >
+              {busy ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FolderPlus className="h-4 w-4 mr-1.5" />} Create Project
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </>

@@ -1,9 +1,46 @@
 import { Router, type IRouter } from "express";
 import { db, messagesTable, usersTable } from "@workspace/db";
-import { eq, desc, inArray } from "drizzle-orm";
+import { eq, desc, inArray, isNull, sql } from "drizzle-orm";
 import { notifyDetached } from "../lib/notify";
 
 const router: IRouter = Router();
+
+// GET /api/messages/counts — per-project count of project-level comments
+// (task_id IS NULL, matching what the project comms drawer shows) for the
+// projects-table Comments column badge. One bulk call, mirrors
+// /api/attachments/counts. Registered before /messages/:id (different verb, so
+// no shadowing) — keep it a GET.
+router.get("/messages/counts", async (_req, res): Promise<void> => {
+  const rows = await db
+    .select({ projectId: messagesTable.projectId, count: sql<number>`count(*)::int` })
+    .from(messagesTable)
+    .where(isNull(messagesTable.taskId))
+    .groupBy(messagesTable.projectId);
+  res.json(rows.map((r) => ({ projectId: r.projectId, count: r.count })));
+});
+
+// GET /api/messages/latest?taskIds=1,2,3 — the single newest task-level comment
+// (update) per task, for the portfolio "this / next week" Gantt that shows each
+// task's latest update inline. Bulk (one call for many tasks); mirrors
+// /messages/counts. DISTINCT ON (task_id) ORDER BY created_at DESC = latest row.
+router.get("/messages/latest", async (req, res): Promise<void> => {
+  const raw = String(req.query.taskIds ?? "").trim();
+  const taskIds = raw ? raw.split(",").map((s) => parseInt(s, 10)).filter((n) => Number.isFinite(n)) : [];
+  if (taskIds.length === 0) { res.json([]); return; }
+  const rows = await db
+    .selectDistinctOn([messagesTable.taskId], {
+      taskId: messagesTable.taskId,
+      body: messagesTable.body,
+      senderId: messagesTable.senderId,
+      senderName: usersTable.name,
+      createdAt: messagesTable.createdAt,
+    })
+    .from(messagesTable)
+    .leftJoin(usersTable, eq(usersTable.id, messagesTable.senderId))
+    .where(inArray(messagesTable.taskId, taskIds))
+    .orderBy(messagesTable.taskId, desc(messagesTable.createdAt));
+  res.json(rows);
+});
 
 router.get("/projects/:id/messages", async (req, res): Promise<void> => {
   const projectId = parseInt(req.params.id);

@@ -28,6 +28,15 @@ export const projectsTable = pgTable("pmo_projects", {
   scoringTotal: numeric("scoring_total", { precision: 5, scale: 2 }),
   siteRegion: text("site_region").default(""),
   function: text("function").default(""),
+  // IT central-tracker fields (imported from the IT Central Project Tracker).
+  // domain = IT sub-area (Digital Applications, Infrastructure, Cybersecurity, …);
+  // itCode = the tracker project code (e.g. IE-DA-CBP); systemOwner / businessOwner
+  // are the raw owner names from the tracker (the linked account lives on
+  // projectOwnerId). Null for non-IT projects. domain drives the projects-list badge.
+  domain: text("domain"),
+  itCode: text("it_code"),
+  systemOwner: text("system_owner"),
+  businessOwner: text("business_owner"),
   projectManagerId: integer("project_manager_id"),
   // Project owner (pmo_users.id). Assignable from the projects table even when
   // the project has no linked charter; for charter-backed projects it's kept in
@@ -38,6 +47,13 @@ export const projectsTable = pgTable("pmo_projects", {
   teamsChannelEmail: text("teams_channel_email"),
   startDate: text("start_date"),
   endDate: text("end_date"),
+  // Target go-live date: the date the project is meant to launch. Distinct from
+  // endDate (delivery). Surfaced as a flag marker in the Gantt. YYYY-MM-DD.
+  goLiveDate: text("go_live_date"),
+  // When the project really started / finished, against the planned pair above.
+  // Same planned-vs-actual model pmo_tasks and pmo_milestones already carry.
+  actualStartDate: text("actual_start_date"),
+  actualEndDate: text("actual_end_date"),
   progress: integer("progress").notNull().default(0),
   // Jira sync mapping (nullable). jiraKey = linked Jira project key (e.g.
   // "MYG"); jiraSyncedAt = last import/export time. See routes/integrations/jira.ts.

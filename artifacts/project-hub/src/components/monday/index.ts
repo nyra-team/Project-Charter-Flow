@@ -6,4 +6,4 @@ export {
   PriorityCell, PriorityCellEditable,
   OwnerCell, DateCell, ProgressCell, DependencyCell, TextCell, NumberCell,
 } from "./cells";
-export type { BoardColumn, BoardGroup, BoardRowContext, MondayBoardProps } from "./types";
+export type { BoardColumn, BoardGroup, BoardGroupStat, BoardRowContext, MondayBoardProps } from "./types";

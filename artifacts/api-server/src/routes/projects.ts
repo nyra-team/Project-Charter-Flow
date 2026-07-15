@@ -39,6 +39,10 @@ import { notify } from "../lib/notify";
 import { resolveRole, type Recipient } from "../lib/role-resolver";
 import type { EmailBanner } from "../lib/mailer";
 
+// Investment categories a project can be filed under. Mirrors CLASS_KEYS in the
+// hub's projects board, which groups the list by this column.
+const PROJECT_CATEGORIES = ["CAPEX", "OPEX", "NPL", "NPD", "CIP", "IT"];
+
 // Fan a task-level event out to in-app bell + email + the project's Teams
 // channel. Recipients = assignee (when given) + the project manager
 // (role-resolved with charter fallback). Detached: called AFTER res.json so a
@@ -271,6 +275,8 @@ router.post("/projects", requireRole(...WRITE_ROLES), async (req, res): Promise<
     opexBudget: parsed.data.opexBudget != null ? String(parsed.data.opexBudget) : undefined,
     siteRegion: d.siteRegion as string | undefined,
     function: d.function as string | undefined,
+    // Target go-live date. Not in the generated zod body, so read off req.body.
+    goLiveDate: ((req.body as Record<string, unknown>)?.goLiveDate as string) || undefined,
   }).returning();
   if (parsed.data.charterId) {
     await db.update(chartersTable).set({ projectId: project.id, status: "active" }).where(eq(chartersTable.id, parsed.data.charterId));
@@ -329,9 +335,14 @@ router.delete("/projects/:id", requireRole(...WRITE_ROLES), async (req, res): Pr
 // schedule (gate milestones + delivery milestones + tasks).
 router.post("/projects/import", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   try {
-    const body = (req.body || {}) as { fileBase64?: string; fileName?: string };
+    const body = (req.body || {}) as { fileBase64?: string; fileName?: string; category?: string };
     const b64 = String(body.fileBase64 || "");
     const fileName = String(body.fileName || "upload");
+    // Investment category (CAPEX | OPEX | NPL | NPD | CIP | IT) applied to every
+    // project in the file, so an import lands under one heading on the board.
+    const category = PROJECT_CATEGORIES.includes(String(body.category || "").toUpperCase())
+      ? String(body.category).toUpperCase()
+      : null;
     if (!b64) { res.status(400).json({ error: "No file provided." }); return; }
     const buffer = Buffer.from(b64, "base64");
     if (!buffer.length) { res.status(400).json({ error: "Empty file." }); return; }
@@ -349,8 +360,10 @@ router.post("/projects/import", requireRole(...WRITE_ROLES), async (req, res): P
         startDate: p.startDate ?? undefined,
         endDate: p.endDate ?? undefined,
         stage: "initiation",
+        category,
       }).returning();
-      try { await generateGateMilestones(project.id); } catch { /* non-fatal */ }
+      try { await generateGateMilestones(project.id); }
+      catch (e) { console.error(`[projects import] gate milestones failed for "${project.name}":`, (e as Error)?.message); }
       let counts = { milestones: 0, tasks: 0 };
       try {
         // Faithful import — persist exactly the milestones/tasks/subtasks in the
@@ -358,7 +371,11 @@ router.post("/projects/import", requireRole(...WRITE_ROLES), async (req, res): P
         counts = await scheduleImportedProject(project.id, (p.milestones ?? []) as never, {
           name: project.name, description: p.description, startDate: p.startDate, endDate: p.endDate,
         });
-      } catch { /* non-fatal */ }
+      } catch (e) {
+        // Non-fatal: the project row exists, but say so rather than reporting a
+        // clean import that silently dropped every milestone.
+        console.error(`[projects import] milestones/tasks failed for "${project.name}":`, (e as Error)?.message);
+      }
       await logActivity("project_imported", `Project "${project.name}" imported from ${fileName}`, project.id, "project");
       created.push({ id: project.id, name: project.name, ...counts });
     }
@@ -371,22 +388,68 @@ router.post("/projects/import", requireRole(...WRITE_ROLES), async (req, res): P
   }
 });
 
-// Manually create a project from typed name + milestones + tasks (no LLM, no
-// file). Tasks are nested under their milestone. Sits next to import.
+// Manually create a project from typed name + milestones + tasks + subtasks
+// (no LLM, no file). Tasks nest under their milestone, subtasks under their
+// task. Optionally links an existing unlinked charter so the Overview is fed
+// from day one. Sits next to import.
 router.post("/projects/manual", requireRole(...WRITE_ROLES), async (req, res): Promise<void> => {
   const body = (req.body || {}) as {
     name?: string;
-    milestones?: { name?: string; dueDate?: string | null; tasks?: string[] }[];
+    charterId?: number | null;
+    department?: string | null;
+    plant?: string | null;
+    goLiveDate?: string | null;
+    owner?: { name?: string | null; email?: string | null } | null;
+    milestones?: {
+      name?: string; dueDate?: string | null;
+      tasks?: (string | { name?: string; subtasks?: string[] })[];
+    }[];
   };
   const name = String(body.name || "").trim();
   if (!name) { res.status(400).json({ error: "Project name is required." }); return; }
   const milestones = (body.milestones ?? []).filter((m) => (m?.name ?? "").trim());
 
-  const [project] = await db.insert(projectsTable).values({
-    name: name.slice(0, 300), description: "", stage: "initiation",
-  }).returning();
+  const charterId = body.charterId ? Number(body.charterId) : null;
+  if (charterId) {
+    const [charter] = await db.select({ id: chartersTable.id, projectId: chartersTable.projectId })
+      .from(chartersTable).where(eq(chartersTable.id, charterId));
+    if (!charter) { res.status(404).json({ error: "Charter not found." }); return; }
+    if (charter.projectId) { res.status(409).json({ error: "That charter is already linked to another project." }); return; }
+  }
 
-  let mCount = 0, tCount = 0;
+  // Resolve the Owner (the client defaults this to the signed-in creator) to a
+  // local pmo_users id, matched by email, so the project has an owner from the
+  // moment it's created. A first-time owner who isn't a PMO user yet gets a row
+  // auto-provisioned — same rule as the Projects page's inline owner picker.
+  let projectOwnerId: number | null = null;
+  const ownerEmail = String(body.owner?.email || "").trim().toLowerCase();
+  if (ownerEmail) {
+    const [existing] = await db.select({ id: usersTable.id }).from(usersTable)
+      .where(eq(usersTable.email, ownerEmail)).limit(1);
+    if (existing) projectOwnerId = existing.id;
+    else {
+      await db.insert(usersTable).values({
+        name: String(body.owner?.name || ownerEmail.split("@")[0] || "User").slice(0, 200),
+        email: ownerEmail, role: "team_member", department: "General",
+      }).onConflictDoNothing({ target: usersTable.email });
+      const [row] = await db.select({ id: usersTable.id }).from(usersTable)
+        .where(eq(usersTable.email, ownerEmail)).limit(1);
+      projectOwnerId = row?.id ?? null;
+    }
+  }
+
+  const [project] = await db.insert(projectsTable).values({
+    name: name.slice(0, 300), description: "", stage: "initiation", charterId,
+    function: String(body.department || "").trim().slice(0, 120),
+    siteRegion: String(body.plant || "").trim().slice(0, 120),
+    goLiveDate: (String(body.goLiveDate || "").trim()) || undefined,
+    projectOwnerId,
+  }).returning();
+  if (charterId) {
+    await db.update(chartersTable).set({ projectId: project.id, status: "active" }).where(eq(chartersTable.id, charterId));
+  }
+
+  let mCount = 0, tCount = 0, stCount = 0;
   for (let i = 0; i < milestones.length; i++) {
     const m = milestones[i];
     const [milestone] = await db.insert(milestonesTable).values({
@@ -394,19 +457,32 @@ router.post("/projects/manual", requireRole(...WRITE_ROLES), async (req, res): P
       dueDate: m.dueDate || null, status: "not_started", order: i,
     }).returning({ id: milestonesTable.id });
     mCount++;
-    const tasks = (m.tasks ?? []).map((t) => String(t || "").trim()).filter(Boolean);
+    // Back-compat: each task may be a plain string or { name, subtasks }.
+    const tasks = (m.tasks ?? [])
+      .map((t) => typeof t === "string" ? { name: t.trim(), subtasks: [] as string[] } : {
+        name: String(t?.name || "").trim(),
+        subtasks: (t?.subtasks ?? []).map((s) => String(s || "").trim()).filter(Boolean),
+      })
+      .filter((t) => t.name);
     for (let j = 0; j < tasks.length; j++) {
-      await db.insert(tasksTable).values({
-        projectId: project.id, milestoneId: milestone.id, name: tasks[j].slice(0, 300),
+      const [task] = await db.insert(tasksTable).values({
+        projectId: project.id, milestoneId: milestone.id, name: tasks[j].name.slice(0, 300),
         status: "not_started", order: j,
-      });
+      }).returning({ id: tasksTable.id });
       tCount++;
+      for (let k = 0; k < tasks[j].subtasks.length; k++) {
+        await db.insert(tasksTable).values({
+          projectId: project.id, milestoneId: milestone.id, parentTaskId: task.id,
+          name: tasks[j].subtasks[k].slice(0, 300), status: "not_started", order: k,
+        });
+        stCount++;
+      }
     }
   }
   await chainProjectMilestones(project.id);
   await rollup(project.id);
   await logActivity("project_created", `Project "${project.name}" created manually`, project.id, "project");
-  res.status(201).json({ id: project.id, name: project.name, milestones: mCount, tasks: tCount });
+  res.status(201).json({ id: project.id, name: project.name, milestones: mCount, tasks: tCount, subtasks: stCount });
 });
 
 // IMPORTANT: This route must appear before /projects/:id to avoid being shadowed by the wildcard
@@ -472,6 +548,16 @@ router.patch("/projects/:id", requireRole(...WRITE_ROLES), async (req, res): Pro
   if ((req.body as Record<string, unknown>)?.confidential !== undefined) {
     updateData.confidential = !!(req.body as Record<string, unknown>).confidential;
   }
+  // Actual start / end and the go-live date sit outside the legacy zod body. Sent
+  // by the projects table's inline date cells / the overview page; "" clears to NULL.
+  for (const key of ["actualStartDate", "actualEndDate", "goLiveDate"] as const) {
+    const v = (req.body as Record<string, unknown>)?.[key];
+    if (v !== undefined) updateData[key] = v === "" ? null : v;
+  }
+  // Clearing a planned date sends "" — store NULL so it reads as "no date" and
+  // not as an empty string the date cells would then try to parse.
+  if (parsed.data.startDate === "") updateData.startDate = null;
+  if (parsed.data.endDate === "") updateData.endDate = null;
   if (parsed.data.capexBudget !== undefined) updateData.capexBudget = String(parsed.data.capexBudget);
   if (parsed.data.opexBudget !== undefined) updateData.opexBudget = String(parsed.data.opexBudget);
   if (parsed.data.budgetThresholdPct !== undefined) updateData.budgetThresholdPct = String(parsed.data.budgetThresholdPct);
@@ -516,6 +602,14 @@ router.patch("/milestones/:id", requireRole(...WRITE_ROLES), async (req, res): P
   const parsed = UpdateMilestoneBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const updateData = { ...parsed.data } as Record<string, unknown>;
+  // Milestone accountability — not in the legacy zod body (which strips unknown
+  // keys), so read it straight off req.body. null clears it back to "inherit
+  // the project's owner / function". `predecessorId: null` also cuts this
+  // milestone's incoming chain arrow (used by the Gantt "remove dependency" ✕).
+  for (const key of ["ownerId", "dept", "predecessorId"] as const) {
+    const v = (req.body as Record<string, unknown>)?.[key];
+    if (v !== undefined) updateData[key] = v === "" ? null : v;
+  }
   const [existingM] = await db.select().from(milestonesTable).where(eq(milestonesTable.id, params.data.id));
   if (existingM) {
     const [proj] = await db.select({ status: projectsTable.status }).from(projectsTable).where(eq(projectsTable.id, existingM.projectId));

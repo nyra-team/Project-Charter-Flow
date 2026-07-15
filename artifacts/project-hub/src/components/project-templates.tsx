@@ -32,7 +32,7 @@ export function ProjectTemplatesTable() {
     return next;
   });
   return (
-    <div className="glass-surface lift-card rounded-2xl overflow-hidden">
+    <div className="glass-surface rounded-2xl overflow-hidden">
       <Table className="text-xs [&_th]:h-8 [&_th]:text-xs [&_td]:py-1.5">
         <TableHeader>
           <TableRow className="hover:bg-transparent">

@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   useListDocuments, useCreateDocument, useUpdateDocument, useDeleteDocument,
   useListDocumentVersions, useAddDocumentVersion, useListUsers,
+  useListMilestones, useListTasks,
   getListProjectStagesQueryKey, getGetProjectQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,7 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { FileDropzone } from "@/components/ui/file-dropzone";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
-import { Plus, FileText, Trash2, Lock, Unlock, History, Tag, Folder, Search, Upload, Download, FileCheck2, Eye, Loader2, ExternalLink, Sparkles, ChevronDown, ChevronRight, SlidersHorizontal, X } from "lucide-react";
+import { Plus, FileText, Trash2, Lock, Unlock, History, Tag, Folder, Search, Upload, Download, FileCheck2, Eye, Loader2, Sparkles, ChevronDown, ChevronRight, SlidersHorizontal, X } from "lucide-react";
+import { FilePreviewBody } from "./FilePreviewBody";
 import { formatDate } from "../lib/format";
 import { LIFECYCLE_STAGES, canonicalStageKey, templateDocRank } from "../lib/lifecycle-config";
 import { LIFECYCLE_PHASES } from "../lib/lifecycle-phases";
@@ -116,10 +118,40 @@ export function DocumentsTab({
   const [tagFilter, setTagFilter] = useState<string>("");
   const [accessFilter, setAccessFilter] = useState<string>("");
   const [form, setForm] = useState({
-    name: "", stage: "", description: "", accessLevel: "team",
+    name: "", msSel: "", taskSel: "", subSel: "", description: "",
     fileUrl: "", fileType: "application/pdf", fileSize: 0, fileName: "",
     tags: [] as string[],
   });
+
+  // Cascading "Attach to" pickers in the upload modal: Milestone → Task →
+  // Subtask, each defaulting to "General" (= attach one level up). With the
+  // milestone on General the upload is a plain project document in the
+  // repository (AI classifies its lifecycle stage — no manual Stage pick).
+  const { data: rawMilestones = [] } = useListMilestones(projectId);
+  const { data: rawTasks = [] } = useListTasks(projectId);
+  const msList = useMemo(() =>
+    (rawMilestones as Array<{ id: number; name: string; order?: number | null }>)
+      .slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    [rawMilestones]);
+  const taskList = useMemo(() =>
+    (rawTasks as Array<{ id: number; name: string; milestoneId?: number | null; parentTaskId?: number | null; order?: number | null }>)
+      .slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    [rawTasks]);
+  const msTasks = form.msSel ? taskList.filter(t => (t.milestoneId ?? null) === Number(form.msSel) && t.parentTaskId == null) : [];
+  const taskSubs = form.taskSel ? taskList.filter(s => s.parentTaskId === Number(form.taskSel)) : [];
+  // Where the upload goes: null = general project document (repository row);
+  // otherwise an attachment clipped to the deepest selected item.
+  const attachTarget = (() => {
+    if (!form.msSel) return null;
+    const milestoneId = Number(form.msSel);
+    if (!form.taskSel) {
+      return { milestoneId, taskId: null as number | null, label: `Milestone · ${msList.find(m => m.id === milestoneId)?.name ?? milestoneId}` };
+    }
+    const sub = form.subSel ? taskList.find(t => t.id === Number(form.subSel)) : undefined;
+    const task = taskList.find(t => t.id === Number(form.taskSel));
+    const target = sub ?? task;
+    return { milestoneId, taskId: target?.id ?? null, label: `${sub ? "Subtask" : "Task"} · ${target?.name ?? ""}` };
+  })();
 
   const allDocs = docs as Doc[];
   const usersArr = users as Array<{ id: number; name: string }>;
@@ -171,15 +203,49 @@ export function DocumentsTab({
     });
   }
 
-  function handleAdd() {
+  const [attaching, setAttaching] = useState(false);
+
+  function resetForm() {
+    setForm({ name: "", msSel: "", taskSel: "", subSel: "", description: "", fileUrl: "", fileType: "application/pdf", fileSize: 0, fileName: "", tags: [] });
+  }
+
+  async function handleAdd() {
+    if (attachTarget) {
+      // Clip the file onto the chosen milestone / task / subtask — it lands in
+      // the attachments store and shows under "Attachments by milestone & task"
+      // (and on that row's paperclip), not in the versioned repository table.
+      if (!form.fileUrl) { toast({ title: "Choose a file to attach", variant: "destructive" }); return; }
+      setAttaching(true);
+      try {
+        const r = await fetch(`/api/projects/${projectId}/attachments`, {
+          method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            milestoneId: attachTarget.milestoneId, taskId: attachTarget.taskId,
+            fileUrl: form.fileUrl, fileName: form.name || form.fileName,
+            fileType: form.fileType || undefined, fileSize: form.fileSize || undefined,
+            uploadedBy: userId ?? undefined,
+          }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        toast({ title: "Attached", description: attachTarget.label });
+        setShowAdd(false);
+        resetForm();
+        void queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "attachments"] });
+        void queryClient.invalidateQueries({ queryKey: ["/api/attachments/counts"] });
+      } catch {
+        toast({ title: "Failed to attach", variant: "destructive" });
+      } finally {
+        setAttaching(false);
+      }
+      return;
+    }
     if (!form.name) { toast({ title: "Name is required", variant: "destructive" }); return; }
     createDoc.mutate({
       id: projectId,
       data: {
         name: form.name,
-        stage: form.stage || undefined,
         description: form.description || undefined,
-        accessLevel: form.accessLevel,
+        accessLevel: "team",
         fileUrl: form.fileUrl || undefined,
         fileType: form.fileType || undefined,
         fileSize: form.fileSize || undefined,
@@ -190,7 +256,7 @@ export function DocumentsTab({
       onSuccess: () => {
         toast({ title: "Document added" });
         setShowAdd(false);
-        setForm({ name: "", stage: "", description: "", accessLevel: "team", fileUrl: "", fileType: "application/pdf", fileSize: 0, fileName: "", tags: [] });
+        resetForm();
         refetch();
         announceBackfill();
       },
@@ -318,7 +384,7 @@ export function DocumentsTab({
           The filters live here (not in the table header) so they stay visible
           and adjustable even when the current filter matches no documents. */}
       {(showSearch || showUploadButton || allDocs.length > 0) && (
-        <div className="glass-surface lift-card ph-rise rounded-2xl p-4 flex flex-wrap items-center gap-3">
+        <div className="glass-surface rounded-2xl p-4 flex flex-wrap items-center gap-3">
           {showSearch && (
             <div className="flex items-center gap-2 flex-1 min-w-[200px]">
               <Search size={14} className="text-muted-foreground" />
@@ -384,11 +450,11 @@ export function DocumentsTab({
       </div>
 
       {filtered.length === 0 ? (
-        <div className="glass-surface lift-card ph-rise rounded-2xl p-10 text-center text-sm text-muted-foreground">
+        <div className="glass-surface rounded-2xl p-10 text-center text-sm text-muted-foreground">
           {allDocs.length === 0 ? "No documents yet. Click 'Upload Document' to add one." : "No documents match your filters."}
         </div>
       ) : (
-        <div className="glass-surface lift-card ph-rise rounded-2xl overflow-hidden">
+        <div className="glass-surface rounded-2xl overflow-hidden">
           <Table className="text-xs [&_th]:h-8 [&_th]:text-xs [&_td]:py-1.5">
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -455,20 +521,52 @@ export function DocumentsTab({
               <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Name</label>
               <Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Requirements v1" className="mt-1" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            {/* Cascading placement pickers — each level defaults to General.
+                Milestone on General = plain project document; picking deeper
+                narrows the attachment to that milestone / task / subtask. */}
+            <div className="space-y-2">
               <div>
-                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Stage</label>
-                <select value={form.stage} onChange={e => setForm({ ...form, stage: e.target.value })} className="w-full text-sm border border-input bg-background rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-ring/40">
-                  <option value="">— None —</option>
-                  {LIFECYCLE_STAGES.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
+                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Milestone</label>
+                <select
+                  value={form.msSel}
+                  onChange={e => setForm({ ...form, msSel: e.target.value, taskSel: "", subSel: "" })}
+                  className="w-full text-sm border border-input bg-background rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-ring/40"
+                >
+                  <option value="">General (project document)</option>
+                  {msList.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Access</label>
-                <select value={form.accessLevel} onChange={e => setForm({ ...form, accessLevel: e.target.value })} className="w-full text-sm border border-input bg-background rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-ring/40">
-                  {ACCESS_LEVELS.map(a => <option key={a} value={a}>{a}</option>)}
-                </select>
-              </div>
+              {form.msSel && (
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Task</label>
+                  <select
+                    value={form.taskSel}
+                    onChange={e => setForm({ ...form, taskSel: e.target.value, subSel: "" })}
+                    className="w-full text-sm border border-input bg-background rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-ring/40"
+                  >
+                    <option value="">General (whole milestone)</option>
+                    {msTasks.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                  </select>
+                </div>
+              )}
+              {form.taskSel && taskSubs.length > 0 && (
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Subtask</label>
+                  <select
+                    value={form.subSel}
+                    onChange={e => setForm({ ...form, subSel: e.target.value })}
+                    className="w-full text-sm border border-input bg-background rounded-md px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-ring/40"
+                  >
+                    <option value="">General (whole task)</option>
+                    {taskSubs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                </div>
+              )}
+              {attachTarget && (
+                <p className="text-[11px] text-muted-foreground">
+                  The file will be clipped to <span className="font-semibold text-foreground">{attachTarget.label}</span> — find it under "Attachments by milestone &amp; task" and on the item's paperclip.
+                </p>
+              )}
             </div>
             <div>
               <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">File</label>
@@ -489,34 +587,41 @@ export function DocumentsTab({
                 />
               </div>
             </div>
-            <div>
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Description</label>
-              <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short summary" rows={2} className="mt-1" />
-            </div>
-            <div>
-              <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Tags</label>
-              <div className="flex flex-wrap gap-1.5 mt-1.5">
-                {CATEGORY_TAGS.map(t => {
-                  const on = form.tags.includes(t);
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setForm({ ...form, tags: on ? form.tags.filter(x => x !== t) : [...form.tags, t] })}
-                      className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border transition-colors ${
-                        on
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-muted text-muted-foreground border-border hover:bg-accent"
-                      }`}
-                    >{t}</button>
-                  );
-                })}
-              </div>
-            </div>
+            {/* Description + tags belong to repository documents only — the
+                attachments store keeps just the file, so hide them when the
+                upload is clipped to a milestone / task / subtask. */}
+            {!attachTarget && (
+              <>
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Description</label>
+                  <Textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short summary" rows={2} className="mt-1" />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">Tags</label>
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {CATEGORY_TAGS.map(t => {
+                      const on = form.tags.includes(t);
+                      return (
+                        <button
+                          key={t}
+                          type="button"
+                          onClick={() => setForm({ ...form, tags: on ? form.tags.filter(x => x !== t) : [...form.tags, t] })}
+                          className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border transition-colors ${
+                            on
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-muted text-muted-foreground border-border hover:bg-accent"
+                          }`}
+                        >{t}</button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
             <div className="flex justify-end gap-2 pt-2 border-t border-border/60">
               <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm rounded-md font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">Cancel</button>
-              <button onClick={handleAdd} className="px-3 py-1.5 text-sm font-semibold bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors shadow-sm inline-flex items-center gap-1.5">
-                <Plus size={12} /> Add
+              <button onClick={handleAdd} disabled={attaching || createDoc.isPending} className="px-3 py-1.5 text-sm font-semibold bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors shadow-sm inline-flex items-center gap-1.5 disabled:opacity-60">
+                {attaching || createDoc.isPending ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} {attachTarget ? "Attach" : "Add"}
               </button>
             </div>
           </div>
@@ -537,136 +642,16 @@ export function DocumentsTab({
   );
 }
 
-const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-
-type PreviewKind = "docx" | "xlsx" | "pdf" | "image" | "text" | "other";
-
-function kindOf(doc: Doc): PreviewKind {
-  const url = (doc.fileUrl ?? "").toLowerCase().split("?")[0];
-  const type = (doc.fileType ?? "").toLowerCase();
-  if (type === DOCX_MIME || url.endsWith(".docx")) return "docx";
-  if (type === XLSX_MIME || url.endsWith(".xlsx")) return "xlsx";
-  if (type === "application/pdf" || url.endsWith(".pdf")) return "pdf";
-  if (type.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg|bmp)$/.test(url)) return "image";
-  if (type.startsWith("text/") || /\.(txt|md|csv|json|log)$/.test(url)) return "text";
-  return "other";
-}
-
-// Detect OOXML kind from raw bytes when fileType/extension are missing
-// (e.g. documents stored as /api/storage/objects/local-<uuid> with no
-// extension and a null fileType). docx/xlsx/pptx are all ZIP containers —
-// distinguish by the OOXML part names present in the archive.
-async function sniffKind(blob: Blob): Promise<PreviewKind> {
-  try {
-    const buf = new Uint8Array(await blob.arrayBuffer());
-    if (buf[0] !== 0x50 || buf[1] !== 0x4b) return "other"; // not a ZIP ("PK")
-    let s = "";
-    for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]);
-    if (s.includes("word/document.xml") || s.includes("word/")) return "docx";
-    if (s.includes("xl/workbook.xml") || s.includes("xl/")) return "xlsx";
-  } catch { /* fall through */ }
-  return "other";
-}
-
 function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void }) {
   // All versions of this document, so the viewer can switch between them.
   // "current" = the live doc.fileUrl (latest); otherwise a specific version row.
+  // The rendering itself lives in the shared <FilePreviewBody>.
   const { data: versions = [] } = useListDocumentVersions(doc.id);
   const vs = (versions as DocVersion[]).slice().sort((a, b) => b.version - a.version);
   const [activeVerId, setActiveVerId] = useState<number | "current">("current");
   const activeUrl = activeVerId === "current"
     ? doc.fileUrl
     : (vs.find(v => v.id === activeVerId)?.fileUrl ?? doc.fileUrl);
-  const kind = kindOf({ ...doc, fileUrl: activeUrl ?? doc.fileUrl });
-  const docxRef = useRef<HTMLDivElement>(null);
-  const [resolvedKind, setResolvedKind] = useState<PreviewKind>(kind);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [errMsg, setErrMsg] = useState<string>("");
-  const [blobUrl, setBlobUrl] = useState<string>("");
-  const [textContent, setTextContent] = useState<string>("");
-  const [sheetHtml, setSheetHtml] = useState<string>("");
-
-  useEffect(() => {
-    let cancelled = false;
-    let objectUrl = "";
-
-    async function load() {
-      if (!activeUrl) { setStatus("error"); setErrMsg("This document has no file attached."); return; }
-      setStatus("loading");
-      setResolvedKind(kind);
-      try {
-        const res = await fetch(activeUrl);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const blob = await res.blob();
-        if (cancelled) return;
-
-        // Resolve the real kind: when fileType/extension are absent the
-        // initial kind is "other" — sniff the bytes to recover docx/xlsx.
-        let k: PreviewKind = kind;
-        if (k === "other") {
-          k = await sniffKind(blob);
-          if (cancelled) return;
-        }
-        setResolvedKind(k);
-
-        if (k === "docx") {
-          // Wait a tick so the modal's container ref is mounted.
-          const container = docxRef.current;
-          if (!container) throw new Error("Preview container unavailable");
-          container.innerHTML = "";
-          const { renderAsync } = await import("docx-preview");
-          if (cancelled) return;
-          await renderAsync(blob, container, undefined, {
-            className: "docx-preview",
-            inWrapper: true,
-            ignoreWidth: false,
-            ignoreHeight: false,
-            breakPages: true,
-            useBase64URL: true,
-          });
-        } else if (k === "xlsx") {
-          const XLSX = await import("xlsx");
-          const wb = XLSX.read(await blob.arrayBuffer(), { type: "array" });
-          if (cancelled) return;
-          let html = "";
-          for (const name of wb.SheetNames) {
-            const ws = wb.Sheets[name];
-            if (!ws) continue;
-            html += `<div class="xlsx-sheet-title">${name}</div>` +
-              XLSX.utils.sheet_to_html(ws, { editable: false });
-          }
-          setSheetHtml(html || "<p>This workbook has no sheets.</p>");
-        } else if (k === "text") {
-          const txt = await blob.text();
-          if (cancelled) return;
-          setTextContent(txt);
-        } else if (k === "pdf" || k === "image") {
-          objectUrl = URL.createObjectURL(blob);
-          if (cancelled) { URL.revokeObjectURL(objectUrl); return; }
-          setBlobUrl(objectUrl);
-        } else {
-          setStatus("error");
-          setErrMsg("In-browser preview isn't supported for this file type.");
-          return;
-        }
-        if (!cancelled) setStatus("ready");
-      } catch (e) {
-        if (cancelled) return;
-        setStatus("error");
-        setErrMsg(e instanceof Error ? e.message : "Failed to load preview");
-      }
-    }
-
-    // Defer one frame so the docx container is in the DOM before render.
-    const t = setTimeout(load, 0);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeUrl]);
 
   return (
     <Dialog open={true} onOpenChange={v => { if (!v) onClose(); }}>
@@ -715,64 +700,19 @@ function DocumentPreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void 
           </div>
         )}
 
-        <div className="flex-1 min-h-0 overflow-auto scrollbar-thin bg-muted/40">
-          {status === "loading" && (
-            <div className="h-full flex items-center justify-center text-muted-foreground gap-2">
-              <Loader2 size={18} className="animate-spin" /> <span className="text-sm">Loading preview…</span>
-            </div>
-          )}
-
-          {status === "error" && (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center px-6">
-              <FileText size={32} className="text-muted-foreground/50" />
-              <p className="text-sm text-muted-foreground max-w-md">{errMsg}</p>
-              {doc.fileUrl && (
-                <div className="flex items-center gap-2">
-                  <a href={`/api/documents/${doc.id}/raw`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-muted text-foreground hover:bg-accent transition-colors">
-                    <ExternalLink size={13} /> Open in new tab
-                  </a>
-                  <a href={`/api/documents/${doc.id}/raw`} download={dlName(doc.name, doc.fileType)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
-                    <Download size={13} /> Download
-                  </a>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* DOCX always-mounted target (rendered into even while "loading") */}
-          <div className={resolvedKind === "docx" && status !== "error" ? "flex justify-center py-4" : "hidden"}>
-            <div ref={docxRef} className="docx-preview-host" />
-          </div>
-
-          {resolvedKind === "xlsx" && status === "ready" && (
-            <div className="p-4 overflow-auto">
-              <style>{`
-                .xlsx-preview table { border-collapse: collapse; margin-bottom: 1.5rem; font-size: 12px; background: #fff; }
-                .xlsx-preview td, .xlsx-preview th { border: 1px solid #d0d7de; padding: 3px 8px; white-space: nowrap; color: #1f2328; }
-                .xlsx-preview .xlsx-sheet-title { font-weight: 700; color: #1E40AF; margin: 0.25rem 0 0.5rem; font-size: 13px; }
-              `}</style>
-              <div className="xlsx-preview" dangerouslySetInnerHTML={{ __html: sheetHtml }} />
-            </div>
-          )}
-
-          {resolvedKind === "pdf" && status === "ready" && blobUrl && (
-            <iframe src={blobUrl} title={doc.name} className="w-full h-full border-0" />
-          )}
-
-          {resolvedKind === "image" && status === "ready" && blobUrl && (
-            <div className="h-full flex items-center justify-center p-4">
-              <img src={blobUrl} alt={doc.name} className="max-w-full max-h-full object-contain rounded-md shadow-sm" />
-            </div>
-          )}
-
-          {resolvedKind === "text" && status === "ready" && (
-            <pre className="text-xs font-mono whitespace-pre-wrap p-5 text-foreground">{textContent}</pre>
-          )}
-        </div>
+        <FilePreviewBody
+          key={String(activeUrl ?? "")}
+          url={activeUrl}
+          name={doc.name}
+          fileType={doc.fileType}
+          downloadHref={`/api/documents/${doc.id}/raw`}
+          downloadName={dlName(doc.name, doc.fileType)}
+        />
       </DialogContent>
     </Dialog>
   );
 }
+
 
 function VersionHistoryModal({ documentId, onClose, onVersionAdded }: { documentId: number; onClose: () => void; onVersionAdded?: () => void }) {
   const { toast } = useToast();

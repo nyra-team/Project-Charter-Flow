@@ -49,15 +49,19 @@ async function loadJiraConfig(): Promise<JiraConfig> {
  * "[KEY] type" prefix back into Jira.
  */
 async function upsertTask(
-  it: { key: string; summary: string; description: string; statusCategory: string; priority: string | null; dueDate: string | null; component: string | null },
+  it: { key: string; summary: string; description: string; statusCategory: string; statusName: string; priority: string | null; dueDate: string | null; component: string | null },
   projectId: number,
   rels: { milestoneId?: number | null; parentTaskId?: number | null },
 ): Promise<{ id: number; created: boolean }> {
-  const status = jiraStatusToPmo(it.statusCategory);
+  const status = jiraStatusToPmo(it.statusCategory, it.statusName);
   const priority = jiraPriorityToPmo(it.priority);
   const name = it.summary || it.key;
   const description = it.description ?? "";
-  const [existing] = await db.select({ id: tasksTable.id }).from(tasksTable).where(eq(tasksTable.jiraKey, it.key));
+  // Scoped to the target project: matching globally by jira_key let an import
+  // into project A silently mutate (and re-parent the milestones of) the same
+  // issue's task living in project B — the July 2026 OHC/"myGranules" tangle.
+  const [existing] = await db.select({ id: tasksTable.id }).from(tasksTable)
+    .where(and(eq(tasksTable.projectId, projectId), eq(tasksTable.jiraKey, it.key)));
   if (existing) {
     await db.update(tasksTable)
       .set({
@@ -173,11 +177,12 @@ router.post("/integrations/jira/import", async (req, res): Promise<void> => {
   const milestoneIdByEpic = new Map<string, number>();
   let milestonesCreated = 0, milestonesUpdated = 0;
   for (const it of issues.filter(isEpic)) {
-    const status = jiraStatusToPmo(it.statusCategory);
+    const status = jiraStatusToPmo(it.statusCategory, it.statusName);
     const priority = jiraPriorityToPmo(it.priority);
     const name = it.summary || it.key;
     const description = it.description ?? "";
-    const [existing] = await db.select({ id: milestonesTable.id }).from(milestonesTable).where(eq(milestonesTable.jiraKey, it.key));
+    const [existing] = await db.select({ id: milestonesTable.id }).from(milestonesTable)
+      .where(and(eq(milestonesTable.projectId, projectId), eq(milestonesTable.jiraKey, it.key)));
     if (existing) {
       await db.update(milestonesTable)
         .set({ name, description, status, priority, startDate: it.startDate ?? undefined, dueDate: it.dueDate ?? undefined, jiraSyncedAt: new Date() })

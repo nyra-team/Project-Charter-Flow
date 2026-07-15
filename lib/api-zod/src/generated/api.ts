@@ -833,7 +833,9 @@ export const CreateMilestoneBody = zod.object({
   workstreamId: zod.number().optional(),
   name: zod.string(),
   description: zod.string().optional(),
+  startDate: zod.string().optional(),
   dueDate: zod.string().optional(),
+  ownerId: zod.number().optional(),
   priority: zod.string().optional(),
   order: zod.number().optional(),
 });

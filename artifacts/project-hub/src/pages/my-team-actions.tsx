@@ -1,18 +1,24 @@
-import { useEffect, useRef, useState } from "react";
-import { Users, ArrowLeft, Loader2, ChevronUp, ChevronDown, Search, X, Building2, AlertTriangle, CalendarClock, CheckCircle2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { Users, ArrowLeft, Loader2, ChevronUp, ChevronDown, Search, X, Building2, AlertTriangle, CalendarClock, CheckCircle2, Network, LayoutList, ArrowUpRight } from "lucide-react";
 import { useAuth } from "../auth/context";
+import { useListProjects, useListUsers, useListCharters } from "@workspace/api-client-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { HoverHint, type HoverHintRow } from "@/components/ui-kit/HoverHint";
+import { TeamOverview } from "@/components/TeamOverview";
+import { buildTeamOverview } from "@/lib/teamOverviewData";
 
-// My Team Actions — per-login reporting org chart, ported verbatim from the CXO
-// Action Centre (apps/cxo PeopleDirectory). Centres on whoever is logged in
-// (manager chain above, direct reports below) and lets you drill the tree by
-// clicking a report. Read-only, drawn live from the master DB's l1_manager_code
-// chain + the Action Centre's action-item progress — all served by the CXO
-// backend. The vite proxy routes /api/org, /api/action-items and
-// /api/kpi-approvers to that backend; everything else stays on PMO :3008.
-// ponytail: a copy, not a shared package — only one consumer in PMO; lift to
-// packages/shared if a third app ever needs it.
+// My Team Actions — per-login reporting org chart. Centres on whoever is logged
+// in (manager chain above, direct reports below) and lets you drill the tree by
+// clicking a report; clicking a person opens their complete PMO workload —
+// projects, milestones, tasks and subtasks, each split total / overdue / done,
+// with the overdue items listed.
+//
+// The reporting line comes from the master DB's l1_manager_code chain, and every
+// number is PMO's OWN work. All of it is served by PMO's api-server (routes/org.ts).
+// It used to call the CXO/Action-Centre backend through a dev-only vite proxy,
+// which is why the page died with "Failed to fetch" whenever that separate server
+// wasn't running — and why it never worked in prod at all.
 
 type Tasks = {
   total: number;
@@ -50,7 +56,36 @@ type OwnerSummary = {
   notStarted: number;
 };
 
-type OwnerTask = { id: number; title: string; dueDate: string | null; status: string; meeting: string | null };
+// Colour per work level, so the overdue list reads at a glance.
+const ITEM_TONE: Record<string, string> = {
+  project: "bg-violet-50 text-violet-700",
+  milestone: "bg-blue-50 text-blue-700",
+  task: "bg-slate-100 text-slate-600",
+  subtask: "bg-slate-50 text-slate-500",
+};
+
+// One person's whole PMO workload (GET /api/org/team-work/:code).
+type WorkTally = { total: number; overdue: number; completed: number };
+type OverdueItem = {
+  type: "project" | "milestone" | "task" | "subtask";
+  id: number;
+  name: string;
+  project: string | null;
+  dueDate: string | null;
+};
+type WorkItem = OverdueItem & { status: string; overdue: boolean };
+type TeamWork = {
+  empCode: string;
+  name: string;
+  department?: string | null;
+  projects: WorkTally;
+  milestones: WorkTally;
+  tasks: WorkTally;
+  subtasks: WorkTally;
+  /** Every item they own (overdue-first); absent on an older API build. */
+  items?: WorkItem[];
+  overdueItems: OverdueItem[];
+};
 
 // Local avatar (CXO's UserAvatar isn't in PMO) — photo if present, else a blue
 // gradient initials bubble matching the CXO look.
@@ -62,25 +97,24 @@ function Avatar({ url, name, className = "", fallbackClassName = "" }: { url?: s
 }
 
 // Compact action-item progress strip — done/total bar + a delay flag.
+// Clicking anywhere on the strip opens the person's full action list.
 function TaskProgress({ t, onOverdueClick }: { t: Tasks; onOverdueClick?: () => void }) {
   if (t.total === 0) return null;
   const pct = Math.round((t.done / t.total) * 100);
   return (
-    <div className="mt-1">
+    <div
+      className={`mt-1 ${onOverdueClick ? "cursor-pointer rounded-sm hover:bg-slate-100/70" : ""}`}
+      {...(onOverdueClick ? {
+        role: "button" as const,
+        tabIndex: 0,
+        title: "View all actions",
+        onClick: (e: React.MouseEvent) => { e.stopPropagation(); onOverdueClick(); },
+      } : {})}
+    >
       <div className="flex items-center justify-between text-[10px] mb-0.5">
         <span className="text-slate-500">
           {t.done}/{t.total} done
-          {t.delay > 0 && (onOverdueClick ? (
-            <span
-              role="button"
-              tabIndex={0}
-              onClick={(e) => { e.stopPropagation(); onOverdueClick(); }}
-              title="View overdue tasks"
-              className="text-red-600 font-semibold ml-1.5 underline decoration-dotted underline-offset-2 cursor-pointer hover:text-red-700"
-            >{t.delay} overdue</span>
-          ) : (
-            <span className="text-red-600 font-semibold ml-1.5">{t.delay} overdue</span>
-          ))}
+          {t.delay > 0 && <span className="text-red-600 font-semibold ml-1.5">{t.delay} overdue</span>}
         </span>
         <span className="text-slate-400 tabular-nums">{pct}%</span>
       </div>
@@ -112,6 +146,7 @@ function PersonCard({
   onOverdue?: () => void;
   showTasks?: boolean;
 }) {
+  const [, navigate] = useLocation();
   const clickable = !!onClick;
   const tone =
     variant === "target"
@@ -119,7 +154,6 @@ function PersonCard({
       : variant === "manager"
       ? "border-amber-200 bg-amber-50/50"
       : "border-border/50 bg-card";
-  const t = showTasks ? p.tasks : null;
   const card = (
     <button
       type="button"
@@ -152,23 +186,25 @@ function PersonCard({
       </div>
     </button>
   );
-  if (!t || t.total === 0) return card;
-  const pct = Math.round((t.done / t.total) * 100);
-  const rows = [
-    { label: "Done", value: t.done },
-    { label: "In progress", value: t.inProgress },
-    { label: "Not started", value: t.notStarted },
-    t.onHold > 0 && { label: "On hold", value: t.onHold },
-    t.delay > 0 && { label: "Overdue", value: <span className="text-red-600">{t.delay}</span> },
-  ].filter(Boolean) as HoverHintRow[];
+  // No hover card here — it used to float above the quick-view modal's overlay
+  // as a dark box; the modal itself now shows the full breakdown on click.
+  // The top-right redirect opens a dedicated page of every project under this
+  // person (shown only when they resolve to a PMO user, i.e. can have projects).
   return (
-    <HoverHint
-      title={`${t.total} action${t.total === 1 ? "" : "s"} · ${pct}%`}
-      rows={rows}
-      className="max-w-[160px]"
-    >
+    <div className="relative group">
       {card}
-    </HoverHint>
+      {p.ownerId != null && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); navigate(`/people/${p.ownerId}`); }}
+          title={`Open all projects under ${p.name}`}
+          aria-label={`Open all projects under ${p.name}`}
+          className="absolute top-1.5 right-1.5 z-10 inline-flex items-center justify-center w-6 h-6 rounded-md bg-white/90 border border-border/60 text-muted-foreground opacity-70 group-hover:opacity-100 hover:text-primary hover:border-primary/40 shadow-sm transition-all"
+        >
+          <ArrowUpRight className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -186,9 +222,15 @@ function JumpToTeam({ onPick }: { onPick: (code: string) => void }) {
     setBusy(true);
     const t = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/kpi-approvers/search?q=${encodeURIComponent(q)}`, { credentials: "include" });
+        // PMO's own directory search (was the CXO backend's /api/kpi-approvers).
+        const res = await fetch(`/api/employees/search?q=${encodeURIComponent(q)}&limit=8`, { credentials: "include" });
         const hits = res.ok ? await res.json() : [];
-        if (!cancelled) setResults(Array.isArray(hits) ? hits : []);
+        const mapped: DirHit[] = (Array.isArray(hits) ? hits : [])
+          .filter((h: { employeeCode?: string | null }) => !!h.employeeCode)
+          .map((h: { employeeCode: string; fullName: string; designation?: string | null; officeEmail?: string | null }) => ({
+            empCode: h.employeeCode, name: h.fullName, designation: h.designation ?? null, unit: null, email: h.officeEmail ?? null,
+          }));
+        if (!cancelled) setResults(mapped);
       } catch { if (!cancelled) setResults([]); }
       finally { if (!cancelled) setBusy(false); }
     }, 250);
@@ -235,6 +277,9 @@ export default function MyTeamActions() {
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
 
+  // Top-level view: the reporting Org chart (default) or the flat, chart-able
+  // Team Overview (people as accordions → their projects).
+  const [topTab, setTopTab] = useState<"org" | "overview">("org");
   const [deptView, setDeptView] = useState("");
   const [owners, setOwners] = useState<OwnerSummary[]>([]);
   useEffect(() => {
@@ -244,18 +289,54 @@ export default function MyTeamActions() {
       .catch(() => setOwners([]));
   }, []);
 
+  // Team Overview data — every person who owns a project or holds a task, rolled
+  // up from PMO's own projects + users + tasks (not the reporting chain), so it's
+  // populated for everyone, including PMs/admins with no direct reports.
+  const { data: allProjects = [] } = useListProjects();
+  const { data: allUsers = [] } = useListUsers();
+  const { data: allCharters = [] } = useListCharters();
+  const { data: allTasks = [] } = useQuery({
+    queryKey: ["/api/tasks", "all"],
+    queryFn: async () => {
+      const r = await fetch("/api/tasks", { credentials: "include" });
+      return r.ok ? await r.json() : [];
+    },
+  });
+  const overviewAll = useMemo(
+    () => buildTeamOverview(allProjects as never[], allUsers as never[], allTasks as never[], allCharters as never[]),
+    [allProjects, allUsers, allTasks, allCharters],
+  );
+
+  // The reporting team the Overview is scoped to: the caller's immediate manager,
+  // themselves, and their WHOLE downward subtree (direct reports + reports of
+  // reports, transitively). Descendants come from team-summary (`owners`), the
+  // manager + self from the org chain. Matched to the rollup by pmo_user id.
+  const teamMemberIds = useMemo(() => {
+    const s = new Set<number>();
+    const add = (id?: number | null) => { if (id != null) s.add(id); };
+    if (org) {
+      add(org.target.ownerId);
+      add(org.managers[org.managers.length - 1]?.ownerId); // immediate manager
+      org.reports.forEach((r) => add(r.ownerId));
+    }
+    owners.forEach((o) => add(o.ownerId));
+    return s;
+  }, [org, owners]);
+  const overviewScoped = useMemo(() => overviewAll.filter((p) => teamMemberIds.has(p.id)), [overviewAll, teamMemberIds]);
+
   type Quick = { ownerId: number | null; empCode: string | null; name: string; department: string | null; delay: number; total: number; canViewTeam: boolean };
   const [quick, setQuick] = useState<Quick | null>(null);
-  const [quickTasks, setQuickTasks] = useState<OwnerTask[] | null>(null);
+  // The person's complete PMO picture — projects, milestones, tasks and subtasks,
+  // each split total / overdue / completed, plus the overdue items themselves.
+  const [work, setWork] = useState<TeamWork | null>(null);
   useEffect(() => {
-    if (!quick) { setQuickTasks(null); return; }
-    if (quick.ownerId == null) { setQuickTasks([]); return; }
+    if (!quick?.empCode) { setWork(null); return; }
     let alive = true;
-    setQuickTasks(null);
-    fetch(`/api/action-items/owner-tasks?owner=${quick.ownerId}&bucket=delay`)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((d) => alive && setQuickTasks(Array.isArray(d) ? d : []))
-      .catch(() => alive && setQuickTasks([]));
+    setWork(null);
+    fetch(`/api/org/team-work/${encodeURIComponent(quick.empCode)}`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: TeamWork | null) => alive && setWork(d))
+      .catch(() => alive && setWork(null));
     return () => { alive = false; };
   }, [quick]);
 
@@ -290,7 +371,9 @@ export default function MyTeamActions() {
     };
   }, [code]);
 
-  const orgDepts = Array.from(new Set(owners.map((o) => o.department).filter(Boolean) as string[])).sort();
+  const orgDepts = Array.from(
+    new Set([...owners.map((o) => o.department), ...overviewScoped.map((o) => o.department)].filter(Boolean) as string[]),
+  ).sort();
   const deptPeople = deptView
     ? owners.filter((o) => o.department === deptView).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name))
     : [];
@@ -298,8 +381,12 @@ export default function MyTeamActions() {
     (a, o) => ({ total: a.total + o.total, done: a.done + o.done, delay: a.delay + o.delay }),
     { total: 0, done: 0, delay: 0 }
   );
+
+  // People shown in the Team Overview, narrowed to one department when that
+  // filter is set.
+  const overviewPeople = deptView ? overviewScoped.filter((p) => p.department === deptView) : overviewScoped;
   return (
-    <div className="max-w-3xl mx-auto w-full pt-3 md:pt-4">
+    <div className="w-full pt-3 md:pt-4">
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
           <span className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
@@ -311,6 +398,22 @@ export default function MyTeamActions() {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <div className="inline-flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5">
+            <button
+              type="button"
+              onClick={() => setTopTab("org")}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] font-semibold transition-colors ${topTab === "org" ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+            >
+              <Network className="w-3.5 h-3.5" /> Org
+            </button>
+            <button
+              type="button"
+              onClick={() => setTopTab("overview")}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[12px] font-semibold transition-colors ${topTab === "overview" ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-slate-700"}`}
+            >
+              <LayoutList className="w-3.5 h-3.5" /> Overview
+            </button>
+          </div>
           {orgDepts.length > 0 && (
             <Select value={deptView || "__all"} onValueChange={(v) => setDeptView(v === "__all" ? "" : v)}>
               <SelectTrigger className="w-[200px] h-9 text-[12px]">
@@ -337,7 +440,9 @@ export default function MyTeamActions() {
         </div>
       </div>
 
-      {deptView && (
+      {topTab === "overview" && <TeamOverview people={overviewPeople} />}
+
+      {topTab === "org" && deptView && (
         <div className="rounded-xl border border-border/40 bg-muted/40 p-3 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <p className="text-[11px] font-heading font-bold uppercase tracking-wider text-muted-foreground/60">
@@ -379,19 +484,19 @@ export default function MyTeamActions() {
         </div>
       )}
 
-      {!deptView && loading && (
+      {topTab === "org" && !deptView && loading && (
         <div className="flex items-center justify-center py-20 text-slate-400">
           <Loader2 className="w-6 h-6 animate-spin" />
         </div>
       )}
 
-      {!deptView && !loading && error && (
+      {topTab === "org" && !deptView && !loading && error && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-[13px] px-4 py-3">
           {error}
         </div>
       )}
 
-      {!deptView && !loading && !error && org && (() => {
+      {topTab === "org" && !deptView && !loading && !error && org && (() => {
         const visible = showAll ? org.reports : org.reports.slice(0, 8);
         const left = visible.filter((_, i) => i % 2 === 0);
         const right = visible.filter((_, i) => i % 2 === 1);
@@ -492,46 +597,106 @@ export default function MyTeamActions() {
             </div>
 
             <div className="flex-1 overflow-auto px-3 py-3 bg-slate-50/50">
-              {quickTasks === null ? (
+              {work === null ? (
                 <div className="flex items-center justify-center py-12 text-slate-400"><Loader2 className="w-5 h-5 animate-spin" /></div>
-              ) : quickTasks.length === 0 ? (
-                <div className="py-12 text-center">
-                  <div className="mx-auto w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mb-2.5">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-500" />
-                  </div>
-                  <p className="text-[13px] font-semibold text-slate-700">All caught up</p>
-                  <p className="text-[12px] text-slate-400">No overdue tasks.</p>
-                </div>
               ) : (
-                <ul className="flex flex-col gap-1.5">
-                  {quickTasks.map((t) => {
-                    const late = daysLate(t.dueDate);
-                    return (
-                    <li key={t.id} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 hover:border-slate-300 hover:shadow-sm transition-all">
-                      <div className="flex items-start gap-2.5">
-                        <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[13px] font-medium text-slate-800 leading-snug">{t.title}</p>
-                          <div className="mt-1 flex items-center gap-2 flex-wrap text-[11px]">
-                            {t.dueDate && (
-                              <span className="inline-flex items-center gap-1 text-red-600 font-semibold">
-                                <CalendarClock className="w-3 h-3" /> Due {t.dueDate}
-                              </span>
-                            )}
-                            {late > 0 && (
-                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-red-50 text-red-600 font-semibold tabular-nums">{late}d late</span>
-                            )}
-                            {t.meeting && (
-                              <span className="inline-flex items-center gap-1 text-slate-400">
-                                <span className="w-1 h-1 rounded-full bg-slate-300" /> {t.meeting}
-                              </span>
-                            )}
-                          </div>
+                <>
+                  {/* The whole workload at a glance — every level, total vs
+                      overdue vs completed. */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mb-3">
+                    {([
+                      { label: "Projects", t: work.projects },
+                      { label: "Milestones", t: work.milestones },
+                      { label: "Tasks", t: work.tasks },
+                      { label: "Subtasks", t: work.subtasks },
+                    ] as const).map(({ label, t }) => (
+                      <div key={label} className="rounded-xl border border-slate-200 bg-white px-2.5 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+                        <p className="text-[18px] font-bold leading-tight text-slate-800 tabular-nums">{t.total}</p>
+                        <div className="mt-0.5 flex items-center gap-2 text-[11px] tabular-nums">
+                          <span className={t.overdue > 0 ? "font-semibold text-red-600" : "text-slate-300"}>{t.overdue} overdue</span>
+                          <span className={t.completed > 0 ? "font-semibold text-emerald-600" : "text-slate-300"}>{t.completed} done</span>
                         </div>
                       </div>
-                    </li>
-                  )})}
-                </ul>
+                    ))}
+                  </div>
+
+                  {(() => {
+                    // Full workload, overdue-first. Older API builds only send
+                    // overdueItems — degrade to that rather than an empty list.
+                    const items: WorkItem[] = work.items ?? work.overdueItems.map((it) => ({ ...it, status: "", overdue: true }));
+                    const statusLabel = (s: string) =>
+                      s === "in_progress" ? "In progress" : s === "on_hold" ? "On hold" : s === "not_started" ? "Not started" : s.replace(/_/g, " ");
+                    return (
+                      <>
+                        <p className="px-0.5 mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                          All actions ({items.length})
+                        </p>
+                        {items.length === 0 ? (
+                          <div className="py-10 text-center">
+                            <div className="mx-auto w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center mb-2.5">
+                              <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                            </div>
+                            <p className="text-[13px] font-semibold text-slate-700">Nothing assigned</p>
+                            <p className="text-[12px] text-slate-400">No projects, milestones or tasks on their plate.</p>
+                          </div>
+                        ) : (
+                          <ul className="flex flex-col gap-1.5">
+                            {items.map((it) => {
+                              const done = it.status === "completed";
+                              const late = it.overdue ? daysLate(it.dueDate) : 0;
+                              return (
+                                <li key={`${it.type}-${it.id}`} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 hover:border-slate-300 hover:shadow-sm transition-all">
+                                  <div className="flex items-start gap-2.5">
+                                    <span className={`mt-1.5 w-1.5 h-1.5 rounded-full shrink-0 ${it.overdue ? "bg-red-500" : done ? "bg-emerald-500" : "bg-slate-300"}`} />
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className={`text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${ITEM_TONE[it.type]}`}>{it.type}</span>
+                                        <p className={`text-[13px] font-medium leading-snug ${done ? "text-slate-400 line-through decoration-slate-300" : "text-slate-800"}`}>{it.name}</p>
+                                      </div>
+                                      <div className="mt-1 flex items-center gap-2 flex-wrap text-[11px]">
+                                        {done ? (
+                                          <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold">
+                                            <CheckCircle2 className="w-3 h-3" /> Done
+                                          </span>
+                                        ) : it.overdue ? (
+                                          <>
+                                            {it.dueDate && (
+                                              <span className="inline-flex items-center gap-1 text-red-600 font-semibold">
+                                                <CalendarClock className="w-3 h-3" /> Due {it.dueDate}
+                                              </span>
+                                            )}
+                                            {late > 0 && (
+                                              <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-red-50 text-red-600 font-semibold tabular-nums">{late}d late</span>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <>
+                                            {it.status && <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 font-medium">{statusLabel(it.status)}</span>}
+                                            {it.dueDate && (
+                                              <span className="inline-flex items-center gap-1 text-slate-500">
+                                                <CalendarClock className="w-3 h-3" /> Due {it.dueDate}
+                                              </span>
+                                            )}
+                                          </>
+                                        )}
+                                        {it.project && (
+                                          <span className="inline-flex items-center gap-1 text-slate-400 truncate">
+                                            <span className="w-1 h-1 rounded-full bg-slate-300" /> {it.project}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </>
+                    );
+                  })()}
+                </>
               )}
             </div>
 

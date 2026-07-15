@@ -22,7 +22,33 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Plus } from "lucide-react";
-import type { BoardColumn, BoardGroup, BoardRowContext } from "./types";
+import type { BoardColumn, BoardGroup, BoardGroupStat, BoardRowContext } from "./types";
+
+// Roll-up counts in the right corner of a column header — "12 total · 3 overdue ·
+// 5 completed", about the column's own rows. Replaces the plain count pill when
+// the caller supplies group.stats (the total is one of the counts).
+const STAT_TONE = {
+  default: "text-slate-600",
+  danger: "text-red-600",
+  success: "text-green-600",
+} as const;
+
+function GroupStats({ stats }: { stats: BoardGroupStat[] }) {
+  return (
+    <span className="flex items-center gap-1 flex-shrink-0">
+      {stats.map((s) => (
+        <span
+          key={s.label}
+          title={`${s.value} ${s.label}`}
+          className="flex items-center gap-1 px-1.5 rounded-md bg-white border border-slate-200 whitespace-nowrap"
+        >
+          <span className={`text-[11px] font-semibold tabular-nums ${STAT_TONE[s.tone ?? "default"]}`}>{s.value}</span>
+          <span className="text-[10px] font-medium text-slate-400">{s.label}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
 
 const CARD_CTX: BoardRowContext = { depth: 0, rollupPct: 0, hasChildren: false, expanded: false };
 const COL_W = 240;
@@ -139,19 +165,24 @@ function Column<R>({
   const [val, setVal] = useState("");
   const color = group.color ?? "#94A3B8";
   const ac = sectionStyle === "ac";
+  const stats = group.stats ?? [];
   // AC tints the priority lanes' body with a faint column wash; status/owner stay neutral slate.
   const acTint = ac && tintBody ? `${color}14` : undefined;
   return (
     <div
-      className={`flex flex-col flex-shrink-0 overflow-hidden ${ac ? "rounded-2xl border border-slate-200/80" : "rounded-lg"}`}
+      className={`flex flex-col flex-shrink-0 ${ac ? "gap-1.5" : "rounded-lg overflow-hidden"}`}
       style={{ width: colW, ...(ac ? {} : { background: `${color}26` }) }}
     >
       {ac ? (
-        // Action Centre section header — neutral slate bar, coloured dot, white count pill.
-        <div className="flex items-center gap-2 px-3.5 h-10 bg-slate-100 border-b border-slate-200/80">
+        // Action Centre lane header — a detached rounded bar above the cards:
+        // slate-100 fill, hairline border, soft drop shadow, coloured dot, then
+        // the roll-up counts (or a plain count pill when there are no stats).
+        <div className="flex items-center gap-2 px-3.5 h-10 flex-shrink-0 rounded-2xl bg-slate-100 border border-slate-200/80 shadow-[0_2px_5px_-2px_rgba(15,23,42,0.08)]">
           <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
           <h3 className="text-[13px] font-medium text-slate-700 truncate flex-1 min-w-0" title={group.label}>{group.label}</h3>
-          <span className="text-[11px] font-medium text-slate-500 bg-white border border-slate-200 rounded-md min-w-[20px] text-center px-1.5 flex-shrink-0">{group.rows.length}</span>
+          {stats.length > 0
+            ? <GroupStats stats={stats} />
+            : <span className="text-[11px] font-medium text-slate-500 bg-white border border-slate-200 rounded-md min-w-[20px] text-center px-1.5 flex-shrink-0">{group.rows.length}</span>}
         </div>
       ) : (
         <>
@@ -160,14 +191,20 @@ function Column<R>({
           {/* Column header — coloured dot + uppercase label + count */}
           <div className="px-3 pt-2.5 pb-1 flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: color }} />
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground truncate">{group.label}</span>
-            <span className="text-[11px] text-muted-foreground">{group.rows.length}</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground truncate flex-1 min-w-0">{group.label}</span>
+            {stats.length > 0
+              ? <GroupStats stats={stats} />
+              : <span className="text-[11px] text-muted-foreground">{group.rows.length}</span>}
           </div>
         </>
       )}
+      {/* Card stack. In AC style it's its own rounded, bordered lane below the
+          header bar (the two are separate surfaces, as in Action Centre). */}
       <div
         ref={setNodeRef}
-        className={`flex-1 space-y-1.5 px-1.5 pb-1.5 min-h-[80px] rounded-b-lg transition-[box-shadow,background-color] duration-200 ${ac ? `pt-1.5 ${acTint ? "" : "bg-slate-50/70"}` : ""}`}
+        className={`flex-1 space-y-1.5 px-1.5 pb-1.5 min-h-[80px] transition-[box-shadow,background-color] duration-200 ${
+          ac ? `pt-1.5 p-2 rounded-2xl border border-slate-200/70 ${acTint ? "" : "bg-slate-50/70"}` : "rounded-b-lg"
+        }`}
         style={isOver ? { boxShadow: `inset 0 0 0 2px ${color}66`, background: `${color}33` } : (acTint ? { background: acTint } : undefined)}
       >
         <SortableContext items={group.rows.map((r) => getRowId(r))} strategy={verticalListSortingStrategy}>
@@ -242,7 +279,7 @@ export function KanbanView<R>({
   // Column order + per-column metadata (label/colour), stable across drags.
   const order = useMemo(() => groups.map((g) => g.key), [groups]);
   const meta = useMemo(
-    () => new Map(groups.map((g) => [g.key, { label: g.label, color: g.color }])),
+    () => new Map(groups.map((g) => [g.key, { label: g.label, color: g.color, stats: g.stats }])),
     [groups],
   );
 
@@ -323,7 +360,7 @@ export function KanbanView<R>({
         return (
           <Column
             key={k}
-            group={{ key: k, label: m?.label ?? k, color: m?.color, rows: cols[k] ?? [] }}
+            group={{ key: k, label: m?.label ?? k, color: m?.color, stats: m?.stats, rows: cols[k] ?? [] }}
             columns={columns}
             getRowId={getRowId}
             getName={getName}

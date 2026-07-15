@@ -18,6 +18,11 @@ export const milestonesTable = pgTable("pmo_milestones", {
   actualStart: text("actual_start"),
   actualEnd: text("actual_end"),
   status: text("status").notNull().default("not_started"),
+  // Milestone accountability. NULL = inherited from the project (its owner /
+  // function) — the table view shows the inherited value greyed until someone
+  // sets the milestone's own, so re-assigning the project keeps flowing through.
+  ownerId: integer("owner_id"),
+  dept: text("dept"),
   priority: text("priority").notNull().default("P2"),
   rag: text("rag").notNull().default("green"),
   // Derived progress % (0-100). NOT user-set: recomputeRollups() (api-server
@@ -30,6 +35,12 @@ export const milestonesTable = pgTable("pmo_milestones", {
   // Standard gate milestones (BC Approved, URS Approved, …) carry their stage;
   // ad-hoc milestones may leave it null. Drives group-by-stage / phase.
   stage: text("stage"),
+  // IT central-tracker fields. phase = the tracker phase this milestone sits in
+  // (Define, Design, Develop, Deploy, …), shown as a badge in the project detail;
+  // responsibleOwner = the raw owner name from the tracker (linked account, when
+  // resolved, is on ownerId). Null for non-IT milestones.
+  phase: text("phase"),
+  responsibleOwner: text("responsible_owner"),
   plannedEffortHours: integer("planned_effort_hours").notNull().default(0),
   scheduleVarianceDays: integer("schedule_variance_days").notNull().default(0),
   // Reason recorded when the due date was auto-extended because a child task's

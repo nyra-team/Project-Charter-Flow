@@ -32,6 +32,16 @@ export interface BoardRowContext {
   expanded: boolean;
 }
 
+/** One count in the roll-up a board column shows in the right corner of its
+ *  header, e.g. `{ label: "overdue", value: 3, tone: "danger" }`. The counts are
+ *  about the column's own rows (projects on the projects board, tasks on a task
+ *  board) — the first one is normally the total. */
+export interface BoardGroupStat {
+  label: string;
+  value: number;
+  tone?: "default" | "danger" | "success";
+}
+
 export interface BoardGroup<R> {
   /** Stable group key (also the dnd drop target suffix). */
   key: string;
@@ -39,6 +49,8 @@ export interface BoardGroup<R> {
   /** Accent colour for the group bar / left rail. */
   color?: string;
   rows: R[];
+  /** Roll-up counts shown under the column header on the Kanban board. */
+  stats?: BoardGroupStat[];
   /** Optional right-aligned summary node (e.g. group rollup bar). */
   meta?: ReactNode;
   /** Optional dnd drop id for "move into this group" (e.g. a lifecycle stage). */

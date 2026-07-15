@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -6,18 +6,23 @@ import {
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from "@/components/ui/select";
+import { SearchableSelect } from "@granules/shared/components/ui/searchable-select";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "../lib/extra-api";
 import { DownloadCloud, UploadCloud, Loader2 } from "lucide-react";
 
 type JiraProject = { id: string; key: string; name: string };
+type PmoProjectOption = { id: number; name: string; jiraKey: string | null };
 
 /**
- * "Import from Jira" — pick a Jira project; its issues are imported as PMO
- * tasks under a matching PMO project (idempotent, keyed by jira_key).
+ * "Import from Jira" — pick a Jira project (optionally one component) and the
+ * PMO project it lands in; issues are imported as PMO tasks (idempotent,
+ * keyed by jira_key, scoped to the target project).
  * Calls POST /api/integrations/jira/import.
  */
 const ALL_COMPONENTS = "__all__";
+const NEW_PROJECT = "__new__";
+const CREATE_OPTION = "➕ Create a new PMO project";
 
 export function JiraImportButton({ onDone }: { onDone?: () => void }) {
   const { toast } = useToast();
@@ -26,6 +31,28 @@ export function JiraImportButton({ onDone }: { onDone?: () => void }) {
   const [selected, setSelected] = useState("");
   const [components, setComponents] = useState<string[]>([]);
   const [component, setComponent] = useState(ALL_COMPONENTS);
+  const [pmoProjects, setPmoProjects] = useState<PmoProjectOption[]>([]);
+  const [target, setTarget] = useState(NEW_PROJECT);
+
+  // The shared SearchableSelect is string-keyed and duplicate project names
+  // exist (e.g. two "New CRM Implementation") — suffix duplicates with their
+  // PRJ code so every option label maps back to exactly one project id.
+  const { projectLabels, labelToId, idToLabel } = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const p of pmoProjects) counts.set(p.name, (counts.get(p.name) ?? 0) + 1);
+    const toId = new Map<string, string>();
+    const toLabel = new Map<string, string>();
+    const labels = pmoProjects.map((p) => {
+      const label = (counts.get(p.name) ?? 0) > 1
+        ? `${p.name} — PRJ-${String(p.id).padStart(4, "0")}`
+        : p.name;
+      toId.set(label, String(p.id));
+      toLabel.set(String(p.id), label);
+      return label;
+    });
+    return { projectLabels: labels, labelToId: toId, idToLabel: toLabel };
+  }, [pmoProjects]);
+  const targetLabel = idToLabel.get(target) ?? "";
   const [loadingComps, setLoadingComps] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -36,10 +63,19 @@ export function JiraImportButton({ onDone }: { onDone?: () => void }) {
     setSelected("");
     setComponents([]);
     setComponent(ALL_COMPONENTS);
+    setTarget(NEW_PROJECT);
     setLoading(true);
     try {
-      const list = await api.get<JiraProject[]>("/api/integrations/jira/projects");
+      const [list, pmoList] = await Promise.all([
+        api.get<JiraProject[]>("/api/integrations/jira/projects"),
+        api.get<PmoProjectOption[]>("/api/projects"),
+      ]);
       setProjects(list);
+      setPmoProjects(
+        pmoList
+          .map((p) => ({ id: p.id, name: p.name, jiraKey: p.jiraKey ?? null }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      );
       if (list[0]) setSelected(list[0].key);
     } catch (e) {
       toast({ title: "Couldn't load Jira projects", description: (e as Error).message, variant: "destructive" });
@@ -49,19 +85,22 @@ export function JiraImportButton({ onDone }: { onDone?: () => void }) {
     }
   }
 
-  // Load components whenever the selected Jira project changes.
+  // Load components whenever the selected Jira project changes, and default
+  // the target PMO project to the one already linked to that Jira key.
   useEffect(() => {
     if (!open || !selected) return;
     let cancelled = false;
     setComponents([]);
     setComponent(ALL_COMPONENTS);
     setLoadingComps(true);
+    const linked = pmoProjects.find((p) => p.jiraKey === selected);
+    setTarget(linked ? String(linked.id) : NEW_PROJECT);
     api.get<string[]>(`/api/integrations/jira/projects/${encodeURIComponent(selected)}/components`)
       .then((list) => { if (!cancelled) setComponents(list); })
       .catch(() => { if (!cancelled) setComponents([]); })
       .finally(() => { if (!cancelled) setLoadingComps(false); });
     return () => { cancelled = true; };
-  }, [open, selected]);
+  }, [open, selected, pmoProjects]);
 
   async function runImport() {
     if (!selected) return;
@@ -69,7 +108,11 @@ export function JiraImportButton({ onDone }: { onDone?: () => void }) {
     try {
       const r = await api.post<{ created: number; updated: number; total: number }>(
         "/api/integrations/jira/import",
-        { jiraProjectKey: selected, component: component === ALL_COMPONENTS ? undefined : component },
+        {
+          jiraProjectKey: selected,
+          component: component === ALL_COMPONENTS ? undefined : component,
+          pmoProjectId: target === NEW_PROJECT ? undefined : Number(target),
+        },
       );
       const scope = component === ALL_COMPONENTS ? "" : ` (${component})`;
       toast({ title: "Imported from Jira", description: `${r.total} issues${scope} — ${r.created} created, ${r.updated} updated.` });
@@ -84,9 +127,14 @@ export function JiraImportButton({ onDone }: { onDone?: () => void }) {
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={openDialog}>
-        <DownloadCloud className="h-4 w-4 mr-1.5" /> Import from Jira
-      </Button>
+      <button
+        type="button"
+        onClick={openDialog}
+        title="Import projects from Jira"
+        className="h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+      >
+        <DownloadCloud size={13} /> Import from Jira
+      </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Import from Jira</DialogTitle></DialogHeader>
@@ -124,6 +172,21 @@ export function JiraImportButton({ onDone }: { onDone?: () => void }) {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium text-muted-foreground">Into PMO project</label>
+                <SearchableSelect
+                  value={target === NEW_PROJECT ? CREATE_OPTION : targetLabel}
+                  onChange={(label) => setTarget(label === CREATE_OPTION ? NEW_PROJECT : (labelToId.get(label) ?? NEW_PROJECT))}
+                  options={[CREATE_OPTION, ...projectLabels]}
+                  placeholder="Select target project…"
+                  searchPlaceholder="Search projects…"
+                  emptyMessage="No project found."
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Issues update in place inside this project. Pick the module's own project when
+                  importing one component (e.g. SOP → SOP Harmonization).
+                </p>
               </div>
             </div>
           ) : (

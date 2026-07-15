@@ -1,0 +1,1161 @@
+{
+  "name": "Recruit — Project Template (from Transformation / Recruit)",
+  "description": "Cloned skeleton of the Recruit app project: 17 milestones + task breakdown. Rename, adjust day-offsets/durations, then upload on the PMO Templates page to create a populated template you can spin new projects from. Day 0 = project start; every defaultDayOffset is days after that. The per-task _milestone field is a human grouping hint and is ignored on import (the template model keeps a flat task list).",
+  "category": "it",
+  "milestones": [
+    {
+      "name": "Jobs Management",
+      "defaultDayOffset": 0
+    },
+    {
+      "name": "Candidate Portal & Careers",
+      "defaultDayOffset": 14
+    },
+    {
+      "name": "ATS & Resume Scoring",
+      "defaultDayOffset": 28
+    },
+    {
+      "name": "Talent Pool & Pipeline",
+      "defaultDayOffset": 42
+    },
+    {
+      "name": "LLM Council (Competency Check)",
+      "defaultDayOffset": 56
+    },
+    {
+      "name": "AI Interview (Tavus)",
+      "defaultDayOffset": 70
+    },
+    {
+      "name": "BigFive / SHL Exam",
+      "defaultDayOffset": 84
+    },
+    {
+      "name": "Senior-Hire Full Track",
+      "defaultDayOffset": 98
+    },
+    {
+      "name": "Proctoring & Integrity",
+      "defaultDayOffset": 112
+    },
+    {
+      "name": "Requisitions & Approval Engine",
+      "defaultDayOffset": 126
+    },
+    {
+      "name": "Offer Workflow",
+      "defaultDayOffset": 140
+    },
+    {
+      "name": "RBAC, Auth, Admin & Shell",
+      "defaultDayOffset": 154
+    },
+    {
+      "name": "Normalized DB & Architecture",
+      "defaultDayOffset": 168
+    },
+    {
+      "name": "Integrations & Profile Sourcing",
+      "defaultDayOffset": 182
+    },
+    {
+      "name": "Security & Compliance",
+      "defaultDayOffset": 196
+    },
+    {
+      "name": "AI Framework & Guardrails",
+      "defaultDayOffset": 210
+    },
+    {
+      "name": "Referrals",
+      "defaultDayOffset": 224
+    }
+  ],
+  "tasks": [
+    {
+      "name": "Jobs Management",
+      "description": "[MYG-173] Epic ScopeRecruiter-facing job CRUD: create, edit, delete, list (with search/filter), quick-view panel, and share (including LinkedIn). Application counts per job surface on the list. Status: Done (Sprint 1, Feb 12–25, 2026)Exit criteriaCreate/edit/delete custom jobsSearch, location + skills filter, sort-by-dateQuick view per job + application countShare to LinkedIn (postTo flags on create/edit)",
+      "defaultDurationDays": 2,
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Delete job (confirmation modal; deletes job and all applied candidates)",
+      "description": "[MYG-119] Sub-task [MYG-119] Sub-task Imported from GR-33 Original status: Done | Parent: GR-7 → MYG-17",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Share (Share menu; Share to LinkedIn; optional postTo flags on create/edit)",
+      "description": "[MYG-122] Sub-task [MYG-122] Sub-task Imported from GR-36 Original status: Done | Parent: GR-7 → MYG-17",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Edit job (updateCustomJob, same fields)",
+      "description": "[MYG-118] Sub-task [MYG-118] Sub-task Imported from GR-32 Original status: Done | Parent: GR-7 → MYG-17",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "List jobs (search, location, skills filter; sort by date; application count per job)",
+      "description": "[MYG-120] Sub-task [MYG-120] Sub-task Imported from GR-34 Original status: Done | Parent: GR-7 → MYG-17",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Job selector; load applications for selected job",
+      "description": "[MYG-123] Sub-task Imported from GR-37 Original status: Done | Parent: GR-8 → MYG-54",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Jobs: create, publish, manage roles",
+      "description": "[MYG-17] Task [MYG-17] Task Imported from GR-7 Original status: Done Original epic: GR-1 → MYG-16 Features: • Create job: title, company, location, description (About Company, About Role, Responsibilities, Qualifications, Required Skills, Nice to Have, Equal Opportunity, hashtags), requirements array, salary_range.display, status open. • Edit job: same fields; updateCustomJob. • Delete job: confirmation modal; deletes job and all applied candidates (deleteCustomJob). • List jobs: Jobs page; search (searchTerm, location, selectedSkills); sort by date; application count per job. • Quick view pan",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "test",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "parent": "Jobs Management",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "test1",
+      "defaultDurationDays": 2,
+      "defaultDayOffset": 117,
+      "defaultPriority": "P2",
+      "parent": "Jobs Management",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Create job (title, company, location, description, requirements, salary_range, status open) (copy)",
+      "description": "[MYG-18] Sub-task [MYG-18] Sub-task Imported from GR-31 Original status: Done Original parent: GR-7 → MYG-17",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Create job (title, company, location, description, requirements, salary_range, status open) (copy)",
+      "description": "[MYG-18] Sub-task [MYG-18] Sub-task Imported from GR-31 Original status: Done Original parent: GR-7 → MYG-17",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Create job (title, company, location, description, requirements, salary_range, status open) (copy)",
+      "description": "[MYG-18] Sub-task [MYG-18] Sub-task Imported from GR-31 Original status: Done Original parent: GR-7 → MYG-17",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Jobs Management (copy)",
+      "description": "[MYG-173] Epic ScopeRecruiter-facing job CRUD: create, edit, delete, list (with search/filter), quick-view panel, and share (including LinkedIn). Application counts per job surface on the list. Status: Done (Sprint 1, Feb 12–25, 2026)Exit criteriaCreate/edit/delete custom jobsSearch, location + skills filter, sort-by-dateQuick view per job + application countShare to LinkedIn (postTo flags on create/edit)",
+      "defaultDurationDays": 2,
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Post job from approved requisition",
+      "description": "[MYG-111] Task [MYG-111] Task Imported from GR-94 Original status: Done | Epic: GR-79 → MYG-29 When a requisition is fully approved, recruiter can click \"Post\" which creates a jobs record populated with requisition data. POST /api/requisitions/:id/post. Idempotent. Estimate: 1.5d | Status: Done",
+      "defaultDurationDays": 3,
+      "defaultDayOffset": 117,
+      "defaultPriority": "P1",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Quick view panel per job",
+      "description": "[MYG-121] Sub-task [MYG-121] Sub-task Imported from GR-35 Original status: Done | Parent: GR-7 → MYG-17",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Jobs Management (copy)",
+      "description": "[MYG-173] Epic ScopeRecruiter-facing job CRUD: create, edit, delete, list (with search/filter), quick-view panel, and share (including LinkedIn). Application counts per job surface on the list. Status: Done (Sprint 1, Feb 12–25, 2026)Exit criteriaCreate/edit/delete custom jobsSearch, location + skills filter, sort-by-dateQuick view per job + application countShare to LinkedIn (postTo flags on create/edit)",
+      "defaultDurationDays": 2,
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "JD preview fix on open positions list",
+      "description": "[MYG-91] Bug [MYG-91] Bug Imported from GR-69 Original status: Done | Epic: GR-56 → MYG-26 Robust JD preview rendering when user opens a job card from the public positions list — graceful fallback when description is missing / malformed. Mobile view doesn't clip preview. Estimate: 0.5d | Status: Done — shipped in 3210c79",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Create job (title, company, location, description, requirements, salary_range, status open)",
+      "description": "[MYG-18] Sub-task [MYG-18] Sub-task Imported from GR-31 Original status: Done Original parent: GR-7 → MYG-17",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Jobs Management"
+    },
+    {
+      "name": "Landing; Careers list (search, location filter); Job detail; Apply CTA",
+      "description": "[MYG-137] Sub-task Imported from GR-51 Original status: Done | Parent: GR-12 → MYG-58",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "Recruit - Onboarding",
+      "description": "[MYG-303] Task Create pre-employment",
+      "defaultDurationDays": 1,
+      "defaultDayOffset": 92,
+      "defaultPriority": "P2",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "Nginx subdomain routing — careers.granulesrecruit.com vs recruit.granulesrecruit.com",
+      "description": "[MYG-90] Task [MYG-90] Task Imported from GR-68 Original status: Done | Epic: GR-56 → MYG-26 Nginx routes careers.granulesrecruit.com → Careers (5179) and recruit.granulesrecruit.com → Recruit (5174). Shared /api/ routes to backend on 3001. SSL certs cover both. Estimate: 1d | Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "CandidateAuthProvider — Recruit DB auth for external candidates",
+      "description": "[MYG-89] Task [MYG-89] Task Imported from GR-67 Original status: Done | Epic: GR-56 → MYG-26 External candidates authenticate via the Recruit DB (recruit_candidate_profiles table) — NOT the Master Employee DB. CandidateAuthProvider is mounted only in apps/careers/, not in Recruit (internal) after the split. Estimate: 2d | Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "RECRUIT - Job Detail page (candidate-facing) with referral prefill",
+      "description": "[MYG-237] Task Whatapps/recruit/src/pages/JobDetail.tsx — candidate-facing job detail page with referral code prefill (consumes ?ref=CODE query param to seed the apply form's referral field). RefsCommit 82babe5 (WIP catch-up bundle). Coupled with the Referrals epic (MYG-227) for ?ref=CODE deep-link flow.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "Careers App Split",
+      "description": "[MYG-26] Epic [MYG-26] Epic Imported from GR-56 Original status: In Progress ScopeSeparation of careers.granulesrecruit.com from recruit.granulesrecruit.com: New apps/careers/ directory, frontend port 5179 Shared backend on port 3001 serves both: public careers endpoints + recruiter-only endpoints CandidateAuthProvider for external candidates via Recruit DB (recruit_candidate_profiles table) Public JD preview on open-positions list Separate nginx routing for the careers subdomain Auth modelSurface Auth Data recruit.granulesrecruit.com (internal recruiters) Master Employee DB Recruit DB careers",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "Integration: Careers page (job postings sync)",
+      "description": "[MYG-69] Task [MYG-69] Task Imported from GR-23 Original status: Done | Epic: GR-4 → MYG-22 Careers page: API or feed from Recruit to main careers site; job postings sync; frequency (real-time vs batch); ownership of careers site config. Owner: IT + HR. Timeline: Phase 2.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "Apply: resume upload + AI parse; form (validation); submit → storage + ATS; redirect",
+      "description": "[MYG-138] Sub-task Imported from GR-52 Original status: Done | Parent: GR-12 → MYG-58",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "Candidate auth flow — end-to-end test with external candidates",
+      "description": "[MYG-92] Task [MYG-92] Task Imported from GR-70 Original status: In Progress | Epic: GR-56 → MYG-26 Full sign-up → email verification → login → apply flow tested with real external candidate accounts on careers.granulesrecruit.com. CandidateAuthProvider exists but flow hasn't been walked end-to-end. Estimate: 1d | Status: To Do — blocker until verified",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "RECRUIT - Navbar / Footer / Auth page refresh for candidate experience",
+      "description": "[MYG-238] Task Whatapps/recruit/src/components/Navbar.tsx (refreshed) apps/recruit/src/components/Footer.tsx (new) apps/recruit/src/pages/Auth.tsx (refreshed) apps/recruit/src/auth/CandidateAuthProvider.tsx (touch-up) Brings the candidate-side UI in line with the careers/recruit subdomain split (MYG-26): consistent header/footer chrome, simplified auth entry, parity between recruit's candidate touchpoints and the careers app. RefsCommit 82babe5 (WIP catch-up bundle).",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P3",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "Candidate Portal & Careers UX",
+      "description": "[MYG-31] Epic [MYG-31] Epic Imported from GR-81 Original status: In Progress ScopeExternal candidate experience on careers.granulesrecruit.com: CandidatePortal dashboard — My applications, interviews, offers, documents Candidate Profile editor — resume upload, contact, profile fields Live Interview room — full-screen video, no navbar Offer Sign page — e-signature + acceptance Assessments — Big Five + Full Track (full-screen) Join Talent Pool — passive-candidate signup Static career content — Guiding Principles, Workplace Core Competencies, Career Ascent RollupEstimate: ~18d Status: In Progress",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "Careers app split — apps/careers/, port 5179, careers.granulesrecruit.com subdomain",
+      "description": "[MYG-88] Task [MYG-88] Task Imported from GR-66 Original status: Done | Epic: GR-56 → MYG-26 Move public-facing careers pages into their own Vite app at apps/careers/ on port 5179. Recruit (5174) continues to serve recruiter-only pages. Both share backend/recruit on port 3001. Estimate: 3d | Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "Candidate journey: Landing → View jobs → Apply",
+      "description": "[MYG-58] Task [MYG-58] Task Imported from GR-12 Original status: Done | Epic: GR-1 → MYG-16 Features: • Landing: Home (/) hero; \"View Careers\" CTA when not logged in; recruiter dashboard otherwise. • View jobs: /careers — list open jobs; search (title/company/description); filter by location. • Job detail: /careers/:jobId — full JD; \"Apply\" → /apply/:jobId. • Apply: resume upload first (PDF/Word); AI parse (parseResumeFields) to auto-fill form. • Form: Full Name, Email, Phone, Location, Current/Expected CTC, Notice Period, Experience, Education, Skills, Education docs; terms agreement; validat",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "Candidate Apply Flow",
+      "description": "[MYG-174] Epic ScopePublic candidate journey: landing → careers list (search, location filter) → job detail → Apply. Resume upload + AI parse, form with validation, submit → storage + ATS scoring + redirect. Status: Done (Sprint 1–2, Feb 12 – Mar 11, 2026)Exit criteriaPublic landing + careers listJob detail + Apply CTAResume upload with AI parse → form prefillSubmit → applications_new + resume storageATS score computed on submit",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Candidate Portal & Careers"
+    },
+    {
+      "name": "RECRUIT - Server-side LibreOffice resume preview pipeline",
+      "description": "[MYG-234] Task WhatIn-process bounded worker that converts uploaded .doc/.docx resumes to PDF previews via LibreOffice headless, while preserving the original. Files are stored as-is in the resumes bucket; preview lives at <filename>.preview.pdf alongside. Pipeline: candidate uploads X.docx → POST /v2/applications enqueues preview gen → worker polls applications_new.resume_preview_status='pending' → converts via LibreOffice → uploads sibling .preview.pdf → recruit UI prefers preview_url for inline iframe; falls back to \"Download original\" when preview is null. Hard gates (all enforced)Per-invo",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "Resume view (signed URL); multi-file upload modal + ATS scoring",
+      "description": "[MYG-127] Sub-task [MYG-127] Sub-task Imported from GR-41 Original status: Done | Parent: GR-8 → MYG-54",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "JD Upload (OCR + LLM)",
+      "description": "[MYG-180] Epic ScopeAdmin-facing JD upload endpoint. OCR on scanned PDFs + LLM extraction into structured JD (responsibilities, skills, YOE, traits). Feeds Jobs Management + Council scoring. Status: To Do (Sprint 6, Apr 23 – May 6, 2026)Exit criteria[ ] POST /api/admin/upload-jds accepts PDF/DOCX [ ] OCR + LLM extraction produces normalized JD JSON [ ] Tested on 10+ real JDs end-to-end [ ] Surfaces as a Create Job seed",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "ATS: resume vs JD scoring in Talent Pool",
+      "description": "[MYG-59] Task [MYG-59] Task Imported from GR-13 Original status: Done | Epic: GR-2 → MYG-19 Resume vs JD scoring in Talent Pool; score-and-update on apply (fire-and-forget); batch score (PDFs); async job for multi-file; resume highlights, extract-text, resume-assessment; ATS column and cutoff filter. Backend: /api/ats/score, score-pdfs, score-and-update. Timeline: Phase 2.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "Experience drill-downs in ATS (YOE, role relevance)",
+      "description": "[MYG-82] Task [MYG-82] Task Imported from GR-60 Original status: Done | Epic: GR-55 → MYG-25 Year-of-experience breakdown + per-role relevance scoring in candidate ATS view. YOE computed across stints with gap detection. Sortable by YOE column in Talent Pool. Estimate: 1.5d | Status: Done — shipped in 6d8c536",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "Screening funnel split — granular substages",
+      "description": "[MYG-84] Task [MYG-84] Task Imported from GR-62 Original status: Done | Epic: GR-55 → MYG-25 Break out the Screening stage into granular substages for recruiter visibility and more precise funnel analytics. No regression in the generic interviews module. Estimate: 1d | Status: Done — shipped in a2627b3",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "JD upload admin endpoint — OCR + LLM extraction end-to-end test",
+      "description": "[MYG-93] Task [MYG-93] Task Imported from GR-71 Original status: To Do | Epic: GR-56 → MYG-26 POST /api/admin/upload-jds built (OCR for scanned PDFs + LLM extraction of title, skills, salary range, etc.) but not tested end-to-end. Bulk route for HR to dump a stack of JDs into the system. Estimate: 1d | Status: To Do",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "Model keeps Hallucinating for ATS Score matching",
+      "description": "[MYG-77] Task [MYG-77] Task Imported from GR-53 Original status: Done | No parent epic (Original had no description — see link above for any updates on the source issue.)",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "JD traits endpoint — complete end-to-end test",
+      "description": "[MYG-139] Sub-task Imported from GR-77 Original status: To Do | Parent: GR-9 → MYG-55 JD traits extraction endpoint built (per March 17 session notes) but end-to-end testing against real JDs + integration with Council scorer not closed out. Traits feed into ACT-HA JD → OPQ32 scoring. Estimate: 0.5d | Status: To Do",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "ATS Resume Scoring",
+      "description": "[MYG-176] Epic ScopeAI-driven resume ↔ JD scoring surfaced in Talent Pool. Applied on apply-flow submit and on multi-file upload; hallucination mitigation; deterministic score persisted to application_scores. Status: Done (Sprint 2, Feb 26 – Mar 11, 2026)Exit criteriaScore on candidate apply and bulk uploadHallucination fixes for match scoringScore visible + sortable in Talent Pool",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "Premier institution badges (IIT / IIM / NIT / BITS / ISB)",
+      "description": "[MYG-83] Task [MYG-83] Task Imported from GR-61 Original status: Done | Epic: GR-55 → MYG-25 Visual badges on candidate cards for premier institutions — IIT, IIM, NIT, BITS, ISB, etc. Fuzzy matching so variants still resolve. Multi-badge support (e.g. IIT UG + IIM PG). Estimate: 1d | Status: Done — shipped in 6d8c536",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "RECRUIT - Resume parser service refactor + ATS rescore Word support",
+      "description": "[MYG-236] Task Whatapps/recruit/src/services/resumeParserService.ts — frontend resume parser refactored to a dedicated service. backend/recruit/routes/ats.js:542 — rescore endpoint swapped hardcoded pdf-parse for extractResumeText({ buffer, originalname }), which routes Word resumes through the format-aware extractor. Without this, ATS rescore would crash on every Word upload now that originals are preserved (sibling story). RefsCommits 82babe5 (parser refactor), f320a4c (ATS rescore Word support folded in).",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "RECRUIT - Bug: phantom resume_parsed column reference broke Generate Report",
+      "description": "[MYG-214] Bug Whatapplications_new has parsed_experience / parsed_education / parsed_skills (separate columns). It does NOT have resume_parsed. Two callers were .select('id, job_id, resume_parsed') against this table: gatherScoringContext in backend/recruit/routes/full-track.js backend/recruit/services/fullTrackReportGenerate.js Supabase silently failed the select on a non-existent column, returned data: null, and the if (!app?.job_id) guard threw Application not found — appearing in logs as [FullTrack] Auto-generate failed for app=… — Application not found and surfacing in the recruiter UI as",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "Education drill-downs in ATS (CGPA, degree tier)",
+      "description": "[MYG-81] Task [MYG-81] Task Imported from GR-59 Original status: Done | Epic: GR-55 → MYG-25 Expanded education detail on candidate ATS view — CGPA, degree tier, institution and year parsed from resume. Empty / partial data handled gracefully. Estimate: 1.5d | Status: Done — shipped in 6d8c536",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "Advanced ATS (Education, YOE, Badges, Screening Funnel)",
+      "description": "[MYG-19] Epic [MYG-19] Epic Imported from GR-2 Original status: Done Scope: AI differentiators for Granules Recruit (excluding profile scraping and AI Interview, which have separate epics). In scope: • LLM Council: JD+ACT-HA assessment (score-jd-actha), framework (level labels, competencies), default on framework API failure; chat about report (history + send); result stored on application (competency_result). • ATS: resume vs JD scoring in Talent Pool; score-and-update on apply; batch score (PDFs); async job for multi-file; resume highlights, extract-text, resume-assessment, TD1 report. • AI ",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "RECRUIT - Bug: blank Word resume PDFs + signed-URL routing bypass",
+      "description": "[MYG-235] Bug WhatTwo bugs fixed in one ship: Blank PDFs from in-browser .docx → .pdf converter. wordToPdf.ts used jsPDF.html() + html2canvas with offscreen container at -99999px, scale 0.28, autoPaging 'text' + html2canvas mode mismatch, and missing requestAnimationFrame flush. Combined to silently produce blank PDFs. Five candidates since 2026-04-20 had unrecoverable blank resumes stored in the bucket. Fix: removed the converter at all 4 callsites and deleted the file. Word originals upload as-is; server-side preview generation arrives in the LibreOffice pipeline (sibling story). Signed-URL ",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "ATS & Resume Scoring"
+    },
+    {
+      "name": "Filters (search, ATS cutoff, in pipeline); bulk shortlist & delete",
+      "description": "[MYG-125] Sub-task Imported from GR-39 Original status: Done | Parent: GR-8 → MYG-54",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Talent Pool & Pipeline"
+    },
+    {
+      "name": "Per-stage status; interview scheduling modal (date, time, URL, send email)",
+      "description": "[MYG-133] Sub-task Imported from GR-47 Original status: Done | Parent: GR-10 → MYG-56",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Talent Pool & Pipeline"
+    },
+    {
+      "name": "Stages view (Screening → SHL → Interview 1 & 2 → Offer → Decision)",
+      "description": "[MYG-132] Sub-task Imported from GR-46 Original status: Done | Parent: GR-10 → MYG-56",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Talent Pool & Pipeline"
+    },
+    {
+      "name": "Table columns (Name, YOE, ATS, SHL, Status, Actions); sort persisted",
+      "description": "[MYG-124] Sub-task Imported from GR-38 Original status: Done | Parent: GR-8 → MYG-54",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Talent Pool & Pipeline"
+    },
+    {
+      "name": "Recruiting Pipeline",
+      "description": "[MYG-178] Epic ScopeEnd-to-end stage-driven pipeline: Screening → SHL → Interview 1 & 2 → Offer → Decision. Per-stage status, interview scheduling modal (date, time, URL, email), feedback (per-stage word, TD1 transcript + evaluation), offer-letter trigger. Status: Done (Sprint 3, Mar 12–25, 2026)Exit criteriaStage view renders full pipelinePer-stage status updatesScheduling modal + email inviteFeedback capture + offer trigger",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Talent Pool & Pipeline"
+    },
+    {
+      "name": "Stage dropdown & per-stage status (screening → offer → accepted/rejected)",
+      "description": "[MYG-128] Sub-task [MYG-128] Sub-task Imported from GR-42 Original status: Done | Parent: GR-8 → MYG-54",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Talent Pool & Pipeline"
+    },
+    {
+      "name": "Candidate detail panel (editable fields, YOE, resume link, add/remove pipeline)",
+      "description": "[MYG-126] Sub-task [MYG-126] Sub-task Imported from GR-40 Original status: Done | Parent: GR-8 → MYG-54",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Talent Pool & Pipeline"
+    },
+    {
+      "name": "Recruiting pipeline: stages up to Offer",
+      "description": "[MYG-56] Task [MYG-56] Task Imported from GR-10 Original status: Done | Epic: GR-1 → MYG-16 Features: • Stages: Screening → SHL → Interview 1 → Interview 2 → Offer → Decision. • RecruitingProgress groups by role; per candidate: name, role, stage, status, next step, interviews, scores, feedback, offer date, final decision. • Per-stage status editable in pipeline UI. • Interview scheduling: modal for Interview 1 & 2 — date, time, duration, meeting URL, emails; save to application; optional send schedule email (SMTP). • Feedback: per-stage feedback; TD1 transcript upload → TD1 report + evaluation",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Talent Pool & Pipeline"
+    },
+    {
+      "name": "Talent Pool",
+      "description": "[MYG-175] Epic ScopeUnified candidate workspace per job: table (Name, YOE, ATS, SHL, Status, Actions), search, ATS cutoff, in-pipeline filter, bulk shortlist/delete, detail panel with resume view, pipeline add/remove, stage dropdown, per-stage status, multi-file resume upload + ATS scoring. Status: Done (Sprint 2, Feb 26 – Mar 11, 2026)Exit criteriaJob selector drives the tableSort persisted, filters + bulk actions workCandidate detail panel (editable fields, YOE, resume link)Stage dropdown (screening → offer → accepted/rejected)",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Talent Pool & Pipeline"
+    },
+    {
+      "name": "Talent Pool: view, filter, YOE, pipeline stages",
+      "description": "[MYG-54] Task [MYG-54] Task Imported from GR-8 Original status: Done | Epic: GR-1 → MYG-16 Features: • Job selector (required); load applications for selected job. • Table columns: checkbox, Name, YOE, ATS score, SHL/competency score, Status, Actions. • Filters: candidate search, ATS cutoff (default 90), \"In pipeline\" filter. • Sort: score (ATS desc), name, date, pipeline; persisted in localStorage. • Bulk: \"Shortlist to pipeline\", \"Delete Selected (N)\" with confirmation. • Candidate detail panel: editable fields, YOE, resume link, ATS/SHL summaries, add/remove from pipeline (justification whe",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Talent Pool & Pipeline"
+    },
+    {
+      "name": "LLM Council (Competency Check)",
+      "description": "[MYG-177] Epic ScopeMulti-model Council produces a branded, deterministic competency report from JD + ACT-HA + resume. Metrics, trait table, ACT-HA panel, behavioral interpretation, ranking, PDF download, chat-ask-about-report, framework fallback. Status: Done (Sprint 2–3, Feb 26 – Mar 25, 2026)Exit criteriaJob/role selector drives scoringReport layout with all sectionsPDF (branded) + chat-about-reportFramework fallback when a model is down",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "LLM Council (Competency Check)"
+    },
+    {
+      "name": "Report layout (metrics, trait table, ACT-HA, behavioral interpretation, ranking)",
+      "description": "[MYG-130] Sub-task [MYG-130] Sub-task Imported from GR-44 Original status: Done | Parent: GR-9 → MYG-55",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "LLM Council (Competency Check)"
+    },
+    {
+      "name": "LLM Council: JD vs resume scoring, report, chat",
+      "description": "[MYG-60] Task [MYG-60] Task Imported from GR-14 Original status: Done | Epic: GR-2 → MYG-19 JD+ACT-HA (score-jd-actha); framework (level labels, competencies); default on framework API failure; chat about report (history + send); result stored on application (competency_result). Backend: /api/competency/framework, score-jd-actha, chat-about-report. Timeline: Phase 3.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "LLM Council (Competency Check)"
+    },
+    {
+      "name": "Job/role selector; Council scoring (JD+ACT-HA) & loading skeleton",
+      "description": "[MYG-129] Sub-task [MYG-129] Sub-task Imported from GR-43 Original status: Done | Parent: GR-9 → MYG-55",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "LLM Council (Competency Check)"
+    },
+    {
+      "name": "Competency Check: Council scoring, report, chat",
+      "description": "[MYG-55] Task [MYG-55] Task Imported from GR-9 Original status: Done | Epic: GR-1 → MYG-16 Features: • Job/role selector; optional role band for SHL flow. • Council scoring: JD+ACT-HA (score-jd-actha); result in application.competency_result. • Loading skeleton while processing. • Report: candidate snapshot; core metrics; JD trait match table; ACT-HA dimensions; behavioral interpretation; ranking vs cohort; comparison standing. • PDF download: html2canvas + jsPDF; multi-page A4. • Chat: \"Ask about this report\"; conversation stored. • Framework: GET /api/competency/framework; fallback LEVEL_LAB",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "LLM Council (Competency Check)"
+    },
+    {
+      "name": "PDF download (branded); Chat Ask about this report; framework fallback",
+      "description": "[MYG-131] Sub-task [MYG-131] Sub-task Imported from GR-45 Original status: Done | Parent: GR-9 → MYG-55",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "LLM Council (Competency Check)"
+    },
+    {
+      "name": "RECRUIT - Nyra Recommendations panel for actionable candidate signals",
+      "description": "[MYG-233] Task Whatapps/recruit/src/components/NyraRecommendations.tsx — surfaces actionable Nyra-driven recommendations on candidate / pipeline views (next best action, anomalies, follow-ups). StatusIn-flight as of 2026-05-05 (uncommitted on recruit_dev). RefsModified files: apps/recruit/src/components/NyraRecommendations.tsx. Part of the broader Nyra brain rollout (see CLAUDE.md \"Nyra AI Brain — Company Intelligence Platform\").",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "LLM Council (Competency Check)"
+    },
+    {
+      "name": "AI Interview: Tavus training pipeline",
+      "description": "[MYG-63] Task [MYG-63] Task Imported from GR-17 Original status: Done | Epic: GR-3 → MYG-20 Tavus training pipeline: upload videos, train custom avatar, API integration. Timeline: 2–3 weeks after content ready.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "AI Interview (Tavus)"
+    },
+    {
+      "name": "Integration: Twilio (AI calls)",
+      "description": "[MYG-70] Task[MYG-70] TaskImported from GR-24Original status: KILLED | Epic: GR-4 → MYG-22Twilio: AI-driven screening and outreach calls. Account, API, use cases (screening, outreach); telephony and compliance (e.g. recording consent). Owner: IT. Timeline: Phase 3.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "AI Interview (Tavus)"
+    },
+    {
+      "name": "AI Interview (Tavus)",
+      "description": "[MYG-20] Epic [MYG-20] Epic Imported from GR-3 Original status: In Progress Scope: AI-driven interview experience with custom avatar. In scope: • Custom avatar: professional photographer videos → send to Tavus for training. • Tavus: training pipeline, API integration, embedding in Recruit (e.g. pipeline / interview flow). • Platform integration: AI Interview step in Recruiting Pipeline; schedule/launch from Recruit UI. • Optional: Twilio for AI screening/outreach calls (can sit under API integrations epic if preferred). Timeline (suggested): After core Recruit + API integrations (Tavus account",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "AI Interview (Tavus)"
+    },
+    {
+      "name": "AI Interview: custom avatar (photographer videos)",
+      "description": "[MYG-62] Task [MYG-62] Task Imported from GR-16 Original status: Done | Epic: GR-3 → MYG-20 Professional photographer videos of interviewer/avatar; send to Tavus for training. Content capture workflow and handoff to Tavus. Timeline: after Tavus account/API.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "AI Interview (Tavus)"
+    },
+    {
+      "name": "AI Interview: platform integration in Recruit",
+      "description": "[MYG-64] Task [MYG-64] Task Imported from GR-18 Original status: Done | Epic: GR-3 → MYG-20 Embed AI Interview in Recruit: pipeline step (e.g. after Screening or SHL); schedule/launch interview from Recruiting Pipeline UI; optional Twilio for screening calls. Timeline: after Tavus integration.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "AI Interview (Tavus)"
+    },
+    {
+      "name": "Integration: SHL (test link + report for Council)",
+      "description": "[MYG-71] Task [MYG-71] Task Imported from GR-25 Original status: KILLED | Epic: GR-4 → MYG-22 SHL: Automated test link triggering and real-time report retrieval for Council/Competency Check. Auth; webhook or poll; mapping to application. Owner: IT + HR. Timeline: Phase 3.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "BigFive / SHL Exam"
+    },
+    {
+      "name": "BigFive — fork / embed exam UI + session capture",
+      "description": "[MYG-94] Task [MYG-94] Task Imported from GR-72 Original status: In Progress | Epic: GR-57 → MYG-27 Fork or embed bigfive-org exam UI; adapt styling to Granules design system; capture raw 120-item responses tied to a candidate session. Resume-on-refresh. Estimate: 3d | Status: To Do",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "BigFive / SHL Exam"
+    },
+    {
+      "name": "[DUPLICATE of MYG-71] Integration: SHL (test link + report for Council)",
+      "description": "[MYG-78] Task [MYG-78] Task Imported from GR-25 Original status: KILLED | Epic: GR-4 → MYG-22 SHL: Automated test link triggering and real-time report retrieval for Council/Competency Check. Auth; webhook or poll; mapping to application. Owner: IT + HR. Timeline: Phase 3.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "BigFive / SHL Exam"
+    },
+    {
+      "name": "BigFive → ACT-HA score mapping (BigFive facets → OPQ32 stens)",
+      "description": "[MYG-95] Task [MYG-95] Task Imported from GR-73 Original status: In Progress | Epic: GR-57 → MYG-27 Deterministic mapping from BigFive facet scores to OPQ32-style stens consumed by the existing ACT-HA scoring pipeline. Psychometric justification + unit tests. Estimate: 3d | Status: To Do",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "BigFive / SHL Exam"
+    },
+    {
+      "name": "Schedule SHL (BigFive) from pipeline",
+      "description": "[MYG-96] Task [MYG-96] Task Imported from GR-74 Original status: In Progress | Epic: GR-57 → MYG-27 Recruiter can schedule the in-house SHL from the candidate pipeline, same UX as scheduling an interview — stores a row in interviews with type='shl' and emails the candidate an access link. Estimate: 2d | Status: To Do",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "BigFive / SHL Exam"
+    },
+    {
+      "name": "Council report — BigFive SHL integration + feature flag",
+      "description": "[MYG-98] Task [MYG-98] Task Imported from GR-76 Original status: To Do | Epic: GR-57 → MYG-27 Council report consumes BigFive-derived ACT-HA stens alongside Tavus / Daily transcripts. Feature flag shl_source = bigfive | external lets us fall back during transition. Estimate: 3d | Status: To Do",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "BigFive / SHL Exam"
+    },
+    {
+      "name": "Interviews table — route type='shl' through BigFive exam session",
+      "description": "[MYG-97] Task [MYG-97] Task Imported from GR-75 Original status: To Do | Epic: GR-57 → MYG-27 Extend the generic interviews table's type discriminator to route 'shl' entries through the BigFive exam session instead of Tavus / Daily. Reuse the generic interview state machine. Estimate: 2d | Status: To Do",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "BigFive / SHL Exam"
+    },
+    {
+      "name": "RECRUIT - Bug: SHL \"Reschedule\" was hardcoded to BigFive even for Full-Track jobs",
+      "description": "[MYG-213] Bug Whatapps/recruit/src/components/RecruitingProgress.tsx — the SHL line-action block for both 2nd Chance (rejected → reschedule) and Reschedule (completed → reschedule) was hardcoded to call BigFive endpoints even for jobs with shl_assessment_tier = 'full'. Full-Track candidates' sessions weren't being reset because the call landed on the wrong cleanup path. Fix: derive shlInterviewType from jobsMap.get(candidate.application.job_id)?.shl_assessment_tier and pass it to openScheduleModal for both reschedule actions. Other 'bigfive' calls inside the BigFive-only render branch (gated o",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "BigFive / SHL Exam"
+    },
+    {
+      "name": "BigFive — In-House SHL Exam (replace external SHL)",
+      "description": "[MYG-27] Epic Imported from GR-57 Original status: To Do ScopeReplace the external SHL dependency with an in-house BigFive-based personality + cognitive assessment. Integrated into the Recruit pipeline as a standard interview stage (interviews.type = 'shl') and scored deterministically via OPQ32-style stens so the existing ACT-HA scoring pipeline + Council report consume it unchanged. WhyExternal SHL is expensive per-seat and slow to schedule Granules wants a deterministic, auditable trait pipeline (already built for OPQ32 stens → ACT-HA) bigfive-org is an open, well-documented 120-item instru",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "BigFive / SHL Exam"
+    },
+    {
+      "name": "RECRUIT - Psychometric upgrade Step 3: per-archetype + per-requisition psychometric_minimum",
+      "description": "[MYG-205] Task WhatMigration supabase/migrations/20260427300000_seat_archetype_psychometric_minimum.sql adds psychometric_minimum NUMERIC(3,1) to recruit_shl_seat_archetypes (Recruit DB). Defaults seeded: Heads → 6.5; STRATEGIC_FINANCE → 5.5; senior IC engineers → 5.0. Backend fullTrackReportGenerate.js + routes/full-track.js add the column to archetype .select(...). Scoring engine's existing chain (role_blueprint.psychometric_minimum ?? seat_archetype.psychometric_minimum ?? 6.0) consumes it without further change. Admin endpoint PUT /admin/shl/seat-archetypes/:id accepts psychometric_minimum",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Senior-Hire Full Track"
+    },
+    {
+      "name": "RECRUIT - Psychometric upgrade Step 2: Response Validity panel (IM + SJT + resume contradictions)",
+      "description": "[MYG-204] Task WhatNew helper backend/recruit/scoring/responseValidity.js combines: (a) HEXACO impression-management score; (b) SJT-vs-self-report contradiction count + severity; (c) Resume-vs-psychometric contradiction count + severity. Each component → low/medium/high band; overall = worst component. Wired through backend/recruit/scoring/index.js and surfaced via harshaNarrative.assembleReport. Section 3 of apps/recruit/src/pages/SeniorHireReport.tsx renders an overall band banner + 3 component cards. FullTrackSummaryCard shows a compact validity chip when band ≠ low. WhyScore on its own say",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Senior-Hire Full Track"
+    },
+    {
+      "name": "RECRUIT - Operating Style Suggest engine for boss/candidate compatibility",
+      "description": "[MYG-230] Task WhatNew scoring helper backend/recruit/scoring/operatingStyleSuggest.js — LLM-backed engine that derives operating-style suggestions for the senior-hire boss-compatibility flow. Wired into: apps/recruit/src/pages/MyOperatingStyle.tsx (recruiter view of own style) apps/recruit/src/pages/BossSelfAssessment.tsx (boss takes their own assessment) apps/recruit/src/pages/admin-shl/BossBenchmarksSection.tsx (admin tunes benchmark profiles) Feeds shl_boss_compatibility JSONB (one of the six SHL outputs). WhyBoss compatibility was previously hand-tagged by recruiters. The Suggest engine b",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Senior-Hire Full Track"
+    },
+    {
+      "name": "RECRUIT - Bug: blank /senior-hire/report page caused by null sub-scores in boss_compatibility_summary",
+      "description": "[MYG-215] Bug WhatThe Full Track 6-page report at apps/recruit/src/pages/SeniorHireReport.tsx was silently crashing with TypeError because boss_compatibility_summary.operating_style_compatibility_score was null (the candidate's boss hadn't taken their own SHL or filled their operating-style profile yet) and the page called .toFixed(1) on it without a guard. Fix: made ScoreBar and CompetencyLight null-safe (render '—' / 'N/A' badge instead). Wrapped the entire boss compatibility section in a defensive IIFE that pre-extracts each score with a typeof guard. Also defended the four top-of-page chip",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Senior-Hire Full Track"
+    },
+    {
+      "name": "RECRUIT - Role tagging service for senior-hire job classification",
+      "description": "[MYG-231] Task WhatNew service backend/recruit/services/roleTagging.js — classifies jobs into seat archetypes / role tags so the right psychometric_minimum, competency weights, and benchmark profile are auto-applied without recruiter manual selection. Backs the requisition wizard's archetype suggestions and feeds the lookup chain role_blueprint.psychometric_minimum ?? seat_archetype.psychometric_minimum ?? 6.0 introduced in MYG-205. RefsCommit 82babe5 (WIP catch-up bundle).",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Senior-Hire Full Track"
+    },
+    {
+      "name": "RECRUIT - Boss Self-Assessment page + Boss Benchmarks admin",
+      "description": "[MYG-232] Task Whatapps/recruit/src/pages/BossSelfAssessment.tsx — boss takes their own structured assessment so candidates can be scored against a real (not templated) boss profile. apps/recruit/src/pages/admin-shl/BossBenchmarksSection.tsx — admin section to tune benchmark profiles per role family. backend/recruit/routes/boss-assessment.js — backing endpoints. WhyPreviously the boss-compatibility output was scored against generic archetype templates because no boss-side data existed. With per-boss self-assessment, the SHL boss-compatibility JSONB compares against the actual hiring manager's ",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Senior-Hire Full Track"
+    },
+    {
+      "name": "Senior-hire Full Track — unified requisition wizard, archetypes, exam prep",
+      "description": "[MYG-80] Task Imported from GR-58 Original status: Done | Epic: GR-55 → MYG-25 WhatUnified requisition wizard for senior hires with archetype selection (Strategist / Operator / Technologist etc.) feeding a downstream exam-prep flow. Estimate: 5d | Status: Done — shipped in bab3c7e Success criteriaWizard walks recruiter through requisition creation in a single flowArchetype picker with descriptions drives downstream questionnaireExam-prep stage surfaces curated competencies per archetypePortal requisition entry point wired upSmoke test with 2–3 real senior roles (pending — owner: recruiter team",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Senior-Hire Full Track"
+    },
+    {
+      "name": "RECRUIT - Full Track report ops: auto-generate on submit + inline summary card + Competency Check deep links",
+      "description": "[MYG-207] Task WhatAuto-generate: Extracted /generate logic into shared helper backend/recruit/services/fullTrackReportGenerate.js. The submit-layer in backend/recruit/routes/full-track.js fires the generator in the background after the candidate's final SJT layer is submitted — recruiter opens the report and it's ready, no manual click. Failures logged only; manual \"Generate Report\" button remains the fallback. Inline summary card: New apps/recruit/src/components/FullTrackSummaryCard.tsx pulls application_scores.shl_full_report + shl_composite, renders recommendation banner + 4 score chips (p",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Senior-Hire Full Track"
+    },
+    {
+      "name": "Senior-Hire Full Track",
+      "description": "[MYG-25] Epic [MYG-25] Epic Imported from GR-55 Original status: In Progress ScopeFY26 Q4 enhancements to the Recruit app: Senior-hire Full Track — unified requisition wizard with archetypes and exam prep Advanced ATS drill-downs — education (CGPA / degree tier) and experience (YOE, role relevance) Premier institution badges — IIT / IIM / NIT / BITS / ISB etc. on candidate cards Screening funnel split — break Screening into granular substages for recruiter visibility RBAC — per-app role columns on employee_auth + admin role dropdowns Recent commitsbab3c7e feat(recruit+portal): senior-hire Full",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Senior-Hire Full Track"
+    },
+    {
+      "name": "RECRUIT - Psychometric upgrade Step 1: decouple composite from non-negotiable veto",
+      "description": "[MYG-203] Task Whatbackend/recruit/scoring/recommendation.js applyNonNegotiableRules no longer collapses final_score to min(psy × 0.5, 4). Composite stays the true weighted mean; non-negotiable rules add hard_filter_veto: true + final_score: null and the recommendation is set to \"Reject\". apps/recruit/src/pages/SeniorHireReport.tsx Section 2 + FullTrackSummaryCard render a rose-tinted banner when veto fires: \"Composite reflects actual math; recommendation forced by <reason>. Score and recommendation are independent.\" WhyCompeting with SHL/Hogan means score and recommendation must stay independ",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Senior-Hire Full Track"
+    },
+    {
+      "name": "RECRUIT - Full Track report re-skinned to Competency Check style + RAG colors + readable competency labels",
+      "description": "[MYG-206] Task Whatapps/recruit/src/pages/SeniorHireReport.tsx reskinned to match the canonical <ShlReportCard> layout (numbered sections with vertical-bar headers, white background, brand header, dense narrative + tables). New section order: 1. Snapshot · 2. Recommendation & Rationale · 3. Response Validity · 4. Competency Traffic Lights · 5. Dimension Scores · 6. Strengths/Risks · 7. Boss & Environment Fit · 8. Methodology · 9. Assessment Integrity. Single ragTone(score) helper replaces ad-hoc color logic in ScoreBar and CompetencyLight. Thresholds match bandFor(): ≥7.5 Green, 6.0–7.4 Amber,",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Senior-Hire Full Track"
+    },
+    {
+      "name": "RECRUIT - Server-side face-match recompute (close client-trust spoof in identity verification)",
+      "description": "[MYG-208] Task Whatbackend/recruit/routes/identity.js no longer trusts the client-posted match_score. Client now POSTs raw 128-dim id_descriptor + selfie_descriptor (Float32 arrays from face-api). Server validates each (length 128, finite floats, L2 norm ≈ 1.0), then recomputes the euclidean distance independently. Fallback when descriptors absent (legacy / cached frontend): cap client score at 0.95. Also added a 5KB image-payload floor — rejects blank/stub images. New score_source: 'server_recomputed' | 'client' field returned for audit. WhyCloses the trivial spoof where a candidate POSTs mat",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Proctoring & Integrity"
+    },
+    {
+      "name": "RECRUIT - Proctor signal cleanup: drop dead consent_denied + de-escalate paste + informational-only gate",
+      "description": "[MYG-211] Task Whatconsent_denied removed entirely. Was defined and weighted at 50 (auto-critical) but never emitted. Declining the consent screen prevents the session from starting → no session_key to write a proctor_event against. Stripped from packages/shared/proctor/types.ts, backend/recruit/scoring/proctor.js EVENT_WEIGHTS + COUNT_CAPS. If we want to track the decline later, that belongs on the application record, not as a proctor_event. paste removed from AUTO_CRITICAL_TYPES. A single legitimate paste (e.g. candidate pastes a copied requirement into a notepad) was flipping the whole sess",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Proctoring & Integrity"
+    },
+    {
+      "name": "Webcam identity check at exam start",
+      "description": "[MYG-200] Task What\\n\\nAfter consent, capture a single webcam frame as the candidate's exam-start identity reference. Store hash + signed URL on the exam session.\\n\\n## Why\\n\\nGives recruiter a baseline frame to compare against face-presence samples mid-exam (later task). Also serves as the integrity signal of \"the person who started this exam.\"\\n\\n## Done when\\n\\n- [ ] Frame captured via <video> + canvas after consent\\n- [ ] Stored to Supabase storage; hash recorded on exam session\\n- [ ] Visible on recruiter pipeline panel (small thumbnail next to candidate name on SHL stage)\\n- [ ] Failure ",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Proctoring & Integrity"
+    },
+    {
+      "name": "Continuous face-presence detection during exam",
+      "description": "[MYG-201] Task What\\n\\nRun face-detection in-browser on a periodic sample (every 10–15s) during the exam. Log events: face_present, no_face, multiple_faces. Use face-api.js (small model bundle, runs locally — no frames leave the browser).\\n\\n## Why\\n\\nThe core integrity signal. \"Did the candidate stay in front of the screen?\" Answers it cheaply without recording video.\\n\\n## Done when\\n\\n- [ ] face-api.js loaded once at exam start, models cached\\n- [ ] Periodic sampler runs at 10–15s interval throughout the exam\\n- [ ] Three event types recorded with timestamps: face_present, no_face, multiple",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Proctoring & Integrity"
+    },
+    {
+      "name": "RECRUIT - Face-match progressive fallback (TinyFaceDetector @320 → @608 → SsdMobilenetv1)",
+      "description": "[MYG-210] Task WhatdescriptorFor() in packages/shared/proctor/IdentityVerification.tsx previously used TinyFaceDetector at inputSize=320, scoreThreshold=0.5. Too small for Aadhaar-style cards (face is ~150-200px on a 1000px card). Failed detection → null descriptor → match_score=0. Fixed with progressive fallback: TinyFaceDetector @ 320, threshold 0.5 (fast path) TinyFaceDetector @ 608, looser threshold (medium path) SsdMobilenetv1 lazy-loaded as last resort (heavy but reliable) Pairs with MYG-208 (server-side recompute): client now provides usable descriptors instead of null, server then reco",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Proctoring & Integrity"
+    },
+    {
+      "name": "RECRUIT - Recruiter Integrity Panel shows \"Not computed\" instead of \"0%\" when no biometric comparison was possible",
+      "description": "[MYG-212] Task WhatProctorIntegrityPanel.tsx now renders \"Not computed\" instead of \"0%\" when match_score === 0. WhyZero is misleading — it looks like \"different person matched\" when really \"no biometric comparison was possible\" (face-detect failed on the ID card; pairs with the progressive-fallback fix in MYG-208 sibling). OCR / document-type check is the actual pass signal in that case. Done when[x] match_score === 0 renders \"Not computed\" badge (neutral grey, not red) [x] OCR / document-type check still surfaces as pass/fail [x] Real face-match results (>0) still render as percentages with R",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Proctoring & Integrity"
+    },
+    {
+      "name": "Tab/window focus + fullscreen lock + event recorder + recruiter surface",
+      "description": "[MYG-202] Task What\\n\\nClose the loop on the proctoring MVP: capture remaining browser-level integrity events, persist them to a single store, and surface them on the recruiter SHL stage.\\n\\n### Browser events to capture\\n- visibilitychange (hidden / visible)\\n- blur / focus on window\\n- Fullscreen API: enter / exit / denied\\n\\n### Storage\\n- Reuse the existing pipeline events JSON column (don't build a new table for MVP — that's deferred)\\n- Schema per event: { type, ts, exam_session_id, meta }\\n\\n### Recruiter surface\\n- On the SHL stage of the pipeline detail panel, show a compact event tim",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Proctoring & Integrity"
+    },
+    {
+      "name": "Proctoring (Online Exam Monitoring)",
+      "description": "[MYG-197] Epic ScopeOnline exam-integrity layer for candidate-facing assessments on careers.granulesrecruit.com — BigFive SHL, Full Track, and any future timed test. Runs in-browser during the exam and flags integrity events for recruiter review. WhyIn-house SHL (BigFive) replaces the external SHL vendor (see MYG-27). External SHL included proctoring by default — when we move in-house, we own the integrity surface. Council / hiring managers need a confidence signal on exam scores (\"this score is trustworthy\") before using them in the scorecard. In scope (MVP — S6 + S7)Consent screen — candidat",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Proctoring & Integrity"
+    },
+    {
+      "name": "Consent screen — webcam/mic + DPDP-aware proctoring notice",
+      "description": "[MYG-199] TaskWhat\\n\\nBefore the candidate clicks Start Exam, show a consent screen that:\\n- Requests webcam + microphone permission\\n- Discloses what's being captured (identity frame, face-presence checks, tab/focus events)\\n- Requires explicit \"I agree\" before the exam can start\\n- Stores consent timestamp + IP on the candidate's exam session\\n\\nText is DPDP-aware (see MYG-187) — even though full DPDP compliance is post-MVP, the consent copy should be drafted now so we don't have to rewrite it later.\\n\\n## Why\\n\\nLegal can't sign off on candidate webcam capture without explicit consent. Recr",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Proctoring & Integrity"
+    },
+    {
+      "name": "Approval engine integration — requisitions native workflow",
+      "description": "[MYG-109] Task [MYG-109] Task Imported from GR-93 Original status: Done | Epic: GR-79 → MYG-29 Requisition approvals route through the generic approval engine (shared with PMS, Portal, Offers). entity_type='recruit_requisition'. Configurable levels (HR Head, Hiring Manager, CHRO). Admin UI can edit workflow without code changes. Estimate: 3d | Status: Done — commit 2d345d0",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Requisitions & Approval Engine"
+    },
+    {
+      "name": "TA queue + recruiter assignment",
+      "description": "[MYG-108] Task [MYG-108] Task Imported from GR-92 Original status: Done | Epic: GR-79 → MYG-29 TA Head / HR sees queue of approved requisitions awaiting recruiter assignment. GET /api/requisitions/ta-queue + POST /api/requisitions/:id/assign-recruiter. Recruiter picker enriched with avatar + band. Only TA Head / admin can assign. Estimate: 2d | Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Requisitions & Approval Engine"
+    },
+    {
+      "name": "Requisitions — core CRUD + Requisitions page",
+      "description": "[MYG-107] Task [MYG-107] Task Imported from GR-91 Original status: Done | Epic: GR-79 → MYG-29 Requisitions page at apps/recruit/src/pages/Requisitions.tsx, backed by /api/requisitions/* routes. CRUD, list, detail view for all recruiter-owned requisitions. Uses shared design-system classes + toast. Estimate: 4d | Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Requisitions & Approval Engine"
+    },
+    {
+      "name": "[DUPLICATE of MYG-108] TA queue + recruiter assignment",
+      "description": "[MYG-110] Task [MYG-110] Task Imported from GR-92 Original status: Done | Epic: GR-79 → MYG-29 TA Head / HR sees queue of approved requisitions awaiting recruiter assignment. GET /api/requisitions/ta-queue + POST /api/requisitions/:id/assign-recruiter. Recruiter picker enriched with avatar + band. Only TA Head / admin can assign. Estimate: 2d | Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Requisitions & Approval Engine"
+    },
+    {
+      "name": "Requisitions & Approval Engine",
+      "description": "[MYG-29] Epic [MYG-29] Epic Imported from GR-79 Original status: Done ScopeEnd-to-end job-requisition workflow in Recruit, riding on the generic approval engine: Requisitions page with CRUD (apps/recruit/src/pages/Requisitions.tsx) TA queue + recruiter assignment Approval engine (shared with PMS/Portal) routes requisition → HR/hiring-manager chain Post-approval job creation: approved requisition auto-creates the job Approval stepper UX with profile-enriched approvers RollupEstimate: ~15d Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Requisitions & Approval Engine"
+    },
+    {
+      "name": "Approval stepper UX + approver profile enrichment",
+      "description": "[MYG-112] Task [MYG-112] Task Imported from GR-95 Original status: Done | Epic: GR-79 → MYG-29 Visual stepper on requisition detail showing each approval level with the approver's name, avatar, status, timestamp. Profile data enriched from Master DB live. Current-level indicator animated. Estimate: 2.5d | Status: Done — commit 19fa4a7",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Requisitions & Approval Engine"
+    },
+    {
+      "name": "Download (Talent Pool action + pipeline iframe; PDF via browser Print)",
+      "description": "[MYG-135] Sub-task Imported from GR-49 Original status: Done | Parent: GR-11 → MYG-57",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Offer Workflow"
+    },
+    {
+      "name": "Candidate offer acceptance backend flow",
+      "description": "[MYG-116] Task [MYG-116] Task Imported from GR-99 Original status: Done | Epic: GR-80 → MYG-30 Backend endpoints that let candidate accept/reject an offer, plus token-based access to the offer itself without requiring full login. GET /api/v2/candidate/offer/:offerId, PUT /api/v2/candidate/offer/:offerId/accept. Idempotent. Token expires after N days. Estimate: 1.5d | Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Offer Workflow"
+    },
+    {
+      "name": "Offer letter PDF generation from templates + variables",
+      "description": "[MYG-113] Task [MYG-113] Task Imported from GR-96 Original status: Done | Epic: GR-80 → MYG-30 Generate branded PDF offer letters from configurable templates (Trainees, A–C1, C2+) with variable substitution (name, role, CTC, joining date, reporting manager, benefits). POST /offer-letter/generate. Preview in iframe before send. Estimate: 3d | Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Offer Workflow"
+    },
+    {
+      "name": "Feedback (per-stage word, TD1 transcript + evaluation); offer letter trigger",
+      "description": "[MYG-134] Sub-task Imported from GR-48 Original status: Done | Parent: GR-10 → MYG-56",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Offer Workflow"
+    },
+    {
+      "name": "Extend / revise offer",
+      "description": "[MYG-117] Task [MYG-117] Task Imported from GR-100 Original status: Done | Epic: GR-80 → MYG-30 Recruiter can extend an offer's expiry or revise CTC / joining date, triggering a new approval cycle for material changes. PUT /api/v2/offers/:id/extend. Audit trail shows diff of each revision. Estimate: 1.5d | Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Offer Workflow"
+    },
+    {
+      "name": "Offer Letters (Templates)",
+      "description": "[MYG-179] Epic ScopeTemplatized offer letters per track (Trainees, A–C1, C2+) with variable substitution, iframe preview, and browser-Print PDF. Download available from Talent Pool + pipeline. Status: Done (Sprint 3, Mar 12–25, 2026)Exit criteriaTemplate list with variablesGenerate + preview in iframeDownload from Talent Pool + pipeline iframe",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Offer Workflow"
+    },
+    {
+      "name": "Template list (Trainees, A–C1, C2+); variables; generate & preview in iframe",
+      "description": "[MYG-136] Sub-task Imported from GR-50 Original status: Done | Parent: GR-11 → MYG-57",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Offer Workflow"
+    },
+    {
+      "name": "Offer letters: templates, generation, download",
+      "description": "[MYG-57] Task [MYG-57] Task Imported from GR-11 Original status: Done | Epic: GR-1 → MYG-16 Features: • Template list: Trainees (SDT, TT, MT), A to C1, C2 & Above; id, name, description, docxPath, html. • Variables: {{candidateName}}, {{designation}}. • Generate: offer modal → choose template → OfferLetterForm renders html with variables replaced. • Preview: iframe with srcdoc or /offer-letter.html; contentEditable. • Download: Talent Pool \"Offer letter\" action opens /offer-letter.html in new tab; PDF/print via browser. Timeline: Phase 3 (W4–5).",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Offer Workflow"
+    },
+    {
+      "name": "E-signature positions + preview-signed PDF",
+      "description": "[MYG-115] Task [MYG-115] Task Imported from GR-98 Original status: Done | Epic: GR-80 → MYG-30 Capture candidate signature coordinates on the offer PDF, bake them into the final document. POST /api/v2/offers/preview-signed + GET /api/v2/candidate/offer/:offerId/sign-positions. Tamper-evident (hash stored alongside). Estimate: 2.5d | Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Offer Workflow"
+    },
+    {
+      "name": "CHRO approval flow + OfferApprovals page",
+      "description": "[MYG-114] Task [MYG-114] Task Imported from GR-97 Original status: Done | Epic: GR-80 → MYG-30 Offer sent for CHRO approval before candidate can see it. Page: OfferApprovals.tsx. Routes through generic approval engine. Approver can approve/reject/send back with comment. Candidate-visible offer page 404s until approved. Estimate: 2d | Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Offer Workflow"
+    },
+    {
+      "name": "Offer Workflow (CHRO + eSignature)",
+      "description": "[MYG-30] Epic [MYG-30] Epic Imported from GR-80 Original status: Done ScopeEnd-to-end offer lifecycle: Offer letter PDF generation from templates with variables CHRO approval gate before issuance (via generic approval engine) OfferApprovals page for approvers Candidate acceptance flow (CandidateOfferSign) with e-signature positions Extend / revise offer Joining date tracking Document collection — pre-offer docs + post-offer onboarding docs RollupEstimate: ~13d Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Offer Workflow"
+    },
+    {
+      "name": "Auth & SMTP Login",
+      "description": "[MYG-172] Epic ScopeEmail/password authentication for internal employees backed by the Master Employee DB with SMTP-based verification + password reset. Grounds every downstream app (Recruit, Portal, PMS, OHC) behind a single JWT flow. Status: Done (Sprint 1, Feb 12–25, 2026)Exit criteriaLogin works end-to-end against master DBSMTP-based verification codesSession middleware on all backends",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "RBAC, Auth, Admin & Shell"
+    },
+    {
+      "name": "Admin tile icon cleanup — dashboard consistency",
+      "description": "[MYG-85] Task Imported from GR-63 Original status: Done | Epic: GR-55 → MYG-25 Clean up admin dashboard tile icons for visual consistency across Recruit and Portal. Responsive on mobile / tablet. Estimate: 0.5d | Status: Done — shipped in a2627b3",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P3",
+      "_milestone": "RBAC, Auth, Admin & Shell"
+    },
+    {
+      "name": "RBAC — admin role dropdowns in Portal",
+      "description": "[MYG-87] Task [MYG-87] Task Imported from GR-65 Original status: Done | Epic: GR-55 → MYG-25 Admin UI (in Portal) to assign / revoke per-app access via dropdowns, instead of hand-editing SQL on employee_auth. Only is_admin users can access. Estimate: 1d | Status: Done — shipped in 23a5dea",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "RBAC, Auth, Admin & Shell"
+    },
+    {
+      "name": "RBAC — per-app role columns on employee_auth",
+      "description": "[MYG-86] Task [MYG-86] Task Imported from GR-64 Original status: Done | Epic: GR-55 → MYG-25 Add per-app boolean flags on the employee_auth table (Master DB): access_portal, access_recruit, access_pms, access_ohc, is_admin. Each app's auth middleware checks its own flag. Employee 14805 remains admin. Estimate: 2d | Status: Done — shipped in 23a5dea",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "RBAC, Auth, Admin & Shell"
+    },
+    {
+      "name": "Add Authentication system with SMTP enabled email",
+      "description": "[MYG-79] Task [MYG-79] Task Imported from GR-54 Original status: Done | Epic: GR-1 → MYG-16 (Original had no description — see link above for details.)",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "RBAC, Auth, Admin & Shell"
+    },
+    {
+      "name": "RECRUIT - Notifications system (NotificationBell + page + backend route)",
+      "description": "[MYG-240] Task WhatIn-app notifications for recruiters — bell icon in the header, dedicated /notifications page, backend endpoint to fetch / mark read. Files (in-flight, uncommitted as of 2026-05-05)packages/shared/components/NotificationBell.tsx (shared, mountable across apps) apps/recruit/src/pages/Notifications.tsx backend/recruit/routes/notifications.js WhySurfaces application stage changes, referral activity, candidate submissions, and Nyra-driven nudges directly in the app instead of email-only.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "RBAC, Auth, Admin & Shell"
+    },
+    {
+      "name": "RBAC & Admin UI",
+      "description": "[MYG-16] Epic Imported from GR-1 Original status: Done Scope: Core recruiting product from requisition to hire. In scope: • Jobs: create, edit, delete, list, search (keyword + location + skills), share (LinkedIn), application count per job, quick view panel. • Talent Pool: job selector, table (Name, YOE, ATS, SHL, Status), filters (search, ATS cutoff, in pipeline), sort (score/name/date/pipeline), bulk shortlist & delete, candidate detail panel (editable fields, YOE, resume view, stage change, justification when adding below cutoff), multi-file resume upload + ATS. • Competency Check: job/cand",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "RBAC, Auth, Admin & Shell"
+    },
+    {
+      "name": "RECRUIT - Global Search dropdown (component + backend route + employee search lib)",
+      "description": "[MYG-241] Task WhatHeader global-search dropdown letting recruiters jump to candidates / jobs / requisitions / pipeline stages from anywhere in the app. Files (in-flight, uncommitted as of 2026-05-05)packages/shared/components/GlobalSearchDropdown.tsx packages/shared/components/RankedEmployeeSearch.tsx (async employee typeahead — already documented in CLAUDE.md as the canonical employee picker) packages/shared/lib/employeeSearch.ts backend/recruit/routes/search.js WhyRecruiters currently navigate via sidebar tabs + filtered list views. A header search collapses the common \"jump to candidate X\"",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "RBAC, Auth, Admin & Shell"
+    },
+    {
+      "name": "RECRUIT - Recruit Shell Utilities (Notifications + Global Search)",
+      "description": "[MYG-228] Epic Cross-page recruiter shell utilities — bell-icon notifications and a global search dropdown that lets recruiters jump to candidates / jobs / requisitions / pipeline stages from anywhere in the app. Scope (in-flight, uncommitted as of 2026-05-05) packages/shared/components/NotificationBell.tsx + apps/recruit/src/pages/Notifications.tsx + backend/recruit/routes/notifications.js packages/shared/components/GlobalSearchDropdown.tsx + backend/recruit/routes/search.js + packages/shared/lib/employeeSearch.ts packages/shared/components/RankedEmployeeSearch.tsx (already documented in CLAU",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "RBAC, Auth, Admin & Shell"
+    },
+    {
+      "name": "Migrate auth to Master Employee DB with per-app access control",
+      "description": "[MYG-100] Task [MYG-100] Task Imported from GR-84 Original status: Done | Epic: GR-78 → MYG-28 All internal employee auth moves to employee_auth on the Master DB. Each app (Recruit, Careers-recruiter paths) checks its own per-app flag (access_recruit, is_admin). Employee 14805 retains admin. Estimate: 2d | Status: Done — commit a0cbb94",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Normalized DB & Architecture"
+    },
+    {
+      "name": "Cross-DB ownership — recruiter_id + created_by via employee_code",
+      "description": "[MYG-103] Task Imported from GR-87 Original status: Done | Epic: GR-78 → MYG-28 Ownership fields in Recruit DB stop pointing at UUIDs in a single Supabase project. Instead they store employee_code strings that resolve against the Master DB. Enables cross-DB joins without cross-project FKs. Estimate: 2d | Status: Done — commits 0f992c8, 829ad5f, 3943f80",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Normalized DB & Architecture"
+    },
+    {
+      "name": "Decommission legacy wide-schema columns post-merge",
+      "description": "[MYG-106] Task [MYG-106] Task Imported from GR-90 Original status: To Do | Epic: GR-78 → MYG-28 After prod cutover + canary, drop the legacy applications wide table and any unused columns. Keep DB-level snapshot and archived schema dump for audit. Estimate: 1d | Status: To Do — blocked by GR-89 (merge)",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Normalized DB & Architecture"
+    },
+    {
+      "name": "Normalized-DB Prod Cutover",
+      "description": "[MYG-186] Epic ScopeMerge feature/normalized-db → main, cut prod over to the normalized schema, and decommission legacy wide-schema columns. Status: To Do (Sprint 7, May 7 – 20, 2026)Exit criteriaMerge feature/normalized-db → main after full regressionProd Supabase on normalized schema end-to-endLegacy wide columns droppedNo dual-write paths remaining",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Normalized DB & Architecture"
+    },
+    {
+      "name": "Merge feature/normalized-db → main (prod cutover)",
+      "description": "[MYG-105] Task [MYG-105] Task Imported from GR-89 Original status: To Do | Epic: GR-78 → MYG-28 Merge the long-running normalized-DB branch to main and cut prod over. Includes DB migration run on production Supabase with rollback plan, 48h canary soak. Estimate: 2d (includes QA window) | Status: To Do — blocker for closing out GR-78",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Normalized DB & Architecture"
+    },
+    {
+      "name": "applications_new + application_scores — slim normalized tables",
+      "description": "[MYG-101] Task [MYG-101] Task Imported from GR-85 Original status: Done | Epic: GR-78 → MYG-28 Replace legacy wide applications (65+ cols) with slim applications_new (~20 cols) + application_scores (ATS/SHL/screening unified). Migration 20260314000000_create_normalized_tables.sql. Legacy applications still exists pre-merge for rollback. Estimate: 4d | Status: Done (shipped on feature/normalized-db)",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Normalized DB & Architecture"
+    },
+    {
+      "name": "Rename profiles → recruit_candidate_profiles",
+      "description": "[MYG-102] Task [MYG-102] Task Imported from GR-86 Original status: Done | Epic: GR-78 → MYG-28 The legacy profiles table mixed employees + candidates. Rename to recruit_candidate_profiles so semantics are unambiguous: candidate-only, lives in Recruit DB, never holds employee rows. Estimate: 1.5d | Status: Done — commit 351a652",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Normalized DB & Architecture"
+    },
+    {
+      "name": "Dual Supabase clients — Master DB for auth, Recruit DB for data",
+      "description": "[MYG-99] Task [MYG-99] Task Imported from GR-83 Original status: Done | Epic: GR-78 → MYG-28 Shared lib exports two Supabase clients. supabase → Master Employee DB (auth), recruitDb → Recruit DB (data). Recruit backend has masterDb (JWT validation + profileResolver) + supabase (recruit data queries). No cross-wiring. Estimate: 3d | Status: Done — commits b868efc, dc70ee4, 0f992c8",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Normalized DB & Architecture"
+    },
+    {
+      "name": "RLS lockdown on normalized tables",
+      "description": "[MYG-104] Task [MYG-104] Task Imported from GR-88 Original status: Done | Epic: GR-78 → MYG-28 Row-level security policies on applications_new, application_scores, interviews, offers, candidate_documents — recruiter sees only own job's candidates; candidate sees only own records; admin sees all. Migration 20260326100000_lockdown_normalized_rls.sql. Estimate: 2d | Status: Done",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Normalized DB & Architecture"
+    },
+    {
+      "name": "Normalized DB & Dual-DB Architecture",
+      "description": "[MYG-28] Epic [MYG-28] Epic Imported from GR-78 Original status: In Progress ScopeMajor architectural workstream on branch feature/normalized-db: Dual-database model: Master DB for auth/employee data (shared by Portal/Recruit/PMS/OHC); Recruit DB for jobs/applications/interviews/offers/candidates Slim-column normalized tables (applications_new ≈ 20 cols, application_scores) replacing the legacy wide 65+-col applications schema Cross-DB references via employee_code instead of UUID→profiles joins RLS lockdown per role on new tables profiles → recruit_candidate_profiles rename (candidate-only) Br",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P1",
+      "_milestone": "Normalized DB & Architecture"
+    },
+    {
+      "name": "Integration: Create Supabase AD (SSO)",
+      "description": "[MYG-65] Task [MYG-65] Task Imported from GR-19 Original status: Done | Epic: GR-4 → MYG-22 Microsoft AD (Azure AD): SSO and identity management. Config, endpoints, attribute mapping, testing. Owner: IT (Identity/Auth). Timeline: Phase 1 (1–2 weeks).",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Integrations & Profile Sourcing"
+    },
+    {
+      "name": "Supabase SSO & Integrations",
+      "description": "[MYG-22] Epic [MYG-22] Epic Imported from GR-4 Original status: In Progress Scope: External API integrations (see INTEGRATION_ROADMAP_AND_TEAM_TODO.md). In scope: Microsoft AD: SSO, identity management. Microsoft Teams: Automatic interview meetings PeopleStrong: HRIS — employee/role data sync. LinkedIn & Naukri: Talent Hub — candidate profile pull/sync. Careers page: API to sync job postings from Recruit to main careers site. Twilio: AI-driven screening/outreach calls. SHL: Automated test link + report retrieval for Council/Competency Check. Tavus: See Epic GR-3 (AI Interview) if avatar is pri",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Integrations & Profile Sourcing"
+    },
+    {
+      "name": "Profile Sourcing",
+      "description": "[MYG-23] Epic [MYG-23] Epic Imported from GR-5 Original status: To Do Scope: Source candidate profiles from open web; governance and integration. In scope: • Sources: LinkedIn, Naukri, Glassdoor, Indeed, etc. (scraping or approved APIs where available). • Governance: terms of use, compliance, consent; data mapping into Recruit/Talent Pool. • Integration: surfaced in Talent Pool or dedicated sourcing view; dedup with applications. Timeline (suggested): After Talent Pool and API integrations (LinkedIn/Naukri) are stable. Legal sign-off on scraping/ToS before implementation.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Integrations & Profile Sourcing"
+    },
+    {
+      "name": "Integration: PeopleStrong (HRIS)",
+      "description": "[MYG-66] Task [MYG-66] Task Imported from GR-20 Original status: KILLED | Epic: GR-4 → MYG-22 PeopleStrong HRIS: employee and role data sync. Define sync scope (employees, roles, org); API spec; sandbox/prod; error handling. Owner: IT + HR. Timeline: Phase 1.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Integrations & Profile Sourcing"
+    },
+    {
+      "name": "Integration: LinkedIn Talent Hub",
+      "description": "[MYG-67] Task Imported from GR-21 Original status: KILLED | Epic: GR-4 → MYG-22 LinkedIn Talent Hub: auth, rate limits, candidate profile mapping; pull/sync into Recruit. Owner: IT + HR. Timeline: Phase 2 (2–3 weeks).",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Integrations & Profile Sourcing"
+    },
+    {
+      "name": "Profile scraping: LinkedIn, Naukri, Glassdoor, Indeed",
+      "description": "[MYG-72] Task [MYG-72] Task Imported from GR-26 Original status: To Do | Epic: GR-5 → MYG-23 Source candidate profiles from LinkedIn, Naukri, Glassdoor, Indeed (scraping or approved APIs). Data mapping, rate limits, dedup with applications. Legal sign-off on ToS before implementation.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Integrations & Profile Sourcing"
+    },
+    {
+      "name": "Profile scraping: governance, terms, Recruit integration",
+      "description": "[MYG-73] Task [MYG-73] Task Imported from GR-27 Original status: To Do | Epic: GR-5 → MYG-23 Governance: terms of use, compliance, consent. Surface scraped profiles in Talent Pool or dedicated sourcing view; dedup; data retention. Align with Legal.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Integrations & Profile Sourcing"
+    },
+    {
+      "name": "Integration: Naukri",
+      "description": "[MYG-68] Task [MYG-68] Task Imported from GR-22 Original status: KILLED | Epic: GR-4 → MYG-22 Naukri: Talent Hub — auth, candidate profile pull/sync; mapping to Recruit applications. Owner: IT + HR. Timeline: Phase 2.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Integrations & Profile Sourcing"
+    },
+    {
+      "name": "Compliance: data principal rights, grievance officer (Legal)",
+      "description": "[MYG-76] Task [MYG-76] Task Imported from GR-30 Original status: To Do | Epic: GR-6 → MYG-24 Data principal rights: access, erasure, portability. Grievance officer designation and process. Owner: Legal. Align with INTEGRATION_ROADMAP \"ask leaders what they need\". Timeline: pre go-live.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Security & Compliance"
+    },
+    {
+      "name": "Compliance: DPDP consent, Privacy Notice, retention",
+      "description": "[MYG-75] Task [MYG-75] Task Imported from GR-29 Original status: To Do | Epic: GR-6 → MYG-24 DPDP: consent flows, Privacy Notice, data retention policy. Document and get Legal sign-off. Timeline: pre go-live.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Security & Compliance"
+    },
+    {
+      "name": "Security: DAST, pentest (Cybersecurity)",
+      "description": "[MYG-74] Task [MYG-74] Task Imported from GR-28 Original status: To Do | Epic: GR-6 → MYG-24 DAST (Dynamic Application Security Testing): automated scanning of running app. Pentesting: authorised penetration test; report and remediation tracking. Owner: Cybersecurity. Timeline: before go-live; periodic after.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Security & Compliance"
+    },
+    {
+      "name": "DPDP Compliance",
+      "description": "[MYG-187] Epic ScopeIndia DPDP (Digital Personal Data Protection) Act compliance for the Recruit platform: consent capture, Privacy Notice, retention policies, data-principal rights, grievance officer workflow. Status: To Do (Sprint 10, Jun 18 – Jul 1, 2026)Exit criteriaConsent UI on Careers apply flowPrivacy Notice + retention schedule publishedData-principal rights (access, correction, erasure) endpointsGrievance-officer process + SLA",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Security & Compliance"
+    },
+    {
+      "name": "Security (DAST, Pentest)",
+      "description": "[MYG-24] Epic [MYG-24] Epic Imported from GR-6 Original status: To Do Scope: Security, risk mitigation, compliance & governance (lowest priority in backlog). In scope: • Cybersecurity: DAST (dynamic app security testing), pentesting; remediation tracking. • DPDP / Legal: consent flows, Privacy Notice, data retention, data principal rights (access/erasure/portability), grievance officer; document and get sign-off. • Governance: align with \"ask leaders what they need\" (INTEGRATION_ROADMAP); capture IT, Legal, HR requirements. Timeline (suggested): Pre go-live for DAST/pentest and DPDP basics; on",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "Security & Compliance"
+    },
+    {
+      "name": "AI product: framework defaults, error handling",
+      "description": "[MYG-61] Task [MYG-61] Task Imported from GR-15 Original status: Done | Epic: GR-2 → MYG-19 Framework fallback (LEVEL_LABELS 1–5) when GET /api/competency/framework fails; chat history returns empty on error (no 500). Ensures Competency Check and chat remain usable when Council/framework service is down.",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "AI Framework & Guardrails"
+    },
+    {
+      "name": "RECRUIT - Scoring-engine smoke tests (20 cases, no devDependency)",
+      "description": "[MYG-209] Task Whatbackend/recruit/scoring/__tests__/smoke.test.mjs — 20 tests using node:assert + tiny harness, no devDependency. Run with node backend/recruit/scoring/__tests__/smoke.test.mjs (exits non-zero on failure → CI-ready). Coverage: Step 1 final_score never destroyed (regression guard for the legacy min(psy*0.5, 4) cap) deriveRecommendation banding Step 2 computeResponseValidity worst-component-wins Step 3 lookup-chain precedence including 0 not falling through to default WhyThe scoring engine is the heart of senior-hire. Three psychometric upgrades shipped in one day — without a te",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "AI Framework & Guardrails"
+    },
+    {
+      "name": "RECRUIT - SHL acceptance e2e suite + pinned shl_full_track payload schema",
+      "description": "[MYG-229] Task Whatbackend/recruit/scoring/__tests__/e2e.test.mjs — 16 e2e tests that seed a HEXACO + SD3 + Custom + SJT payload and assert scoreFullTrack produces all six SHL JSONBs: dimension_scores (22), competency_scores (20), shl_dependability, shl_boss_compatibility, shl_composite, shl_contradictions, plus the shl_full_report-equivalent payload the LLM narrative wraps. shl_full_track payload schema pinned in code so the 4-layer raw payload structure can't drift unnoticed. WhyDecoupling rules from MYG-203/204/205 must never regress: composite_score is mathematical; never mutated by respon",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "AI Framework & Guardrails"
+    },
+    {
+      "name": "AI Framework & Guardrails",
+      "description": "[MYG-34] Epic [MYG-34] Epic Imported from GR-82 Original status: Done ScopeAI-powered recruiter productivity features built on the shared LLM backbone (pi-ai OAuth to Anthropic Claude): AI JD generation + standardize (ai-drafts.js) AI interview questions generator ATS parse-and-score combined endpoint + bulk concurrency Resume highlights + AI assessment (auto-summary on candidate card) Nyra AI job-candidate recommendations (per-job candidate pool) Interview transcript analysis (post-call feedback) Competency chat-about-report (Q&A over SHL/ACT-HA reports) JD keyword + ATS trait + SHL trait ext",
+      "defaultDayOffset": 0,
+      "defaultPriority": "P2",
+      "_milestone": "AI Framework & Guardrails"
+    },
+    {
+      "name": "RECRUIT - Referrals end-to-end (DB + backend + careers + recruit + portal)",
+      "description": "[MYG-239] Task WhatEnd-to-end ship of the employee referral feature in a single slice. DB (additive only) — supabase/migrations/20260427500000_referrals_core.sql: referral_codes (code, referrer_employee_code OR referrer_candidate_id, job_id, is_active, expires_at, metadata) referral_events append-only audit applications_new.referral_code_id + referrer_snapshot (frozen JSON so deactivating a code never loses history) RLS: service-role full; authenticated employees/candidates read their own; anon denied Backend (recruit, port 3001) backend/recruit/routes/referrals.js — POST /generate, GET /mine,",
+      "defaultDayOffset": 77,
+      "defaultPriority": "P1",
+      "_milestone": "Referrals"
+    },
+    {
+      "name": "RECRUIT - Referrals (Employee Refer-a-Friend)",
+      "description": "[MYG-227] Epic End-to-end employee referral feature. Applicants enter a referral code at apply time; employees mint and track codes; admins see a leaderboard. Attribution is captured at apply time and preserved via a frozen referrer_snapshot so deactivating a code never loses history. Scope DB: referral_codes, referral_events (append-only audit), applications_new.referral_code_id + referrer_snapshot. Service-role full RLS; employees/candidates read their own; anon denied. Backend (backend/recruit/routes/referrals.js): POST /generate, GET /mine, POST /validate (public, 30/min), GET /dashboard, ",
+      "defaultDayOffset": 72,
+      "defaultPriority": "P1",
+      "_milestone": "Referrals"
+    }
+  ]
+}

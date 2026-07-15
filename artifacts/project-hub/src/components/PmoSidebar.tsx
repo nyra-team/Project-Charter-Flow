@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type ComponentProps } from "react";
 import { useLocation } from "wouter";
 import { CollapsibleSidebar } from "@granules/shared/components/CollapsibleSidebar";
+import { SidebarFireflyLogo } from "@granules/shared/components/SidebarFireflyLogo";
 import {
   FolderOpen,
   BarChart3,
   FileText,
-  ShoppingCart,
   CheckSquare,
   UserCheck,
   Network,
-  ScrollText,
-  Building2,
   Activity,
   Zap,
   BookOpen,
@@ -43,6 +41,10 @@ const BUSINESS_CASE_HREF = "#business-case";
 // shared sidebar routes it through `navigate`, where we dispatch the start
 // event instead of changing route.
 const TOUR_HREF = "#tour";
+// "User Guide" opens the PMO user manual PDF in a new tab (same sentinel
+// pattern — intercepted in `navigate`, never a real route).
+const MANUAL_HREF = "#manual";
+const MANUAL_URL = "/PMO_USER_MANUAL.pdf?v=20260714";
 
 // Type the nav data against THIS app's lucide/React copy. The shared
 // CollapsibleSidebar resolves React from its own @types/react tree, so its
@@ -51,7 +53,6 @@ const TOUR_HREF = "#tour";
 // below (same workaround cxo uses).
 type LucideIcon = typeof FolderOpen;
 type SidebarSections = ComponentProps<typeof CollapsibleSidebar>["sections"];
-type SidebarFooter = ComponentProps<typeof CollapsibleSidebar>["footer"];
 type Item = { icon: LucideIcon; label: string; href: string; external?: boolean; badgeCount?: number; className?: string };
 type Section = { title?: string; icon?: LucideIcon; items: Item[]; collapsible?: boolean };
 
@@ -74,17 +75,18 @@ const BUSINESS_CASE: Item = {
 const MY_TASKS: Item = { icon: UserCheck, label: "My Tasks", href: "/my-tasks" };
 const MY_TEAM: Item = { icon: Network, label: "My Team Actions", href: "/my-team-actions" };
 const RESOURCES: Item = { icon: Users, label: "Resource Management", href: "/resources" };
+const DOCUMENT_REPO: Item = { icon: FileText, label: "Document Repository", href: "/documents" };
 const APPROVALS: Item = { icon: CheckSquare, label: "Approvals", href: "/approvals" };
 const RISKS_ISSUES: Item = { icon: AlertTriangle, label: "Risks / Issues", href: "/issues" };
-const TOUR: Item = { icon: Compass, label: "Tour", href: TOUR_HREF };
-const VENDOR_ITEMS: Item[] = [
-  { icon: ScrollText, label: "New RFP", href: "/rfx" },
-  { icon: Building2, label: "Vendor on board", href: "/vendors" },
-];
+const TOUR: Item = { icon: Compass, label: "Take a tour", href: TOUR_HREF };
+// The user manual — the same affordance Action Centre carries: a sentinel href
+// that opens the PDF (public/PMO_USER_MANUAL.pdf) in a new tab instead of
+// navigating. Bump ?v= when the PDF is regenerated so browsers don't serve a
+// stale copy from cache.
+const MANUAL: Item = { icon: BookOpen, label: "User Guide", href: MANUAL_HREF };
 const WORKSPACE_ITEMS: Item[] = [
   { icon: Activity, label: "My Activities", href: "/activity" },
   { icon: Zap, label: "Automations", href: "/automations" },
-  { icon: FileText, label: "Document Repository", href: "/documents" },
   { icon: BookOpen, label: "Lessons Learned", href: "/lessons-learned" },
   { icon: Sparkles, label: "Nudges", href: "/nudges" },
   { icon: Plug, label: "Connectors", href: "/admin/integrations" },
@@ -122,7 +124,6 @@ export default function PmoSidebar({
   onBusinessCase,
   mobileOpen,
   onClose,
-  footer,
 }: {
   isAdmin: boolean;
   isSuperAdmin: boolean;
@@ -132,8 +133,6 @@ export default function PmoSidebar({
   onBusinessCase: () => void;
   mobileOpen?: boolean;
   onClose?: () => void;
-  /** Rendered at the bottom of the rail (e.g. the signed-in profile block). */
-  footer?: React.ReactNode;
 }) {
   const [location, setLocation] = useLocation();
   const [collapsed, setCollapsed] = useState<boolean>(
@@ -178,6 +177,26 @@ export default function PmoSidebar({
     return () => window.removeEventListener("pmo:tour:expand-sidebar", onExpand);
   }, [forceExpand]);
 
+  // Auto-collapse the expanded desktop rail when the user clicks anywhere outside
+  // it. Skips: already-collapsed state, mobile widths (the drawer handles its own
+  // backdrop close), clicks inside the sidebar itself, and clicks inside portaled
+  // popovers/dialogs (so opening a menu doesn't collapse the rail).
+  useEffect(() => {
+    function onDocMouseDown(e: MouseEvent) {
+      if (collapsedRef.current) return;
+      // Below md (768px) the sidebar is a mobile drawer with its own backdrop
+      // close, so leave those widths alone.
+      if (typeof window !== "undefined" && window.innerWidth < 768) return;
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest(".pmo-sidebar")) return;
+      if (target.closest("[data-radix-popper-content-wrapper], [role='dialog'], [data-radix-portal]")) return;
+      forceCollapse();
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [forceCollapse]);
+
   // The reduction is a DESKTOP collapsed-rail affordance only. The mobile drawer
   // always renders expanded, so when it's open we feed the full grouped nav.
   const railCollapsed = collapsed && !mobileOpen;
@@ -187,9 +206,8 @@ export default function PmoSidebar({
     // Collapsed rail: leaf icons + ONE representative icon per dropdown group
     // (Vendor / Workspace / Admin / Roles) — the group's own icon, no chevron.
     // Each navigates to its first destination.
-    sections = [{ items: [PORTFOLIO, PROJECTS, CHARTER, MY_TASKS, MY_TEAM, APPROVALS, RISKS_ISSUES, RESOURCES] }];
+    sections = [{ items: [PORTFOLIO, PROJECTS, CHARTER, MY_TASKS, MY_TEAM, APPROVALS, RISKS_ISSUES, DOCUMENT_REPO, RESOURCES] }];
     sections.push({ items: [
-      { icon: ShoppingCart, label: "Vendor Evaluation", href: VENDOR_ITEMS[0]!.href },
       { icon: LayoutGrid, label: "Workspace", href: WORKSPACE_ITEMS[0]!.href },
     ] });
     if (isAdmin) sections.push({ items: [{ icon: Wrench, label: "Admin", href: "/admin/scoring" }] });
@@ -197,17 +215,16 @@ export default function PmoSidebar({
       { icon: ShieldCheck, label: "Roles & Access", href: "/admin/roles" },
       { icon: FlaskConical, label: "CIP", href: "/admin/cip" },
     ] });
-    sections.push({ items: [TOUR] });
+    sections.push({ items: [TOUR, MANUAL] });
   } else {
     sections = [
       { items: [BUSINESS_CASE, PORTFOLIO, PROJECTS, CHARTER, MY_TASKS, MY_TEAM] },
-      { title: "Vendor Evaluation", icon: ShoppingCart, collapsible: true, items: VENDOR_ITEMS },
-      { items: [APPROVALS, RISKS_ISSUES, RESOURCES] },
+      { items: [APPROVALS, RISKS_ISSUES, DOCUMENT_REPO, RESOURCES] },
       { title: "Workspace", icon: LayoutGrid, collapsible: true, items: WORKSPACE_ITEMS },
     ];
     if (isAdmin) sections.push({ title: "Admin", icon: Wrench, items: ADMIN_ITEMS });
     if (isSuperAdmin) sections.push({ items: ROLES_ITEMS });
-    sections.push({ title: "Tour", items: [TOUR] });
+    sections.push({ title: "Help", items: [TOUR, MANUAL] });
   }
 
   // Mirror the shared sidebar's default active logic, but treat the
@@ -234,6 +251,7 @@ export default function PmoSidebar({
       appName="Project Hub"
       logoHref="/portfolio"
       sections={sections as unknown as SidebarSections}
+      footer={<SidebarFireflyLogo />}
       isActive={isActive}
       currentPath={location}
       navigate={(href) => {
@@ -249,6 +267,10 @@ export default function PmoSidebar({
           window.dispatchEvent(new Event("pmo:start-tour-live"));
           return;
         }
+        if (href === MANUAL_HREF) {
+          window.open(MANUAL_URL, "_blank", "noopener");
+          return;
+        }
         // Clicking "Projects" auto-collapses the rail for a wider board.
         if (href === PROJECTS.href) forceCollapse();
         setLocation(href);
@@ -257,7 +279,6 @@ export default function PmoSidebar({
       onClose={onClose}
       defaultCollapsed={collapsed}
       onCollapsedChange={onCollapsedChange}
-      footer={footer as unknown as SidebarFooter}
     />
   );
 }

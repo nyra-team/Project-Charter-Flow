@@ -43,6 +43,9 @@ router.get("/users/me", async (req, res): Promise<void> => {
     // Master-DB department/function — lets the frontend default the Projects
     // view to the signed-in user's own department.
     function: (me as { function?: string | null }).function ?? null,
+    // Master-DB org-unit short code — lets the Create Project modal default the
+    // Plant picker to the creator's own plant (matched against /api/plants).
+    plantCode: me.unitCode ?? null,
   };
 
   const email = me.email.toLowerCase();
@@ -76,6 +79,10 @@ router.get("/users", async (_req, res): Promise<void> => {
   // Best-effort: if the master DB is unavailable, return users without photos.
   const photoByEmail = new Map<string, string>();
   const designationByEmail = new Map<string, string>();
+  // The master DB's `function` is the real department; pmo_users.department is
+  // just what was stamped at auto-provision time. Resource Management groups by
+  // this, so surface it alongside the photo/designation.
+  const functionByEmail = new Map<string, string>();
   const emails = users.map((u) => u.email?.toLowerCase()).filter((e): e is string => !!e);
   if (emails.length) {
     try {
@@ -85,13 +92,14 @@ router.get("/users", async (_req, res): Promise<void> => {
       const orFilter = emails.map((e) => `office_email.ilike.${e}`).join(",");
       const { data } = await masterDb
         .from("employees")
-        .select("office_email, photo_url, designation_text")
+        .select("office_email, photo_url, designation_text, function")
         .or(orFilter);
-      for (const row of (data ?? []) as Array<{ office_email: string | null; photo_url: string | null; designation_text: string | null }>) {
+      for (const row of (data ?? []) as Array<{ office_email: string | null; photo_url: string | null; designation_text: string | null; function: string | null }>) {
         const key = row.office_email?.toLowerCase();
         if (!key) continue;
         if (row.photo_url) photoByEmail.set(key, row.photo_url);
         if (row.designation_text) designationByEmail.set(key, row.designation_text);
+        if (row.function) functionByEmail.set(key, row.function);
       }
     } catch { /* master DB unavailable — fall back to no photos / designations */ }
   }
@@ -101,6 +109,7 @@ router.get("/users", async (_req, res): Promise<void> => {
       ...serializeUser(u),
       photoUrl: (key && photoByEmail.get(key)) ?? null,
       designation: (key && designationByEmail.get(key)) ?? null,
+      function: (key && functionByEmail.get(key)) ?? null,
     };
   }));
 });
@@ -112,17 +121,41 @@ router.get("/users", async (_req, res): Promise<void> => {
 router.get("/departments", async (_req, res): Promise<void> => {
   try {
     const masterDb = getMasterDb();
+    // Source from the canonical `org_functions` lookup (same as OHC) — a
+    // guaranteed COMPLETE superset. Deriving distinct values from `employees`
+    // capped at PostgREST's 1000-row default, silently dropping any department
+    // whose employees all sat past row 1000. employees.function is FK-bound to
+    // org_functions.label, so this covers every in-use department and the empty ones.
     const { data, error } = await masterDb
-      .from("employees")
-      .select("function")
-      .not("function", "is", null);
+      .from("org_functions")
+      .select("label")
+      .order("label", { ascending: true });
     if (error) throw error;
     const set = new Set<string>();
-    for (const row of (data ?? []) as Array<{ function: string | null }>) {
-      const f = (row.function ?? "").trim();
+    for (const row of (data ?? []) as Array<{ label: string | null }>) {
+      const f = (row.label ?? "").trim();
       if (f) set.add(f);
     }
     res.json([...set].sort((a, b) => a.localeCompare(b)));
+  } catch {
+    res.json([]);
+  }
+});
+
+// GET /api/plants — every plant / site (master-DB org_units, the same source
+// the OHC plant switcher uses): [{ code, label }], sorted by label. Best-effort:
+// returns [] if master DB is unavailable so the frontend falls back to
+// project-derived plant values.
+router.get("/plants", async (_req, res): Promise<void> => {
+  try {
+    const masterDb = getMasterDb();
+    const { data, error } = await masterDb
+      .from("org_units")
+      .select("code, label")
+      .order("label");
+    if (error) throw error;
+    const rows = (data ?? []) as Array<{ code: string | null; label: string | null }>;
+    res.json(rows.filter((r) => (r.code ?? "").trim() && (r.label ?? "").trim()));
   } catch {
     res.json([]);
   }

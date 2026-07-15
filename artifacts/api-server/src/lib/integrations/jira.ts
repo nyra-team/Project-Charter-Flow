@@ -252,7 +252,15 @@ export async function jiraTransitionToCategory(cfg: JiraConfig, key: string, tar
 
 // ─── Field mapping (Jira ↔ PMO) ───────────────────────────────────────────
 
-export function jiraStatusToPmo(categoryKey: string): string {
+export function jiraStatusToPmo(categoryKey: string, statusName?: string): string {
+  // Granules convention (same rule as the module project charters): a story in
+  // "Testing" is code-complete + verified — it counts as BUILT. Jira files
+  // Testing under the in-progress category, which made PMO under-report
+  // progress vs the charters; map it to completed so all three artefacts
+  // (Jira board, charter "% Built", PMO progress) tell the same story.
+  // Jira "Done" (post-signoff) also maps to completed, so PMO's completed =
+  // charter's Built ∪ Done.
+  if (statusName?.trim().toLowerCase() === "testing") return "completed";
   if (categoryKey === "done") return "completed";
   if (categoryKey === "indeterminate") return "in_progress";
   return "not_started";

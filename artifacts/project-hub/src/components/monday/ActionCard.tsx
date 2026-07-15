@@ -44,7 +44,7 @@ function Avatar({ name, photoUrl, size = 20 }: { name: string; photoUrl?: string
   );
 }
 
-export function ActionCard({ meta, title, ownerName, ownerPhoto, priority, dueDate, progressPct, completed, overdue, ownerSlot }: {
+export function ActionCard({ meta, title, ownerName, ownerPhoto, priority, dueDate, progressPct, completed, overdue, ownerSlot, details }: {
   meta: string;
   title: string;
   ownerName: string | null;
@@ -58,6 +58,10 @@ export function ActionCard({ meta, title, ownerName, ownerPhoto, priority, dueDa
    *  provided it replaces the static avatar+name; the caller owns stopPropagation
    *  so the click doesn't start a drag or open the card. */
   ownerSlot?: ReactNode;
+  /** Optional extra rows between the title and the owner/priority footer (e.g.
+   *  the projects board's status + health + task roll-up). Omit for the plain
+   *  Action-Centre card. */
+  details?: ReactNode;
 }) {
   const band = PRIO_BAND[priority];
   const pct = progressPct != null ? Math.max(0, Math.min(100, Math.round(progressPct))) : null;
@@ -76,6 +80,8 @@ export function ActionCard({ meta, title, ownerName, ownerPhoto, priority, dueDa
         <h4 className={`mt-1 text-[14px] leading-snug line-clamp-2 ${completed ? "line-through font-bold text-slate-700" : "font-semibold text-slate-900"}`} title={title}>
           {title}
         </h4>
+        {/* optional detail rows (status / health / roll-ups) */}
+        {details && <div className="mt-2.5">{details}</div>}
         {/* footer — owner left, priority + due right */}
         <div className="mt-3 flex items-center justify-between gap-2 h-6 flex-shrink-0">
           {ownerSlot ?? (

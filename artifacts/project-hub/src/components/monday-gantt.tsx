@@ -10,11 +10,15 @@
 //   • milestone rows shown as diamonds
 //   • dependency arrows (predecessor → successor) drawn as elbow connectors
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronDown, Check } from "lucide-react";
+import { ChevronDown, Check, Flag } from "lucide-react";
 
 const DAY_MS = 86_400_000;
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const msTime = (s?: string | null) => (s ? new Date(s.slice(0, 10)).getTime() : null);
+// ms (from msTime, i.e. UTC-midnight of a YYYY-MM-DD) → back to YYYY-MM-DD. Used
+// when a drag commits a new date: msTime keeps the value at UTC midnight, so a
+// whole-day shift + toISOString().slice(0,10) round-trips without TZ drift.
+const msToISO = (t: number) => new Date(t).toISOString().slice(0, 10);
 const dayFloor = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const pad2 = (n: number) => String(n).padStart(2, "0");
 // ISO-8601 week number (weeks start Monday; week 1 contains the first Thursday).
@@ -58,6 +62,12 @@ export type GanttGroup = {
   // `id` keys the group for predecessor lookups; both reference group ids.
   id?: number;
   predecessorIds?: number[];
+  // The group's OWN start / due (e.g. a milestone's target dates). When present,
+  // the summary bar is drawn from these — not the rolled-up span of its items —
+  // and (with `onRescheduleMilestone`) becomes drag-resizable. A task item that
+  // ends after `end` is flagged as overrunning its milestone target.
+  start?: string | null;
+  end?: string | null;
 };
 
 const ROW_H = 42;
@@ -73,6 +83,10 @@ export function MondayGantt({
   groups,
   onOpen,
   onLink,
+  onUnlink,
+  onUnlinkMilestone,
+  onRescheduleTask,
+  onRescheduleMilestone,
   showDeps = false,
   labelWidth = 320,
   labelHeader = "Name",
@@ -81,6 +95,9 @@ export function MondayGantt({
   autoFitOnLoad = false,
   defaultCollapsed = false,
   flat = false,
+  rangeStart,
+  rangeEnd,
+  goLive,
 }: {
   groups: GanttGroup[];
   onOpen?: (id: number) => void;
@@ -89,6 +106,19 @@ export function MondayGantt({
    *  dependency — `onLink(predecessorId, successorId)` fires on drop (the bar
    *  you drag FROM is the predecessor, the bar you drop ON is the successor). */
   onLink?: (predecessorId: number, successorId: number) => void;
+  /** When provided, hovering a task→task dependency arrow reveals a red ✕ badge;
+   *  clicking it fires `onUnlink(predecessorId, successorId)` to remove the link. */
+  onUnlink?: (predecessorId: number, successorId: number) => void;
+  /** Same, for milestone (group) chain arrows. When set, milestone arrows also
+   *  get a hover ✕; clicking fires `onUnlinkMilestone(predMilestoneId, succMilestoneId)`. */
+  onUnlinkMilestone?: (predecessorMilestoneId: number, successorMilestoneId: number) => void;
+  /** Drag-to-reschedule a task bar: right edge extends the due date, left edge
+   *  moves the start, dragging the body shifts both. Fired on drop with the new
+   *  dates (either may be null if unset). The consumer routes this through its
+   *  own justification / history gate. */
+  onRescheduleTask?: (id: number, startISO: string | null, endISO: string | null) => void;
+  /** Same, for a milestone's own target bar (drawn from GanttGroup.start/end). */
+  onRescheduleMilestone?: (id: number, startISO: string | null, endISO: string | null) => void;
   showDeps?: boolean;
   labelWidth?: number;
   labelHeader?: string;
@@ -109,6 +139,14 @@ export function MondayGantt({
    *  are conceptually a single flat set — e.g. one bar per project, no
    *  milestone/group layer. */
   flat?: boolean;
+  /** Pin the visible time window instead of fitting to the item dates. Accepts a
+   *  YYYY-MM-DD string or epoch ms. Used by the portfolio "this / next week" view
+   *  to frame a fixed ±1-week window (bars outside it just clip at the edges). */
+  rangeStart?: string | number | null;
+  rangeEnd?: string | number | null;
+  /** Project go-live date (YYYY-MM-DD). When set and in range, a flagged vertical
+   *  marker is drawn at that date, distinct from the blue "today" line. */
+  goLive?: string | null;
 }) {
   const [pxPerDay, setPxPerDay] = useState(22);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -132,6 +170,8 @@ export function MondayGantt({
   const [linkSrc, setLinkSrc] = useState<{ id: number; x: number; y: number } | null>(null);
   const [linkCur, setLinkCur] = useState<{ x: number; y: number } | null>(null);
   const [hoverTarget, setHoverTarget] = useState<number | null>(null);
+  // Index of the dependency arrow currently hovered — surfaces its remove (✕) badge.
+  const [hoverArrow, setHoverArrow] = useState<number | null>(null);
   const linkSrcRef = useRef(linkSrc);
   const hoverTargetRef = useRef<number | null>(null);
   useEffect(() => { linkSrcRef.current = linkSrc; }, [linkSrc]);
@@ -154,6 +194,64 @@ export function MondayGantt({
     window.addEventListener("mouseup", onUp);
     return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
   }, [linkSrc, onLink]);
+
+  // ── Drag-to-reschedule (Jira-style bar move / edge-resize) ─────────────────
+  // A single drag can move the whole bar ("move"), or drag the left ("l") / right
+  // ("r") edge to change one endpoint. `deltaDays` is the live whole-day shift
+  // (px → days, snapped) that both previews the bar and, on drop, computes the
+  // new dates. A "move" drag that never crossed a full day is treated as a click.
+  type DragKind = "task" | "group";
+  type DragMode = "move" | "l" | "r";
+  const [drag, setDrag] = useState<{ id: number; kind: DragKind; mode: DragMode; startX: number; sMs: number | null; eMs: number | null } | null>(null);
+  const [deltaDays, setDeltaDays] = useState(0);
+  const dragRef = useRef(drag);
+  const deltaRef = useRef(0);
+  useEffect(() => { dragRef.current = drag; }, [drag]);
+  const beginDrag = (e: React.MouseEvent, id: number, kind: DragKind, mode: DragMode, sMs: number | null, eMs: number | null) => {
+    e.stopPropagation();
+    e.preventDefault();
+    deltaRef.current = 0; setDeltaDays(0);
+    setDrag({ id, kind, mode, startX: e.clientX, sMs, eMs });
+  };
+  useEffect(() => {
+    if (!drag) return;
+    const onMove = (e: MouseEvent) => {
+      const dd = Math.round((e.clientX - drag.startX) / (pxRef.current || 1));
+      if (dd !== deltaRef.current) { deltaRef.current = dd; setDeltaDays(dd); }
+    };
+    const onUp = () => {
+      const d = dragRef.current;
+      const dd = deltaRef.current;
+      if (d) {
+        if (d.mode === "move" && dd === 0) {
+          // No real movement — a plain click. Open the task (milestone bars don't open).
+          if (d.kind === "task") onOpen?.(d.id);
+        } else {
+          const shift = dd * DAY_MS;
+          let ns = d.sMs, ne = d.eMs;
+          if (d.mode === "move") { ns = d.sMs != null ? d.sMs + shift : null; ne = d.eMs != null ? d.eMs + shift : null; }
+          else if (d.mode === "r") { const base = d.eMs ?? d.sMs; if (base != null) ne = Math.max(base + shift, d.sMs ?? base + shift); }
+          else { const base = d.sMs ?? d.eMs; if (base != null) ns = Math.min(base + shift, d.eMs ?? base + shift); }
+          const startISO = ns != null ? msToISO(ns) : null;
+          const endISO = ne != null ? msToISO(ne) : null;
+          if (d.kind === "task") onRescheduleTask?.(d.id, startISO, endISO);
+          else onRescheduleMilestone?.(d.id, startISO, endISO);
+        }
+      }
+      deltaRef.current = 0; setDeltaDays(0); setDrag(null);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
+  }, [drag, onOpen, onRescheduleTask, onRescheduleMilestone]);
+  // Apply the live drag delta to a bar's rendered geometry so it tracks the cursor.
+  const previewLW = (id: number, kind: DragKind, left: number, width: number) => {
+    if (!drag || drag.id !== id || drag.kind !== kind || deltaDays === 0) return { left, width };
+    const dpx = deltaDays * pxPerDay;
+    if (drag.mode === "move") return { left: left + dpx, width };
+    if (drag.mode === "r") return { left, width: Math.max(8, width + dpx) };
+    return { left: left + dpx, width: Math.max(8, width - dpx) };
+  };
 
   // Zoom-preset dropdown (Day / Week / Month / Year).
   const [zoomMenuOpen, setZoomMenuOpen] = useState(false);
@@ -220,8 +318,15 @@ export function MondayGantt({
 
   const times: number[] = [];
   for (const it of allItems) { const s = msTime(it.start), e = msTime(it.end); if (s != null) times.push(s); if (e != null) times.push(e); }
+  // Milestone target dates also stretch the timeline, so a milestone bar that
+  // runs past its tasks (or has no dated tasks) isn't clipped at the chart edge.
+  for (const g of groups) { const s = msTime(g.start), e = msTime(g.end); if (s != null) times.push(s); if (e != null) times.push(e); }
 
-  if (allItems.length === 0) {
+  // Milestone-only projects (no tasks) still chart: their summary bars carry
+  // dates via g.start/g.end (collected above). Only bail when there is nothing
+  // dated to draw at all — no task items AND no dated milestone summary bars.
+  const anyGroupDated = groups.some((g) => msTime(g.start) != null || msTime(g.end) != null);
+  if (allItems.length === 0 && !anyGroupDated) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white text-sm text-muted-foreground text-center py-10">
         No start / end dates to chart.
@@ -242,8 +347,11 @@ export function MondayGantt({
   // padding days bleeding into the previous month) never shows.
   const earliest = dayFloor(Math.min(...times));
   const latest = dayFloor(Math.max(...times));
-  const minMs = earliest - DAY_MS * 3;
-  const maxMs = latest + DAY_MS * 3;
+  // Optional pinned window (portfolio this/next-week view); else fit to the data.
+  const asMs = (v: string | number | null | undefined) => (v == null ? null : dayFloor(typeof v === "number" ? v : (msTime(v) ?? NaN)));
+  const rMin = asMs(rangeStart), rMax = asMs(rangeEnd);
+  const minMs = rMin != null && !Number.isNaN(rMin) ? rMin : earliest - DAY_MS * 3;
+  const maxMs = rMax != null && !Number.isNaN(rMax) ? rMax : latest + DAY_MS * 3;
   const totalDays = Math.max(1, Math.round((maxMs - minMs) / DAY_MS) + 1);
   totalDaysRef.current = totalDays;
   const trackW = totalDays * pxPerDay;
@@ -293,6 +401,8 @@ export function MondayGantt({
 
   const today = Date.now();
   const todayInRange = today >= minMs && today <= maxMs;
+  const goLiveMs = msTime(goLive ?? null);
+  const goLiveInRange = goLiveMs != null && goLiveMs >= minMs && goLiveMs <= maxMs;
 
   // Lay rows out vertically; remember each item's centre-Y for arrows.
   const centerY = new Map<number, number>();
@@ -302,17 +412,23 @@ export function MondayGantt({
     const headerY = y; y += GH;
     const open = flat ? true : !collapsed[g.key];
     if (open) for (const it of g.items) { centerY.set(it.id, y + ROW_H / 2); y += ROW_H; }
-    // Group span (summary bar) across its items' dates.
+    // Summary-bar span. A milestone with its OWN target dates draws from those
+    // (so what you drag = what you edit); otherwise it rolls up its items' dates.
     const gTimes: number[] = [];
     for (const it of g.items) { const s = msTime(it.start), e = msTime(it.end); if (s != null) gTimes.push(s); if (e != null) gTimes.push(e); }
-    const span = gTimes.length ? { lo: Math.min(...gTimes), hi: Math.max(...gTimes) } : null;
+    const itemSpan = gTimes.length ? { lo: Math.min(...gTimes), hi: Math.max(...gTimes) } : null;
+    const ownLo = msTime(g.start), ownHi = msTime(g.end);
+    let span = itemSpan;
+    if (ownLo != null && ownHi != null) span = { lo: ownLo, hi: ownHi };
+    else if (ownHi != null) span = { lo: itemSpan?.lo ?? ownHi, hi: ownHi };
+    else if (ownLo != null) span = { lo: ownLo, hi: itemSpan?.hi ?? ownLo };
     return { g, headerY, open, span };
   });
   const bodyH = y;
 
   // Dependency arrows (predecessor end → successor start), only for items both
   // currently rendered (their group is expanded).
-  const arrows: { x1: number; y1: number; x2: number; y2: number; critical: boolean }[] = [];
+  const arrows: { x1: number; y1: number; x2: number; y2: number; critical: boolean; predId: number; succId: number; kind: "task" | "group" }[] = [];
   if (showDeps) {
     const byId = new Map<number, GanttItem>();
     for (const it of allItems) byId.set(it.id, it);
@@ -336,7 +452,7 @@ export function MondayGantt({
         // Monday-style critical path: an edge is "critical" (drawn as a red
         // connector) only when BOTH endpoints sit on the critical path — i.e.
         // the caller flagged them with `emphasise`.
-        arrows.push({ x1, y1: predY, x2, y2: succY, critical: !!(pred.emphasise && it.emphasise) });
+        arrows.push({ x1, y1: predY, x2, y2: succY, critical: !!(pred.emphasise && it.emphasise), predId: pid, succId: it.id, kind: "task" });
       }
     }
     // Group-level (milestone → milestone) arrows between summary bars. The
@@ -355,7 +471,7 @@ export function MondayGantt({
         if (!pred) continue;
         // Stop 4px short of the successor bar's left edge so the arrowhead sits
         // beside the summary bar, not tucked under it.
-        arrows.push({ x1: xOf(pred.hi) + pxPerDay, y1: pred.y, x2: xOf(span.lo) - 4, y2: succY, critical: false });
+        arrows.push({ x1: xOf(pred.hi) + pxPerDay, y1: pred.y, x2: xOf(span.lo) - 4, y2: succY, critical: false, predId: pid, succId: g.id, kind: "group" });
       }
     }
     // Draw the red critical edges last so the chain reads on top of the grey ones.
@@ -503,6 +619,11 @@ export function MondayGantt({
                   <span className="block w-2.5 h-2.5 rounded-full border-2 border-white shadow" style={{ background: "#0073ea" }} />
                 </div>
               )}
+              {goLiveInRange && (
+                <div className="absolute z-30 -translate-x-1/2 flex flex-col items-center" style={{ left: xOf(goLiveMs!), bottom: -3 }} title={`Go-live: ${goLive}`}>
+                  <Flag size={13} className="drop-shadow" style={{ color: "#7c3aed", fill: "#7c3aed" }} />
+                </div>
+              )}
             </div>
           </div>
 
@@ -566,6 +687,10 @@ export function MondayGantt({
               ))}
               {/* today line — Monday-style thin blue marker */}
               {todayInRange && <div className="absolute top-0 bottom-0 z-20" style={{ left: xOf(today), width: 2, marginLeft: -1, background: "#0073ea" }} />}
+              {/* go-live line — dashed violet marker, distinct from the today line */}
+              {goLiveInRange && (
+                <div className="absolute top-0 bottom-0 z-20" style={{ left: xOf(goLiveMs!), width: 0, marginLeft: -1, borderLeft: "2px dashed #7c3aed" }} title={`Go-live: ${goLive}`} />
+              )}
 
               {/* dependency arrows */}
               {showDeps && arrows.length > 0 && (
@@ -586,22 +711,60 @@ export function MondayGantt({
                     // predecessor right, drop into the gutter between the two rows,
                     // travel left, then enter the successor from its left.
                     const stub = 10;
-                    const d =
-                      a.x2 >= a.x1 + 2 * stub
-                        ? `M ${a.x1} ${a.y1} H ${a.x2 - stub} V ${a.y2} H ${a.x2}`
-                        : `M ${a.x1} ${a.y1} h ${stub} V ${(a.y1 + a.y2) / 2} H ${a.x2 - stub} V ${a.y2} H ${a.x2}`;
+                    const wrap = a.x2 < a.x1 + 2 * stub;
+                    const d = wrap
+                      ? `M ${a.x1} ${a.y1} h ${stub} V ${(a.y1 + a.y2) / 2} H ${a.x2 - stub} V ${a.y2} H ${a.x2}`
+                      : `M ${a.x1} ${a.y1} H ${a.x2 - stub} V ${a.y2} H ${a.x2}`;
+                    // Removable when a matching handler is wired: task→task via
+                    // onUnlink, milestone→milestone via onUnlinkMilestone. When so, the
+                    // arrow gets a wide transparent hit-path and, on hover, a red ✕ badge.
+                    const removable = (a.kind === "task" && !!onUnlink) || (a.kind === "group" && !!onUnlinkMilestone);
+                    const hovered = hoverArrow === i;
+                    // Midpoint of the connector — where the ✕ badge sits. The elbow's
+                    // vertical run is at x2-stub (room-ahead) or mid-x (wrapped case).
+                    const mx = wrap ? (a.x1 + a.x2) / 2 : a.x2 - stub;
+                    const my = (a.y1 + a.y2) / 2;
                     return (
-                      <path
+                      <g
                         key={i}
-                        d={d}
-                        fill="none"
-                        stroke={a.critical ? "#e2445c" : "#9ca3af"}
-                        strokeWidth={a.critical ? 2 : 1.2}
-                        // When a critical chain is shown, fade the off-path links
-                        // so the red critical path stands clearly apart from them.
-                        opacity={hasCritical && !a.critical ? 0.2 : 1}
-                        markerEnd={a.critical ? "url(#mg-arrow-crit)" : "url(#mg-arrow)"}
-                      />
+                        onMouseEnter={removable ? () => setHoverArrow(i) : undefined}
+                        onMouseLeave={removable ? () => setHoverArrow((cur) => (cur === i ? null : cur)) : undefined}
+                      >
+                        <path
+                          d={d}
+                          fill="none"
+                          stroke={hovered ? "#e2445c" : a.critical ? "#e2445c" : "#9ca3af"}
+                          strokeWidth={hovered ? 2 : a.critical ? 2 : 1.2}
+                          // When a critical chain is shown, fade the off-path links
+                          // so the red critical path stands clearly apart from them.
+                          opacity={hasCritical && !a.critical && !hovered ? 0.2 : 1}
+                          markerEnd={hovered || a.critical ? "url(#mg-arrow-crit)" : "url(#mg-arrow)"}
+                        />
+                        {removable && (
+                          <>
+                            {/* wide invisible hit-path so the thin line is easy to hover */}
+                            <path
+                              d={d}
+                              fill="none"
+                              stroke="transparent"
+                              strokeWidth={12}
+                              style={{ pointerEvents: "stroke", cursor: "pointer" }}
+                            >
+                              <title>Click the ✕ to remove this dependency</title>
+                            </path>
+                            {hovered && (
+                              <g
+                                style={{ pointerEvents: "all", cursor: "pointer" }}
+                                onClick={(e) => { e.stopPropagation(); if (a.kind === "group") onUnlinkMilestone!(a.predId, a.succId); else onUnlink!(a.predId, a.succId); setHoverArrow(null); }}
+                              >
+                                <title>Remove dependency</title>
+                                <circle cx={mx} cy={my} r={8} fill="#fff" stroke="#e2445c" strokeWidth={1.5} />
+                                <path d={`M ${mx - 3.2} ${my - 3.2} L ${mx + 3.2} ${my + 3.2} M ${mx + 3.2} ${my - 3.2} L ${mx - 3.2} ${my + 3.2}`} stroke="#e2445c" strokeWidth={1.6} strokeLinecap="round" />
+                              </g>
+                            )}
+                          </>
+                        )}
+                      </g>
                     );
                   })}
                 </svg>
@@ -638,23 +801,49 @@ export function MondayGantt({
                     const gp = prog.length
                       ? Math.round(prog.reduce((a, it) => a + Math.max(0, Math.min(100, it.progress ?? 0)), 0) / prog.length)
                       : 0;
+                    // Draggable only when this is a milestone (g.id) with its own
+                    // target dates and a reschedule handler. sMs/eMs anchor the drag.
+                    const sMs = msTime(g.start), eMs = msTime(g.end);
+                    const draggable = !!onRescheduleMilestone && g.id != null && (sMs != null || eMs != null);
+                    const rawLeft = xOf(span.lo);
+                    const rawWidth = Math.max(xOf(span.hi) - xOf(span.lo) + pxPerDay, 6);
+                    const { left: barLeft, width: barWidth } = draggable && g.id != null ? previewLW(g.id, "group", rawLeft, rawWidth) : { left: rawLeft, width: rawWidth };
+                    const midY = headerY + GROUP_H / 2;
                     return (
-                      <div
-                        className="absolute rounded-[3px] shadow-sm overflow-hidden"
-                        style={{
-                          top: headerY + GROUP_H / 2 - 3,
-                          left: xOf(span.lo),
-                          width: Math.max(xOf(span.hi) - xOf(span.lo) + pxPerDay, 6),
-                          height: 6,
-                          background: g.color,
-                        }}
-                        title={`${g.label} · ${g.items.length} item(s) · ${gp}% complete`}
-                      >
-                        {/* done = rich solid colour; remaining lightened very subtly */}
-                        {gp < 100 && (
-                          <div className="absolute top-0 bottom-0 right-0" style={{ left: `${gp}%`, background: "rgba(255,255,255,0.45)" }} />
+                      <Fragment>
+                        <div
+                          className="absolute rounded-[3px] shadow-sm overflow-hidden z-10"
+                          style={{ top: midY - 3, left: barLeft, width: barWidth, height: 6, background: g.color }}
+                          title={`${g.label}${g.start || g.end ? ` · target ${g.start ?? "?"} → ${g.end ?? "?"}` : ""} · ${g.items.length} item(s) · ${gp}% complete`}
+                        >
+                          {/* done = rich solid colour; remaining lightened very subtly */}
+                          {gp < 100 && (
+                            <div className="absolute top-0 bottom-0 right-0" style={{ left: `${gp}%`, background: "rgba(255,255,255,0.45)" }} />
+                          )}
+                        </div>
+                        {draggable && g.id != null && (
+                          <div className="group/ms absolute z-20" style={{ top: midY - 8, left: barLeft, width: barWidth, height: 16 }}>
+                            {/* body grab — shift the whole target window */}
+                            <div
+                              onMouseDown={(e) => beginDrag(e, g.id!, "group", "move", sMs, eMs)}
+                              title="Drag to shift the milestone target dates"
+                              className="absolute inset-0 cursor-grab active:cursor-grabbing"
+                            />
+                            {/* left edge — move the start */}
+                            <div
+                              onMouseDown={(e) => beginDrag(e, g.id!, "group", "l", sMs, eMs)}
+                              title="Drag to change the milestone start"
+                              className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-l-[3px] bg-white/70 border border-gray-400 opacity-0 group-hover/ms:opacity-100 transition-opacity"
+                            />
+                            {/* right edge — extend the target (due) */}
+                            <div
+                              onMouseDown={(e) => beginDrag(e, g.id!, "group", "r", sMs, eMs)}
+                              title="Drag to extend the milestone target (due date)"
+                              className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-r-[3px] bg-white/70 border border-gray-400 opacity-0 group-hover/ms:opacity-100 transition-opacity"
+                            />
+                          </div>
                         )}
-                      </div>
+                      </Fragment>
                     );
                   })()}
                   {/* item bars */}
@@ -708,20 +897,28 @@ export function MondayGantt({
                       );
                     }
 
-                    const width = Math.max((dayFloor(hi) - dayFloor(lo)) / DAY_MS * pxPerDay + pxPerDay, 8);
+                    const rawWidth = Math.max((dayFloor(hi) - dayFloor(lo)) / DAY_MS * pxPerDay + pxPerDay, 8);
                     const isTarget = !!linkSrc && hoverTarget === it.id && linkSrc.id !== it.id;
+                    // Overrun: this task ends after its milestone's own target (due) date.
+                    const msDue = msTime(g.end);
+                    const overrun = msDue != null && (msTime(it.end) ?? -Infinity) > msDue;
+                    const canDrag = !!onRescheduleTask;
+                    const sMs = msTime(it.start), eMs = msTime(it.end);
+                    // Live drag preview (no-op when this bar isn't the one being dragged).
+                    const { left: bLeft, width: bWidth } = canDrag ? previewLW(it.id, "task", left, rawWidth) : { left, width: rawWidth };
                     return (
                       <Fragment key={it.id}>
                       <div
-                        onClick={() => onOpen?.(it.id)}
+                        onMouseDown={canDrag ? (e) => beginDrag(e, it.id, "task", "move", sMs, eMs) : undefined}
+                        onClick={canDrag ? undefined : () => onOpen?.(it.id)}
                         onMouseEnter={() => { if (linkSrcRef.current) setTarget(it.id); }}
                         onMouseLeave={() => { if (hoverTargetRef.current === it.id) setTarget(null); }}
-                        title={`${it.name}\n${it.start ?? "?"} → ${it.end ?? "?"} · ${progress}% complete`}
-                        className={`group absolute ${onOpen ? "cursor-pointer" : ""} ${it.dim ? "opacity-40" : ""}`}
-                        style={{ top: cy - BAR_H / 2, left, width, height: BAR_H }}
+                        title={`${it.name}\n${it.start ?? "?"} → ${it.end ?? "?"} · ${progress}% complete${overrun ? `\n⚑ Ends after milestone target (due ${g.end})` : ""}`}
+                        className={`group absolute ${canDrag ? "cursor-grab active:cursor-grabbing" : onOpen ? "cursor-pointer" : ""} ${it.dim ? "opacity-40" : ""}`}
+                        style={{ top: cy - BAR_H / 2, left: bLeft, width: bWidth, height: BAR_H }}
                       >
                         <div
-                          className={`absolute inset-0 rounded-[4px] overflow-hidden ${isTarget ? "ring-2 ring-[#0073ea] ring-offset-1" : it.emphasise ? "ring-2 ring-[#e2445c] shadow" : "shadow-sm"}`}
+                          className={`absolute inset-0 rounded-[4px] overflow-hidden ${isTarget ? "ring-2 ring-[#0073ea] ring-offset-1" : overrun ? "ring-2 ring-[#e2445c]" : it.emphasise ? "ring-2 ring-[#e2445c] shadow" : "shadow-sm"}`}
                           style={{ background: it.color }}
                         >
                           {/* solid colour bar; the done portion is a darker shade
@@ -730,15 +927,41 @@ export function MondayGantt({
                             <div className="absolute left-0 top-0 bottom-0" style={{ width: `${progress}%`, background: "rgba(0,0,0,0.22)" }} />
                           )}
                         </div>
+                        {/* Jira-style edge resize handles — reveal on hover */}
+                        {canDrag && (
+                          <>
+                            <div
+                              onMouseDown={(e) => beginDrag(e, it.id, "task", "l", sMs, eMs)}
+                              title="Drag to change the start date"
+                              className="absolute left-0 top-0 bottom-0 w-1.5 cursor-ew-resize rounded-l-[4px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                            />
+                            <div
+                              onMouseDown={(e) => beginDrag(e, it.id, "task", "r", sMs, eMs)}
+                              title="Drag to extend the due date"
+                              className="absolute right-0 top-0 bottom-0 w-1.5 cursor-ew-resize rounded-r-[4px] bg-white/60 opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                            />
+                          </>
+                        )}
                         {onLink && (
                           <span
-                            onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); const x = left + width; setLinkSrc({ id: it.id, x, y: cy }); setLinkCur({ x, y: cy }); }}
+                            onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); const x = bLeft + bWidth; setLinkSrc({ id: it.id, x, y: cy }); setLinkCur({ x, y: cy }); }}
                             onClick={(e) => e.stopPropagation()}
                             title="Drag onto another task to link it as the successor (creates a dependency)"
                             className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3 h-3 rounded-full bg-white border-2 border-[#0073ea] shadow cursor-crosshair opacity-40 group-hover:opacity-100 hover:scale-125 transition-all z-30"
                           />
                         )}
                       </div>
+                      {/* Overrun flag — red pennant just past the bar when it ends after
+                          its milestone target (Jira surfaces the same warning). */}
+                      {overrun && (
+                        <div
+                          className="absolute z-30 pointer-events-none"
+                          style={{ top: cy - BAR_H / 2 - 1, left: bLeft + bWidth + 3 }}
+                          title={`Ends after milestone target (due ${g.end})`}
+                        >
+                          <Flag size={13} className="text-[#e2445c]" fill="#e2445c" />
+                        </div>
+                      )}
                       {/* Milestone diamonds ON the bar — solid green = done, hollow = due. */}
                       {it.markers?.map((m, mi) => {
                         const mt = msTime(m.date);

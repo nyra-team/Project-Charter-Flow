@@ -61,3 +61,7 @@ artifacts/api-server/uploads/
 .logs-*.log
 __pycache__/
 uploads/
+
+# Screenshots + scratch zips used during Replit-era development. Nothing imports
+# them (the @assets vite alias has zero importers), so they stay out of git.
+attached_assets/

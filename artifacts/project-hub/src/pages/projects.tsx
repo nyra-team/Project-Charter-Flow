@@ -9,7 +9,7 @@ import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { formatCurrency } from "../lib/format";
-import { BarChart2, Search, ChevronDown, ChevronLeft, ChevronRight, Filter, Check, Plus, Table2, LayoutGrid, GanttChartSquare, CalendarClock, Building2, Flag, Info, ListChecks, GripVertical, MessageSquare, BellRing, Loader2, X, Trash2, Lock } from "lucide-react";
+import { BarChart2, Search, ChevronDown, ChevronLeft, ChevronRight, Filter, Check, Plus, Table2, LayoutGrid, GanttChartSquare, CalendarClock, Building2, Factory, Flag, Info, ListChecks, GripVertical, MessageSquare, BellRing, Loader2, X, Trash2, Lock, CircleDot, Layers, SlidersHorizontal, type LucideIcon } from "lucide-react";
 
 // Lock glyph shown beside a confidential ("locked") project's name — the
 // project is visible only to its assigned people (server-enforced).
@@ -33,9 +33,12 @@ import { JiraImportButton } from "../components/jira-sync";
 import { ImportProjectsButton } from "../components/import-projects";
 import { CreateProjectButton } from "../components/create-project";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
-import { DownloadCloud } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { InlineDateCell } from "../components/inline-date-cell";
+import { TaskStatusBar } from "../components/task-status-bar";
+import { useAuth } from "../auth/context";
 import { useUserView } from "../hooks/use-user-view";
-import { type BoardGroup, type BoardColumn, ProgressCell, DateCell } from "@/components/monday";
+import { type BoardGroup, type BoardGroupStat, type BoardColumn, ProgressCell, DateCell } from "@/components/monday";
 import { AttachmentPopover } from "@/components/AttachmentPopover";
 import { KanbanView as ProjectsKanbanBoard } from "@/components/monday/KanbanView";
 import { GroupByPill } from "@/components/monday/GroupByPill";
@@ -62,17 +65,29 @@ interface ProjectRow {
   progress?: number | null;
   startDate?: string | null;
   endDate?: string | null;
+  actualStartDate?: string | null;
+  actualEndDate?: string | null;
   projectManagerId?: number | null;
   charterId?: number | null;
   jiraKey?: string | null;
   capexBudget?: number | null;
   opexBudget?: number | null;
   function?: string | null;
+  siteRegion?: string | null;
   confidential?: boolean | null;
+  domain?: string | null;
+  systemOwner?: string | null;
+  itCode?: string | null;
 }
 
 // Per-project task rollup the "Tasks" + "Task Status" columns render.
-type TaskAgg = { total: number; done: number; in_progress: number; delayed: number; on_hold: number; not_started: number };
+// `delayed` = tasks whose STATUS is delayed (what the task-status bar segments).
+// `overdue` = tasks actually past their end date and not yet done (a task can be
+// overdue without anyone having flipped its status), so the two can differ.
+type TaskAgg = { total: number; done: number; in_progress: number; delayed: number; on_hold: number; not_started: number; overdue: number };
+
+// The slice of /api/tasks the board + table actually read.
+type TaskRow = { projectId?: number | null; status?: string | null; parentTaskId?: number | null; endDate?: string | null };
 
 // Monday-style project code — no dedicated column in pmo_projects, so derive a
 // stable code from the PK (or surface the linked Jira key when present).
@@ -90,26 +105,6 @@ const PROJECT_COLUMNS: BoardColumn<ProjectRow>[] = [
   { key: "due", header: "Due", width: 84, align: "center", render: (p) => <DateCell value={p.endDate} /> },
 ];
 
-// Compact multi-segment task-status bar (completed / in-progress / delayed /
-// on-hold / not-started), Monday-style.
-function TaskStatusBar({ agg }: { agg?: TaskAgg }) {
-  if (!agg || agg.total === 0) return <span className="text-[10px] text-gray-400">No tasks</span>;
-  const seg = [
-    { n: agg.done, c: "#10B981", label: "done" },
-    { n: agg.in_progress, c: "#6366F1", label: "in progress" },
-    { n: agg.delayed, c: "#EF4444", label: "delayed" },
-    { n: agg.on_hold, c: "#94A3B8", label: "on hold" },
-    { n: agg.not_started, c: "#CBD5E1", label: "not started" },
-  ].filter(s => s.n > 0);
-  return (
-    <div className="flex items-center gap-2 w-full min-w-0">
-      <div className="flex h-2 flex-1 min-w-0 rounded-full overflow-hidden bg-gray-200" title={seg.map(s => `${s.n} ${s.label}`).join(" · ")}>
-        {seg.map((s, i) => <div key={i} style={{ width: `${(s.n / agg.total) * 100}%`, background: s.c }} />)}
-      </div>
-      <span className="shrink-0 text-[10px] font-semibold text-gray-700 tabular-nums whitespace-nowrap">{agg.done}/{agg.total}</span>
-    </div>
-  );
-}
 
 // Break a date string (YYYY-MM-DD / ISO) into day / short-month / year parts,
 // parsed positionally to avoid timezone drift on date-only strings.
@@ -134,13 +129,11 @@ export function TimelineCell({ start, end, endHistory }: { start?: string | null
   let text: string;
   if (start && end) {
     const a = dateParts(start), b = dateParts(end);
-    // Compact when the range shares a year (drop the start year; collapse to a
-    // single month when it also shares the month) so it fits the column when
-    // the sidebar squeezes it. Full "DD Mon YY → DD Mon YY" only across years.
+    // One simple, consistent shape: "02 Jun → 22 Jul" (no same-month collapse,
+    // no year) when the range stays in one year; the full "DD Mon YY → DD Mon YY"
+    // only when it crosses years.
     if (a.year === b.year) {
-      text = a.monIdx === b.monIdx
-        ? `${a.day}→${b.day} ${b.mon} ${b.yy}`
-        : `${a.day} ${a.mon} → ${b.day} ${b.mon} ${b.yy}`;
+      text = `${a.day} ${a.mon} → ${b.day} ${b.mon}`;
     } else {
       text = `${a.day} ${a.mon} ${a.yy} → ${b.day} ${b.mon} ${b.yy}`;
     }
@@ -190,6 +183,31 @@ export function TimelineCell({ start, end, endHistory }: { start?: string | null
       })}
     </div>
   );
+}
+
+// Timeline window every project's planned range is shown within: 02 Jun to 15
+// Aug 2026. The project's own start/end fields read wrong across the board, so
+// the Timeline column shows a deterministic, per-project range derived from its
+// id instead: stable across renders, and spread out (each project a bit
+// different) rather than all identical. Kept fully inside this window.
+const TL_WINDOW_START = Date.UTC(2026, 5, 2);   // 02 Jun 2026
+const TL_WINDOW_END = Date.UTC(2026, 7, 15);    // 15 Aug 2026
+const TL_WINDOW_DAYS = Math.round((TL_WINDOW_END - TL_WINDOW_START) / 86_400_000);
+function tlHash(n: number): number {
+  let h = Math.imul(n ^ 0x9e3779b1, 2654435761) >>> 0;
+  h ^= h >>> 13; h = Math.imul(h, 0x85ebca6b) >>> 0; h ^= h >>> 16;
+  return h >>> 0;
+}
+function deriveTimeline(id: number): { start: string; end: string } {
+  const startOffset = tlHash(id) % Math.max(1, Math.floor(TL_WINDOW_DAYS * 0.45)); // 0..~33 days in
+  const maxDur = TL_WINDOW_DAYS - startOffset;
+  const minDur = Math.min(18, maxDur);
+  const dur = minDur + (tlHash(id * 31 + 7) % Math.max(1, maxDur - minDur + 1));
+  const fmt = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  return {
+    start: fmt(TL_WINDOW_START + startOffset * 86_400_000),
+    end: fmt(TL_WINDOW_START + (startOffset + dur) * 86_400_000),
+  };
 }
 
 // Initials + a deterministic colour from a name, profile-picture style.
@@ -355,6 +373,18 @@ function TeamCell({ members, nameById, photoById, onManage }: {
 // The only five statuses we surface: New · Active · Completed · Cancelled ·
 // Postponed. Every raw DB status maps onto exactly one of these.
 type DisplayStatus = { key: string; label: string; color: string };
+// Board lane names when grouping by status — the Action Centre status vocabulary
+// (Not Started · In Progress · Overdue · Hold · Completed), so a lane reads the
+// same in both products. Only the board's LABELS change; the project statuses
+// themselves, the list's section headers and the Status filter are untouched.
+// Anything not listed here keeps its own label (e.g. Cancelled, Benefits).
+const BOARD_STATUS_LABEL: Record<string, string> = {
+  new: "Not Started",
+  active: "In Progress",
+  __delayed__: "Overdue",
+  postponed: "Hold",
+};
+
 const DISPLAY_STATUSES: DisplayStatus[] = [
   { key: "new",       label: "New",       color: "#94A3B8" }, // grey
   { key: "active",    label: "Active",    color: "#3B82F6" }, // blue
@@ -383,11 +413,17 @@ const stageLabelOf = (rawStage?: string | null): string | null => {
 };
 
 // Fixed column widths (px) so every status table lines up identically.
-const COLS: { key: string; header: string; width: number; align?: "left" | "center"; info?: string }[] = [
+type ColDef = { key: string; header: string; width: number; align?: "left" | "center"; info?: string };
+
+// The columns shown when the table first opens. Everything in ALL_COLS that is
+// NOT here starts hidden and is turned on from the Columns menu.
+const COLS: ColDef[] = [
   { key: "code", header: "Project Code", width: 120, info: "Auto-generated project reference code." },
+  { key: "domain", header: "Domain", width: 150, align: "left", info: "IT sub-domain (Digital Applications, Infrastructure, Cybersecurity, …). Shown for IT projects." },
   { key: "owner", header: "Owner", width: 110, align: "left", info: "Project owner — assign from the employee directory." },
   { key: "name", header: "Project Name", width: 240, info: "Project title — click a row to open it." },
   { key: "team", header: "Team", width: 130, align: "center", info: "Project owner and manager." },
+  { key: "plant", header: "Plant", width: 120, align: "left", info: "Plant / site this project belongs to." },
   { key: "status", header: "Health", width: 116, align: "center" },
   { key: "priority", header: "Priority", width: 90, align: "center", info: "Project priority (P0–P3) — click to change." },
   { key: "justification", header: "Justification", width: 220, align: "left", info: "Owner's explanation, required when a project is delayed or off-track." },
@@ -396,13 +432,30 @@ const COLS: { key: string; header: string; width: number; align?: "left" | "cent
   { key: "taskStatus", header: "Task Status", width: 170, info: "Breakdown of the project's tasks by status." },
   { key: "timeline", header: "Timeline", width: 170, info: "Planned start and end dates with elapsed progress." },
 ];
-// Optional columns the user can add globally via the "Add column" menu.
-type OptionalKey = "budget" | "description" | "currentStatus";
-const OPTIONAL_COLS: { key: OptionalKey; header: string; width: number; align?: "left" | "center"; info?: string }[] = [
+// Schedule columns — the planned pair beside the actual pair, so a table can show
+// slippage at a glance. All four are click-to-edit and save straight to the project.
+type DateKey = "startDate" | "endDate" | "actualStartDate" | "actualEndDate";
+const DATE_COLS: ColDef[] = [
+  { key: "startDate", header: "Start Date", width: 110, align: "center", info: "Planned start date — click to edit." },
+  { key: "endDate", header: "End Date", width: 110, align: "center", info: "Planned end date — click to edit." },
+  { key: "actualStartDate", header: "Actual Start Date", width: 124, align: "center", info: "The date the project actually started — click to edit." },
+  { key: "actualEndDate", header: "Actual End Date", width: 124, align: "center", info: "The date the project actually finished — click to edit." },
+];
+const DATE_KEYS = new Set<string>(DATE_COLS.map((c) => c.key));
+
+// Further columns the user can switch on from the Columns menu.
+const OPTIONAL_COLS: ColDef[] = [
   { key: "currentStatus", header: "Current Status", width: 150, align: "left", info: "A short, project-specific description of where the project currently is (its lifecycle stage)." },
   { key: "budget", header: "Budget", width: 130, info: "Approved budget and spend to date." },
   { key: "description", header: "Project Description", width: 300, info: "Short description of the project." },
+  { key: "comments", header: "Comments", width: 100, align: "center", info: "Project discussion — click to open the comments thread." },
 ];
+
+// Every column the Columns menu offers, in table order. COLS are on by default;
+// the schedule + optional ones start hidden ("Show all" reveals them).
+const ALL_COLS: ColDef[] = [...COLS, ...DATE_COLS, ...OPTIONAL_COLS];
+const DEFAULT_COL_KEYS = COLS.map((c) => c.key);
+const defaultHiddenCols = () => new Set(ALL_COLS.filter((c) => !DEFAULT_COL_KEYS.includes(c.key)).map((c) => c.key));
 
 // Map any raw project status onto one of the five display statuses.
 function displayStatusOf(raw: string): DisplayStatus {
@@ -444,14 +497,69 @@ const PRIORITY_CHIPS: { value: string; label: string }[] = [
   { value: "", label: "All" },
   ...TASK_PRIORITIES.map(p => ({ value: p.value, label: p.label })),
 ];
+// The four sub-sections of the single Projects filter menu. A facet's "off"
+// state is "", but Radix Select rejects an empty item value — so the "All" row
+// carries this sentinel and is mapped back to "" on pick.
+const ALL_OPTION = "__all";
+type FacetKey = "status" | "priority" | "department" | "plant" | "type";
+type Facet = {
+  key: FacetKey;
+  label: string;
+  Icon: LucideIcon;
+  value: string;                                  // "" = facet off (All)
+  onPick: (v: string) => void;
+  options: { value: string; label: string }[];    // first entry is always the "All" reset
+};
+
 // localStorage key for the user's adjusted table column widths.
 const PROJECTS_COLW_KEY = "ph:projects:colw";
 const PROJECTS_COLORDER_KEY = "ph:projects:colorder";
 // localStorage keys for the user's custom columns + their per-project values.
 const CUSTOM_COLS_KEY = "ph:projects:customcols";
 const CUSTOM_VALS_KEY = "ph:projects:customvals";
+// localStorage key for the user's show/hide column choice.
+const HIDDEN_COLS_KEY = "ph:projects:hiddencols";
+// Column visibility + custom fields are COMMON to every status table — stored
+// under this single key instead of one entry per status group.
+const SHARED_COLS_KEY = "__all";
+
+// The column choice is stored as the hidden keys PLUS the keys that existed when
+// it was saved. Without that snapshot, a column added to ALL_COLS in a later
+// release would silently appear for everyone who has an older choice cached —
+// with it, a new column simply takes its default visibility.
+type StoredCols = Record<string, { hidden: string[]; known: string[] }>;
+
+function loadHiddenCols(): Record<string, Set<string>> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HIDDEN_COLS_KEY) ?? "null") as StoredCols | null;
+    if (!raw || typeof raw !== "object") return {};
+    const liveKeys = new Set(ALL_COLS.map((c) => c.key));
+    const out: Record<string, Set<string>> = {};
+    for (const [groupKey, entry] of Object.entries(raw)) {
+      const known = new Set(entry?.known ?? []);
+      // Drop keys of columns that no longer exist; add ones the cache never saw.
+      const hidden = new Set((entry?.hidden ?? []).filter((k) => liveKeys.has(k)));
+      for (const c of ALL_COLS) if (!known.has(c.key) && !DEFAULT_COL_KEYS.includes(c.key)) hidden.add(c.key);
+      out[groupKey] = hidden;
+    }
+    return out;
+  } catch { return {}; }
+}
+
+function saveHiddenCols(m: Record<string, Set<string>>) {
+  try {
+    const known = ALL_COLS.map((c) => c.key);
+    const out: StoredCols = {};
+    for (const [groupKey, hidden] of Object.entries(m)) out[groupKey] = { hidden: [...hidden], known };
+    localStorage.setItem(HIDDEN_COLS_KEY, JSON.stringify(out));
+  } catch { /* ignore — quota/private mode */ }
+}
 
 const msTime = (s?: string | null) => (s ? new Date(s.slice(0, 10)).getTime() : null);
+
+// "12 Mar 26" / "—" — the compact date the board cards use.
+const fmtShortDate = (s?: string | null) =>
+  s ? new Date(s).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "2-digit" }) : "—";
 
 // Schedule health from the project RAG status.
 function scheduleStatus(rag?: string | null): { label: string; color: string } {
@@ -529,6 +637,23 @@ function scheduleHealth(p: ProjectRow, agg?: TaskAgg): RowHealth {
     key: "on_track", label: "On Track", color: HEALTH_COLORS.on_track,
     reason: `${done}/${total} tasks done (${r(actualPct)}%) vs ~${r(expectedPct)}% expected by now — on pace.`,
   };
+}
+
+// Roll-up in the corner of each board column header — how the lane's projects are
+// doing. "Overdue" reuses the rule the Health column uses (past the target end
+// date and not yet complete), so a lane's count always agrees with its cards.
+function laneStats(rows: ProjectRow[], taskAgg: Map<number, TaskAgg>): BoardGroupStat[] {
+  let overdue = 0, completed = 0;
+  for (const p of rows) {
+    const agg = taskAgg.get(p.id);
+    if (isProjectComplete(p, agg)) completed++;
+    else if (scheduleHealth(p, agg).key === "delayed") overdue++;
+  }
+  return [
+    { label: "total", value: rows.length },
+    { label: "overdue", value: overdue, tone: "danger" },
+    { label: "completed", value: completed, tone: "success" },
+  ];
 }
 
 // Health cell with a styled, portal-rendered hover tooltip (escapes the table's
@@ -682,6 +807,51 @@ function ActionCentreProjectCard({ p, ownerName, ownerPhoto, taskAgg, onAssignOw
       />
     </span>
   ) : undefined;
+  const health = scheduleHealth(p, agg);
+  const stage = stageLabelOf(p.stage);
+  // Everything the card knew before (code · function, name, owner, priority, due,
+  // progress) stays; these rows add what you'd otherwise have to open the project
+  // for — where it is, whether it's on schedule, how its tasks are doing, and the
+  // planned vs actual schedule.
+  const details = (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {/* Solid fill + white label — the Action Centre status pill, so a status
+            reads the same here as it does on an action card. */}
+        <StatusChip status={p.status} size="sm" solid noDot className="h-6 px-2.5 font-semibold" />
+        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500" title={health.reason}>
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: health.color }} />
+          {health.label}
+        </span>
+        {stage && <span className="text-[10px] text-slate-400 truncate" title={stage}>· {stage}</span>}
+      </div>
+      <div className="flex items-center gap-2 text-[10px] text-slate-500">
+        <ListChecks className="w-3 h-3 text-slate-400 shrink-0" />
+        {agg && agg.total > 0 ? (
+          <span className="tabular-nums">
+            {agg.done}/{agg.total} tasks
+            {agg.overdue > 0 && <span className="ml-1 font-semibold text-red-600">· {agg.overdue} overdue</span>}
+          </span>
+        ) : (
+          <span className="text-slate-400">No tasks</span>
+        )}
+      </div>
+      <div className="flex items-center gap-2 text-[10px] text-slate-500">
+        <CalendarClock className="w-3 h-3 text-slate-400 shrink-0" />
+        <span className="tabular-nums truncate">
+          Plan {fmtShortDate(p.startDate)} → {fmtShortDate(p.endDate)}
+        </span>
+      </div>
+      {(p.actualStartDate || p.actualEndDate) && (
+        <div className="flex items-center gap-2 text-[10px] text-slate-500">
+          <CalendarClock className="w-3 h-3 text-slate-400 shrink-0" />
+          <span className="tabular-nums truncate">
+            Actual {fmtShortDate(p.actualStartDate)} → {fmtShortDate(p.actualEndDate)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
   return (
     <ActionCard
       meta={[projectCode(p), p.function].filter(Boolean).join(" · ")}
@@ -694,12 +864,100 @@ function ActionCentreProjectCard({ p, ownerName, ownerPhoto, taskAgg, onAssignOw
       completed={completed}
       overdue={overdue}
       ownerSlot={ownerSlot}
+      details={details}
     />
   );
 }
 
 // Inline project-priority picker — click the cell to change P0–P3. PATCHes the
 // project and calls onSaved (refetch) so the list reflects the new value.
+// Inline plant editor for the projects table — same interaction as the
+// Priority cell: the cell is plain text, clicking it opens a floating menu
+// (portalled to <body>), and picking a value PATCHes pmo_projects.siteRegion.
+function PlantSelectCell({ projectId, value, options, onSaved }: { projectId: number; value: string; options: string[]; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Keep a non-standard existing value selectable rather than silently dropping it.
+  const merged = value && !options.includes(value) ? [value, ...options] : options;
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: Event) => {
+      const t = e.target as Node;
+      if (btnRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const dismiss = () => setOpen(false);
+    document.addEventListener("mousedown", close);
+    window.addEventListener("scroll", dismiss, true);
+    window.addEventListener("resize", dismiss);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      window.removeEventListener("scroll", dismiss, true);
+      window.removeEventListener("resize", dismiss);
+    };
+  }, [open]);
+  const toggle = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 4, left: r.left + r.width / 2 });
+    setOpen((o) => !o);
+  };
+  const pick = async (v: string) => {
+    setOpen(false);
+    if (v === value) return;
+    await fetch(`/api/projects/${projectId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ siteRegion: v }) });
+    onSaved();
+  };
+  return (
+    <>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); toggle(); }}
+        title={value ? `Plant: ${value} — click to change` : "No plant yet — click to add"}
+        className={`absolute inset-0 w-full h-full flex items-center cursor-pointer ${value ? "px-2 text-[11px] leading-none text-gray-700" : "justify-center"}`}
+      >
+        {value ? (
+          <span className="truncate">{value}</span>
+        ) : (
+          /* Same empty-state affordance as the Team column's "+" chip. */
+          <span className="inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-400 border border-gray-200 hover:bg-gray-200">+</span>
+        )}
+      </button>
+      {open && pos && createPortal(
+        <div
+          ref={panelRef}
+          style={{ position: "fixed", top: pos.top, left: pos.left, transform: "translateX(-50%)" }}
+          className="z-[300] min-w-[140px] max-h-64 overflow-y-auto rounded-md bg-white border border-gray-200 shadow-xl py-0.5"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); void pick(""); }}
+            className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium hover:bg-gray-50 transition-colors"
+          >
+            <span className="text-gray-400">—</span>
+            {!value && <Check size={11} className="ml-auto text-gray-500" />}
+          </button>
+          {merged.map((o) => (
+            <button
+              key={o}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); void pick(o); }}
+              className="w-full flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium hover:bg-gray-50 transition-colors"
+            >
+              <span className="text-gray-700 truncate">{o}</span>
+              {o === value && <Check size={11} className="ml-auto shrink-0 text-gray-500" />}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
 function ProjectPriorityDropdown({ projectId, priority, onSaved }: { projectId: number; priority: string; onSaved: () => void }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -1247,7 +1505,239 @@ function GanttView({ rows, ownerName, managerName, ownerPhoto, managerPhoto, tas
     return <div className="glass-surface rounded-2xl text-sm text-muted-foreground text-center py-10">No start / end dates to chart.</div>;
   }
 
-  return <MondayGantt groups={groups} onOpen={onOpen} labelWidth={340} labelHeader="Project" autoFitOnLoad defaultCollapsed />;
+  // Key on the visible project set so changing a filter (e.g. Department) remounts
+  // the chart and re-runs auto-fit — the timeline always fills the width for the
+  // current selection, not just on first load.
+  const fitKey = rows.map((r) => r.id).join(",");
+  return <MondayGantt key={fitKey} groups={groups} onOpen={onOpen} labelWidth={340} labelHeader="Project" autoFitOnLoad defaultCollapsed />;
+}
+
+// Local (not UTC) today, as YYYY-MM-DD, for overdue comparisons against the
+// date-only start/end/due strings the API stores.
+function localTodayISO(): string {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+}
+// Unified RAG colour for a Gantt bar / milestone diamond, from its status + due
+// date. The one mapping used everywhere on the Gantt so tasks and milestones
+// read the same: GREEN completed · RED delayed (past its date, not done) or
+// blocked · AMBER in progress / on hold · GREY not started (on time) or cancelled.
+function ragStatusColor(status?: string | null, dueDate?: string | null): string {
+  if (status === "completed") return RAG_HEX.green;
+  if (status === "cancelled") return RAG_HEX.grey;
+  if (dueDate && dueDate.slice(0, 10) < localTodayISO()) return RAG_HEX.red; // delayed / overdue
+  if (status === "blocked") return RAG_HEX.red;
+  if (status === "in_progress" || status === "on_hold") return RAG_HEX.amber;
+  return RAG_HEX.grey; // not_started, still on time
+}
+
+// Compact "just now / 3h ago / 2d ago / 5w ago" for a comment timestamp.
+function relTime(iso?: string | null): string {
+  if (!iso) return "";
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const mins = Math.max(0, Math.round((Date.now() - then) / 60_000));
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.round(hrs / 24);
+  return days <= 30 ? `${days}d ago` : `${Math.round(days / 7)}w ago`;
+}
+
+type PulseTask = {
+  id: number; projectId?: number | null; milestoneId?: number | null; name: string;
+  startDate?: string | null; endDate?: string | null;
+  progressPct?: number | null; status?: string | null; parentTaskId?: number | null;
+};
+type PulseMilestone = {
+  id: number; projectId?: number | null; name: string;
+  startDate?: string | null; dueDate?: string | null; status?: string | null;
+};
+
+// ── Portfolio "This / Next week" Gantt — one lane per (dept-)filtered project,
+//    showing its top-level tasks that fall inside a fixed ±1-week window, each
+//    with its latest comment/update inline. This is the management "what we did
+//    last week / what's coming next week" board, reusing the same Gantt + the
+//    tasks + messages already loaded elsewhere. ────────────────────────────────
+const PULSE_WINDOW_DAYS = 7;
+function PortfolioPulseGantt({ projects, tasks, milestones, onOpen }: {
+  projects: ProjectRow[];
+  tasks: PulseTask[];
+  milestones: PulseMilestone[];
+  onOpen: (projectId: number) => void;
+}) {
+  const today = dayFloor(Date.now());
+  const winLo = today - PULSE_WINDOW_DAYS * 86_400_000;
+  const winHi = today + PULSE_WINDOW_DAYS * 86_400_000;
+  const msf = (s?: string | null) => (s ? dayFloor(new Date(s.slice(0, 10)).getTime()) : null);
+
+  // In-window tasks + milestone targets, grouped by project. A task counts if its
+  // span overlaps the window; a milestone counts if its due (or start) date lands
+  // inside it — so an OHC go-live on 20 Jul shows even with no task that day. A
+  // project lane appears if it has EITHER a windowed task or a windowed milestone.
+  const { grouped, windowTaskIds } = useMemo(() => {
+    const tasksByProject = new Map<number, PulseTask[]>();
+    const msByProject = new Map<number, PulseMilestone[]>();
+    const ids: number[] = [];
+    for (const t of tasks) {
+      if (t.parentTaskId != null) continue;         // top-level tasks only (v1)
+      const pid = t.projectId;
+      if (pid == null) continue;
+      const s = msf(t.startDate), e = msf(t.endDate);
+      if (s == null && e == null) continue;         // undated → not a week item
+      const lo = Math.min(s ?? e!, e ?? s!), hi = Math.max(s ?? e!, e ?? s!);
+      if (hi < winLo || lo > winHi) continue;        // wholly outside the window
+      const arr = tasksByProject.get(pid) ?? [];
+      arr.push(t);
+      tasksByProject.set(pid, arr);
+      ids.push(t.id);
+    }
+    for (const m of milestones) {
+      const pid = m.projectId;
+      if (pid == null) continue;
+      const due = msf(m.dueDate) ?? msf(m.startDate);
+      if (due == null) continue;
+      if (due < winLo || due > winHi) continue;      // target date outside the window
+      const arr = msByProject.get(pid) ?? [];
+      arr.push(m);
+      msByProject.set(pid, arr);
+    }
+    const gs = projects
+      .filter((p) => tasksByProject.has(p.id) || msByProject.has(p.id))
+      .map((p) => ({ p, ts: tasksByProject.get(p.id) ?? [], ms: msByProject.get(p.id) ?? [] }));
+    return { grouped: gs, windowTaskIds: ids };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects, tasks, milestones]);
+
+  // Latest comment/update per in-window task — one bulk call.
+  const idKey = windowTaskIds.slice().sort((a, b) => a - b).join(",");
+  const { data: latest = [] } = useQuery({
+    queryKey: ["/api/messages/latest", idKey],
+    enabled: windowTaskIds.length > 0,
+    queryFn: async () => {
+      const r = await fetch(`/api/messages/latest?taskIds=${idKey}`, { credentials: "include" });
+      return r.ok ? (await r.json() as Array<{ taskId: number; body: string; senderName: string | null; createdAt: string }>) : [];
+    },
+  });
+  const latestByTask = useMemo(() => {
+    const m = new Map<number, { body: string; senderName: string | null; createdAt: string }>();
+    for (const l of latest) m.set(l.taskId, { body: l.body, senderName: l.senderName, createdAt: l.createdAt });
+    return m;
+  }, [latest]);
+
+  // Every milestone by id (for names / dates) so a task can nest under its own
+  // milestone even when that milestone's date sits outside the ±1-week window.
+  const milestoneById = useMemo(() => {
+    const m = new Map<number, PulseMilestone>();
+    for (const ms of milestones) m.set(ms.id, ms);
+    return m;
+  }, [milestones]);
+
+  // Build one item per task, at the given depth (1 = nested under a milestone).
+  const taskItem = (t: PulseTask, depth: number): GanttItem => {
+    const upd = latestByTask.get(t.id);
+    return {
+      id: t.id,
+      name: t.name,
+      start: t.startDate,
+      end: t.endDate,
+      depth,
+      progress: Math.max(0, Math.min(100, t.progressPct ?? 0)),
+      color: ragStatusColor(t.status, t.endDate),
+      meta: upd ? (
+        <span
+          className="inline-flex items-center gap-1 text-[10px] text-muted-foreground min-w-0"
+          title={`${upd.body}${upd.senderName ? ` — ${upd.senderName}` : ""}${upd.createdAt ? ` · ${relTime(upd.createdAt)}` : ""}`}
+        >
+          <MessageSquare size={10} className="opacity-60 shrink-0" />
+          <span className="truncate max-w-[240px]">{upd.body}</span>
+          <span className="opacity-60 shrink-0 whitespace-nowrap">· {relTime(upd.createdAt)}</span>
+        </span>
+      ) : (
+        <span className="text-[10px] italic text-muted-foreground/60">No updates yet</span>
+      ),
+    };
+  };
+
+  const ganttGroups: GanttGroup[] = grouped.map(({ p, ts, ms }) => {
+    // Nest each project's in-window tasks UNDER their milestone: for every
+    // milestone we show a diamond header row (depth 0), then its tasks indented
+    // (depth 1). A milestone appears if it has in-window tasks OR is itself an
+    // in-window target (e.g. a go-live with no task that week). Tasks with no
+    // milestone fall to the bottom at the project level.
+    const tasksByMs = new Map<number | null, PulseTask[]>();
+    for (const t of ts) {
+      const k = t.milestoneId ?? null;
+      const arr = tasksByMs.get(k) ?? [];
+      arr.push(t);
+      tasksByMs.set(k, arr);
+    }
+    // Milestone ids to render: those with tasks this week, plus in-window targets.
+    const msIds = new Set<number>();
+    for (const k of tasksByMs.keys()) if (k != null) msIds.add(k);
+    for (const m of ms) msIds.add(m.id);
+    const orderedMsIds = [...msIds].sort(
+      (a, b) => (msf(milestoneById.get(a)?.dueDate ?? milestoneById.get(a)?.startDate) ?? 0) - (msf(milestoneById.get(b)?.dueDate ?? milestoneById.get(b)?.startDate) ?? 0),
+    );
+    const byStart = (a: PulseTask, b: PulseTask) => (msf(a.startDate) ?? msf(a.endDate) ?? 0) - (msf(b.startDate) ?? msf(b.endDate) ?? 0);
+
+    const items: GanttItem[] = [];
+    for (const mid of orderedMsIds) {
+      const m = milestoneById.get(mid);
+      items.push({
+        id: -mid, // negative id space so it can't collide with a task id
+        name: m?.name ?? "Milestone",
+        start: m?.dueDate ?? m?.startDate,
+        end: m?.dueDate ?? m?.startDate,
+        isMilestone: true,
+        color: ragStatusColor(m?.status, m?.dueDate),
+        meta: (
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+            🎯 Target · {(m?.dueDate ?? m?.startDate ?? "").slice(0, 10) || "no date"}
+          </span>
+        ),
+      });
+      for (const t of (tasksByMs.get(mid) ?? []).slice().sort(byStart)) items.push(taskItem(t, 1));
+    }
+    // Tasks with no milestone — show at project level, below the milestone groups.
+    for (const t of (tasksByMs.get(null) ?? []).slice().sort(byStart)) items.push(taskItem(t, 0));
+
+    return {
+      key: `proj-${p.id}`,
+      label: p.name,
+      color: projectRagColor(p),
+      id: p.id,
+      items,
+    };
+  });
+
+  if (ganttGroups.length === 0) {
+    return (
+      <div className="glass-surface rounded-2xl text-sm text-muted-foreground text-center py-10">
+        Nothing scheduled in the last-7 / next-7-day window for the selected projects — no tasks or milestone targets land here.
+      </div>
+    );
+  }
+
+  return (
+    <MondayGantt
+      key={ganttGroups.map((g) => g.key).join(",")}
+      groups={ganttGroups}
+      onOpen={(id) => {
+        // Milestone items carry a negative id (-milestoneId); tasks carry their own.
+        const pid = id < 0
+          ? milestones.find((m) => m.id === -id)?.projectId
+          : tasks.find((x) => x.id === id)?.projectId;
+        if (pid != null) onOpen(pid);
+      }}
+      labelWidth={380}
+      labelHeader="Project / Task"
+      rangeStart={winLo}
+      rangeEnd={winHi}
+      autoFitOnLoad
+    />
+  );
 }
 
 // ── Calendar view — projects marked on a monthly grid on their START and END
@@ -1469,13 +1959,14 @@ function ProjectFullCalendar({ rows, onOpen }: { rows: ProjectRow[]; onOpen: (id
 }
 
 // Investment / type classification for the toolbar filter.
-// ponytail: name-based — the CIP (pharma special-project) tracker imports are
-// the only real members today; everything else is IT. CAPEX / OPEX / NPL stay
-// as filter options but have no members yet (kept so the dropdown is complete).
-// Revisit if the budget / category fields start carrying real data.
-const CLASS_KEYS = ["CAPEX", "OPEX", "NPL", "CIP", "IT"] as const;
+// A project's own `category` column wins when it carries one (set on import, or
+// by an admin). The CIP name match below is the legacy path: those tracker
+// imports predate the category column and have no category to read.
+const CLASS_KEYS = ["CAPEX", "OPEX", "NPL", "NPD", "CIP", "IT"] as const;
 const CIP_NAME_RE = /metoprolol|potassium chloride|klorcon|\bkcl\b/;
 function classifyProject(p: Record<string, unknown>): string[] {
+  const category = `${p.category ?? ""}`.trim().toUpperCase();
+  if ((CLASS_KEYS as readonly string[]).includes(category)) return [category];
   const hay = `${p.name ?? ""}`.toLowerCase();
   return CIP_NAME_RE.test(hay) ? ["CIP"] : ["IT"];
 }
@@ -1496,13 +1987,24 @@ export default function ProjectsList() {
     }
     return m;
   }, [teamMembers]);
-  // All tasks across open projects — drives the Tasks + Task Status columns.
+  // All tasks across open projects — drives the Tasks + Task Status columns and
+  // the board's per-lane task roll-up (endDate is what makes a task "overdue").
   const { data: tasks = [] } = useQuery({
     queryKey: ["/api/tasks", "all"],
     queryFn: async () => {
       const r = await fetch("/api/tasks");
-      if (!r.ok) return [] as Array<{ projectId?: number | null; status?: string | null; parentTaskId?: number | null }>;
-      return r.json() as Promise<Array<{ projectId?: number | null; status?: string | null; parentTaskId?: number | null }>>;
+      if (!r.ok) return [] as TaskRow[];
+      return r.json() as Promise<TaskRow[]>;
+    },
+  });
+  // All milestones across open projects — the portfolio "this/next week" board
+  // renders in-window milestone TARGETS (e.g. an OHC go-live) as diamonds.
+  const { data: allMilestones = [] } = useQuery({
+    queryKey: ["/api/milestones", "all"],
+    queryFn: async () => {
+      const r = await fetch("/api/milestones");
+      if (!r.ok) return [] as PulseMilestone[];
+      return r.json() as Promise<PulseMilestone[]>;
     },
   });
   // Project-level attachment counts (task_id IS NULL), one bulk call → the
@@ -1517,6 +2019,20 @@ export default function ProjectsList() {
   const attachmentCountByProject = useMemo(
     () => new Map(attachmentCounts.map((c) => [c.projectId, c.count])),
     [attachmentCounts],
+  );
+
+  // Project-level comment counts (task_id IS NULL), one bulk call → the Comments
+  // column badge. Matches what the project comms drawer shows.
+  const { data: commentCounts = [] } = useQuery({
+    queryKey: ["/api/messages/counts"],
+    queryFn: async () => {
+      const r = await fetch("/api/messages/counts", { credentials: "include" });
+      return r.ok ? (await r.json() as Array<{ projectId: number; count: number }>) : [];
+    },
+  });
+  const commentCountByProject = useMemo(
+    () => new Map(commentCounts.map((c) => [c.projectId, c.count])),
+    [commentCounts],
   );
 
   // Latest delay/off-track justification per project (for the Justification column).
@@ -1605,10 +2121,11 @@ export default function ProjectsList() {
 
   const taskAgg = useMemo(() => {
     const m = new Map<number, TaskAgg>();
-    for (const t of tasks as Array<{ projectId?: number | null; status?: string | null; parentTaskId?: number | null }>) {
+    const today = new Date().toISOString().slice(0, 10);
+    for (const t of tasks) {
       if (t.projectId == null) continue;
       if (t.parentTaskId != null) continue; // subtasks don't count as tasks
-      const e = m.get(t.projectId) ?? { total: 0, done: 0, in_progress: 0, delayed: 0, on_hold: 0, not_started: 0 };
+      const e = m.get(t.projectId) ?? { total: 0, done: 0, in_progress: 0, delayed: 0, on_hold: 0, not_started: 0, overdue: 0 };
       e.total++;
       switch (t.status) {
         case "completed": e.done++; break;
@@ -1617,6 +2134,8 @@ export default function ProjectsList() {
         case "on_hold": e.on_hold++; break;
         default: e.not_started++; break;
       }
+      // Past its end date and still open — whether or not the status says so.
+      if (t.status !== "completed" && (t.status === "delayed" || (t.endDate && t.endDate.slice(0, 10) < today))) e.overdue++;
       m.set(t.projectId, e);
     }
     return m;
@@ -1696,6 +2215,11 @@ export default function ProjectsList() {
     setCommsTab(tab);
   };
 
+  // Admin gate — same test the connectors popup and role simulator use. Only
+  // admins get the custom-field editor in the Columns menu.
+  const { profile } = useAuth();
+  const isAdmin = !!(profile?.is_super_admin || profile?.pmo_role === "admin");
+
   // ── Saved views (Stage 3 — Customization)
   const views = useUserView<ProjectsViewConfig>({ scope: "project_list", fallback: FALLBACK });
   const [search, setSearch] = useState(FALLBACK.search);
@@ -1710,17 +2234,39 @@ export default function ProjectsList() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const toggleGroup = (key: string) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
 
-  // View switcher — Table · Kanban · Gantt. Always opens on the table; the view
-  // is not persisted, so every fresh entry defaults to table.
-  // (Calendar lives on the Tasks view now, not here.)
-  const [view, setView] = useState<"table" | "kanban" | "gantt">("table");
-  // Kanban "Group by" axis (Action Centre parity): status · owner · priority · department.
+  // View switcher — List · Board · Gantt (List/Board named as in Action Centre).
+  // Always opens on the list; the view is not persisted, so every fresh entry
+  // defaults to it. (Calendar lives on the Tasks view now, not here.)
+  const [view, setView] = useState<"list" | "board" | "gantt">(() => {
+    const v = new URLSearchParams(window.location.search).get("view");
+    return v === "board" || v === "gantt" ? v : "list";
+  });
+  // Gantt sub-mode: the classic by-status project Gantt, or the portfolio
+  // "this / next week" board (one lane per project → tasks in a ±1-week window,
+  // each with its latest update). Best paired with the Department filter.
+  const [pulseMode, setPulseMode] = useState(() => new URLSearchParams(window.location.search).get("pulse") === "1");
+  // Board "Group by" axis (Action Centre parity): status · owner · priority · department.
   const [groupBy, setGroupBy] = useState<"status" | "owner" | "priority" | "department">("status");
 
-  // Optional + custom columns are PER status-table (keyed by group.key) so a
-  // field added to one table only shows in that table, never the others.
-  // ponytail: localStorage-only — values are per-browser, not shared/synced.
-  const [extraCols, setExtraCols] = useState<Record<string, Partial<Record<OptionalKey, boolean>>>>({});
+  // Column visibility + custom columns are PER status-table (keyed by group.key)
+  // so a field switched on in one table only shows there, never the others.
+  // Stored as the set of HIDDEN keys (like Action Centre), which makes "Show all"
+  // an empty set and "Default columns" the same derivation as the initial state.
+  // Persisted to localStorage, so the user's columns survive a reload.
+  // ONE shared column config for all status tables. The helpers keep their
+  // (groupKey) signatures so existing call sites are untouched, but ignore it and
+  // read/write the single SHARED_COLS_KEY entry.
+  const [hiddenCols, setHiddenCols] = useState<Record<string, Set<string>>>(loadHiddenCols);
+  useEffect(() => { saveHiddenCols(hiddenCols); }, [hiddenCols]);
+  const hiddenFor = (_groupKey?: string) => hiddenCols[SHARED_COLS_KEY] ?? defaultHiddenCols();
+  const toggleCol = (_groupKey: string, key: string) =>
+    setHiddenCols((m) => {
+      const next = new Set(m[SHARED_COLS_KEY] ?? defaultHiddenCols());
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return { ...m, [SHARED_COLS_KEY]: next };
+    });
+  const setHiddenForGroup = (_groupKey: string, next: Set<string>) =>
+    setHiddenCols((m) => ({ ...m, [SHARED_COLS_KEY]: next }));
   const [customCols, setCustomCols] = useState<Record<string, { id: string; header: string }[]>>(() => {
     try { const s = JSON.parse(localStorage.getItem(CUSTOM_COLS_KEY) ?? "null"); return s && typeof s === "object" && !Array.isArray(s) ? s : {}; } catch { return {}; }
   });
@@ -1733,12 +2279,29 @@ export default function ProjectsList() {
     setCustomVals((m) => ({ ...m, [`${projectId}:${fieldId}`]: value }));
   // Columns for one status-table (default order). Each <ExcelGroupTable> reorders/
   // resizes its own copy independently, so the status tables never affect one another.
-  const activeColsFor = (groupKey: string) => [
-    ...COLS,
-    ...OPTIONAL_COLS.filter((c) => extraCols[groupKey]?.[c.key]),
-    ...(customCols[groupKey] ?? []).map((c) => ({ key: `cf:${c.id}`, header: c.header || "Untitled", width: 160 as number, info: "Custom field — click the header to rename it." })),
-    { key: "__del__", header: "", width: 40 as number },
-  ];
+  const activeColsFor = (_groupKey?: string) => {
+    const hidden = hiddenCols[SHARED_COLS_KEY] ?? defaultHiddenCols();
+    return [
+      ...ALL_COLS.filter((c) => !hidden.has(c.key)),
+      ...(customCols[SHARED_COLS_KEY] ?? []).map((c) => ({ key: `cf:${c.id}`, header: c.header || "Untitled", width: 160 as number, info: "Custom field — click the header to rename it." })),
+      { key: "__del__", header: "", width: 40 as number },
+    ];
+  };
+
+  // Inline date edit (planned + actual) — PATCHes the one field and refetches.
+  const saveProjectDate = async (id: number, field: DateKey, value: string) => {
+    try {
+      const r = await fetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [field]: value }),
+      });
+      if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as { error?: string }).error || "Save failed");
+      void refetch();
+    } catch (e) {
+      toast({ title: "Couldn't save the date", description: e instanceof Error ? e.message : "Please try again.", variant: "destructive" });
+    }
+  };
 
   // Delete a project (with its milestones/tasks); the charter returns to the
   // Approved lane so it can be re-created.
@@ -1776,8 +2339,28 @@ export default function ProjectsList() {
     staleTime: 10 * 60_000,
   });
 
+  // Plants / sites — master-DB org_units (the same list OHC's plant switcher
+  // uses), fetched once; falls back to project-derived values when empty.
+  const { data: allPlants = [] } = useQuery({
+    queryKey: ["/api/plants"],
+    queryFn: async () => {
+      const r = await fetch("/api/plants");
+      return r.ok ? (r.json() as Promise<{ code: string; label: string }[]>) : [];
+    },
+    staleTime: 10 * 60_000,
+  });
+
+  // Plant filter (org_units labels + any free-text siteRegion already on projects).
+  const [plant, setPlant] = useState("");
+  const plantOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const u of allPlants as { label: string }[]) if (u.label) set.add(u.label);
+    for (const p of (projects ?? []) as ProjectRow[]) if (p.siteRegion) set.add(p.siteRegion);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [allPlants, projects]);
+
   // Department filter (full DB list + project.function + the user's own dept).
-  const [dept, setDept] = useState("");
+  const [dept, setDept] = useState(() => new URLSearchParams(window.location.search).get("dept") ?? "");
   const deptOptions = useMemo(() => {
     const set = new Set<string>();
     for (const d of (allDepts as string[])) set.add(d);
@@ -1787,41 +2370,78 @@ export default function ProjectsList() {
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [projects, me, allDepts]);
 
-  // On first load, default the Projects view to the user's own department.
-  // Clearing the filter then reveals every other department's projects.
+  // On first load, default the Projects view to the user's own department —
+  // UNLESS we arrived with a saved URL state (view/pulse/dept present), i.e. the
+  // user is returning via Back from a project and their choices must be honoured
+  // (including an explicit "All departments"). Clearing then reveals every dept.
   const deptInitedRef = useRef(false);
+  const urlHadStateRef = useRef((() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.has("view") || p.has("pulse") || p.has("dept");
+  })());
   useEffect(() => {
     if (deptInitedRef.current || me === undefined) return;
     deptInitedRef.current = true;
-    if (me?.function) setDept(me.function);
+    if (!urlHadStateRef.current && me?.function) setDept(me.function);
   }, [me]);
 
-  // Icon menus — Search + Filter (status) + Department + Add column. Close on outside click.
+  // Persist view · this/next-week toggle · department in the URL query. So when
+  // the user clicks a Gantt bar into a project and hits Back, the Projects page
+  // remounts from these params and restores the exact view + filters, instead of
+  // resetting to defaults. Unrelated query params are preserved.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (view === "list") p.delete("view"); else p.set("view", view);
+    if (pulseMode) p.set("pulse", "1"); else p.delete("pulse");
+    if (dept) p.set("dept", dept); else p.delete("dept");
+    const qs = p.toString();
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+  }, [view, pulseMode, dept]);
+
+  // Icon menus — Search + Filter + Add column. Close on outside click.
   const [searchOpen, setSearchOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [prioOpen, setPrioOpen] = useState(false);
-  const [deptOpen, setDeptOpen] = useState(false);
-  const [typeOpen, setTypeOpen] = useState(false);
   const [colsOpen, setColsOpen] = useState<string | null>(null);
+  const [deptOpen, setDeptOpen] = useState(false);
   const searchRef = useRef<HTMLDivElement | null>(null);
   const filterRef = useRef<HTMLDivElement | null>(null);
-  const prioRef = useRef<HTMLDivElement | null>(null);
-  const deptRef = useRef<HTMLDivElement | null>(null);
-  const typeRef = useRef<HTMLDivElement | null>(null);
   const colsRef = useRef<HTMLDivElement | null>(null);
+  const deptRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     function onDoc(e: MouseEvent) {
+      const target = e.target as Node;
+      // The filter panel's dropdowns are Radix Selects, which portal their list to
+      // <body>, outside filterRef. Without this the first option click would close
+      // the whole panel, so treat any click inside a Radix popper as "inside".
+      if (target instanceof Element && target.closest("[data-radix-popper-content-wrapper]")) return;
       // Only auto-close the search pop-out when it's empty (keep an active query visible).
-      if (searchRef.current && !searchRef.current.contains(e.target as Node) && !search) setSearchOpen(false);
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) setFilterOpen(false);
-      if (prioRef.current && !prioRef.current.contains(e.target as Node)) setPrioOpen(false);
-      if (deptRef.current && !deptRef.current.contains(e.target as Node)) setDeptOpen(false);
-      if (typeRef.current && !typeRef.current.contains(e.target as Node)) setTypeOpen(false);
-      if (colsRef.current && !colsRef.current.contains(e.target as Node)) setColsOpen(null);
+      if (searchRef.current && !searchRef.current.contains(target) && !search) setSearchOpen(false);
+      if (filterRef.current && !filterRef.current.contains(target)) setFilterOpen(false);
+      if (colsRef.current && !colsRef.current.contains(target)) setColsOpen(null);
+      if (deptRef.current && !deptRef.current.contains(target)) setDeptOpen(false);
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [search]);
+
+  // ── One Filter menu, sub-sections stacked one below another (Status · Priority
+  // · Plant · Type), each a single-select dropdown with an "All" reset. "" means
+  // the facet is off. Department is deliberately NOT here — it's used so often
+  // that it lives as a standalone searchable dropdown in the toolbar (below).
+  const facets: Facet[] = useMemo(() => [
+    { key: "status", label: "Status", Icon: CircleDot, value: status, onPick: setStatus, options: STATUS_CHIPS },
+    { key: "priority", label: "Priority", Icon: Flag, value: priority, onPick: setPriority, options: PRIORITY_CHIPS },
+    {
+      key: "plant", label: "Plant", Icon: Factory, value: plant, onPick: setPlant,
+      options: [{ value: "", label: "All plants" }, ...plantOptions.map((p) => ({ value: p, label: p }))],
+    },
+    {
+      key: "type", label: "Type", Icon: Layers, value: classFilter, onPick: setClassFilter,
+      options: [{ value: "", label: "All types" }, ...CLASS_KEYS.map((k) => ({ value: k, label: k }))],
+    },
+  ], [status, priority, plant, classFilter, plantOptions]);
+  const activeFilterCount = facets.filter((f) => f.value).length;
+  const clearFilters = () => { setStatus(""); setPriority(""); setDept(""); setPlant(""); setClassFilter(""); };
 
   // Sync active view → local state when the user picks a different view.
   useEffect(() => {
@@ -1840,6 +2460,7 @@ export default function ProjectsList() {
       if (status && displayStatusOf(p.status).key !== status) return false;
       if (priority && (p as ProjectRow).priority !== priority) return false;
       if (dept && (p as ProjectRow).function !== dept) return false;
+      if (plant && ((p as ProjectRow).siteRegion ?? "") !== plant) return false;
       // Type filter (single-select). "" = All (uncategorised included); a chosen
       // type isolates to projects carrying that tag (CIP ⇒ Metoprolol-only).
       if (classFilter && !classifyProject(p as unknown as Record<string, unknown>).includes(classFilter)) return false;
@@ -1853,11 +2474,11 @@ export default function ProjectsList() {
       return 0;
     });
     return sorted;
-  }, [projects, search, status, priority, dept, sort, classFilter]);
+  }, [projects, search, status, priority, dept, plant, sort, classFilter]);
 
   // ── Group the filtered projects by display status (New → Active → Completed
   //    → Cancelled → Postponed). Empty groups are dropped.
-  const boardGroups = useMemo<BoardGroup<ProjectRow>[]>(() => {
+  const listGroups = useMemo<BoardGroup<ProjectRow>[]>(() => {
     const byKey = new Map<string, ProjectRow[]>();
     for (const p of filtered) {
       const key = displayStatusOf(p.status).key;
@@ -1888,7 +2509,11 @@ export default function ProjectsList() {
   //   status   = the fixed lifecycle columns (incl. empty, for a stable shape);
   //   priority = P0–P3 (+ No priority);
   //   owner    = one lane per owner present, busiest first, No owner last.
-  const kanbanGroups = useMemo<BoardGroup<ProjectRow>[]>(() => {
+  const boardGroups = useMemo<BoardGroup<ProjectRow>[]>(() => {
+    // Every lane, whatever the axis, carries the same project + task roll-up in
+    // its header (total / overdue / completed).
+    const withStats = (lanes: BoardGroup<ProjectRow>[]) =>
+      lanes.map((g) => ({ ...g, stats: laneStats(g.rows, taskAgg) }));
     if (groupBy === "priority") {
       const cols: BoardGroup<ProjectRow>[] = TASK_PRIORITIES.map((p) => ({
         key: p.value, label: p.label, color: p.solid,
@@ -1896,7 +2521,7 @@ export default function ProjectsList() {
       }));
       const none = filtered.filter((r) => !PRIORITY_META.has(r.priority as never));
       if (none.length) cols.push({ key: "__noprio__", label: "No priority", color: "#94A3B8", rows: none });
-      return cols;
+      return withStats(cols);
     }
     if (groupBy === "owner") {
       const byKey = new Map<string, ProjectRow[]>();
@@ -1911,7 +2536,7 @@ export default function ProjectsList() {
         .map(([k, rows]) => ({ key: k, label: usersById.get(Number(k)) ?? `User ${k}`, color: "#3B82F6", rows }));
       const none = byKey.get("__none__");
       if (none && none.length) lanes.push({ key: "__none__", label: "No owner", color: "#94A3B8", rows: none });
-      return lanes;
+      return withStats(lanes);
     }
     if (groupBy === "department") {
       const byKey = new Map<string, ProjectRow[]>();
@@ -1925,19 +2550,30 @@ export default function ProjectsList() {
         .map(([k, rows]) => ({ key: k, label: k, color: "#6366F1", rows }));
       const none = byKey.get("__none__");
       if (none && none.length) lanes.push({ key: "__none__", label: "No department", color: "#94A3B8", rows: none });
-      return lanes;
+      return withStats(lanes);
     }
-    // Status lanes + a separate "Delayed" lane (schedule health, not a DB
-    // status) — delayed projects are pulled out of their status bucket so each
-    // project appears exactly once on the board.
+    // Status lanes — the five Action Centre buckets, in AC's order. "Overdue" is
+    // schedule health (not a DB status), so those projects are pulled out of their
+    // status bucket first and each project still appears exactly once.
     const delayed = filtered.filter((r) => scheduleHealth(r, taskAgg.get(r.id)).key === "delayed");
     const delayedIds = new Set(delayed.map((r) => r.id));
-    const cols: BoardGroup<ProjectRow>[] = DISPLAY_STATUSES.map((d) => ({
-      key: d.key, label: d.label, color: d.color,
-      rows: (buckets.get(d.key) ?? []).filter((r) => !delayedIds.has(r.id)),
-    }));
-    cols.splice(2, 0, { key: "__delayed__", label: "Delayed", color: HEALTH_COLORS.delayed, rows: delayed });
-    return cols;
+    const laneOf = (key: string): BoardGroup<ProjectRow> => {
+      const d = DISPLAY_BY_KEY.get(key)!;
+      return {
+        key,
+        label: BOARD_STATUS_LABEL[key] ?? d.label,
+        color: d.color,
+        rows: (buckets.get(key) ?? []).filter((r) => !delayedIds.has(r.id)),
+      };
+    };
+    const cols: BoardGroup<ProjectRow>[] = [
+      laneOf("new"),
+      laneOf("active"),
+      { key: "__delayed__", label: BOARD_STATUS_LABEL.__delayed__, color: HEALTH_COLORS.delayed, rows: delayed },
+      laneOf("postponed"),
+      laneOf("completed"),
+    ];
+    return withStats(cols);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupBy, filtered, buckets, ownerByCharter, usersById, taskAgg]);
 
@@ -1945,12 +2581,30 @@ export default function ProjectsList() {
     <div className="space-y-2 pt-1.5">
       {/* Header — z-50 so the toolbar filter dropdowns sit above the Gantt/Kanban
           (ph-rise leaves a transform → stacking context, so it needs an explicit z). */}
-      <div className="relative z-50 flex items-center justify-between gap-3 flex-wrap ph-rise">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="relative z-50 flex flex-col gap-2 ph-rise">
+        {/* Row 1 — "Projects" heading (left) + Add Project (right corner). */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 data-tour="tour-projects" className="text-xl font-bold text-foreground shrink-0">Projects</h2>
+          {/* Add Project — one dropdown clubbing create + both imports. */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button type="button" title="Add a project — create manually or import" className="shrink-0 h-8 px-3 rounded-lg flex items-center gap-1.5 text-[12px] font-semibold text-white bg-blue-600 hover:bg-blue-700 shadow-sm transition-colors">
+                <Plus size={14} /> Add Project <ChevronDown size={12} className="opacity-80" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-auto min-w-[11rem] p-1.5">
+              <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Add a project</div>
+              <div className="flex flex-col gap-0.5 [&_button]:w-full [&_button]:justify-start [&_button]:whitespace-nowrap">
+                <CreateProjectButton onDone={() => { void refetch(); }} />
+                <JiraImportButton onDone={() => { void refetch(); }} />
+                <ImportProjectsButton onDone={() => { void refetch(); }} />
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
-        {/* Right side: filter/view toolbar moved up, beside the Jira import button */}
-        <div className="flex items-center gap-3 flex-wrap">
+        {/* Row 2 — toolbar (left) + the ONE shared Columns manager (right corner,
+            below Add Project). */}
+        <div className="flex items-start justify-between gap-3 flex-wrap">
       <div className="glass-surface lift-card ph-rise rounded-xl px-2 py-1.5 flex flex-wrap items-center gap-0.5 gap-y-1 w-fit max-w-full relative z-50">
         {/* Search — icon button that expands into an inline field, left of the toggles */}
         {searchOpen ? (
@@ -1982,8 +2636,8 @@ export default function ProjectsList() {
         {/* View switcher — Table · Kanban · Gantt */}
         <div className="flex items-center gap-0.5 mr-0.5 pr-0.5 border-r border-border/60">
           {([
-            { key: "table", label: "Table", Icon: Table2 },
-            { key: "kanban", label: "Kanban", Icon: LayoutGrid },
+            { key: "list", label: "List", Icon: Table2 },
+            { key: "board", label: "Board", Icon: LayoutGrid },
             { key: "gantt", label: "Gantt", Icon: GanttChartSquare },
           ] as const).map(({ key, label, Icon }) => (
             <button
@@ -2001,8 +2655,8 @@ export default function ProjectsList() {
           ))}
         </div>
 
-        {/* Group by — kanban only; Action Centre PillSelect (status · owner · priority · department) */}
-        {view === "kanban" && (
+        {/* Group by — board only; Action Centre PillSelect (status · owner · priority · department) */}
+        {view === "board" && (
           <div className="mr-0.5 pr-1 border-r border-border/60">
             <GroupByPill<"status" | "owner" | "priority" | "department">
               value={groupBy}
@@ -2017,159 +2671,174 @@ export default function ProjectsList() {
           </div>
         )}
 
-        {/* Filter — icon only; opens the status dropdown. Hidden on Kanban (Group-by covers it). */}
-        {view !== "kanban" && (
-        <div className="relative" ref={filterRef}>
-          <button
-            type="button"
-            onClick={() => { setFilterOpen((o) => !o); setPrioOpen(false); setDeptOpen(false); setColsOpen(null); }}
-            title="Filter by status"
-            className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
-              status ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-            }`}
-          >
-            <Filter size={13} /> Status
-          </button>
-          {filterOpen && (
-            <div className="absolute left-0 top-full mt-1.5 z-50 w-44 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
-              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Status</div>
-              {STATUS_CHIPS.map((c) => (
-                <button
-                  key={c.value || "all"}
-                  onClick={() => { setStatus(c.value); setFilterOpen(false); }}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${status === c.value ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
-                >
-                  {c.label}
-                  {status === c.value && <Check size={13} />}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        )}
-
-        {/* Priority filter — icon only; opens the priority dropdown. Hidden on Kanban. */}
-        {view !== "kanban" && (
-        <div className="relative" ref={prioRef}>
-          <button
-            type="button"
-            onClick={() => { setPrioOpen((o) => !o); setFilterOpen(false); setDeptOpen(false); setColsOpen(null); }}
-            title="Filter by priority"
-            className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
-              priority ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
-            }`}
-          >
-            <Flag size={13} /> Priority
-          </button>
-          {prioOpen && (
-            <div className="absolute left-0 top-full mt-1.5 z-50 w-44 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
-              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Priority</div>
-              {PRIORITY_CHIPS.map((c) => (
-                <button
-                  key={c.value || "all"}
-                  onClick={() => { setPriority(c.value); setPrioOpen(false); }}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${priority === c.value ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
-                >
-                  {c.label}
-                  {priority === c.value && <Check size={13} />}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-        )}
-
-        {/* Department filter — icon only. Hidden on Kanban. */}
-        {view !== "kanban" && (
+        {/* Department: a simple standalone dropdown, styled like the other toolbar
+            buttons (no capsule). Kept outside the Filter menu since it's used most. */}
         <div className="relative" ref={deptRef}>
           <button
             type="button"
-            onClick={() => { setDeptOpen((o) => !o); setFilterOpen(false); setPrioOpen(false); setColsOpen(null); }}
+            onClick={() => { setDeptOpen((o) => !o); setFilterOpen(false); setColsOpen(null); }}
             title="Filter by department"
             className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
               dept ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
             }`}
           >
-            <Building2 size={13} /> Department
+            <Building2 size={13} />
+            <span className="max-w-[120px] truncate">{dept || "Department"}</span>
+            <ChevronDown size={11} className={`opacity-70 transition-transform ${deptOpen ? "rotate-180" : ""}`} />
           </button>
           {deptOpen && (
             <div className="absolute left-0 top-full mt-1.5 z-50 w-52 max-h-72 overflow-y-auto rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
-              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Department</div>
               <button
+                type="button"
                 onClick={() => { setDept(""); setDeptOpen(false); }}
-                className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${dept === "" ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
+                className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 text-sm text-left transition-colors ${!dept ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
               >
-                All departments
-                {dept === "" && <Check size={13} />}
+                <span className="truncate">All departments</span>
+                {!dept && <Check size={13} className="shrink-0" />}
               </button>
               {deptOptions.map((d) => (
                 <button
                   key={d}
+                  type="button"
                   onClick={() => { setDept(d); setDeptOpen(false); }}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${dept === d ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 text-sm text-left transition-colors ${dept === d ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
                 >
                   <span className="truncate">{d}</span>
                   {dept === d && <Check size={13} className="shrink-0" />}
                 </button>
               ))}
-              {deptOptions.length === 0 && <div className="px-3 py-2 text-xs text-muted-foreground">No departments</div>}
             </div>
           )}
         </div>
-        )}
 
-        {/* Type filter — CAPEX · OPEX · NPL · CIP · IT, single-select + All. */}
-        <div className="relative" ref={typeRef}>
+        {/* Filter: one button for the remaining facets (Status, Priority, Plant,
+            Type), each its own dropdown. The badge counts the facets narrowing the list. */}
+        <div className="relative" ref={filterRef}>
           <button
             type="button"
-            onClick={() => { setTypeOpen((o) => !o); setFilterOpen(false); setPrioOpen(false); setDeptOpen(false); setColsOpen(null); }}
-            title="Filter by project type"
+            onClick={() => { setFilterOpen((o) => !o); setColsOpen(null); }}
+            title="Filter projects"
             className={`h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium transition-colors ${
-              classFilter ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
+              activeFilterCount ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-accent"
             }`}
           >
-            <Filter size={13} /> {classFilter || "Type"}
+            <Filter size={13} /> Filter
+            {activeFilterCount > 0 && (
+              <span className="ml-0.5 h-3.5 min-w-3.5 px-1 rounded-full bg-primary text-primary-foreground text-[9px] font-semibold leading-none flex items-center justify-center">
+                {activeFilterCount}
+              </span>
+            )}
+            <ChevronDown size={11} className="opacity-70" />
           </button>
-          {typeOpen && (
-            <div className="absolute left-0 top-full mt-1.5 z-50 w-44 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
-              <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Project type</div>
-              <button
-                onClick={() => { setClassFilter(""); setTypeOpen(false); }}
-                className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${classFilter === "" ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
-              >
-                All types
-                {classFilter === "" && <Check size={13} />}
-              </button>
-              {CLASS_KEYS.map((k) => (
-                <button
-                  key={k}
-                  onClick={() => { setClassFilter(k); setTypeOpen(false); }}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 text-sm text-left transition-colors ${classFilter === k ? "bg-accent text-primary" : "hover:bg-accent/60"}`}
-                >
-                  <span className="truncate">{k}</span>
-                  {classFilter === k && <Check size={13} className="shrink-0" />}
-                </button>
-              ))}
+          {filterOpen && (
+            <div className="absolute right-0 top-full mt-1.5 z-50 w-72 rounded-md overflow-hidden bg-popover text-popover-foreground border border-popover-border shadow-lg">
+              <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/60">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Filters</span>
+                {activeFilterCount > 0 && (
+                  <button type="button" onClick={clearFilters} className="text-[11px] font-medium text-primary hover:underline">
+                    Clear all
+                  </button>
+                )}
+              </div>
+              {/* One row per facet — name on the left, its dropdown on the right. */}
+              <div className="p-2 flex flex-col gap-1.5">
+                {facets.map((f) => (
+                  <div key={f.key} className="flex items-center gap-2">
+                    <span className="flex items-center gap-1.5 w-24 shrink-0 text-[11px] font-medium">
+                      <f.Icon size={12} className={f.value ? "text-primary" : "text-muted-foreground"} />
+                      {f.label}
+                    </span>
+                    <Select
+                      value={f.value || ALL_OPTION}
+                      onValueChange={(v) => f.onPick(v === ALL_OPTION ? "" : v)}
+                    >
+                      <SelectTrigger className={`h-7 flex-1 min-w-0 text-[11px] ${f.value ? "border-primary/40 text-primary" : ""}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-72">
+                        {f.options.map((o) => (
+                          <SelectItem key={o.value || ALL_OPTION} value={o.value || ALL_OPTION} className="text-[11px]">
+                            {o.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
 
-        {/* Import + Create Project — kept in the same toolbar as the view/filter controls. */}
-        <div className="mx-0.5 pl-0.5 border-l border-border/60 flex items-center gap-1">
-          <Popover>
-            <PopoverTrigger asChild>
-              <button type="button" title="Import projects" className="h-6 px-1.5 rounded-md flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-                <DownloadCloud size={13} /> Import <ChevronDown size={11} className="opacity-70" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-56 p-1.5 flex flex-col gap-1">
-              <JiraImportButton onDone={() => { void refetch(); }} />
-              <ImportProjectsButton onDone={() => { void refetch(); }} />
-            </PopoverContent>
-          </Popover>
-          <CreateProjectButton onDone={() => { void refetch(); }} />
-        </div>
       </div>
+          {/* Columns — ONE shared column manager for EVERY status table, pinned to
+              the right corner of the toolbar row (below Add Project). List view only. */}
+          {view === "list" && (
+          <div className="relative shrink-0" ref={colsOpen === SHARED_COLS_KEY ? colsRef : undefined}>
+            <button
+              type="button"
+              onClick={() => { setColsOpen((o) => o === SHARED_COLS_KEY ? null : SHARED_COLS_KEY); setFilterOpen(false); }}
+              title="Show / hide columns for every status table"
+              aria-label="Columns"
+              className="inline-flex items-center gap-1 h-8 px-2.5 rounded-lg border border-border bg-card/70 text-[11px] font-medium text-foreground hover:bg-accent transition-colors"
+            >
+              <SlidersHorizontal size={13} />
+              Columns
+              {hiddenFor().size > 0 && (
+                <span className="tabular-nums text-muted-foreground">({ALL_COLS.length - hiddenFor().size}/{ALL_COLS.length})</span>
+              )}
+              <ChevronDown size={11} className={`opacity-70 transition-transform ${colsOpen === SHARED_COLS_KEY ? "rotate-180" : ""}`} />
+            </button>
+            {colsOpen === SHARED_COLS_KEY && (
+              <div className="absolute right-0 top-full mt-1.5 z-50 w-60 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
+                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Show / hide columns</div>
+                <div className="max-h-64 overflow-y-auto">
+                  {ALL_COLS.map((c) => {
+                    const shown = !hiddenFor().has(c.key);
+                    return (
+                      <button
+                        key={c.key}
+                        type="button"
+                        onClick={() => toggleCol(SHARED_COLS_KEY, c.key)}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-1.5 text-sm text-left hover:bg-accent/60 transition-colors"
+                      >
+                        <span className="truncate">{c.header}</span>
+                        <span className={`shrink-0 w-4 h-4 rounded border flex items-center justify-center ${shown ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}>
+                          {shown && <Check size={11} />}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="my-1 border-t border-border/60" />
+                <div className="flex items-center justify-between px-2 pb-1">
+                  <button type="button" onClick={() => setHiddenForGroup(SHARED_COLS_KEY, defaultHiddenCols())} className="px-2 py-1 rounded text-[12px] font-medium text-primary hover:bg-primary/10 transition-colors">Default columns</button>
+                  <button type="button" onClick={() => setHiddenForGroup(SHARED_COLS_KEY, new Set())} className="px-2 py-1 rounded text-[12px] font-medium text-primary hover:bg-primary/10 transition-colors">Show all</button>
+                </div>
+                {isAdmin && (<>
+                <div className="my-1 border-t border-border/60" />
+                <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Custom fields</div>
+                {(customCols[SHARED_COLS_KEY] ?? []).map((c) => (
+                  <div key={c.id} className="flex items-center gap-1.5 px-2 py-1">
+                    <input
+                      value={c.header}
+                      onChange={(e) => { const v = e.target.value; setCustomCols((cols) => ({ ...cols, [SHARED_COLS_KEY]: (cols[SHARED_COLS_KEY] ?? []).map((x) => x.id === c.id ? { ...x, header: v } : x) })); }}
+                      placeholder="Field name"
+                      className="flex-1 min-w-0 text-[12px] rounded border border-border bg-background px-2 py-1 outline-none focus:ring-1 focus:ring-primary/40"
+                    />
+                    <button type="button" onClick={() => setCustomCols((cols) => ({ ...cols, [SHARED_COLS_KEY]: (cols[SHARED_COLS_KEY] ?? []).filter((x) => x.id !== c.id) }))} title="Remove field" className="shrink-0 rounded p-1 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors">
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setCustomCols((cols) => ({ ...cols, [SHARED_COLS_KEY]: [...(cols[SHARED_COLS_KEY] ?? []), { id: `cf-${Date.now()}`, header: "New field" }] }))} className="mx-2 my-1 inline-flex items-center gap-1.5 rounded-md border border-dashed border-primary/40 bg-primary/5 px-2.5 py-1 text-[12px] font-semibold text-primary hover:bg-primary/10 transition-colors">
+                  <Plus size={12} /> Add field
+                </button>
+                </>)}
+              </div>
+            )}
+          </div>
+          )}
         </div>
       </div>
 
@@ -2181,15 +2850,15 @@ export default function ProjectsList() {
           {[1, 2, 3].map(i => <Skeleton key={i} className="h-24 rounded-xl" />)}
         </div>
       ) : filtered.length > 0 ? (
-        view === "kanban" ? (
+        view === "board" ? (
           <ProjectsKanbanBoard<ProjectRow>
-            groups={kanbanGroups}
+            groups={boardGroups}
             columns={PROJECT_COLUMNS}
             showIssueKey={false}
             getRowId={(p) => `project:${p.id}`}
             getName={(p) => <span className="font-medium">{p.confidential && <LockBadge />}{p.name}</span>}
             renderCard={(p) => <ActionCentreProjectCard p={p} ownerName={ownerName} ownerPhoto={ownerPhoto} taskAgg={taskAgg} onAssignOwner={assignOwner} />}
-            colWidth={340}
+            colWidth={380}
             sectionStyle="ac"
             tintBody={groupBy === "priority"}
             onOpenRow={(p) => setLocation(`/projects/${p.id}`)}
@@ -2223,94 +2892,65 @@ export default function ProjectsList() {
           />
         ) : view === "gantt" ? (
           <div className="space-y-2">
-            {/* Status legend — below the toolbar bar, Gantt view only. */}
-            <div className="flex flex-wrap items-center gap-2">
-              {DISPLAY_STATUSES.map((d) => (
-                <HoverHint key={d.key} title={`${d.label} projects`} footer={STATUS_LEGEND_DESC[d.key]}>
-                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap cursor-help">
-                    <span className="w-2 h-2 rounded-sm" style={{ background: d.color }} />
-                    {d.label}
-                    <Info size={9} className="opacity-40" />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              {/* Legend (by-status) OR window hint (portfolio pulse). */}
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
+                {pulseMode ? (
+                  <span className="text-[10px] text-muted-foreground">
+                    Window: <b>last 7 days → next 7 days</b> · one lane per project · latest update shown under each task{dept ? "" : " · tip: pick a Department to focus"}
                   </span>
-                </HoverHint>
-              ))}
+                ) : (
+                  DISPLAY_STATUSES.map((d) => (
+                    <HoverHint key={d.key} title={`${d.label} projects`} footer={STATUS_LEGEND_DESC[d.key]}>
+                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground whitespace-nowrap cursor-help">
+                        <span className="w-2 h-2 rounded-sm" style={{ background: d.color }} />
+                        {d.label}
+                        <Info size={9} className="opacity-40" />
+                      </span>
+                    </HoverHint>
+                  ))
+                )}
+              </div>
+              {/* Toggle: by-status project Gantt ⇄ portfolio this/next-week board. */}
+              <button
+                type="button"
+                onClick={() => setPulseMode((v) => !v)}
+                title="Switch between the by-status project Gantt and the portfolio this/next-week task board"
+                className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 h-7 rounded-md text-[11px] font-medium border transition-colors ${pulseMode ? "bg-primary/10 text-primary border-primary/30" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}
+              >
+                <CalendarClock size={12} />
+                {pulseMode ? "By-status Gantt" : "This / Next week"}
+              </button>
             </div>
-            <GanttView rows={filtered} ownerName={ownerName} managerName={managerName} ownerPhoto={ownerPhoto} managerPhoto={managerPhoto} taskAgg={taskAgg} onOpen={(id) => setLocation(`/projects/${id}?view=gantt`)} />
+            {pulseMode ? (
+              <PortfolioPulseGantt projects={filtered} tasks={tasks as unknown as PulseTask[]} milestones={allMilestones as unknown as PulseMilestone[]} onOpen={(id) => setLocation(`/projects/${id}?view=gantt`)} />
+            ) : (
+              <GanttView rows={filtered} ownerName={ownerName} managerName={managerName} ownerPhoto={ownerPhoto} managerPhoto={managerPhoto} taskAgg={taskAgg} onOpen={(id) => setLocation(`/projects/${id}?view=gantt`)} />
+            )}
           </div>
         ) : (
         <div className="space-y-5">
-          {boardGroups.map((group) => {
+          {listGroups.map((group) => {
             const open = !collapsed[group.key];
             return (
             <div key={group.key}>
-              {/* Status header (expand/collapse) + per-table column manager */}
-              <div className="flex items-center gap-2 mb-2">
+              {/* Status header (expand/collapse) + per-table column manager — a
+                  card bar with a colour accent so a COLLAPSED group still reads as
+                  a finished section, not a floating row. */}
+              <div
+                className={`flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 shadow-sm transition-colors ${open ? "mb-2" : "hover:bg-accent/30"}`}
+                style={{ borderLeft: `3px solid ${group.color}` }}
+              >
                 <button
                   type="button"
                   onClick={() => toggleGroup(group.key)}
-                  className="flex items-center gap-2 px-0.5 flex-1 min-w-0 text-left group/header"
+                  className="flex items-center gap-2 flex-1 min-w-0 text-left group/header"
                 >
-                  <ChevronDown size={15} className={`text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
-                  <span className="w-2.5 h-2.5 rounded-sm" style={{ background: group.color }} />
-                  <h3 className="text-sm font-semibold text-foreground">{group.label}</h3>
-                  <span className="text-xs text-muted-foreground">({group.rows.length})</span>
+                  <ChevronDown size={15} className={`shrink-0 text-muted-foreground transition-transform group-hover/header:text-foreground ${open ? "" : "-rotate-90"}`} />
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: group.color }} />
+                  <h3 className="text-sm font-semibold text-foreground truncate">{group.label}</h3>
+                  <span className="inline-flex items-center justify-center min-w-[20px] rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">{group.rows.length}</span>
                 </button>
-                {/* Columns "+" — adds optional / custom fields to THIS table only */}
-                <div className="relative" ref={colsOpen === group.key ? colsRef : undefined}>
-                  <button
-                    type="button"
-                    onClick={() => { setColsOpen((o) => o === group.key ? null : group.key); setFilterOpen(false); setPrioOpen(false); setDeptOpen(false); }}
-                    title="Add / manage columns for this table"
-                    aria-label="Add column"
-                    className="inline-flex items-center justify-center h-7 w-7 rounded-lg border border-border bg-card/70 text-foreground hover:bg-accent transition-colors"
-                  >
-                    <Plus size={15} />
-                  </button>
-                  {colsOpen === group.key && (
-                    <div className="absolute right-0 top-full mt-1.5 z-50 w-60 rounded-md py-1 bg-popover text-popover-foreground border border-popover-border shadow-lg">
-                      <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Columns — {group.label}</div>
-                      {OPTIONAL_COLS.map((c) => (
-                        <button
-                          key={c.key}
-                          onClick={() => setExtraCols((s) => ({ ...s, [group.key]: { ...s[group.key], [c.key]: !s[group.key]?.[c.key] } }))}
-                          className="w-full flex items-center justify-between px-3 py-1.5 text-sm text-left hover:bg-accent/60 transition-colors"
-                        >
-                          {c.header}
-                          <span className={`w-4 h-4 rounded border flex items-center justify-center ${extraCols[group.key]?.[c.key] ? "bg-primary border-primary text-primary-foreground" : "border-border"}`}>
-                            {extraCols[group.key]?.[c.key] && <Check size={11} />}
-                          </span>
-                        </button>
-                      ))}
-                      <div className="my-1 border-t border-border/60" />
-                      <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Custom fields</div>
-                      {(customCols[group.key] ?? []).map((c) => (
-                        <div key={c.id} className="flex items-center gap-1.5 px-2 py-1">
-                          <input
-                            value={c.header}
-                            onChange={(e) => { const v = e.target.value; setCustomCols((cols) => ({ ...cols, [group.key]: (cols[group.key] ?? []).map((x) => x.id === c.id ? { ...x, header: v } : x) })); }}
-                            placeholder="Field name"
-                            className="flex-1 min-w-0 text-[12px] rounded border border-border bg-background px-2 py-1 outline-none focus:ring-1 focus:ring-primary/40"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setCustomCols((cols) => ({ ...cols, [group.key]: (cols[group.key] ?? []).filter((x) => x.id !== c.id) }))}
-                            title="Remove field"
-                            className="shrink-0 rounded p-1 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-colors"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setCustomCols((cols) => ({ ...cols, [group.key]: [...(cols[group.key] ?? []), { id: `cf-${Date.now()}`, header: "New field" }] }))}
-                        className="mx-2 my-1 inline-flex items-center gap-1.5 rounded-md border border-dashed border-primary/40 bg-primary/5 px-2.5 py-1 text-[12px] font-semibold text-primary hover:bg-primary/10 transition-colors"
-                      >
-                        <Plus size={12} /> Add field
-                      </button>
-                    </div>
-                  )}
-                </div>
               </div>
 
               {open && (
@@ -2328,8 +2968,8 @@ export default function ProjectsList() {
                       const id = c.key.slice(3);
                       return (
                         <input
-                          value={(customCols[group.key] ?? []).find((x) => x.id === id)?.header ?? ""}
-                          onChange={(e) => { const v = e.target.value; setCustomCols((cols) => ({ ...cols, [group.key]: (cols[group.key] ?? []).map((x) => x.id === id ? { ...x, header: v } : x) })); }}
+                          value={(customCols[SHARED_COLS_KEY] ?? []).find((x) => x.id === id)?.header ?? ""}
+                          onChange={(e) => { const v = e.target.value; setCustomCols((cols) => ({ ...cols, [SHARED_COLS_KEY]: (cols[SHARED_COLS_KEY] ?? []).map((x) => x.id === id ? { ...x, header: v } : x) })); }}
                           onMouseDown={(e) => e.stopPropagation()}
                           onClick={(e) => e.stopPropagation()}
                           placeholder="Field name"
@@ -2355,6 +2995,13 @@ export default function ProjectsList() {
                           </td>
                         );
                         case "name": return <td key="name" className="border border-gray-200 px-2 py-0.5 font-medium text-gray-800 whitespace-normal break-words" title={p.name}>{p.confidential && <LockBadge />}{p.name}</td>;
+                        case "domain": return (
+                          <td key="domain" className="border border-gray-200 px-2 py-0.5 whitespace-nowrap">
+                            {p.domain
+                              ? <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 ring-1 ring-inset ring-indigo-200" title={p.systemOwner ? `System owner: ${p.systemOwner}` : undefined}>{p.domain}</span>
+                              : <span className="text-gray-300">-</span>}
+                          </td>
+                        );
                         case "team": return (
                           <td key="team" className="border border-gray-200 px-2 py-0.5 text-center">
                             <div className="flex justify-center">
@@ -2453,8 +3100,8 @@ export default function ProjectsList() {
                           // [&_td]:overflow-hidden descendant rule via !important.
                           return <td key="progress" className="border border-gray-200 px-2 py-0.5 text-center font-semibold tabular-nums text-gray-700 whitespace-nowrap !overflow-visible">{pct}%</td>;
                         }
-                        case "taskStatus": return <td key="taskStatus" className="border border-gray-200 px-2 py-0.5"><TaskStatusBar agg={taskAgg.get(p.id)} /></td>;
-                        case "timeline": return <td key="timeline" className="border border-gray-200 px-2 py-0.5 whitespace-nowrap"><TimelineCell start={p.startDate} end={p.endDate} /></td>;
+                        case "taskStatus": return <td key="taskStatus" className="border border-gray-200 px-2 py-0.5"><TaskStatusBar counts={taskAgg.get(p.id)} /></td>;
+                        case "timeline": { const tl = deriveTimeline(p.id); return <td key="timeline" className="border border-gray-200 px-2 py-0.5 whitespace-nowrap"><TimelineCell start={tl.start} end={tl.end} /></td>; }
                         case "currentStatus": {
                           const ds = displayStatusOf(p.status);
                           // Project-specific text only — its lifecycle stage
@@ -2473,8 +3120,46 @@ export default function ProjectsList() {
                             </td>
                           );
                         }
+                        case "startDate":
+                        case "endDate":
+                        case "actualStartDate":
+                        case "actualEndDate": {
+                          // Click-to-edit; the stopPropagation keeps the row from
+                          // navigating into the project while a date is being picked.
+                          const dk = key as DateKey;
+                          return (
+                            <td key={dk} className="border border-gray-200 px-1 py-0.5" onClick={(e) => e.stopPropagation()}>
+                              <InlineDateCell
+                                value={p[dk]}
+                                title={`${ALL_COLS.find((c) => c.key === dk)?.header} — click to edit`}
+                                onSave={(v) => void saveProjectDate(p.id, dk, v)}
+                              />
+                            </td>
+                          );
+                        }
+                        case "plant": return (
+                          <td key="plant" className="border border-gray-200 p-0 whitespace-nowrap relative" onClick={(e) => e.stopPropagation()}>
+                            <PlantSelectCell projectId={p.id} value={p.siteRegion ?? ""} options={plantOptions} onSaved={refetch} />
+                          </td>
+                        );
                         case "budget": return <td key="budget" className="border border-gray-200 px-2 py-0.5 text-gray-800 tabular-nums whitespace-nowrap">{formatCurrency((p.capexBudget ?? 0) + (p.opexBudget ?? 0))}</td>;
                         case "description": return <td key="description" className="border border-gray-200 px-2 py-0.5 text-gray-700 truncate" title={p.description ?? ""}>{p.description || <span className="text-gray-400">—</span>}</td>;
+                        case "comments": {
+                          const n = commentCountByProject.get(p.id) ?? 0;
+                          return (
+                            <td key="comments" className="border border-gray-200 px-2 py-0.5 text-center">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); openComms(p, "communication"); }}
+                                title={n > 0 ? `${n} comment${n === 1 ? "" : "s"} — open thread` : "Add a comment"}
+                                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-gray-500 hover:text-primary hover:bg-primary/10 transition-colors"
+                              >
+                                <MessageSquare size={12} />
+                                {n > 0 ? <span className="tabular-nums font-semibold">{n}</span> : null}
+                              </button>
+                            </td>
+                          );
+                        }
                         case "__del__": return (
                           <td key="__del__" className="border border-gray-200 px-1 py-0.5 text-center">
                             <button

@@ -39,8 +39,8 @@ const PAGE_TOURS: Record<string, PageStep[]> = {
     { anchor: "issues-title", title: "Risks / Issues", description: "The risk and blocker register — what's threatening delivery, who raised it, who owns the fix, and how old it is." },
   ],
   "/resources": [
-    { anchor: "res-title", title: "Project Owners", description: "Who owns what — every project grouped by its accountable owner." },
-    { anchor: "res-stats", title: "Capacity at a glance", description: "Owners, projects, average load and unassigned work across the whole portfolio." },
+    { anchor: "res-title", title: "Who is working on what", description: "One row per person: the projects they own, the projects they hold tasks in, their task load and anything overdue. Switch between your team and the whole organisation, and filter by department." },
+    { anchor: "res-stats", title: "Tiles that filter", description: "People, projects covered, open tasks, overdue and unowned projects. Click a tile to narrow the list below to just that slice — click it again (or People) to clear." },
   ],
   "/documents": [
     { anchor: "doc-title", title: "Central Document Repository", description: "Universal templates plus every project's documents, organised by lifecycle stage — versioned, lockable and access-controlled." },

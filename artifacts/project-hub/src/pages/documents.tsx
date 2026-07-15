@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useListProjects } from "@workspace/api-client-react";
 import { DocumentsTab } from "../components/documents-tab";
+import { DocumentsBrowseTree } from "../components/documents-browse-tree";
 import { ProjectTemplatesTable, TEMPLATE_TYPES, TYPE_COLOR, projectTemplateType } from "../components/project-templates";
 import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from "@/components/ui/table";
-import { FileText, FilePlus2, Files, ChevronDown, ChevronRight, Upload, Download, FileCheck2, Folder } from "lucide-react";
+import { FileText, FilePlus2, ChevronDown, ChevronRight, Upload, Download, FileCheck2, Folder, ListTree } from "lucide-react";
 import { formatDate } from "../lib/format";
 import { LIFECYCLE_STAGES, canonicalStageKey, templateDocRank } from "../lib/lifecycle-config";
 import { LIFECYCLE_PHASES } from "../lib/lifecycle-phases";
@@ -17,7 +18,7 @@ type CentralDoc = {
 };
 
 // Top-level sub-section of the Document Repository.
-type Section = "templates" | "project-documents";
+type Section = "browse" | "templates" | "project-documents";
 
 // Sentinel for the project picker's "show every project's documents" option.
 const ALL_PROJECTS = -1;
@@ -25,7 +26,7 @@ const ALL_PROJECTS = -1;
 export default function DocumentsPage() {
   const { data: projects = [] } = useListProjects();
   const projectsArr = projects as Project[];
-  const [section, setSection] = useState<Section>("project-documents");
+  const [section, setSection] = useState<Section>("browse");
 
   const sorted = useMemo(
     () => [...projectsArr].sort((a, b) => a.name.localeCompare(b.name)),
@@ -67,9 +68,6 @@ export default function DocumentsPage() {
             </div>
             <div className="min-w-0 flex-1 flex items-baseline gap-2">
               <h1 data-tour="doc-title" className="text-base font-bold text-foreground tracking-tight whitespace-nowrap">Central Document Repository</h1>
-              <span className="hidden sm:flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70 truncate">
-                Workspace <ChevronRight size={9} className="flex-shrink-0" /> <span className="text-primary">Documents</span>
-              </span>
             </div>
             {section === "project-documents" && (
               <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -97,8 +95,8 @@ export default function DocumentsPage() {
           {/* Sub-section tabs — underline style */}
           <div data-tour="doc-tabs" className="flex items-center gap-1 mt-2">
             {([
+              { key: "browse", label: "Documents", icon: ListTree },
               { key: "templates", label: "Project Templates", icon: FilePlus2 },
-              { key: "project-documents", label: "Project Documents", icon: Files },
             ] as const).map(t => {
               const active = section === t.key;
               const Icon = t.icon;
@@ -122,7 +120,11 @@ export default function DocumentsPage() {
         <div className="h-px bg-border/60" />
       </div>
 
-      {section === "templates" ? (
+      {section === "browse" ? (
+        <div className="ph-rise ph-rise-2">
+          <DocumentsBrowseTree />
+        </div>
+      ) : section === "templates" ? (
         <ProjectTemplatesTable />
       ) : (
         <div className="ph-rise ph-rise-2 space-y-4">

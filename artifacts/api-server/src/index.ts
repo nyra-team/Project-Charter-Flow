@@ -1,3 +1,4 @@
+import "./db-target"; // MUST stay first — overlays DB env vars before @workspace/db loads
 import app from "./app";
 import { logger } from "./lib/logger";
 import { registerJob, startScheduler } from "./lib/scheduler";

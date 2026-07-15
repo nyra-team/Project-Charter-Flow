@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import { useUserStore } from "../lib/store";
 import { useTheme } from "../lib/use-theme";
 import { useAuth } from "../auth/context";
-import { Settings, Plug, Moon, Sun, LogOut, Compass } from "lucide-react";
+import { Settings, Plug, Moon, Sun, Compass } from "lucide-react";
 import { useState, useEffect } from "react";
 import { AppHeader } from "@granules/shared/components/AppHeader";
 import PmoSidebar from "./PmoSidebar";
@@ -73,28 +73,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const isAdmin = true;
   const isSuperAdmin = !!profile?.is_super_admin;
 
-  // Signed-in identity — moved out of the top bar to the sidebar foot.
-  const initials = displayName.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase()).join("") || "U";
-  const profileFooter = (
-    <div className="flex items-center gap-2.5 px-3 py-3">
-      <div className="w-9 h-9 shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white text-xs font-bold border border-border">
-        {initials}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium leading-tight text-foreground">{displayName}</p>
-        {roleLabel && <p className="truncate text-xs capitalize text-muted-foreground">{roleLabel}</p>}
-      </div>
-      <button
-        onClick={() => { void signOut(); }}
-        title="Sign out"
-        aria-label="Sign out"
-        className="shrink-0 w-8 h-8 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-      >
-        <LogOut size={16} />
-      </button>
-    </div>
-  );
-
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
       {/* Suite-shared sidebar (same component as portal / recruit / pms / cxo) */}
@@ -105,7 +83,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
         onBusinessCase={openBusinessCase}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
-        footer={profileFooter}
       />
 
       {/* Main Content */}
@@ -120,7 +97,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
             searchPlaceholder="Search portfolios, projects…"
             profile={{ full_name: displayName, email: profile?.email, role: roleLabel }}
             onSignOut={() => { void signOut(); }}
-            hideProfileChip
             hideSearch
             leftSlot={
               /* Page-owned controls portal into here (e.g. the portfolio
@@ -162,14 +138,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* Page Content */}
         <div id="ph-content" className="relative flex-1 overflow-y-auto scrollbar-thin bg-background">
           <div className="page-ambient" />
-          <div key={location} className="relative w-full px-4 sm:px-6 lg:px-8 pt-3 pb-6 lg:pb-8 ph-rise">
-            {children}
+          {/* min-h-full column so the footer hugs the bottom of the window on
+              short pages, and trails the content on long (scrolling) ones. */}
+          <div className="min-h-full flex flex-col">
+            <div key={location} className="relative w-full flex-1 px-4 sm:px-6 lg:px-8 pt-3 pb-6 lg:pb-8 ph-rise">
+              {children}
+            </div>
+            <footer className="mt-auto px-4 sm:px-6 lg:px-8 pt-4 pb-4 flex items-center justify-center gap-2 text-[11px] font-medium text-muted-foreground border-t border-border/50">
+              <span className="leading-none">Powered by</span>
+              <img src="/txo-logo.png" alt="TXO" className="h-4 w-auto object-contain block -translate-y-[10%]" />
+            </footer>
           </div>
-          {/* Powered by TXO — sits at the end of the page, seen on scroll. */}
-          <footer className="px-4 sm:px-6 lg:px-8 pt-4 pb-4 flex items-center justify-center gap-2 text-[11px] font-medium text-muted-foreground border-t border-border/50">
-            <span className="leading-none">Powered by</span>
-            <img src="/txo-logo.png" alt="TXO" className="h-4 w-auto object-contain block -translate-y-[10%]" />
-          </footer>
         </div>
       </div>
 
