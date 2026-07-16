@@ -619,9 +619,9 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
     const budget = (p.capexBudget ?? 0) + (p.opexBudget ?? 0);
     // No per-project actuals in the schema — estimate spend as budget × progress.
     const spend = Math.round(budget * (p.progress ?? 0) / 100);
-    // Owner = the charter's projectOwnerId (via the project's charterId), falling back
-    // to the project's own projectOwnerId when there is no linked charter (charter-first,
-    // then project owner, the same resolution the projects page uses).
+    // Owner = the charter's projectOwnerId (via the project's charterId), falling
+    // back to the project's own projectOwnerId when there is no linked charter
+    // (project-first, charter-first — same resolution the projects page uses).
     const charterId = (p as unknown as { charterId?: number | null }).charterId;
     const charterOwnerId = charterId != null ? ownerIdByCharter.get(charterId) ?? null : null;
     const ownerId = charterOwnerId ?? ((p as unknown as { projectOwnerId?: number | null }).projectOwnerId ?? null);
@@ -1399,15 +1399,13 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
         <div className="[&>div]:max-h-[70vh]">
           <Table className="min-w-[1000px] table-fixed [&_th]:border-r [&_th]:border-border [&_td]:border-r [&_td]:border-border/70 [&_th:last-child]:border-r-0 [&_td:last-child]:border-r-0">
             <colgroup>
+              <col style={{ width: "13%" }} />
+              <col style={{ width: "17%" }} />
+              <col style={{ width: "14%" }} />
+              <col style={{ width: "17%" }} />
               <col style={{ width: "11%" }} />
               <col style={{ width: "14%" }} />
-              <col style={{ width: "12%" }} />
               <col style={{ width: "14%" }} />
-              <col style={{ width: "9%" }} />
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "8%" }} />
-              <col style={{ width: "8%" }} />
             </colgroup>
             <TableHeader className="sticky top-0 z-20">
               <TableRow className="bg-muted hover:bg-muted border-b border-border [&_th]:bg-muted">
@@ -1583,13 +1581,12 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                         return <span className="text-[11px] text-muted-foreground/40">—</span>;
                       })()}
                     </TableCell>
-
                   </TableRow>
                 );
               })}
               {summaryRows.length === 0 && (
                 <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={8} className="py-12 text-center">
+                  <TableCell colSpan={7} className="py-12 text-center">
                     <div className="flex flex-col items-center gap-2 text-muted-foreground/70">
                       <Search size={22} className="text-muted-foreground/40" />
                       <p className="text-sm">
