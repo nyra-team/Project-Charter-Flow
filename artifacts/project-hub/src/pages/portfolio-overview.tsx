@@ -619,9 +619,12 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
     const budget = (p.capexBudget ?? 0) + (p.opexBudget ?? 0);
     // No per-project actuals in the schema — estimate spend as budget × progress.
     const spend = Math.round(budget * (p.progress ?? 0) / 100);
-    // Owner = projectOwnerId on the linked charter (resolved via the project's charterId).
+    // Owner = the charter's projectOwnerId (via the project's charterId), falling back
+    // to the project's own projectOwnerId when there is no linked charter (charter-first,
+    // then project owner, the same resolution the projects page uses).
     const charterId = (p as unknown as { charterId?: number | null }).charterId;
-    const ownerId = charterId != null ? ownerIdByCharter.get(charterId) ?? null : null;
+    const charterOwnerId = charterId != null ? ownerIdByCharter.get(charterId) ?? null : null;
+    const ownerId = charterOwnerId ?? ((p as unknown as { projectOwnerId?: number | null }).projectOwnerId ?? null);
     return {
       id: p.id,
       name: p.name,
@@ -1416,8 +1419,6 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                   { key: null, label: "Due", align: "left", sortable: false },
                   { key: null, label: "Timeline", align: "left", sortable: false },
                   { key: null, label: "Justification", align: "left", sortable: false },
-                  { key: "budgetVar", label: "Budget Variance", align: "right", sortable: true },
-                  { key: "schedVar", label: "Schedule", align: "right", sortable: true },
                 ] as { key: SummarySortKey | null; label: string; align: "left" | "right" | "center"; sortable: boolean }[]).map((c, i) => {
                   const active = c.sortable && summarySort.key === c.key;
                   const alignCls = c.align === "right" ? "justify-end text-right" : c.align === "center" ? "justify-center text-center" : "justify-start text-left";
@@ -1583,31 +1584,6 @@ export default function PortfolioOverview() {  const { data: projects = [], isLo
                       })()}
                     </TableCell>
 
-                    {/* Budget variance — soft directional pill */}
-                    <TableCell className="py-2 px-3 text-right whitespace-nowrap align-middle">
-                      {r.budgetVarPct == null ? <span className="text-muted-foreground/40 font-medium text-[12px]">—</span> : (() => {
-                        const c = r.budgetVarPct > 0 ? C.red : r.budgetVarPct < 0 ? C.green : null;
-                        return (
-                          <span className="inline-flex items-center justify-end gap-0.5 rounded-md px-1.5 py-0.5 text-[11.5px] font-bold tabular-nums" style={c ? { background: `${c}14`, color: c } : { color: "hsl(var(--muted-foreground))" }}>
-                            {r.budgetVarPct > 0 ? <ArrowUp size={11} /> : r.budgetVarPct < 0 ? <ArrowDown size={11} /> : null}
-                            {r.budgetVarPct > 0 ? "+" : ""}{r.budgetVarPct}%
-                          </span>
-                        );
-                      })()}
-                    </TableCell>
-
-                    {/* Schedule variance — soft directional pill */}
-                    <TableCell className="py-2 px-3 pr-5 text-right whitespace-nowrap align-middle">
-                      {r.schedVarDays == null ? <span className="text-muted-foreground/40 font-medium text-[12px]">—</span> : (() => {
-                        const c = r.schedVarDays < 0 ? C.red : r.schedVarDays > 0 ? C.green : null;
-                        return (
-                          <span className="inline-flex items-center justify-end gap-0.5 rounded-md px-1.5 py-0.5 text-[11.5px] font-bold tabular-nums" style={c ? { background: `${c}14`, color: c } : { color: "hsl(var(--muted-foreground))" }}>
-                            {r.schedVarDays > 0 ? <ArrowUp size={11} /> : r.schedVarDays < 0 ? <ArrowDown size={11} /> : null}
-                            {r.schedVarDays > 0 ? "+" : ""}{r.schedVarDays}d
-                          </span>
-                        );
-                      })()}
-                    </TableCell>
                   </TableRow>
                 );
               })}
